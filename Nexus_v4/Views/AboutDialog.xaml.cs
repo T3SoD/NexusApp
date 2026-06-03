@@ -9,7 +9,7 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
-        ("App  4.2.1  —  Jun 03, 2026",
+        ("App  4.2.2  —  Jun 03, 2026",
         [
             "Test release — verifying the Discord changelog notifier; no functional changes",
         ]),
