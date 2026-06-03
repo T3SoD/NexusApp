@@ -1,0 +1,241 @@
+<Window x:Class="Nexus_v4.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="clr-namespace:Nexus_v4.Converters"
+        Title="Nexus Overlay"
+        WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ResizeMode="CanResizeWithGrip"
+        Width="320" Height="480"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <conv:TierColorConverter x:Key="TierColor"/>
+        <conv:RarityColorConverter x:Key="RarityColor"/>
+        <conv:HexColorConverter x:Key="HexColor"/>
+        <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
+    </Window.Resources>
+
+    <Border CornerRadius="8" Background="#E0070B12"
+            BorderBrush="#FF30363D" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="4" MinHeight="4"/>
+                <RowDefinition Height="110" MinHeight="50"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header: drag zone + close -->
+            <Grid Grid.Row="0" Background="#CC0A1020">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0"
+                            HorizontalAlignment="Stretch" Background="Transparent"
+                            MouseLeftButtonDown="Header_MouseLeftButtonDown" Cursor="SizeAll">
+                    <Image Source="/Assets/nexus_icon.png" Width="18" Height="18"
+                           Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="NEXUS" Foreground="#FF00C9A7" FontWeight="Bold"
+                               FontSize="13" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="✕" Style="{StaticResource NexusButton}" Padding="5,3"
+                        Margin="0,0,6,0" Click="Close_Click"/>
+            </Grid>
+
+            <!-- Tab bar -->
+            <Border Grid.Row="1" Background="#CC0A1020" BorderBrush="#FF30363D" BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <Button x:Name="TabScanBtn" Content="SCAN"
+                                Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                                Click="TabScan_Click" Padding="0,5" Margin="0" BorderThickness="0"/>
+                        <Border x:Name="TabScanIndicator" Height="2" Background="#FF00C9A7"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <Button x:Name="TabOrdersBtn" Content="ORDERS"
+                                Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                                Click="TabOrders_Click" Padding="0,5" Margin="0" BorderThickness="0"/>
+                        <Border x:Name="TabOrdersIndicator" Height="2" Background="Transparent"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <Button x:Name="TabShoppingBtn" Content="SHOPPING"
+                                Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                                Click="TabShopping_Click" Padding="0,5" Margin="0" BorderThickness="0"/>
+                        <Border x:Name="TabShoppingIndicator" Height="2" Background="Transparent"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Tab content -->
+            <Grid Grid.Row="2">
+
+                <!-- SCAN tab -->
+                <Grid x:Name="ScanTabContent">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Scan controls -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,6,6,0">
+                        <Button Content="⊕" Style="{StaticResource NexusButton}" Padding="5,3"
+                                Margin="2,0" Click="SetRegion_Click" ToolTip="Set scan region"/>
+                        <Button x:Name="BoxToggleBtn" Content="⊠" Style="{StaticResource NexusButton}" Padding="5,3"
+                                Margin="2,0" Click="BoxToggle_Click" ToolTip="Show scan box"/>
+                        <Button x:Name="ScanToggleBtn" Content="■" Style="{StaticResource NexusButton}" Padding="5,3"
+                                Margin="2,0" Click="ScanToggle_Click" ToolTip="Stop auto-scan"/>
+                        <Slider x:Name="OpacitySlider"
+                                Minimum="0.2" Maximum="1.0" SmallChange="0.05"
+                                Width="72" VerticalAlignment="Center" Margin="10,0,4,0"
+                                ValueChanged="OpacitySlider_ValueChanged"/>
+                        <TextBlock x:Name="OpacityLabel" Text="100%"
+                                   FontSize="9" Foreground="#FF8B949E"
+                                   VerticalAlignment="Center" Width="26"/>
+                    </StackPanel>
+
+                    <!-- Scan status -->
+                    <TextBlock x:Name="OverlayScanStatus" Grid.Row="1"
+                               Text="◎  Scanning…" FontSize="10"
+                               Foreground="#FF8B949E" Margin="10,4,10,0"
+                               TextTrimming="CharacterEllipsis"/>
+
+                    <!-- RS input -->
+                    <Grid Grid.Row="2" Margin="8,4,8,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="OverlayRsInput" Style="{StaticResource NexusTextBox}"
+                                 Height="38" FontSize="15"
+                                 KeyDown="OverlayRsInput_KeyDown"
+                                 Tag="Enter RS value…"/>
+                        <Button Grid.Column="1" Content="→" Style="{StaticResource AccentButton}"
+                                Height="38" Margin="4,0,0,0" Padding="10,0"
+                                Click="OverlayScan_Click"/>
+                    </Grid>
+
+                    <!-- Results -->
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Margin="8,0">
+                        <ItemsControl x:Name="OverlayResults">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,3" CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="ResultCard_Click">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background"    Value="#CC161B22"/>
+                                                <Setter Property="BorderBrush"   Value="#FF30363D"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInCart}" Value="True">
+                                                        <Setter Property="Background"  Value="#2600C9A7"/>
+                                                        <Setter Property="BorderBrush" Value="#9900C9A7"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Border Width="3" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                                    Background="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                            <Grid Margin="10,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Resource.Name}" FontWeight="SemiBold"
+                                                                   Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"
+                                                                   VerticalAlignment="Center"/>
+                                                        <Border Padding="3,1" CornerRadius="3" Margin="5,0,0,0"
+                                                                Background="#FF00C9A7"
+                                                                VerticalAlignment="Center"
+                                                                Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
+                                                            <TextBlock Text="CART" FontSize="8" FontWeight="Bold"
+                                                                       Foreground="#FF070B12"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                        <Border Padding="4,2" CornerRadius="3" Margin="0,0,6,0"
+                                                                Background="#FF21262D">
+                                                            <TextBlock Text="{Binding BadgeText}" FontSize="10"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                                        </Border>
+                                                        <TextBlock Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"
+                                                                   FontSize="11" Foreground="#FF8B949E"
+                                                                   Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding NodesText}"
+                                                                   FontSize="11" Foreground="#FF8B949E"
+                                                                   VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ORDERS tab -->
+                <Grid x:Name="OrdersTabContent" Visibility="Collapsed">
+                    <StackPanel Margin="12,16">
+                        <Button x:Name="WorkOrderBtn" Content="📋  Open Refinery Tracker"
+                                Style="{StaticResource AccentButton}"
+                                HorizontalAlignment="Stretch"
+                                Padding="0,12" Margin="0,0,0,8"
+                                Click="WorkOrderToggle_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- SHOPPING tab -->
+                <Grid x:Name="ShoppingTabContent" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
+                        <StackPanel x:Name="ShoppingPanelItems"/>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+
+            <!-- Drag handle to resize history strip -->
+            <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#FF30363D" Cursor="SizeNS"
+                          ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- History strip -->
+            <Border Grid.Row="4"
+                    Background="#CC0A1020"
+                    BorderBrush="#FF30363D" BorderThickness="0,0,0,0">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="8,4,6,4">
+                        <TextBlock Text="RECENT" FontSize="9" FontWeight="Bold"
+                                   Foreground="#FF8B949E" VerticalAlignment="Center"/>
+                        <Button Content="CLEAR" Style="{StaticResource NexusButton}"
+                                HorizontalAlignment="Right"
+                                Padding="6,2" FontSize="9"
+                                Click="ClearHistory_Click"/>
+                    </Grid>
+                    <StackPanel x:Name="OverlayHistoryFilterPanel" DockPanel.Dock="Top"
+                                Orientation="Horizontal" Margin="8,0,6,4"/>
+                    <Border DockPanel.Dock="Top" Height="1" Background="#FF30363D"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="4,4,4,4">
+                        <StackPanel x:Name="HistoryStrip"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
