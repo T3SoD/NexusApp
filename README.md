@@ -28,7 +28,27 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 
 Nexus ships two ways — pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline.
 
-### Option 1 — Portable (standalone `Nexus_v4.exe`)
+### Option 1 — Installer (`Nexus_Setup.exe`) — *recommended, user friendly*
+
+A guided setup that installs Nexus like normal Windows software.
+
+1. Download **`Nexus_Setup.exe`** from the [Releases](../../releases) page.
+2. Right-click it → **Properties** → check **Unblock** at the bottom → **OK**.
+3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
+4. Launch Nexus from the Start menu or desktop.
+
+**Pros**
+- Creates Start-menu and optional desktop shortcuts for you
+- Clean uninstall from *Add or remove programs*
+- Installs per-user under `%LOCALAPPDATA%` — still no admin rights
+- Simplest path for non-technical users
+
+**Cons**
+- Writes files to `%LOCALAPPDATA%\Nexus` and registers an uninstaller
+- One extra install step compared with just running the exe
+- Updating means re-running a newer installer
+
+### Option 2 — Portable (standalone `Nexus_v4.exe`)
 
 Run the app directly, with no installation.
 
@@ -48,26 +68,6 @@ Run the app directly, with no installation.
 - No entry in *Add or remove programs*
 - Updating means downloading and replacing the folder yourself
 - Keep the whole folder together — `Nexus_v4.exe` needs the files beside it
-
-### Option 2 — Installer (`Nexus_Setup.exe`) - USER FRIENDLY
-
-A guided setup that installs Nexus like normal Windows software.
-
-1. Download **`Nexus_Setup.exe`** from the [Releases](../../releases) page.
-2. Right-click it → **Properties** → check **Unblock** at the bottom → **OK**.
-3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
-4. Launch Nexus from the Start menu or desktop.
-
-**Pros**
-- Creates Start-menu and optional desktop shortcuts for you
-- Clean uninstall from *Add or remove programs*
-- Installs per-user under `%LOCALAPPDATA%` — still no admin rights
-- Simplest path for non-technical users
-
-**Cons**
-- Writes files to `%LOCALAPPDATA%\Nexus` and registers an uninstaller
-- One extra install step compared with just running the exe
-- Updating means re-running a newer installer
 
 > **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
