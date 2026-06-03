@@ -140,7 +140,14 @@ def main():
     payload = {"username": "Nexus Updates", "embeds": [embed]}
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        webhook, data=data, headers={"Content-Type": "application/json"}
+        webhook,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            # Discord sits behind Cloudflare, which 403s (error 1010) the default
+            # "Python-urllib" User-Agent. A real UA string is required.
+            "User-Agent": "NexusApp-ChangelogBot/1.0 (+https://github.com/T3SoD/NexusApp)",
+        },
     )
     try:
         with urllib.request.urlopen(req) as resp:
