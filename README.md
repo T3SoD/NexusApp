@@ -26,14 +26,50 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 
 ## Installation (end users)
 
-1. Download the latest release (ZIP) from the [Releases](../../releases) page.
-2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK** (avoids the SmartScreen prompt).
-3. Right-click the ZIP → **Extract All…** and choose a location.
-4. Open the extracted folder and run **`Nexus_v4.exe`**.
+Nexus ships two ways — pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline.
 
-No installation required.
+### Option 1 — Portable (standalone `Nexus_v4.exe`)
 
-> **Windows SmartScreen note:** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
+Run the app directly, with no installation.
+
+1. Download **`Nexus_v4_portable.zip`** from the [Releases](../../releases) page.
+2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK**.
+3. Right-click the ZIP → **Extract All…** and choose a location (Desktop or Documents is fine).
+4. Open the extracted folder and double-click **`Nexus_v4.exe`**.
+
+**Pros**
+- No installation and no admin rights
+- Everything lives in one folder — nothing is written to the registry
+- Leaves no system traces; delete the folder to remove it completely
+- Easy to move between PCs or run from a USB stick
+
+**Cons**
+- No Start-menu or desktop shortcut — you launch it from the folder
+- No entry in *Add or remove programs*
+- Updating means downloading and replacing the folder yourself
+- Keep the whole folder together — `Nexus_v4.exe` needs the files beside it
+
+### Option 2 — Installer (`Nexus_Setup.exe`)
+
+A guided setup that installs Nexus like normal Windows software.
+
+1. Download **`Nexus_Setup.exe`** from the [Releases](../../releases) page.
+2. Right-click it → **Properties** → check **Unblock** at the bottom → **OK**.
+3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
+4. Launch Nexus from the Start menu or desktop.
+
+**Pros**
+- Creates Start-menu and optional desktop shortcuts for you
+- Clean uninstall from *Add or remove programs*
+- Installs per-user under `%LOCALAPPDATA%` — still no admin rights
+- Simplest path for non-technical users
+
+**Cons**
+- Writes files to `%LOCALAPPDATA%\Nexus` and registers an uninstaller
+- One extra install step compared with just running the exe
+- Updating means re-running a newer installer
+
+> **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
 ## Building from source
 
