@@ -9,6 +9,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.2.1  —  Jun 03, 2026",
+        [
+            "Test release — verifying the Discord changelog notifier; no functional changes",
+        ]),
         ("App  4.2.0  —  Jun 02, 2026",
         [
             "Recent scan history now has a filter — choose All, Exact + Close, or Exact only in both the main app and the overlay",
