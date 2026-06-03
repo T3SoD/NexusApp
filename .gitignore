@@ -33,3 +33,7 @@ Output/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local-only dev/deploy tooling (contain local paths / not part of the app)
+compare_nexus_data.py
+deploy_nexus.ps1
