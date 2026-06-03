@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 
 REPO_URL = "https://github.com/T3SoD/NexusApp"
@@ -114,9 +115,12 @@ def main():
         print(f"No version change (still {cur_ver}); nothing to post.")
         return
 
-    webhook = os.environ.get("DISCORD_WEBHOOK", "")
+    webhook = os.environ.get("DISCORD_WEBHOOK", "").strip()
     if not webhook:
         print("DISCORD_WEBHOOK not set", file=sys.stderr)
+        sys.exit(1)
+    if not webhook.startswith("https://"):
+        print("DISCORD_WEBHOOK does not look like a URL", file=sys.stderr)
         sys.exit(1)
 
     bullets = "\n".join("• " + c for c in cur_changes) or "• See the in-app changelog for details."
@@ -138,8 +142,16 @@ def main():
     req = urllib.request.Request(
         webhook, data=data, headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req) as resp:
-        print(f"Posted Nexus {cur_ver} to Discord (HTTP {resp.status}).")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            print(f"Posted Nexus {cur_ver} to Discord (HTTP {resp.status}).")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        print(f"Discord rejected the post (HTTP {e.code}): {body}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"Could not reach Discord: {e.reason}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
