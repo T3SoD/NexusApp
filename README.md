@@ -121,7 +121,7 @@ Nexus_v4/
 
 ## Support
 
-For bugs or feedback, contact **TurboV1RG1N**.
+For bugs or feedback, contact **T3SoD** on Discord or **TurboV1RG1N** in game.
 
 ## License
 
