@@ -37,3 +37,7 @@ Thumbs.db
 # Local-only dev/deploy tooling (contain local paths / not part of the app)
 compare_nexus_data.py
 deploy_nexus.ps1
+
+# Python bytecode cache
+__pycache__/
+*.pyc
