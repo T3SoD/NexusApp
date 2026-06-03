@@ -1,0 +1,36 @@
+name: Discord changelog notify
+
+# Posts the latest changelog entry to a Discord channel when a new app
+# version ships. Only runs when AboutDialog.xaml.cs changes, and the script
+# itself posts only when the top version number actually bumped.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Nexus_v4/Views/AboutDialog.xaml.cs'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need history to read the previous commit's file
+
+      - name: Extract previous changelog
+        run: |
+          PREV="${{ github.event.before }}"
+          if ! git cat-file -e "${PREV}^{commit}" 2>/dev/null; then
+            PREV="HEAD^"
+          fi
+          git show "${PREV}:Nexus_v4/Views/AboutDialog.xaml.cs" > /tmp/prev.cs 2>/dev/null \
+            || : > /tmp/prev.cs
+
+      - name: Notify Discord on version bump
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          CURRENT_FILE: Nexus_v4/Views/AboutDialog.xaml.cs
+          PREVIOUS_FILE: /tmp/prev.cs
+        run: python3 .github/scripts/notify_discord.py
