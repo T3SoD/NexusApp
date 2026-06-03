@@ -49,7 +49,7 @@ Run the app directly, with no installation.
 - Updating means downloading and replacing the folder yourself
 - Keep the whole folder together — `Nexus_v4.exe` needs the files beside it
 
-### Option 2 — Installer (`Nexus_Setup.exe`)
+### Option 2 — Installer (`Nexus_Setup.exe`) - USER FRIENDLY
 
 A guided setup that installs Nexus like normal Windows software.
 
