@@ -3,7 +3,7 @@
 ; (e.g. CI passes /DAppVersion=4.2.2 /DPublishDir=publish_out). The values
 ; below are the defaults used by a local GUI / deploy_nexus.ps1 build.
 #ifndef AppVersion
-  #define AppVersion "4.2.2"
+  #define AppVersion "4.2.1"
 #endif
 #define ExeName    "Nexus_v4.exe"
 #ifndef PublishDir
