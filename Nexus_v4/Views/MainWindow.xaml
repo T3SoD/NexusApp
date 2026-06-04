@@ -59,7 +59,7 @@
                         BorderThickness="1"
                         Cursor="Hand"
                         MouseLeftButtonDown="AppBadge_Click">
-                    <TextBlock Text="App v4.2.1" FontSize="9"
+                    <TextBlock Text="App v4.2.2" FontSize="9"
                                Foreground="{StaticResource AccentBrush}"
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>
