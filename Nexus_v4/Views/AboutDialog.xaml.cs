@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Navigation;
 
 namespace Nexus_v4.Views;
 
@@ -9,6 +12,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.2.1  —  Jun 03, 2026",
+        [
+            "About dialog now links to the Nexus source on GitHub — click the Source line to open the repo in your browser",
+        ]),
         ("App  4.2.0  —  Jun 02, 2026",
         [
             "Recent scan history now has a filter — choose All, Exact + Close, or Exact only in both the main app and the overlay",
@@ -199,6 +206,8 @@ public class AboutDialog : Window
 
         AddInfoLine(aboutPanel, "Created by", "TurboV1RG1N");
         AddInfoLine(aboutPanel, "Game Data",  "Star Citizen PU v4.8.0");
+        AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
+            "https://github.com/T3SoD/NexusApp");
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 
@@ -427,6 +436,35 @@ public class AboutDialog : Window
             Text = value, FontSize = 12,
             Foreground = (Brush)Application.Current.FindResource("FgBrush"),
         });
+        parent.Children.Add(row);
+    }
+
+    private static void AddLinkLine(Panel parent, string label, string text, string url)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 3, 0, 3),
+        };
+        row.Children.Add(new TextBlock
+        {
+            Text = label + ":", Width = 110, FontSize = 12,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+        });
+
+        var link = new Hyperlink { NavigateUri = new Uri(url) };
+        link.Inlines.Add(text);
+        link.Foreground = (Brush)Application.Current.FindResource("AccentBrush");
+        link.RequestNavigate += (s, e) =>
+        {
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+            e.Handled = true;
+        };
+
+        var linkText = new TextBlock { FontSize = 12 };
+        linkText.Inlines.Add(link);
+        row.Children.Add(linkText);
+
         parent.Children.Add(row);
     }
 }
