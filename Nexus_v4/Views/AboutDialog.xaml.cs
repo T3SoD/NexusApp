@@ -12,6 +12,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.2.2  —  Jun 03, 2026",
+        [
+            "Test changelog entry — verifying the version-bump workflow (safe to remove)",
+        ]),
         ("App  4.2.1  —  Jun 03, 2026",
         [
             "About dialog now links to the Nexus source on GitHub — click the Source line to open the repo in your browser",
