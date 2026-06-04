@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
@@ -70,7 +70,7 @@ jobs:
       # Manual runs: just hand back the built files for local testing.
       - name: Upload build artifacts (manual runs)
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nexus-${{ steps.ver.outputs.version }}
           path: artifacts/*
