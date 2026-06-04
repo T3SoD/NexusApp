@@ -1,5 +1,5 @@
 #define AppName    "Nexus"
-#define AppVersion "4.2.2"
+#define AppVersion "4.2.1"
 #define ExeName    "Nexus_v4.exe"
 #define PublishDir "Nexus_v4\bin\x64\Release\net8.0-windows10.0.17763.0\win-x64\publish"
 
