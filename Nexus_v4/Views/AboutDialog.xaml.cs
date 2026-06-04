@@ -12,6 +12,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.2.2  —  Jun 04, 2026",
+        [
+            "Minor framework changes and behind-the-scenes maintenance",
+        ]),
         ("App  4.2.1  —  Jun 03, 2026",
         [
             "About dialog now links to the Nexus source on GitHub — click the Source line to open the repo in your browser",
@@ -187,8 +191,7 @@ public class AboutDialog : Window
         });
 
         var verRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        var ver = Changelog[0].Label.Split("  ", StringSplitOptions.RemoveEmptyEntries)[1];
-        AddBadge(verRow, $"v{ver}");
+        AddBadge(verRow, $"v{AppInfo.Version}");
         verRow.Children.Add(new TextBlock
         {
             Text = "  ·  Star Citizen Industry Companion",
@@ -204,10 +207,39 @@ public class AboutDialog : Window
             Background = (Brush)Application.Current.FindResource("NavBorderBrush"),
         });
 
-        AddInfoLine(aboutPanel, "Created by", "TurboV1RG1N");
-        AddInfoLine(aboutPanel, "Game Data",  "Star Citizen PU v4.8.0");
+        AddInfoLine(aboutPanel, "Created by", "T3SoD");
+        AddInfoLine(aboutPanel, "Game Data",  "Star Citizen PU v4.8.1");
         AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
             "https://github.com/T3SoD/NexusApp");
+
+        // Divider
+        aboutPanel.Children.Add(new Border
+        {
+            Height = 1, Margin = new Thickness(0, 16, 0, 14),
+            Background = (Brush)Application.Current.FindResource("NavBorderBrush"),
+        });
+
+        // Beta testers — recognition in the logo's gold accent
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "BETA TESTERS", FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("GoldBrush"),
+            Margin = new Thickness(0, 0, 0, 6),
+        });
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Tenuis  ·  UnknownGhost  ·  MangoMike  ·  Archer",
+            FontSize = 12, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+        });
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Thank you for helping test and refine Nexus.",
+            FontSize = 11, FontStyle = FontStyles.Italic,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 
@@ -322,7 +354,8 @@ public class AboutDialog : Window
 
         legalScroll.Content = legalStack;
         legalTab.Content = legalScroll;
-        tabs.Items.Add(legalTab);
+        // Legal is added last (after Appearance) so tab order reads
+        // ABOUT · CHANGELOG · APPEARANCE · LEGAL from left to right.
 
         // ── Appearance tab ───────────────────────────────────────────────────
         var appearTab = new TabItem { Header = "APPEARANCE" };
@@ -354,6 +387,7 @@ public class AboutDialog : Window
         appearPanel.Children.Add(swatchRow);
         appearTab.Content = appearPanel;
         tabs.Items.Add(appearTab);
+        tabs.Items.Add(legalTab);
 
         outer.Children.Add(tabs);
 

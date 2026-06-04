@@ -11,6 +11,8 @@
     <Color x:Key="FgDimColor">#FF8B949E</Color>
     <Color x:Key="AccentColor">#FF00C9A7</Color>
     <Color x:Key="AccentDimColor">#FF0D3028</Color>
+    <Color x:Key="GoldColor">#FFE8A23A</Color>  <!-- logo gold (warm amber) -->
+
     <Color x:Key="NavBgColor">#FF070B12</Color>
     <Color x:Key="PageBgColor">#FF0A1020</Color>
     <Color x:Key="Bg2NavColor">#FF0D1828</Color>
@@ -44,6 +46,7 @@
     <SolidColorBrush x:Key="FgDimBrush"    Color="{StaticResource FgDimColor}"/>
     <SolidColorBrush x:Key="AccentBrush"   Color="{StaticResource AccentColor}"/>
     <SolidColorBrush x:Key="AccentDimBrush" Color="{StaticResource AccentDimColor}"/>
+    <SolidColorBrush x:Key="GoldBrush"     Color="{StaticResource GoldColor}"/>
     <SolidColorBrush x:Key="NavBgBrush"    Color="{StaticResource NavBgColor}"/>
     <SolidColorBrush x:Key="PageBgBrush"   Color="{StaticResource PageBgColor}"/>
     <SolidColorBrush x:Key="Bg2NavBrush"   Color="{StaticResource Bg2NavColor}"/>

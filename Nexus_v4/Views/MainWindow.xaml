@@ -47,8 +47,8 @@
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}"
                         BorderThickness="1">
-                    <TextBlock Text="Star Citizen PU v4.8.0" FontSize="9"
-                               Foreground="{StaticResource FgDimBrush}"
+                    <TextBlock Text="Star Citizen PU v4.8.1" FontSize="9"
+                               Foreground="{StaticResource GoldBrush}"
                                VerticalAlignment="Center"/>
                 </Border>
                 <!-- App version badge — clickable easter egg -->
@@ -59,7 +59,7 @@
                         BorderThickness="1"
                         Cursor="Hand"
                         MouseLeftButtonDown="AppBadge_Click">
-                    <TextBlock Text="App v4.2.1" FontSize="9"
+                    <TextBlock x:Name="AppVersionText" FontSize="9"
                                Foreground="{StaticResource AccentBrush}"
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>
