@@ -1,0 +1,87 @@
+name: Release
+
+# Push a tag like v4.2.2 -> builds a clean self-contained win-x64 build on a
+# GitHub runner (no local machine paths ever embedded), packages the installer
+# and the portable zip, and publishes a GitHub release with both assets.
+#
+# Run manually (workflow_dispatch) -> builds the same artifacts and uploads them
+# as a downloadable build artifact for testing, WITHOUT creating a public release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish Nexus_v4/Nexus_v4.csproj -c Release -r win-x64 --self-contained true -o publish_out
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path "publish_out/*" -DestinationPath "artifacts/Nexus_v4_portable.zip" -CompressionLevel Optimal
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*","C:\Program Files\Inno Setup*" `
+                      -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue |
+                      Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          Write-Host "Using $iscc"
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" "/DPublishDir=publish_out" "/Oartifacts" nexus_installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed ($LASTEXITCODE)" }
+
+      - name: Prepare release notes
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          (Get-Content .github/release_body.md -Raw).Replace('__VERSION__', '${{ steps.ver.outputs.version }}') |
+            Set-Content release_body.md
+
+      # Manual runs: just hand back the built files for local testing.
+      - name: Upload build artifacts (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-${{ steps.ver.outputs.version }}
+          path: artifacts/*
+
+      # Tag runs: publish the GitHub release with both assets.
+      - name: Publish GitHub release (tag runs)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Nexus ${{ steps.ver.outputs.version }}
+          body_path: release_body.md
+          files: |
+            artifacts/Nexus_Setup.exe
+            artifacts/Nexus_v4_portable.zip

@@ -1,0 +1,26 @@
+name: Build check
+
+# Verifies the app compiles cleanly on a stock Windows runner for every
+# push / PR to main. Does not produce or publish anything.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore Nexus_v4/Nexus_v4.csproj
+
+      - name: Build (Release)
+        run: dotnet build Nexus_v4/Nexus_v4.csproj -c Release --no-restore
