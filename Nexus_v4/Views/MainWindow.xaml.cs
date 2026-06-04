@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AppVersionText.Text = $"App v{AppInfo.Version}";
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };

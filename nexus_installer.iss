@@ -1,20 +1,21 @@
 #define AppName    "Nexus"
-; AppVersion and PublishDir can be overridden from the command line
-; (e.g. CI passes /DAppVersion=4.2.2 /DPublishDir=publish_out). The values
-; below are the defaults used by a local GUI / deploy_nexus.ps1 build.
-#ifndef AppVersion
-  #define AppVersion "4.2.1"
-#endif
 #define ExeName    "Nexus_v4.exe"
+; PublishDir can be overridden from the command line (CI passes /DPublishDir=publish_out).
 #ifndef PublishDir
   #define PublishDir "Nexus_v4\bin\x64\Release\net8.0-windows10.0.17763.0\win-x64\publish"
+#endif
+; Version is single-sourced: by default it's read from the built exe's file
+; version (which comes from the csproj <Version>). CI can still override with a
+; clean tag value via /DAppVersion=X.Y.Z.
+#ifndef AppVersion
+  #define AppVersion GetFileVersion(AddBackslash(PublishDir) + ExeName)
 #endif
 
 [Setup]
 AppId={{F7A2C8D5-3E91-4B6F-A012-7C5E3D8B9F04}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=TurboV1RG1N
+AppPublisher=T3SoD
 DefaultDirName={localappdata}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

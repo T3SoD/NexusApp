@@ -31,11 +31,12 @@ jobs:
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish (self-contained win-x64)
-        run: dotnet publish Nexus_v4/Nexus_v4.csproj -c Release -r win-x64 --self-contained true -o publish_out
+        # -p:Version stamps the assembly so the in-app badges show the tag version.
+        run: dotnet publish Nexus_v4/Nexus_v4.csproj -c Release -r win-x64 --self-contained true -o publish_out -p:Version=${{ steps.ver.outputs.version }}
 
       - name: Create portable zip
         shell: pwsh

@@ -7,10 +7,17 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Nexus_v4</AssemblyName>
     <RootNamespace>Nexus_v4</RootNamespace>
+    <!-- SINGLE SOURCE OF TRUTH for the app version. The in-app badges read this
+         at runtime and the installer reads it from the built exe. For a release,
+         CI overrides it from the git tag (dotnet publish -p:Version=X.Y.Z). -->
+    <Version>4.2.2</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\nexus.ico</ApplicationIcon>
 <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- App is English-only: drop the .NET framework's other-language satellite
+         resource DLLs (~221 files / ~6 MB compressed) from the published output. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <!-- Release: ship no debug symbols, and keep the build machine's file paths
