@@ -14,7 +14,7 @@ on:
 
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: windows-2025
     permissions:
       contents: write
     steps:
@@ -79,7 +79,7 @@ jobs:
       # Tag runs: publish the GitHub release with both assets.
       - name: Publish GitHub release (tag runs)
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Nexus ${{ steps.ver.outputs.version }}
           body_path: release_body.md
