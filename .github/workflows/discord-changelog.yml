@@ -1,28 +1,23 @@
-name: Discord changelog notify
+name: Discord changelog notify (manual)
 
-# Posts the latest changelog entry to a Discord channel when a GitHub release
-# is PUBLISHED (i.e. when the release pipeline finishes and the downloads are
-# live). Fires exactly once per release, so the announcement always matches an
-# actual, downloadable release — and pushing a version bump to main no longer
-# posts on its own.
+# MANUAL re-post button. Automatic posting on release is handled by the
+# notify-discord job in release.yml (which runs in the same workflow run as the
+# release, so it isn't blocked by GitHub's GITHUB_TOKEN no-trigger rule).
+#
+# Use this to post the current top changelog entry on demand — e.g. to catch up
+# a release whose notification was missed. Run it from the Actions tab.
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch: {}
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (at the released tag)
-        uses: actions/checkout@v5
-
+      - uses: actions/checkout@v5
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           CURRENT_FILE: Nexus_v4/Views/AboutDialog.xaml.cs
-          # Empty -> the script posts the current top changelog entry. No
-          # previous-commit comparison is needed: a release event is itself the
-          # signal that this is a new version, so it can't double-post.
-          PREVIOUS_FILE: ""
+          PREVIOUS_FILE: ""   # empty -> post the current top changelog entry
         run: python3 .github/scripts/notify_discord.py
