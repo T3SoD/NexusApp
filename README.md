@@ -71,14 +71,17 @@ Run the app directly, with no installation.
 
 > **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
-## Tech stack
+<details>
+<summary><strong>For developers — tech stack & project layout</strong></summary>
+
+**Tech stack**
 
 - **C# / .NET 8** with **WPF** (Windows-only, self-contained `win-x64` build)
 - **CommunityToolkit.Mvvm** for MVVM
 - **Microsoft.Data.Sqlite** for local storage
 - **Windows.Media.Ocr** (native WinRT OCR engine) for the auto-scan feature
 
-## Project layout
+**Project layout**
 
 ```
 Nexus_v4/
@@ -94,6 +97,8 @@ Nexus_v4/
    ├─ Views/                    # Windows, dialogs, overlay
    └─ Themes/                   # Game-styled WPF theme
 ```
+
+</details>
 
 ## Support
 
