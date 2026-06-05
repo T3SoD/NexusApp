@@ -7,20 +7,31 @@ namespace Nexus_v4.Services;
 
 public class DataService : IDisposable
 {
-    private static readonly string _dbPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Nexus_v4", "nexus.db");
+    private static readonly string _dataDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Nexus_v4");
+
+    private static readonly string _dbPath = Path.Combine(_dataDir, "nexus.db");
+
+    /// <summary>Downloaded mining-data cache. When present and newer than the applied
+    /// version, it supersedes the embedded seed — letting data ship without a new build.</summary>
+    public static readonly string CachedSeedPath = Path.Combine(_dataDir, "seed_data.json");
+
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private SqliteConnection? _conn;
+    private string _seedVersion = "0.0.0";
+
+    /// <summary>The mining-data version currently applied to the database.</summary>
+    public string DataVersion => GetMeta("data_version") ?? _seedVersion;
 
     public void Initialize()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        Directory.CreateDirectory(_dataDir);
         _conn = new SqliteConnection($"Data Source={_dbPath}");
         _conn.Open();
         CreateSchema();
-        MigrateSchema();
-        SeedIfEmpty();
+        MigrateColumns();
+        ApplySeed();
     }
 
     private void CreateSchema()
@@ -91,94 +102,119 @@ public class DataService : IDisposable
                 rank TEXT,
                 systems TEXT
             );
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         ");
     }
 
-    private void MigrateSchema()
+    private bool _forceReseed;
+
+    private void MigrateColumns()
     {
         try { Exec("ALTER TABLE work_orders ADD COLUMN timer_start TEXT"); } catch { }
         try { Exec("ALTER TABLE work_orders ADD COLUMN timer_end TEXT"); } catch { }
-
-        // Add sub_category column and reseed blueprints if it was missing
-        bool needsReseed = false;
-        try { Exec("ALTER TABLE blueprints ADD COLUMN sub_category TEXT"); needsReseed = true; } catch { }
-        if (needsReseed) ReseedBlueprints();
-
-        // Seed blueprint_unlocks if the table is empty (new in v4.1)
-        var unlockCount = Scalar<long>("SELECT COUNT(*) FROM blueprint_unlocks");
-        if (unlockCount == 0) SeedBlueprintUnlocks();
+        // If sub_category is missing the blueprint rows predate it — force a full reseed.
+        try { Exec("ALTER TABLE blueprints ADD COLUMN sub_category TEXT"); _forceReseed = true; } catch { }
     }
 
-    private void ReseedBlueprints()
+    // ── Versioned seeding ───────────────────────────────────────────────────────
+
+    /// <summary>Loads the best available seed: a downloaded cache (if valid) wins over
+    /// the embedded copy, so mining data can be refreshed without shipping a new build.</summary>
+    private SeedData LoadSeed()
+    {
+        var cached = TryParseSeed(ReadCachedSeed());
+        if (cached is { Resources.Count: > 0 }) return cached;
+
+        var embedded = TryParseSeed(ReadEmbeddedSeed());
+        return embedded ?? new SeedData("0.0.0",
+            new List<SeedResource>(), new Dictionary<string, string>(),
+            new List<SeedBlueprint>(), null);
+    }
+
+    private static string? ReadCachedSeed()
+    {
+        try { return File.Exists(CachedSeedPath) ? File.ReadAllText(CachedSeedPath) : null; }
+        catch { return null; }
+    }
+
+    private static string? ReadEmbeddedSeed()
     {
         using var stream = typeof(DataService).Assembly
             .GetManifestResourceStream("Nexus_v4.Data.seed_data.json");
-        if (stream == null) return;
+        return stream == null ? null : new StreamReader(stream).ReadToEnd();
+    }
 
-        var json = new StreamReader(stream).ReadToEnd();
-        var seed = JsonSerializer.Deserialize<SeedData>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        if (seed == null) return;
+    private static SeedData? TryParseSeed(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<SeedData>(json, _jsonOpts); }
+        catch { return null; }
+    }
+
+    private void ApplySeed()
+    {
+        var seed = LoadSeed();
+        _seedVersion = string.IsNullOrWhiteSpace(seed.DataVersion) ? "0.0.0" : seed.DataVersion!;
+
+        var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
+        var applied = GetMeta("data_version");
+
+        // Fresh install — seed everything.
+        if (resourceCount == 0)
+        {
+            SeedAll(seed);
+            SetMeta("data_version", _seedVersion);
+            return;
+        }
+
+        // Old schema that just gained a column — repopulate from the current seed.
+        if (_forceReseed)
+        {
+            SeedAll(seed);
+            SetMeta("data_version", _seedVersion);
+            return;
+        }
+
+        // Pre-versioning DB already populated by an earlier build — adopt the current
+        // version without a disruptive reseed; backfill unlocks if missing (v4.1).
+        if (applied == null)
+        {
+            if (Scalar<long>("SELECT COUNT(*) FROM blueprint_unlocks") == 0) SeedUnlocks(seed);
+            SetMeta("data_version", _seedVersion);
+            return;
+        }
+
+        // A newer data version is available (e.g. a downloaded cache) — full reseed.
+        if (CompareVersions(_seedVersion, applied) > 0)
+        {
+            SeedAll(seed);
+            SetMeta("data_version", _seedVersion);
+        }
+    }
+
+    /// <summary>Replaces all reference data from <paramref name="seed"/>, preserving the
+    /// user's pinned resources (the only user state stored on a reseeded table).</summary>
+    private void SeedAll(SeedData seed)
+    {
+        var pinned = new List<string>();
+        using (var cmd = _conn!.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM resources WHERE is_pinned=1";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read()) pinned.Add(rdr.GetString(0));
+        }
 
         using var tx = _conn!.BeginTransaction();
+
+        Exec("DELETE FROM resource_locations");
+        Exec("DELETE FROM resource_refineries");
+        Exec("DELETE FROM resources");
         Exec("DELETE FROM blueprint_ingredients");
         Exec("DELETE FROM blueprints");
-
-        foreach (var bp in seed.Blueprints)
-        {
-            Exec("INSERT INTO blueprints (name,category,sub_category) VALUES (@n,@c,@sc)",
-                ("@n", bp.Name), ("@c", bp.Category),
-                ("@sc", (object?)bp.SubCategory ?? DBNull.Value));
-
-            var bpId = Scalar<long>("SELECT last_insert_rowid()");
-            foreach (var ing in bp.Ingredients)
-                Exec("INSERT INTO blueprint_ingredients VALUES (@bid,@r,@q,@u)",
-                    ("@bid", bpId), ("@r", ing.ResourceName), ("@q", ing.Quantity), ("@u", ing.Unit));
-        }
-        tx.Commit();
-    }
-
-    private void SeedBlueprintUnlocks()
-    {
-        using var stream = typeof(DataService).Assembly
-            .GetManifestResourceStream("Nexus_v4.Data.seed_data.json");
-        if (stream == null) return;
-
-        var json = new StreamReader(stream).ReadToEnd();
-        var seed = JsonSerializer.Deserialize<SeedData>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        if (seed?.BlueprintUnlocks == null) return;
-
-        using var tx = _conn!.BeginTransaction();
         Exec("DELETE FROM blueprint_unlocks");
-        foreach (var u in seed.BlueprintUnlocks)
-        {
-            var systems = u.Systems is { Count: > 0 } ? string.Join(",", u.Systems) : null;
-            Exec("INSERT INTO blueprint_unlocks (blueprint_name,faction,mission_type,mission_title,rank,systems) VALUES (@bn,@f,@mt,@t,@r,@s)",
-                ("@bn", u.BlueprintName), ("@f", u.Faction),
-                ("@mt", (object?)u.MissionType ?? DBNull.Value),
-                ("@t", u.MissionTitle),
-                ("@r", (object?)u.Rank ?? DBNull.Value),
-                ("@s", (object?)systems ?? DBNull.Value));
-        }
-        tx.Commit();
-    }
-
-    private void SeedIfEmpty()
-    {
-        var count = Scalar<long>("SELECT COUNT(*) FROM resources");
-        if (count > 0) return;
-
-        using var stream = typeof(DataService).Assembly
-            .GetManifestResourceStream("Nexus_v4.Data.seed_data.json");
-        if (stream == null) return;
-
-        var json = new StreamReader(stream).ReadToEnd();
-        var seed = JsonSerializer.Deserialize<SeedData>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        if (seed == null) return;
-
-        using var tx = _conn!.BeginTransaction();
 
         foreach (var r in seed.Resources)
         {
@@ -193,10 +229,8 @@ public class DataService : IDisposable
             }
 
             foreach (var ref_ in r.Refineries)
-            {
                 Exec("INSERT OR IGNORE INTO resource_refineries VALUES (@r,@st,@sy,@m)",
                     ("@r", r.Name), ("@st", ref_.Station), ("@sy", ref_.System), ("@m", ref_.ModifierPct));
-            }
         }
 
         foreach (var bp in seed.Blueprints)
@@ -207,25 +241,75 @@ public class DataService : IDisposable
 
             var bpId = Scalar<long>("SELECT last_insert_rowid()");
             foreach (var ing in bp.Ingredients)
-            {
                 Exec("INSERT INTO blueprint_ingredients VALUES (@bid,@r,@q,@u)",
                     ("@bid", bpId), ("@r", ing.ResourceName), ("@q", ing.Quantity), ("@u", ing.Unit));
-            }
         }
 
-        if (seed.BlueprintUnlocks != null)
-            foreach (var u in seed.BlueprintUnlocks)
-            {
-                var systems = u.Systems is { Count: > 0 } ? string.Join(",", u.Systems) : null;
-                Exec("INSERT INTO blueprint_unlocks (blueprint_name,faction,mission_type,mission_title,rank,systems) VALUES (@bn,@f,@mt,@t,@r,@s)",
-                    ("@bn", u.BlueprintName), ("@f", u.Faction),
-                    ("@mt", (object?)u.MissionType ?? DBNull.Value),
-                    ("@t", u.MissionTitle),
-                    ("@r", (object?)u.Rank ?? DBNull.Value),
-                    ("@s", (object?)systems ?? DBNull.Value));
-            }
+        InsertUnlocks(seed);
+
+        foreach (var name in pinned)
+            Exec("UPDATE resources SET is_pinned=1 WHERE name=@n", ("@n", name));
 
         tx.Commit();
+    }
+
+    private void SeedUnlocks(SeedData seed)
+    {
+        using var tx = _conn!.BeginTransaction();
+        Exec("DELETE FROM blueprint_unlocks");
+        InsertUnlocks(seed);
+        tx.Commit();
+    }
+
+    private void InsertUnlocks(SeedData seed)
+    {
+        if (seed.BlueprintUnlocks == null) return;
+        foreach (var u in seed.BlueprintUnlocks)
+        {
+            var systems = u.Systems is { Count: > 0 } ? string.Join(",", u.Systems) : null;
+            Exec("INSERT INTO blueprint_unlocks (blueprint_name,faction,mission_type,mission_title,rank,systems) VALUES (@bn,@f,@mt,@t,@r,@s)",
+                ("@bn", u.BlueprintName), ("@f", u.Faction),
+                ("@mt", (object?)u.MissionType ?? DBNull.Value),
+                ("@t", u.MissionTitle),
+                ("@r", (object?)u.Rank ?? DBNull.Value),
+                ("@s", (object?)systems ?? DBNull.Value));
+        }
+    }
+
+    // ── Meta / version helpers ──────────────────────────────────────────────────
+
+    private string? GetMeta(string key)
+    {
+        if (_conn == null) return null;
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM meta WHERE key=@k";
+        cmd.Parameters.AddWithValue("@k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    private void SetMeta(string key, string value) =>
+        Exec("INSERT INTO meta(key,value) VALUES(@k,@v) ON CONFLICT(key) DO UPDATE SET value=@v",
+            ("@k", key), ("@v", value));
+
+    /// <summary>Dotted numeric compare ("1.2.0" vs "1.10.0"); non-numeric parts count as 0.</summary>
+    private static int CompareVersions(string a, string b)
+    {
+        static int[] Parts(string v)
+        {
+            var s = v.Split('.');
+            var r = new int[s.Length];
+            for (int i = 0; i < s.Length; i++) r[i] = int.TryParse(s[i], out var n) ? n : 0;
+            return r;
+        }
+        var pa = Parts(a);
+        var pb = Parts(b);
+        for (int i = 0; i < Math.Max(pa.Length, pb.Length); i++)
+        {
+            int x = i < pa.Length ? pa[i] : 0;
+            int y = i < pb.Length ? pb[i] : 0;
+            if (x != y) return x.CompareTo(y);
+        }
+        return 0;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -481,6 +565,7 @@ public class DataService : IDisposable
     // ── Seed data DTOs ───────────────────────────────────────────────────────
 
     private record SeedData(
+        string? DataVersion,
         List<SeedResource> Resources,
         Dictionary<string, string> LocationSystems,
         List<SeedBlueprint> Blueprints,
