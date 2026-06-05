@@ -6,6 +6,9 @@ namespace Nexus_v4.Views;
 
 public class HelpDialog : Window
 {
+    /// <summary>Set when the user clicks "Replay Tutorial" — the owner launches the tour after this dialog closes.</summary>
+    public bool TutorialRequested { get; private set; }
+
     private static readonly (string Icon, string Title, string[] Items)[] _sections =
     [
         ("⧉", "OVERLAY",
@@ -218,6 +221,12 @@ public class HelpDialog : Window
             Padding = new Thickness(20, 12, 20, 12),
         };
         Grid.SetRow(footer, 1);
+
+        var footerRow = new Grid();
+        footerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        footerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
         var closeBtn = new Button
         {
             Content = "Close",
@@ -226,7 +235,22 @@ public class HelpDialog : Window
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         closeBtn.Click += (s, e) => Close();
-        footer.Child = closeBtn;
+        Grid.SetColumn(closeBtn, 0);
+
+        var tutorialBtn = new Button
+        {
+            Content = "▶  Replay Tutorial",
+            Style = (Style)Application.Current.FindResource("AccentButton"),
+            Padding = new Thickness(20, 8, 20, 8),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            ToolTip = "Walk through the auto-scan setup tour again",
+        };
+        tutorialBtn.Click += (s, e) => { TutorialRequested = true; Close(); };
+        Grid.SetColumn(tutorialBtn, 2);
+
+        footerRow.Children.Add(closeBtn);
+        footerRow.Children.Add(tutorialBtn);
+        footer.Child = footerRow;
         outer.Children.Add(footer);
 
         Content = outer;

@@ -20,6 +20,14 @@ public partial class OverlayWindow : Window
     public event Action? Hidden;
     public event Action? Shown;
 
+    // ── Welcome-tour targets ───────────────────────────────────────────────────
+    public FrameworkElement SetRegionTarget  => SetRegionBtn;
+    public FrameworkElement BoxToggleTarget  => BoxToggleBtn;
+    public FrameworkElement ScanToggleTarget => ScanToggleBtn;
+
+    /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
+    public void ShowScanTabForTutorial() => SwitchTab("scan");
+
     public OverlayWindow(MainViewModel vm)
     {
         InitializeComponent();

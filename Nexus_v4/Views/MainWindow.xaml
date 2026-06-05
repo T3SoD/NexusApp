@@ -75,7 +75,7 @@
             <!-- Right: action buttons -->
             <StackPanel Grid.Column="1" Orientation="Horizontal"
                         VerticalAlignment="Center" Margin="0,0,8,0">
-                <Button Content="⧉" ToolTip="Toggle Overlay"
+                <Button x:Name="OverlayToggleBtn" Content="⧉" ToolTip="Toggle Overlay"
                         Style="{StaticResource HeaderButton}"
                         Width="38" Height="38" Margin="2,0"
                         Click="ToggleOverlay_Click"/>
