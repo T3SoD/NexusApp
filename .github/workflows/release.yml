@@ -86,3 +86,19 @@ jobs:
           files: |
             artifacts/Nexus_Setup.exe
             artifacts/Nexus_v4_portable.zip
+
+  # Posts the changelog to Discord AFTER the release publishes. Runs as part of
+  # this same workflow run (not a separate 'release' event), so it isn't blocked
+  # by GitHub's rule that GITHUB_TOKEN-created releases can't trigger workflows.
+  notify-discord:
+    needs: release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          CURRENT_FILE: Nexus_v4/Views/AboutDialog.xaml.cs
+          PREVIOUS_FILE: ""   # empty -> post the current top changelog entry
+        run: python3 .github/scripts/notify_discord.py
