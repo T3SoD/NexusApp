@@ -71,30 +71,6 @@ Run the app directly, with no installation.
 
 > **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
-## Building from source
-
-**Requirements**
-
-- Windows 10 (build 17763 / version 1809) or later
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-
-**Build & run**
-
-```powershell
-git clone https://github.com/T3SoD/NexusApp.git
-cd NexusApp
-dotnet build
-dotnet run --project Nexus_v4
-```
-
-**Publish a self-contained release build**
-
-```powershell
-dotnet publish -c Release
-```
-
-The output lands in `Nexus_v4/bin/x64/Release/net8.0-windows10.0.17763.0/win-x64/publish/`. An [Inno Setup](https://jrsoftware.org/isinfo.php) script (`nexus_installer.iss`) is included to package an installer.
-
 ## Tech stack
 
 - **C# / .NET 8** with **WPF** (Windows-only, self-contained `win-x64` build)
