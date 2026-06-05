@@ -208,8 +208,8 @@ public class AboutDialog : Window
         });
 
         AddInfoLine(aboutPanel, "Created by", "T3SoD");
-        AddInfoLine(aboutPanel, "Game Data",  "Star Citizen PU v4.8.1");
-        AddInfoLine(aboutPanel, "Mining Data", $"v{App.Data.DataVersion}");
+        AddInfoLine(aboutPanel, "Game Data",  $"Star Citizen PU v{GameData.Version}");
+        AddInfoLine(aboutPanel, "Mining Data", $"v{App.Data.MiningDataVersion}");
         AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
             "https://github.com/T3SoD/NexusApp");
 

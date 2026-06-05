@@ -21,8 +21,10 @@ public class DataService : IDisposable
     private SqliteConnection? _conn;
     private string _seedVersion = "0.0.0";
 
-    /// <summary>The mining-data version currently applied to the database.</summary>
-    public string DataVersion => GetMeta("data_version") ?? _seedVersion;
+    /// <summary>The mining-data version currently applied to the database. This is the
+    /// seed-content version (auto-updatable) — distinct from <see cref="GameData.Version"/>,
+    /// which tracks the Star Citizen patch and is bumped manually.</summary>
+    public string MiningDataVersion => GetMeta("data_version") ?? _seedVersion;
 
     public void Initialize()
     {
@@ -129,7 +131,7 @@ public class DataService : IDisposable
         if (cached is { Resources.Count: > 0 }) return cached;
 
         var embedded = TryParseSeed(ReadEmbeddedSeed());
-        return embedded ?? new SeedData("0.0.0",
+        return embedded ?? new SeedData("0.0.0", null,
             new List<SeedResource>(), new Dictionary<string, string>(),
             new List<SeedBlueprint>(), null);
     }
@@ -157,7 +159,9 @@ public class DataService : IDisposable
     private void ApplySeed()
     {
         var seed = LoadSeed();
-        _seedVersion = string.IsNullOrWhiteSpace(seed.DataVersion) ? "0.0.0" : seed.DataVersion!;
+        // Accept both the new key (miningDataVersion) and the legacy one (dataVersion).
+        var seedVer = seed.MiningDataVersion ?? seed.DataVersion;
+        _seedVersion = string.IsNullOrWhiteSpace(seedVer) ? "0.0.0" : seedVer!;
 
         var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
         var applied = GetMeta("data_version");
@@ -292,7 +296,7 @@ public class DataService : IDisposable
             ("@k", key), ("@v", value));
 
     /// <summary>Dotted numeric compare ("1.2.0" vs "1.10.0"); non-numeric parts count as 0.</summary>
-    private static int CompareVersions(string a, string b)
+    public static int CompareVersions(string a, string b)
     {
         static int[] Parts(string v)
         {
@@ -565,6 +569,7 @@ public class DataService : IDisposable
     // ── Seed data DTOs ───────────────────────────────────────────────────────
 
     private record SeedData(
+        string? MiningDataVersion,
         string? DataVersion,
         List<SeedResource> Resources,
         Dictionary<string, string> LocationSystems,

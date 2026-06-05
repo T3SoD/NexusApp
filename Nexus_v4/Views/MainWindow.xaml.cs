@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Nexus_v4.Models;
+using Nexus_v4.Services;
 using Nexus_v4.ViewModels;
 
 namespace Nexus_v4.Views;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         AppVersionText.Text = $"App v{AppInfo.Version}";
+        GameVersionText.Text = $"Star Citizen PU v{GameData.Version}";
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -41,7 +43,33 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
+
+        _ = CheckForDataUpdatesAsync();
     }
+
+    // ── Mining-data updates ────────────────────────────────────────────────────
+
+    private async Task CheckForDataUpdatesAsync()
+    {
+        var staged = await DataUpdateService.CheckAsync(App.Data.MiningDataVersion);
+        if (staged == null) return;
+        Dispatcher.Invoke(() =>
+        {
+            DataUpdateText.Text = $"Updated mining data (v{staged}) downloaded — restart Nexus to apply.";
+            DataUpdateBanner.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void RestartForUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        if (!string.IsNullOrEmpty(exe))
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+        Application.Current.Shutdown();
+    }
+
+    private void DismissDataBanner_Click(object sender, RoutedEventArgs e)
+        => DataUpdateBanner.Visibility = Visibility.Collapsed;
 
     // ── First-run welcome wizard ───────────────────────────────────────────────
 
