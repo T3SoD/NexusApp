@@ -12,6 +12,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.3.0  —  Jun 05, 2026",
+        [
+            "Mining data now updates over the air — Nexus checks for refreshed resource, location, and blueprint data on launch and offers a one-click restart to apply it; no reinstall required",
+            "New first-run welcome tour — interactive overlay coach marks walk you through the app the first time you open it",
+        ]),
         ("App  4.2.2  —  Jun 04, 2026",
         [
             "Minor framework changes and behind-the-scenes maintenance",
