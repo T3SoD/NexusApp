@@ -39,6 +39,85 @@ public partial class MainWindow : Window
         RestoreScanRegion();
 
         _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
+
+        Loaded += (s, e) => MaybeShowFirstRunWizard();
+    }
+
+    // ── First-run welcome wizard ───────────────────────────────────────────────
+
+    private bool _firstRunChecked;
+
+    private void MaybeShowFirstRunWizard()
+    {
+        if (_firstRunChecked) return;
+        _firstRunChecked = true;
+        if (App.Settings.Current.FirstRunComplete) return;
+
+        App.Settings.Current.FirstRunComplete = true;
+        App.Settings.Save();
+
+        ShowTutorial();
+    }
+
+    /// <summary>Runs the welcome tour. Always shows, regardless of FirstRunComplete —
+    /// the first-run gate lives in MaybeShowFirstRunWizard, while Help can replay this.
+    /// Opens the overlay and points a pulsing ring at the button each step explains.</summary>
+    public void ShowTutorial()
+    {
+        var highlight = new HighlightWindow();
+        var wizard = new WelcomeWizardWindow { Owner = this };
+        wizard.TargetChanged += t => ApplyTutorialHighlight(t, highlight);
+
+        // Reflect the wizard's opening step before it goes modal.
+        ApplyTutorialHighlight(wizard.CurrentTarget, highlight);
+        wizard.ShowDialog();
+
+        highlight.Close();
+
+        if (wizard.SetupRegionRequested)
+        {
+            var selector = new RegionSelectorWindow();
+            selector.RegionSelected += ApplyScanRegion;
+            selector.Show();
+        }
+    }
+
+    private void ApplyTutorialHighlight(TutorialTarget t, HighlightWindow highlight)
+    {
+        FrameworkElement? target = null;
+        switch (t)
+        {
+            case TutorialTarget.OpenOverlay:
+                target = OverlayToggleBtn;
+                break;
+            case TutorialTarget.ShowBox:
+                target = PrepareOverlayForTutorial()?.BoxToggleTarget;
+                break;
+            case TutorialTarget.DrawRegion:
+                target = PrepareOverlayForTutorial()?.SetRegionTarget;
+                break;
+            case TutorialTarget.ScanToggle:
+                target = PrepareOverlayForTutorial()?.ScanToggleTarget;
+                break;
+        }
+
+        if (target == null) { highlight.HideRing(); return; }
+
+        // Defer until layout settles (overlay may have just been shown / tab-switched).
+        var captured = target;
+        Dispatcher.BeginInvoke(new Action(() => highlight.HighlightControl(captured)),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Ensures the overlay is open, visible, and on the SCAN tab for the tour.</summary>
+    private OverlayWindow? PrepareOverlayForTutorial()
+    {
+        EnsureOverlay();
+        if (_overlay == null) return null;
+        if (!_overlay.IsVisible) _overlay.Show();
+        _overlay.ShowScanTabForTutorial();
+        _overlay.UpdateLayout();
+        return _overlay;
     }
 
     // ── Nav ──────────────────────────────────────────────────────────────────
@@ -1053,26 +1132,30 @@ public partial class MainWindow : Window
 
     // ── Overlay ──────────────────────────────────────────────────────────────
 
+    /// <summary>Creates and wires the overlay window if it doesn't exist yet (without changing its visibility).</summary>
+    private void EnsureOverlay()
+    {
+        if (_overlay != null) return;
+        _overlay = new OverlayWindow(_vm);
+        _overlay.ScanRegionSelected  += ApplyScanRegion;
+        _overlay.BoxVisibilityToggled += visible =>
+        {
+            _boxVisible = visible;
+            if (_scanIndicator == null) return;
+            if (visible) _scanIndicator.Show();
+            else         _scanIndicator.Hide();
+        };
+        _overlay.Hidden += () => _vm.PauseScanner();
+        _overlay.Shown  += () => _vm.ResumeScanner();
+    }
+
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (_overlay == null)
-            {
-                _overlay = new OverlayWindow(_vm);
-                _overlay.ScanRegionSelected  += ApplyScanRegion;
-                _overlay.BoxVisibilityToggled += visible =>
-                {
-                    _boxVisible = visible;
-                    if (_scanIndicator == null) return;
-                    if (visible) _scanIndicator.Show();
-                    else         _scanIndicator.Hide();
-                };
-                _overlay.Hidden += () => _vm.PauseScanner();
-                _overlay.Shown  += () => _vm.ResumeScanner();
-            }
+            EnsureOverlay();
 
-            if (!_overlay.IsVisible)
+            if (!_overlay!.IsVisible)
                 _overlay.Show();
             else
                 _overlay.Hide();
@@ -1123,7 +1206,9 @@ public partial class MainWindow : Window
 
     private void Help_Click(object sender, RoutedEventArgs e)
     {
-        new HelpDialog { Owner = this }.ShowDialog();
+        var help = new HelpDialog { Owner = this };
+        help.ShowDialog();
+        if (help.TutorialRequested) ShowTutorial();
     }
     private void About_Click(object sender, RoutedEventArgs e)
     {

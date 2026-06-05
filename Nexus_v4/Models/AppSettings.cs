@@ -17,6 +17,7 @@ public class AppSettings
     public List<string> PinnedResources { get; set; } = [];
     public string DataVersion { get; set; } = "4.8.0";
     public DateTime? LastDataUpdate { get; set; }
+    public bool FirstRunComplete { get; set; }
 }
 
 public class ScanRegion

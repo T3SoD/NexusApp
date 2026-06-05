@@ -45,5 +45,6 @@
     <Resource Include="Assets\nexus_icon.png"/>
     <Resource Include="Assets\nexus_logo.png"/>
     <Resource Include="Assets\nexus.ico"/>
+    <Resource Include="Assets\scan_region_example.png"/>
   </ItemGroup>
 </Project>

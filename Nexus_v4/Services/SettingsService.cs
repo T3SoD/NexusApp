@@ -58,6 +58,15 @@ public class SettingsService
             settings.SettingsSchemaVersion = 3;
             migrated = true;
         }
+        if (settings.SettingsSchemaVersion < 4)
+        {
+            // An existing settings file means this isn't a first run — don't show
+            // the welcome wizard to upgraders. Genuine fresh installs have no file
+            // and keep FirstRunComplete = false.
+            settings.FirstRunComplete = true;
+            settings.SettingsSchemaVersion = 4;
+            migrated = true;
+        }
         if (migrated) Save(settings);
 
         return settings;

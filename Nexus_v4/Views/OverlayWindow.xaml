@@ -42,7 +42,8 @@
                     <TextBlock Text="NEXUS" Foreground="#FF00C9A7" FontWeight="Bold"
                                FontSize="13" VerticalAlignment="Center"/>
                 </StackPanel>
-                <Button Grid.Column="1" Content="✕" Style="{StaticResource NexusButton}" Padding="5,3"
+                <Button Grid.Column="1" Content="✕" Style="{StaticResource NexusButton}"
+                        Width="26" Height="26" Padding="0" VerticalAlignment="Center"
                         Margin="0,0,6,0" Click="Close_Click"/>
             </Grid>
 
@@ -89,7 +90,7 @@
 
                     <!-- Scan controls -->
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,6,6,0">
-                        <Button Content="⊕" Style="{StaticResource NexusButton}" Padding="5,3"
+                        <Button x:Name="SetRegionBtn" Content="⊕" Style="{StaticResource NexusButton}" Padding="5,3"
                                 Margin="2,0" Click="SetRegion_Click" ToolTip="Set scan region"/>
                         <Button x:Name="BoxToggleBtn" Content="⊠" Style="{StaticResource NexusButton}" Padding="5,3"
                                 Margin="2,0" Click="BoxToggle_Click" ToolTip="Show scan box"/>
