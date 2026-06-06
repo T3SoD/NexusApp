@@ -12,6 +12,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  4.4.0  —  Jun 06, 2026",
+        [
+            "The welcome tour is now a full-app guided tutorial — it walks you through the RS Signal Decoder, scan results and history, the floating overlay and auto-scan, the shopping list, the Blueprint Library, the Mining Codex, and the Refinery Tracker, with a pulsing ring pointing out each control as you go",
+            "Replay the full tour any time from the Help (?) window",
+        ]),
         ("App  4.3.0  —  Jun 05, 2026",
         [
             "Mining data now updates over the air — Nexus checks for refreshed resource, location, and blueprint data on launch and offers a one-click restart to apply it; no reinstall required",
