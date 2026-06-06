@@ -24,6 +24,28 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 - **Persistent work orders** — refinery timers survive app restarts.
 - Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
 
+## Screenshots
+
+### Auto-scan overlay
+The floating overlay sits over Star Citizen and reads the RS value straight off your screen, decoding the resource and node count in real time. Here it's identified an **RS 10,800** signal as **Bexalite**, with live scan history below.
+
+![Nexus auto-scan overlay floating over Star Citizen gameplay](docs/screenshots/overlay.png)
+
+### Blueprint Library
+Search any ship, weapon, or armor blueprint to see exactly what it takes to craft — the raw resources and quantities, where to mine them, and the missions that unlock it.
+
+![Nexus Blueprint Library showing the P6-LR Sniper Rifle recipe, ingredients, and unlock missions](docs/screenshots/blueprint-library.png)
+
+### Mining Codex
+A full reference of every mineable resource — grouped by rarity, searchable, and filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS).
+
+![Nexus Mining Codex reference table grouped by rarity](docs/screenshots/mining-codex.png)
+
+### Refinery Tracker
+Track active refinery jobs with live countdown timers and status indicators, so you always know what's cooking and when it's ready to collect.
+
+![Nexus Refinery Tracker with active refinery jobs, timers, and status](docs/screenshots/refinery-tracker.png)
+
 ## Installation (end users)
 
 Nexus ships two ways — pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline.
