@@ -21,12 +21,17 @@ public partial class OverlayWindow : Window
     public event Action? Shown;
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
-    public FrameworkElement SetRegionTarget  => SetRegionBtn;
-    public FrameworkElement BoxToggleTarget  => BoxToggleBtn;
-    public FrameworkElement ScanToggleTarget => ScanToggleBtn;
+    public FrameworkElement SetRegionTarget   => SetRegionBtn;
+    public FrameworkElement BoxToggleTarget   => BoxToggleBtn;
+    public FrameworkElement ScanToggleTarget  => ScanToggleBtn;
+    public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the SCAN/ORDERS/SHOPPING strip
+    public FrameworkElement ShoppingTabTarget => TabShoppingBtn;
 
     /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
     public void ShowScanTabForTutorial() => SwitchTab("scan");
+
+    /// <summary>Force the SHOPPING tab visible so the tour can point at the cart.</summary>
+    public void ShowShoppingTabForTutorial() => SwitchTab("shopping");
 
     public OverlayWindow(MainViewModel vm)
     {

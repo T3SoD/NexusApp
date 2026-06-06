@@ -347,7 +347,7 @@
                     </ScrollViewer>
 
                     <!-- Scan history -->
-                    <Border Grid.Row="3" MaxHeight="168"
+                    <Border x:Name="ScanHistorySection" Grid.Row="3" MaxHeight="168"
                             Background="{StaticResource Bg2NavBrush}"
                             BorderBrush="{StaticResource NavBorderBrush}"
                             BorderThickness="0,1,0,0">
