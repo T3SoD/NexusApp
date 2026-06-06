@@ -100,9 +100,11 @@ Nexus_v4/
 
 </details>
 
-## Support
+## Support & Feedback
 
-For bugs or feedback, contact **T3SoD** on Discord or **TurboV1RG1N** in game.
+Nexus is built by one person for the mining community, and hearing from people who use it is the best part. **If you enjoy the app, please reach out and say so — it genuinely makes a difference.**
+
+Got a bug, a feature idea, or just want to share how Nexus is working for you? **Message T3SoD on Discord** (or catch **TurboV1RG1N** in game). All feedback — good, bad, or wishlist — is welcome and helps shape where Nexus goes next.
 
 ## License
 
