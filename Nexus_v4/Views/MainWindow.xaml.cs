@@ -115,6 +115,14 @@ public partial class MainWindow : Window
         FrameworkElement? target = null;
         switch (t)
         {
+            case TutorialTarget.RsDecoder:
+                SetActivePage("scan");
+                target = RsInputBox;
+                break;
+            case TutorialTarget.ScanHistory:
+                SetActivePage("scan");
+                target = ScanHistorySection;
+                break;
             case TutorialTarget.OpenOverlay:
                 target = OverlayToggleBtn;
                 break;
@@ -126,6 +134,32 @@ public partial class MainWindow : Window
                 break;
             case TutorialTarget.ScanToggle:
                 target = PrepareOverlayForTutorial()?.ScanToggleTarget;
+                break;
+            case TutorialTarget.OverlayTabs:
+                target = PrepareOverlayForTutorial()?.TabStripTarget;
+                break;
+            case TutorialTarget.ShoppingTab:
+                {
+                    var overlay = PrepareOverlayForTutorial();
+                    overlay?.ShowShoppingTabForTutorial();
+                    overlay?.UpdateLayout();
+                    target = overlay?.ShoppingTabTarget;
+                }
+                break;
+            case TutorialTarget.Blueprints:
+                SetActivePage("blueprints");
+                target = BlueprintSearchBox;
+                break;
+            case TutorialTarget.Reference:
+                SetActivePage("reference");
+                target = GroupByBtn;
+                break;
+            case TutorialTarget.WorkOrders:
+                SetActivePage("workorders");
+                target = WoNewBtn;
+                break;
+            case TutorialTarget.DataVersion:
+                target = AppVersionBadge;
                 break;
         }
 

@@ -5,13 +5,24 @@ using System.Windows.Media;
 namespace Nexus_v4.Views;
 
 /// <summary>Which on-screen control the current tour step is pointing at.</summary>
-public enum TutorialTarget { None, OpenOverlay, ShowBox, DrawRegion, ScanToggle }
+public enum TutorialTarget
+{
+    None,
+    RsDecoder, ScanHistory,                       // Scan page
+    OpenOverlay, ShowBox, DrawRegion, ScanToggle,  // Auto-scan (overlay)
+    OverlayTabs, ShoppingTab,                       // Overlay tabs
+    Blueprints, Reference, WorkOrders,             // Blueprint Library / Mining Codex / Refinery Tracker
+    DataVersion,                                    // Mining-data auto-update
+}
 
 /// <summary>
-/// Step-by-step tour of the auto-scan workflow (open overlay → show box → draw
-/// region → start/stop scanning), ending with an offer to draw the scan region.
+/// Full-app guided tour: the RS Signal Decoder, the auto-scan workflow
+/// (open overlay → show box → draw region → start/stop scanning), the overlay
+/// tabs, shopping list, Blueprint Library, Mining Codex, and Refinery Tracker —
+/// ending with an offer to draw the scan region.
 /// As the user moves between steps it raises <see cref="TargetChanged"/> so the
-/// owner can point a highlight ring at the matching button.
+/// owner can navigate to the right page/tab and point a highlight ring at the
+/// matching control.
 /// Shown automatically on a fresh install (see SettingsService — existing users
 /// are migrated to FirstRunComplete = true) and on demand from Help.
 /// </summary>
@@ -32,10 +43,18 @@ public class WelcomeWizardWindow : Window
     private static readonly TutorialTarget[] _stepTargets =
     [
         TutorialTarget.None,        // Welcome
+        TutorialTarget.RsDecoder,   // RS Signal Decoder (RS input)
+        TutorialTarget.ScanHistory, // Results & recent scans
         TutorialTarget.OpenOverlay, // Open the overlay (⧉)
         TutorialTarget.ShowBox,     // Show the scan box (⊠/⊡)
         TutorialTarget.DrawRegion,  // Draw the scan region (⊕)
         TutorialTarget.ScanToggle,  // Start/stop scanning (▶/■)
+        TutorialTarget.OverlayTabs, // Overlay tabs (SCAN/ORDERS/SHOPPING)
+        TutorialTarget.ShoppingTab, // Shopping list & cart
+        TutorialTarget.Blueprints,  // Blueprint Library (search)
+        TutorialTarget.Reference,   // Mining Codex (group/filter)
+        TutorialTarget.WorkOrders,  // Refinery Tracker (+ New)
+        TutorialTarget.DataVersion, // Mining-data auto-update (version badge)
         TutorialTarget.None,        // You're all set
     ];
 
@@ -44,8 +63,20 @@ public class WelcomeWizardWindow : Window
         new("◆", "Welcome to Nexus",
         [
             "Nexus is your Star Citizen mining companion — it reads RS (Radioactive Signal) values straight off your screen and decodes the resource and node count.",
-            "This quick tour walks through the overlay controls that make auto-scan work.",
-            "Prefer to type values by hand? You can skip the tour — the RS Signal Decoder works without auto-scan.",
+            "This tour walks through everything: the RS decoder, auto-scan, blueprints, the Mining Codex, your shopping list, and the Refinery Tracker.",
+            "In a hurry? You can skip the tour at any time — and replay it later from the Help (?) window.",
+        ]),
+        new("◈", "RS Signal Decoder",
+        [
+            "The Scan page is the heart of Nexus. Type any RS value into the box and press Enter.",
+            "Nexus instantly decodes which resource you’re looking at and how many nodes the deposit holds.",
+            "No screen capture needed here — this works even if you’d rather read the number yourself.",
+        ]),
+        new("≡", "Results & recent scans",
+        [
+            "Every resource that matches your RS value is listed and ranked by likelihood, with its tier and where to sell it.",
+            "Recent scans collect below so you can glance back at what you’ve already read.",
+            "Click any past scan to pull its results back up instantly.",
         ]),
         new("⧉", "Open the overlay",
         [
@@ -74,9 +105,45 @@ public class WelcomeWizardWindow : Window
             "Results and recent-scan history fill in on their own as you mine.",
             "◉ Reading… in the status bar means a value is being confirmed.",
         ]),
+        new("▤", "Overlay tabs",
+        [
+            "The overlay packs three tabs: SCAN, ORDERS, and SHOPPING.",
+            "SCAN holds the auto-scan controls and live results you just saw.",
+            "ORDERS opens the Refinery Tracker and SHOPPING shows your cart — all without leaving the game.",
+        ]),
+        new("🛒", "Shopping list & cart",
+        [
+            "Add any resource to your shopping list with the 🛒 button next to a scan result.",
+            "Listed items glow teal everywhere they appear — scan results, history, and here on the SHOPPING tab.",
+            "It’s an at-a-glance reminder of exactly what you’re hunting for this run.",
+        ]),
+        new("❖", "Blueprint Library",
+        [
+            "Search any craftable item to see exactly which resources and quantities it needs.",
+            "Each blueprint also lists HOW TO UNLOCK it — the factions, missions, and ranks that grant it.",
+            "Start typing for live suggestions, then press Enter to open the full blueprint.",
+        ]),
+        new("▦", "Mining Codex",
+        [
+            "The Codex is the full reference table of every resource Nexus knows.",
+            "Group by resource or location, and filter by star system or mining method to focus the list.",
+            "Great for planning a route before you ever undock.",
+        ]),
+        new("📋", "Refinery Tracker",
+        [
+            "Log your refinery jobs so you never lose track of what’s cooking or when it’s done.",
+            "Hit + New to start an order, fill in the materials and yields, then Save.",
+            "Open it any time from here or the ORDERS tab on the overlay.",
+        ]),
+        new("⟳", "Always up to date",
+        [
+            "Nexus keeps its mining data current on its own — new prices and resources download quietly in the background.",
+            "When an update lands, a banner offers to apply it; the version badge up here shows what you’re running.",
+            "No reinstalls — you’ll always be mining with the latest numbers.",
+        ]),
         new("✓", "You’re all set",
         [
-            "That’s the whole loop: open the overlay → show the box → draw the region → start the scan.",
+            "That’s the full tour: RS decoding, auto-scan, blueprints, the Codex, your shopping list, and refinery tracking.",
             "Ready to draw your scan region now? You’ll want Star Citizen open with an RS value visible on screen.",
             "You can replay this tour any time from the Help (?) window.",
         ]),
