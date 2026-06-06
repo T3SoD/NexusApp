@@ -124,7 +124,8 @@ def main():
         print("DISCORD_WEBHOOK does not look like a URL", file=sys.stderr)
         sys.exit(1)
 
-    bullets = "\n".join("• " + c for c in cur_changes) or "• See the in-app changelog for details."
+    # Blank line between bullets so each one is visually separated in Discord.
+    bullets = "\n\n".join("• " + c for c in cur_changes) or "• See the in-app changelog for details."
     if len(bullets) > 4000:
         bullets = bullets[:3990].rstrip() + "\n…"
 
