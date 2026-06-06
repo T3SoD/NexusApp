@@ -1,5 +1,9 @@
 # Nexus — Star Citizen Mining Assistant
 
+<p align="center">
+  <img src="Nexus_v4/Assets/nexus_logo.png" alt="Nexus logo" width="240">
+</p>
+
 Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**. It decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and gives you a fast, searchable reference for resources and crafting blueprints — all from an overlay that floats over your game.
 
 > **Disclaimer**
@@ -29,22 +33,22 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 ### Auto-scan overlay
 The floating overlay sits over Star Citizen and reads the RS value straight off your screen, decoding the resource and node count in real time. Here it's identified an **RS 10,800** signal as **Bexalite**, with live scan history below.
 
-![Nexus auto-scan overlay floating over Star Citizen gameplay](docs/screenshots/overlay.png)
+[![Nexus auto-scan overlay floating over Star Citizen gameplay](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
 ### Blueprint Library
 Search any ship, weapon, or armor blueprint to see exactly what it takes to craft — the raw resources and quantities, where to mine them, and the missions that unlock it.
 
-![Nexus Blueprint Library showing the P6-LR Sniper Rifle recipe, ingredients, and unlock missions](docs/screenshots/blueprint-library.png)
+[![Nexus Blueprint Library showing the P6-LR Sniper Rifle recipe, ingredients, and unlock missions](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
 
 ### Mining Codex
 A full reference of every mineable resource — grouped by rarity, searchable, and filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS).
 
-![Nexus Mining Codex reference table grouped by rarity](docs/screenshots/mining-codex.png)
+[![Nexus Mining Codex reference table grouped by rarity](docs/screenshots/mining-codex.png)](docs/screenshots/mining-codex.png)
 
 ### Refinery Tracker
 Track active refinery jobs with live countdown timers and status indicators, so you always know what's cooking and when it's ready to collect.
 
-![Nexus Refinery Tracker with active refinery jobs, timers, and status](docs/screenshots/refinery-tracker.png)
+[![Nexus Refinery Tracker with active refinery jobs, timers, and status](docs/screenshots/refinery-tracker.png)](docs/screenshots/refinery-tracker.png)
 
 ## Installation (end users)
 
