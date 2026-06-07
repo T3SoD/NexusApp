@@ -193,7 +193,7 @@ public class HelpDialog : Window
                         {
                             Source = new BitmapImage(new Uri($"pack://application:,,,{item[4..]}", UriKind.Absolute)),
                             Stretch = Stretch.Uniform,
-                            Width = 180,
+                            Width = 90,
                         },
                     });
                     continue;
