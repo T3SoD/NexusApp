@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Nexus_v4.Views;
 
@@ -28,6 +29,7 @@ public class HelpDialog : Window
             "Switch to the SCAN tab in the overlay to access all scan controls.",
             "Click ⊕ to draw a scan region — your cursor becomes a crosshair.",
             "Click and drag a rectangle over the RS value shown in your game.",
+            "img:/Assets/RS_Signature.png",
             "Click ■ to start scanning — the overlay reads the RS value automatically every ~0.5 seconds.",
             "Click ▶ to stop scanning. Click ⊕ again to redraw the region.",
             "Click ⊠ to show the magenta scan box indicator on screen; click ⊡ to hide it.",
@@ -177,6 +179,26 @@ public class HelpDialog : Window
             // Bullet items
             foreach (var item in items)
             {
+                // An "img:<path>" entry renders an inline screenshot instead of a bullet.
+                if (item.StartsWith("img:"))
+                {
+                    stack.Children.Add(new Border
+                    {
+                        BorderBrush = (Brush)Application.Current.FindResource("NavBorderBrush"),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Margin = new Thickness(20, 5, 0, 7),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        Child = new Image
+                        {
+                            Source = new BitmapImage(new Uri($"pack://application:,,,{item[4..]}", UriKind.Absolute)),
+                            Stretch = Stretch.Uniform,
+                            Width = 180,
+                        },
+                    });
+                    continue;
+                }
+
                 var row = new Grid { Margin = new Thickness(8, 1, 0, 1) };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
