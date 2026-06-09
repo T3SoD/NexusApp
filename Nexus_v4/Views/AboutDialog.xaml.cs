@@ -223,34 +223,6 @@ public class AboutDialog : Window
         AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
             "https://github.com/T3SoD/NexusApp");
 
-        // Divider
-        aboutPanel.Children.Add(new Border
-        {
-            Height = 1, Margin = new Thickness(0, 16, 0, 14),
-            Background = (Brush)Application.Current.FindResource("NavBorderBrush"),
-        });
-
-        // Beta testers — recognition in the logo's gold accent
-        aboutPanel.Children.Add(new TextBlock
-        {
-            Text = "BETA TESTERS", FontSize = 11, FontWeight = FontWeights.Bold,
-            Foreground = (Brush)Application.Current.FindResource("GoldBrush"),
-            Margin = new Thickness(0, 0, 0, 6),
-        });
-        aboutPanel.Children.Add(new TextBlock
-        {
-            Text = "Tenuis  ·  UnknownGhost  ·  MangoMike  ·  Archer",
-            FontSize = 12, TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)Application.Current.FindResource("FgBrush"),
-        });
-        aboutPanel.Children.Add(new TextBlock
-        {
-            Text = "Thank you for helping test and refine Nexus.",
-            FontSize = 11, FontStyle = FontStyles.Italic,
-            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
-            Margin = new Thickness(0, 4, 0, 0),
-        });
-
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 
