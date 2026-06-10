@@ -1,8 +1,8 @@
 #define AppName    "Nexus"
-#define ExeName    "Nexus_v4.exe"
+#define ExeName    "NexusApp.exe"
 ; PublishDir can be overridden from the command line (CI passes /DPublishDir=publish_out).
 #ifndef PublishDir
-  #define PublishDir "Nexus_v4\bin\x64\Release\net8.0-windows10.0.17763.0\win-x64\publish"
+  #define PublishDir "NexusApp\bin\x64\Release\net8.0-windows10.0.17763.0\win-x64\publish"
 #endif
 ; Version is single-sourced: by default it's read from the built exe's file
 ; version (which comes from the csproj <Version>). CI can still override with a
@@ -32,6 +32,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
+
+[InstallDelete]
+; A self-contained publish names its files after the assembly. Builds up to 5.0.0
+; shipped as Nexus_v4.*; on upgrade, remove those so the app folder is left with
+; only the renamed NexusApp.* files (no stale Nexus_v4.exe to launch by mistake).
+Type: files; Name: "{app}\Nexus_v4.*"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

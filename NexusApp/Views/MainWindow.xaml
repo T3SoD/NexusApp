@@ -1,0 +1,725 @@
+<Window x:Class="NexusApp.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:NexusApp.ViewModels"
+        xmlns:conv="clr-namespace:NexusApp.Converters"
+        xmlns:models="clr-namespace:NexusApp.Models"
+        Title="Nexus" Icon="/Assets/nexus_icon.png" Height="820" Width="1280"
+        MinHeight="600" MinWidth="900"
+        Background="{DynamicResource BgBrush}"
+        Foreground="{DynamicResource FgBrush}"
+        FontFamily="{StaticResource UiFont}"
+        WindowStyle="SingleBorderWindow" AllowsTransparency="False"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+        <conv:TierColorConverter             x:Key="TierColor"/>
+        <conv:RarityColorConverter           x:Key="RarityColor"/>
+        <conv:SystemColorConverter           x:Key="SystemColor"/>
+        <conv:RefineryModifierColorConverter x:Key="ModColor"/>
+        <conv:BoolToVisibilityConverter      x:Key="BoolVis"/>
+        <conv:HexColorConverter              x:Key="HexColor"/>
+        <conv:WorkOrderStatusColorConverter  x:Key="WoStatusColor"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="68"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Header strip (68px) — caption area for WindowChrome drag ── -->
+        <Grid Grid.Row="0"
+              Background="{DynamicResource NavBgBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: logo + title + version badges -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <Image x:Name="NavIcon" Source="/Assets/nexus_icon.png" Width="28" Height="28"
+                       Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Nexus" FontFamily="{StaticResource HeadFont}" FontSize="14" FontWeight="Bold"
+                           Foreground="{StaticResource FgBrush}" Margin="0,0,10,0"
+                           VerticalAlignment="Center"/>
+                <Border Padding="6,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="{StaticResource Bg2NavBrush}"
+                        BorderBrush="{StaticResource NavBorderBrush}"
+                        BorderThickness="1">
+                    <TextBlock x:Name="GameVersionText" FontSize="9"
+                               Foreground="{StaticResource GoldBrush}"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <!-- App version badge — clickable easter egg -->
+                <Border x:Name="AppVersionBadge"
+                        Padding="6,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="Transparent"
+                        BorderBrush="{StaticResource AccentDimBrush}"
+                        BorderThickness="1"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="AppBadge_Click">
+                    <TextBlock x:Name="AppVersionText" FontSize="9"
+                               Foreground="{StaticResource AccentBrush}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <!-- Easter egg hint — hidden until badge is clicked -->
+                <TextBlock x:Name="EggHintLabel"
+                           Text="" FontSize="9" FontStyle="Italic"
+                           Foreground="{StaticResource FgDimBrush}"
+                           VerticalAlignment="Center" Margin="0,0,8,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- Right: action buttons -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        VerticalAlignment="Center" Margin="0,0,8,0">
+                <Button x:Name="OverlayToggleBtn" Content="⧉" ToolTip="Toggle Overlay"
+                        Style="{StaticResource HeaderButton}"
+                        Width="38" Height="38" Margin="2,0"
+                        Click="ToggleOverlay_Click"/>
+                <Button Content="🛒" ToolTip="Shopping List"
+                        Style="{StaticResource HeaderButton}"
+                        Width="38" Height="38" Margin="2,0"
+                        Click="ShowShopping_Click"/>
+                <Button Content="?" ToolTip="Help"
+                        Style="{StaticResource HeaderButton}"
+                        Width="38" Height="38" Margin="2,0"
+                        Click="Help_Click"/>
+                <Button Content="ℹ" ToolTip="About"
+                        Style="{StaticResource HeaderButton}"
+                        Width="38" Height="38" Margin="2,0"
+                        Click="About_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ── Body: sidebar + content ── -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="175"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Sidebar ── -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource NavBgBrush}"
+                    BorderBrush="{DynamicResource NavBorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <!-- Nav area (fills remaining space, top-aligned) -->
+                    <StackPanel>
+                        <!-- Logo area -->
+                        <StackPanel HorizontalAlignment="Center" Margin="8,14,8,12">
+                            <Image x:Name="NavLogo" Source="/Assets/nexus_logo.png" MaxWidth="140"
+                                   Stretch="Uniform" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- Divider + section label -->
+                        <Border Height="1" Background="{StaticResource NavBorderBrush}"/>
+                        <TextBlock Text="NAVIGATION" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource FgDimBrush}"
+                                   Margin="14,10,14,6"/>
+
+                        <!-- Nav items -->
+                        <RadioButton x:Name="NavScan" Tag="scan" Style="{StaticResource NavButton}"
+                                     IsChecked="True" Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="RS" FontSize="11" FontWeight="Bold" Width="26"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="RS SIGNAL" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="DECODER" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavBlue" Tag="blueprints" Style="{StaticResource NavButton}"
+                                     Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="▣" FontSize="16" Width="26"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="BLUEPRINT" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="LIBRARY" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavRef" Tag="reference" Style="{StaticResource NavButton}"
+                                     Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="◆" FontSize="16" Width="26"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="MINING" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="CODEX" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavWork" Tag="workorders" Style="{StaticResource NavButton}"
+                                     Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="◑" FontSize="16" Width="26"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="REFINERY" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="TRACKER" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- ── Page content ── -->
+            <Grid Grid.Column="1" Background="{DynamicResource PageBgBrush}">
+
+                <!-- ── RS SIGNAL DECODER PAGE (C1 dashboard) ── -->
+                <Grid x:Name="PageScan" Visibility="Visible">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="340"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- LEFT: scan input + hero + other matches -->
+                    <Grid Grid.Column="0" Margin="20,20,16,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- input row -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="RsInputBox" Style="{StaticResource NexusTextBox}" FontSize="14" Height="48"
+                                     Text="{Binding RsInput, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="RsInput_KeyDown" Tag="Enter RS value…"
+                                     ToolTip="Enter RS value and press Enter  ·  use ';' for multiple"/>
+                            <Button Grid.Column="1" Content="SCAN" Style="{StaticResource AccentButton}"
+                                    Height="48" Width="100" Margin="8,0,0,0" FontSize="13" Command="{Binding LookupCommand}"/>
+                            <Button Grid.Column="2" Content="Clear" Style="{StaticResource NexusButton}"
+                                    Height="48" Margin="6,0,0,0" Padding="16,0" Command="{Binding ClearScanCommand}"/>
+                        </Grid>
+
+                        <!-- status + legend -->
+                        <StackPanel Grid.Row="1" Margin="2,10,0,0">
+                            <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{StaticResource FgDimBrush}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="8" Height="8" Fill="#FF3FB950" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Exact" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="0,0,12,0"/>
+                                <Ellipse Width="8" Height="8" Fill="{DynamicResource GoldBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Close match (≤0.5%)" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="0,0,12,0"/>
+                                <TextBlock Text="RS values are patch-specific" FontSize="11" Foreground="{StaticResource FgDimBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Text="BEST MATCH" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource FgDimBrush}" Margin="2,18,0,8"/>
+
+                        <!-- hero best match -->
+                        <ContentControl Grid.Row="3" Content="{Binding BestMatch}"
+                                        Visibility="{Binding HasResults, Converter={StaticResource BoolVis}}">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="14" BorderThickness="1" BorderBrush="{DynamicResource AccentBrush}" Padding="20,13,20,13">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="{DynamicResource AccentDimColor}" Offset="0"/>
+                                                <GradientStop Color="{DynamicResource Bg2Color}" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+
+                                            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border Width="18" Height="18" CornerRadius="5" Margin="0,0,12,0" VerticalAlignment="Center"
+                                                        Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
+                                                <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="26"
+                                                           Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
+                                                <Border Padding="6,2" CornerRadius="4" Margin="12,0,0,0" VerticalAlignment="Center" Background="{StaticResource Bg3Brush}">
+                                                    <TextBlock Text="{Binding BadgeText}" FontSize="10" FontWeight="Bold"
+                                                               Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                                </Border>
+                                                <Border Padding="6,2" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                        Background="{DynamicResource AccentBrush}"
+                                                        Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
+                                                    <TextBlock Text="IN CART" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" HorizontalAlignment="Right">
+                                                <TextBlock Text="RS VALUE" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right"
+                                                           Foreground="{StaticResource FgDimBrush}"/>
+                                                <TextBlock Text="{Binding Resource.BaseRs, StringFormat='{}{0:N0}'}" FontFamily="{StaticResource HeadFont}"
+                                                           FontSize="37" Foreground="{StaticResource GoldBrush}" HorizontalAlignment="Right"/>
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" FontSize="12"
+                                                       Foreground="{StaticResource FgDimBrush}" Text="{Binding NodesText}"/>
+
+                                            <Border Grid.Row="2" Grid.ColumnSpan="2" Height="1" Background="{StaticResource NavBorderBrush}" Margin="0,10,0,0"/>
+
+                                            <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                             Fill="{Binding RefineryColor, Converter={StaticResource HexColor}}"/>
+                                                    <TextBlock Text="{Binding RefineryText}" FontSize="12" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="+ Add to cart" Style="{StaticResource AccentButton}" Padding="14,7"
+                                                        Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Resource}"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
+
+                        <!-- empty placeholder -->
+                        <Border Grid.Row="3" CornerRadius="14" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1" Height="132"
+                                Visibility="{Binding NoResults, Converter={StaticResource BoolVis}}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Width="48" Height="48" CornerRadius="10" BorderBrush="{StaticResource FgDimBrush}" BorderThickness="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="◎" FontSize="20" Foreground="{StaticResource FgDimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="Scan an RS value to identify a deposit" Foreground="{StaticResource FgDimBrush}" FontSize="13" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Grid.Row="4" Text="OTHER MATCHES" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource FgDimBrush}" Margin="2,20,0,8"
+                                   Visibility="{Binding HasResults, Converter={StaticResource BoolVis}}"/>
+
+                        <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding OtherMatches}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" CornerRadius="10" BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="{StaticResource Bg2NavBrush}"/>
+                                                    <Setter Property="BorderBrush" Value="{StaticResource NavBorderBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsInCart}" Value="True">
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid Height="58">
+                                                <Border Width="4" HorizontalAlignment="Left" CornerRadius="10,0,0,10"
+                                                        Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
+                                                <Grid Margin="16,0,16,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="16"
+                                                                       Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
+                                                            <Border Padding="5,1" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                    Background="{DynamicResource AccentBrush}"
+                                                                    Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
+                                                                <TextBlock Text="CART" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <Border Padding="5,1" CornerRadius="3" Background="{StaticResource Bg3Brush}">
+                                                                <TextBlock Text="{Binding BadgeText}" FontSize="9" FontWeight="Bold"
+                                                                           Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                                            </Border>
+                                                            <TextBlock Text="{Binding NodesText}" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource HeadFont}" FontSize="18"
+                                                               Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
+                                                    <Button Grid.Column="2" Content="🛒" Style="{StaticResource NexusButton}" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                            Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding Resource}"/>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- RIGHT RAIL: session + recent scans -->
+                    <Grid Grid.Column="1" Margin="0,20,20,16">
+
+                        <Border x:Name="ScanHistorySection" Background="{StaticResource Bg2NavBrush}"
+                                BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1" CornerRadius="12">
+                            <DockPanel>
+                                <Grid DockPanel.Dock="Top" Margin="14,10,10,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="RECENT SCANS" FontSize="9" FontWeight="Bold"
+                                               Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" x:Name="HistoryFilterPanel" Orientation="Horizontal"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,0"/>
+                                    <Button Grid.Column="2" Content="Clear" Style="{StaticResource NexusButton}"
+                                            Height="20" Padding="6,0" FontSize="10" Command="{Binding ClearHistoryCommand}"/>
+                                </Grid>
+                                <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource NavBorderBrush}"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="6,6,6,6">
+                                    <ItemsControl ItemsSource="{Binding FilteredScanHistory}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Margin="0" Cursor="Hand" HorizontalContentAlignment="Stretch" Click="HistoryItem_Click">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="row" Padding="12,5,12,5" Background="Transparent" CornerRadius="6">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0" Text="◆" FontSize="10"
+                                                                               Foreground="{Binding RsColor, Converter={StaticResource HexColor}}"
+                                                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                                        <TextBlock Text="{Binding TopResource}" FontSize="11"
+                                                                                   Foreground="{StaticResource FgBrush}" Opacity="{Binding NameOpacity}"
+                                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                                        <Border Padding="4,1" CornerRadius="3" Margin="6,0,0,0"
+                                                                                Background="{DynamicResource AccentBrush}" VerticalAlignment="Center"
+                                                                                Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
+                                                                            <TextBlock Text="CART" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
+                                                                        </Border>
+                                                                    </StackPanel>
+                                                                    <TextBlock Grid.Column="2" Text="{Binding Rs, StringFormat='RS {0:N0}'}" FontSize="11"
+                                                                               Foreground="{Binding RsColor, Converter={StaticResource HexColor}}" VerticalAlignment="Center"/>
+                                                                </Grid>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInCart}" Value="True">
+                                                                    <Setter TargetName="row" Property="Background" Value="{DynamicResource AccentFaintBrush}"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="row" Property="Background" Value="{StaticResource HighlightBrush}"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- ── BLUEPRINT PAGE ── -->
+                <Grid x:Name="PageBlueprints" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Search bar with autocomplete -->
+                    <Grid Margin="20,20,20,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0">
+                            <TextBox x:Name="BlueprintSearchBox"
+                                     Style="{StaticResource NexusTextBox}" Height="44"
+                                     Text="{Binding BlueprintSearch, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="BlueprintSearch_KeyDown"
+                                     TextChanged="BlueprintSearch_TextChanged"
+                                     Tag="Search blueprints…"/>
+                            <Popup x:Name="BlueprintSuggestPopup"
+                                   PlacementTarget="{Binding ElementName=BlueprintSearchBox}"
+                                   Placement="Bottom"
+                                   Width="{Binding ActualWidth, ElementName=BlueprintSearchBox}"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border Background="{StaticResource Bg2NavBrush}"
+                                        BorderBrush="{StaticResource NavBorderBrush}"
+                                        BorderThickness="1" CornerRadius="0,0,4,4">
+                                    <ListBox x:Name="BlueprintSuggestList"
+                                             Background="Transparent" BorderThickness="0"
+                                             MaxHeight="220"
+                                             MouseLeftButtonUp="BlueprintSuggest_Click">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Foreground"        Value="{StaticResource FgBrush}"/>
+                                                <Setter Property="Background"        Value="Transparent"/>
+                                                <Setter Property="Padding"           Value="10,6"/>
+                                                <Setter Property="FontFamily"        Value="{StaticResource UiFont}"/>
+                                                <Setter Property="FontSize"          Value="13"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource HighlightBrush}"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentDimBrush}"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                    </ListBox>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <Button Grid.Column="1" Content="SEARCH"
+                                Style="{StaticResource AccentButton}"
+                                Margin="8,0,0,0" Height="44" Padding="20,0" FontSize="12"
+                                Click="BlueprintSearchRun_Click"/>
+                    </Grid>
+
+                    <!-- Two-panel: left drill-down nav / right detail -->
+                    <Grid Grid.Row="1" Margin="20,0,20,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="300"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: drill-down navigation (Category → Subcategory → blueprint) -->
+                        <Border BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,4,12,0">
+                                <StackPanel x:Name="BlueprintNavPanel"/>
+                            </ScrollViewer>
+                        </Border>
+
+                        <!-- Right: ingredient detail panel -->
+                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                                      Margin="16,0,0,0">
+                            <StackPanel x:Name="BlueprintDetailPanel"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+
+                <!-- ── MINING CODEX PAGE ── -->
+                <Grid x:Name="PageReference" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Margin="20,16,20,10">
+                        <TextBlock Text="MINING CODEX" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                            <Button x:Name="KeyButton" Content="Key  ▾" Style="{StaticResource NexusButton}"
+                                    Height="28" Padding="12,0" FontSize="11" FontWeight="Bold"
+                                    Foreground="{StaticResource GoldBrush}" BorderBrush="{StaticResource GoldBrush}"
+                                    Margin="0,0,8,0" Click="KeyButton_Click"/>
+                            <Button Content="Reset filters" Style="{StaticResource NexusButton}"
+                                    Height="28" Padding="12,0" FontSize="11"
+                                    Click="ResetSort_Click"/>
+                        </StackPanel>
+
+                        <!-- Color key popover (Rarity + Refinery) -->
+                        <Popup x:Name="KeyPopup" PlacementTarget="{Binding ElementName=KeyButton}"
+                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                               HorizontalOffset="-180" VerticalOffset="6">
+                            <Border Background="{StaticResource Bg2NavBrush}"
+                                    BorderBrush="{StaticResource GoldBrush}" BorderThickness="1"
+                                    CornerRadius="12" Padding="20,16,24,18">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" BlurRadius="18" ShadowDepth="3" Opacity="0.55"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <TextBlock Text="RARITY" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource GoldBrush}" Margin="0,0,0,8"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#FFD700" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Legendary" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#A855F7" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Epic" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#3B82F6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Rare" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#22C55E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Uncommon" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#9E9E9E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Common" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="REFINERY YIELD" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource GoldBrush}" Margin="0,0,0,8"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#22C55E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Bonus yield" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#8B949E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="No modifier" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#EF4444" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Reduced yield" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <!-- Search bar with clear button -->
+                    <Grid Grid.Row="1" Margin="20,0,20,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Style="{StaticResource NexusTextBox}" Height="44"
+                                 Text="{Binding RefFilter, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyDown="RefSearch_KeyDown"
+                                 KeyUp="RefSearch_KeyUp"
+                                 Tag="Search by resource, location, or blueprint…"/>
+                        <Button Grid.Column="1" Content="✕" Style="{StaticResource NexusButton}"
+                                Height="44" Width="44" Margin="6,0,0,0"
+                                Click="RefClear_Click"/>
+                    </Grid>
+
+                    <!-- System filter -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                Margin="20,0,20,4" VerticalAlignment="Center">
+                        <TextBlock Text="System:" FontSize="11"
+                                   Foreground="{StaticResource FgDimBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <StackPanel x:Name="SystemFilterPanel" Orientation="Horizontal"/>
+                    </StackPanel>
+
+                    <!-- Method filter -->
+                    <StackPanel Grid.Row="3" Orientation="Horizontal"
+                                Margin="20,0,20,6" VerticalAlignment="Center">
+                        <TextBlock Text="Method:" FontSize="11"
+                                   Foreground="{StaticResource FgDimBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <StackPanel x:Name="MethodFilterPanel" Orientation="Horizontal"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="5" Height="1"
+                            Background="{StaticResource NavBorderBrush}"
+                            Margin="20,0,20,0"/>
+
+                    <!-- two-panel: resource list | rich detail -->
+                    <Grid Grid.Row="7" Margin="20,4,20,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="320"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="ReferenceList"/>
+                            </ScrollViewer>
+                        </Border>
+                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="16,0,0,0">
+                            <StackPanel x:Name="ReferenceDetailPanel"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+
+                <!-- ── REFINERY TRACKER PAGE ── -->
+                <Grid x:Name="PageWorkOrders" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Toolbar -->
+                    <Border Grid.Row="0"
+                            Background="{DynamicResource Bg2NavBrush}"
+                            BorderBrush="{DynamicResource NavBorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <Grid Margin="12,8">
+                            <TextBlock Text="REFINERY TRACKER" FontSize="11" FontWeight="Bold"
+                                       Foreground="{StaticResource FgDimBrush}"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                                <Button x:Name="WoNewBtn" Content="+ New"
+                                        Style="{StaticResource NexusButton}"
+                                        Height="32" Padding="12,0" Margin="0,0,6,0"
+                                        Click="NewWorkOrder_Click"/>
+                                <Button x:Name="WoSaveBtn" Content="Save"
+                                        Style="{StaticResource AccentButton}"
+                                        Height="32" Padding="16,0" Margin="0,0,6,0"
+                                        IsEnabled="False"
+                                        Click="WoSave_Click"/>
+                                <Button x:Name="WoDeleteBtn" Content="Delete"
+                                        Style="{StaticResource NexusButton}"
+                                        Height="32" Padding="12,0"
+                                        IsEnabled="False"
+                                        Click="WoDelete_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Content -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="260"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0" Background="{DynamicResource Bg2NavBrush}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="WorkOrderListPanel"/>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <ScrollViewer Grid.Column="1" x:Name="WorkOrderEditor"
+                                      VerticalScrollBarVisibility="Auto" Margin="16"/>
+                    </Grid>
+                </Grid>
+
+
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

@@ -18,6 +18,6 @@ jobs:
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          CURRENT_FILE: Nexus_v4/Views/AboutDialog.xaml.cs
+          CURRENT_FILE: NexusApp/Views/AboutDialog.xaml.cs
           PREVIOUS_FILE: ""   # empty -> post the current top changelog entry
         run: python3 .github/scripts/notify_discord.py

@@ -16,13 +16,13 @@ A guided setup that installs Nexus like normal Windows software.
 - Clean uninstall from *Add or remove programs*
 - Installs per-user under `%LOCALAPPDATA%` — still no admin rights
 
-### Option 2 — Portable (`Nexus_v4_portable.zip`)
+### Option 2 — Portable (`NexusApp_portable.zip`)
 Run the app directly, with no installation.
 
-1. Download **`Nexus_v4_portable.zip`** below.
+1. Download **`NexusApp_portable.zip`** below.
 2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK**.
 3. Right-click the ZIP → **Extract All…** and choose a location (Desktop or Documents is fine).
-4. Open the extracted folder and double-click **`Nexus_v4.exe`** (keep the whole folder together).
+4. Open the extracted folder and double-click **`NexusApp.exe`** (keep the whole folder together).
 
 - No installation, nothing written to the registry
 - Leaves no system traces; delete the folder to remove it completely
