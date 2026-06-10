@@ -5,6 +5,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Navigation;
+using Nexus_v4.Services;
 
 namespace Nexus_v4.Views;
 
@@ -12,6 +13,16 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.0.0  —  Jun 10, 2026",
+        [
+            "New Luxury Gold theme — a refreshed near-black and warm-gold look with the Outfit typeface throughout",
+            "Classic theme preserved — switch between the new Luxury Gold and the original v4 slate-and-teal style under About > Appearance (applies on restart)",
+            "Every screen redesigned — the RS Signal Decoder leads with a results dashboard, the Refinery Tracker shows work orders as status cards, the Mining Codex is a two-panel browser, and the Blueprint Library has a cleaner layout",
+            "Blueprint Library reorganized — browse blueprints by category instead of scrolling one long flat list",
+            "Click-through navigation — jump from a resource to the blueprints that use it and on to each of their ingredients",
+            "Floating overlay restyled to match the new look",
+            "Mining data — added Pressurized Ice to the cooler and ship-weapon recipes that were missing it",
+        ]),
         ("App  4.4.1  —  Jun 10, 2026",
         [
             "Updated mining data — removed duplicate blueprint entries and restored missing crafting ingredients so blueprint recipes and resource lists read accurately",
@@ -191,8 +202,7 @@ public class AboutDialog : Window
         // Logo
         aboutPanel.Children.Add(new Image
         {
-            Source = new System.Windows.Media.Imaging.BitmapImage(
-                new Uri("pack://application:,,,/Assets/nexus_logo.png")),
+            Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(ThemeService.LogoUri)),
             Width = 160, Height = 80, Stretch = Stretch.Uniform,
             HorizontalAlignment = HorizontalAlignment.Left,
             Margin = new Thickness(0, 0, 0, 12),
@@ -200,7 +210,7 @@ public class AboutDialog : Window
 
         aboutPanel.Children.Add(new TextBlock
         {
-            Text = "NEXUS", FontSize = 28, FontWeight = FontWeights.Bold,
+            Text = "NEXUS", FontSize = 28, FontWeight = FontWeights.Bold, FontFamily = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont"),
             Foreground = (Brush)Application.Current.FindResource("AccentBrush"),
         });
 
@@ -350,28 +360,20 @@ public class AboutDialog : Window
 
         appearPanel.Children.Add(new TextBlock
         {
-            Text = "Accent Color", FontSize = 13, FontWeight = FontWeights.Bold,
+            Text = "Theme", FontSize = 13, FontWeight = FontWeights.Bold,
             Foreground = (Brush)Application.Current.FindResource("FgBrush"),
-            Margin = new Thickness(0, 0, 0, 10),
+            Margin = new Thickness(0, 0, 0, 4),
         });
-
-        var swatchRow = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (name, hex, _) in _accentPalette)
+        appearPanel.Children.Add(new TextBlock
         {
-            var c = (Color)ColorConverter.ConvertFromString(hex);
-            var swatch = new Border
-            {
-                Width = 36, Height = 36, CornerRadius = new CornerRadius(6),
-                Margin = new Thickness(0, 0, 8, 0),
-                Background = new SolidColorBrush(c),
-                Cursor = Cursors.Hand,
-                ToolTip = name,
-                Tag = name,
-            };
-            swatch.MouseLeftButtonUp += (s, e) => ApplyAccent(((Border)s).Tag.ToString()!);
-            swatchRow.Children.Add(swatch);
-        }
-        appearPanel.Children.Add(swatchRow);
+            Text = "Switch between the refreshed Nexus look and the classic v4 style. Changes apply instantly.",
+            FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 0, 0, 14),
+        });
+        var themeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        appearPanel.Children.Add(themeRow);
+        BuildThemeOptions(themeRow);
         appearTab.Content = appearPanel;
         tabs.Items.Add(appearTab);
         tabs.Items.Add(legalTab);
@@ -402,24 +404,82 @@ public class AboutDialog : Window
 
     // ── Appearance helpers ────────────────────────────────────────────────────
 
-    private static readonly (string Name, string Hex, string DimHex)[] _accentPalette =
-    [
-        ("Teal",   "#FF00C9A7", "#FF0D3028"),
-        ("Blue",   "#FF3B82F6", "#FF0D1B3E"),
-        ("Amber",  "#FFF59E0B", "#FF2D1F00"),
-        ("Purple", "#FFA855F7", "#FF1A0D2E"),
-        ("Rose",   "#FFF43F5E", "#FF2E0D13"),
-    ];
-
-    private static void ApplyAccent(string name)
+    private static void BuildThemeOptions(StackPanel row)
     {
-        var match = _accentPalette.FirstOrDefault(a => a.Name == name);
-        if (match.Hex == null) return;
-        var res = Application.Current.Resources;
-        res["AccentBrush"]    = new SolidColorBrush((Color)ColorConverter.ConvertFromString(match.Hex));
-        res["AccentDimBrush"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(match.DimHex));
-        App.Settings.Current.AccentTheme = name.ToLower();
-        App.Settings.Save();
+        row.Children.Clear();
+        row.Children.Add(ThemeCard(row, "luxury", "Luxury Gold", "v5 — near-black + warm gold",
+            new[] { "#0E0E13", "#C9A24B", "#D9B25C", "#ECE7DD" }));
+        row.Children.Add(ThemeCard(row, "classic", "Classic", "v4 — slate + teal + amber",
+            new[] { "#0D1117", "#00C9A7", "#E8A23A", "#E6EDF3" }));
+    }
+
+    private static Border ThemeCard(StackPanel row, string key, string title, string subtitle, string[] swatches)
+    {
+        bool active = ThemeService.Current == key;
+        bool pending = ThemeService.Pending == key;
+        var card = new Border
+        {
+            Width = 184, Margin = new Thickness(0, 0, 12, 0), Padding = new Thickness(14, 12, 14, 12),
+            CornerRadius = new CornerRadius(10),
+            Background = (Brush)Application.Current.FindResource("Bg2NavBrush"),
+            BorderBrush = (Brush)Application.Current.FindResource(active || pending ? "AccentBrush" : "NavBorderBrush"),
+            BorderThickness = new Thickness(active || pending ? 2 : 1),
+            Cursor = Cursors.Hand,
+        };
+        var sp = new StackPanel();
+
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = title, FontFamily = (FontFamily)Application.Current.FindResource("HeadFont"),
+            FontSize = 15, Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        if (active || pending)
+        {
+            var badge = new Border
+            {
+                Background = (Brush)Application.Current.FindResource("AccentBrush"),
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 1, 6, 1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock { Text = active ? "ACTIVE" : "ON RESTART", FontSize = 8, FontWeight = FontWeights.Bold, Foreground = (Brush)Application.Current.FindResource("OnAccentBrush") },
+            };
+            Grid.SetColumn(badge, 1); titleRow.Children.Add(badge);
+        }
+        sp.Children.Add(titleRow);
+
+        sp.Children.Add(new TextBlock
+        {
+            Text = subtitle, FontSize = 10, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 3, 0, 10),
+        });
+
+        var sw = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var hex in swatches)
+            sw.Children.Add(new Border
+            {
+                Width = 24, Height = 24, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 5, 0),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)),
+                BorderBrush = (Brush)Application.Current.FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            });
+        sp.Children.Add(sw);
+
+        card.Child = sp;
+        card.MouseLeftButtonUp += (s, e) =>
+        {
+            if (key == ThemeService.Current && ThemeService.Pending == null) return;
+            ThemeService.SelectForRestart(key);
+            BuildThemeOptions(row);
+            var res = MessageBox.Show(
+                "The theme changes the next time Nexus starts.\n\nRestart now to apply it?",
+                "Restart required", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (res == MessageBoxResult.Yes)
+                ThemeService.RestartApp();
+        };
+        return card;
     }
 
     private static void AddBadge(Panel parent, string text)

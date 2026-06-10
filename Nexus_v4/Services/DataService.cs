@@ -410,6 +410,21 @@ public class DataService : IDisposable
         return result;
     }
 
+    public List<Blueprint> GetAllBlueprints()
+    {
+        var result = new List<Blueprint>();
+        using var cmd = _conn!.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT name,category,sub_category FROM blueprints ORDER BY category, name";
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+            result.Add(new Blueprint
+            {
+                Name = rdr.GetString(0), Category = rdr.GetString(1),
+                SubCategory = rdr.IsDBNull(2) ? null : rdr.GetString(2),
+            });
+        return result;
+    }
+
     public HashSet<string> GetResourceNamesForBlueprintSearch(string query)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

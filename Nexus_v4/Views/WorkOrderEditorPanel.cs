@@ -81,7 +81,7 @@ public class WorkOrderEditorPanel : UserControl
 
         _timerCountdown = new TextBlock
         {
-            FontSize = 22, FontWeight = FontWeights.Bold,
+            FontSize = 22, FontWeight = FontWeights.Bold, FontFamily = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont"),
             Foreground = (Brush)Application.Current.FindResource("AccentBrush"),
             Margin = new Thickness(0, 4, 0, 4),
         };
@@ -93,9 +93,65 @@ public class WorkOrderEditorPanel : UserControl
         StartTicker();
     }
 
+    private Border BuildSummaryCard()
+    {
+        var card = new Border
+        {
+            Background = (Brush)Application.Current.FindResource("AccentDimBrush"),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3A, 0x33, 0x1F)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(0, 4, 0, 14),
+        };
+        var inner = new StackPanel();
+        inner.Children.Add(new TextBlock
+        {
+            Text = "ORDER SUMMARY", FontSize = 10, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("AccentBrush"),
+            Margin = new Thickness(0, 0, 0, 8),
+        });
+        var row = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4 };
+        void Cell(string k, string v, Brush? valColor = null)
+        {
+            var sp = new StackPanel { Margin = new Thickness(0, 0, 10, 0) };
+            sp.Children.Add(new TextBlock
+            {
+                Text = k, FontSize = 10,
+                Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            });
+            sp.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(v) ? "\u2014" : v, FontSize = 14,
+                FontFamily = (FontFamily)Application.Current.FindResource("HeadFont"),
+                Foreground = valColor ?? (Brush)Application.Current.FindResource("FgBrush"),
+                Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            row.Children.Add(sp);
+        }
+        Cell("Status", _order.StatusLabel, BrushFromHex(_order.StatusColorHex));
+        Cell("Time", _order.HasActiveTimer ? _order.TimerRemainingShort : "\u2014");
+        Cell("Refinery", _order.Refinery);
+        Cell("Location", _order.Location);
+        inner.Children.Add(row);
+        card.Child = inner;
+        return card;
+    }
+
     private void BuildUI()
     {
         var stack = new StackPanel { Margin = new Thickness(16) };
+
+        var titleText = !string.IsNullOrWhiteSpace(_order.Label) ? _order.Label
+                      : !string.IsNullOrWhiteSpace(_order.Resources) ? _order.Resources : "New Order";
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Work Order \u2014 " + titleText,
+            FontFamily = (FontFamily)Application.Current.FindResource("HeadFont"),
+            FontSize = 20, Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+            Margin = new Thickness(0, 0, 0, 4), TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        stack.Children.Add(BuildSummaryCard());
 
         stack.Children.Add(MakeRow("Label", _labelBox));
         _labelBox.Text = _order.Label;

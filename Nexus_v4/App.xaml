@@ -6,6 +6,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Palette.Luxury.xaml"/>
                 <ResourceDictionary Source="Themes/GameTheme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

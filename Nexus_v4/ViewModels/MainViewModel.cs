@@ -30,6 +30,20 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ShoppingItem> ShoppingList { get; } = [];
     public ObservableCollection<Blueprint> BlueprintResults { get; } = [];
 
+    // ── RS Decoder (C1 dashboard) derived views ───────────────────────────────
+    public MatchResult? BestMatch => ScanResults.Count > 0 ? ScanResults[0] : null;
+    public IEnumerable<MatchResult> OtherMatches => ScanResults.Skip(1);
+    public bool HasResults => ScanResults.Count > 0;
+    public bool NoResults  => ScanResults.Count == 0;
+
+    private void NotifyScanDerived()
+    {
+        OnPropertyChanged(nameof(BestMatch));
+        OnPropertyChanged(nameof(OtherMatches));
+        OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(NoResults));
+    }
+
     public event Action<int>? OcrValueReceived;
     public event Action<ScanPhase>? OcrPhaseReceived;
     public event Action<int>? OcrProgressReceived;
@@ -104,19 +118,19 @@ public partial class MainViewModel : ObservableObject
 
         StatusText = matches.Count == 0 ? "No matches found" : "";
 
-        if (!addToHistory) return;
+        bool isNewScan = ScanHistory.Count == 0 || ScanHistory[0].Rs != rs;
+        NotifyScanDerived();
+
+        if (!addToHistory || !isNewScan) return;
 
         var topName   = matches.Count > 0 ? matches[0].Resource.Name : "No match";
         var matchKind = matches.Count == 0 ? MatchKind.None
                       : matches[0].IsExact  ? MatchKind.Exact
                       : MatchKind.Close;
-        if (ScanHistory.Count == 0 || ScanHistory[0].Rs != rs)
-        {
-            ScanHistory.Insert(0, new ScanHistoryEntry(rs, topName, matchKind)
-                { IsInCart = cart.Contains(topName) });
-            while (ScanHistory.Count > 20) ScanHistory.RemoveAt(ScanHistory.Count - 1);
-            RebuildFilteredHistory();
-        }
+        ScanHistory.Insert(0, new ScanHistoryEntry(rs, topName, matchKind)
+            { IsInCart = cart.Contains(topName) });
+        while (ScanHistory.Count > 20) ScanHistory.RemoveAt(ScanHistory.Count - 1);
+        RebuildFilteredHistory();
     }
 
     private HashSet<string> CartNames() =>
@@ -144,6 +158,8 @@ public partial class MainViewModel : ObservableObject
         ScanResults.Clear();
         foreach (var r in results) ScanResults.Add(r);
 
+        NotifyScanDerived();
+
         var history = ScanHistory.Select(e => e with { IsInCart = cart.Contains(e.TopResource) }).ToList();
         ScanHistory.Clear();
         foreach (var e in history) ScanHistory.Add(e);
@@ -156,6 +172,7 @@ public partial class MainViewModel : ObservableObject
         RsInput = "";
         ScanResults.Clear();
         StatusText = "";
+        NotifyScanDerived();
     }
 
     [RelayCommand]
@@ -300,6 +317,27 @@ public record MatchResult(Resource Resource, int InputRs, int Nodes, bool IsExac
     public string NodesText => Nodes == 1 ? "×1 node" : $"×{Nodes} nodes";
     public string CardColor => IsExact ? "#3FB950" : "#E3B341";
     public bool IsInCart { get; set; }
+
+    public RefineryYield? BestRefinery =>
+        Resource.Refineries.Count == 0 ? null : Resource.Refineries.OrderByDescending(x => x.ModifierPct).First();
+    public string RefineryText
+    {
+        get
+        {
+            var b = BestRefinery;
+            if (b == null || b.ModifierPct == 0) return "No refinery modifier";
+            return $"Refinery  {(b.ModifierPct > 0 ? "+" : "")}{b.ModifierPct}% at {b.Station.Split(' ')[0]}";
+        }
+    }
+    public string RefineryColor
+    {
+        get
+        {
+            var b = BestRefinery;
+            if (b == null || b.ModifierPct == 0) return "#8B949E";
+            return b.ModifierPct > 0 ? "#3FB950" : "#EF4444";
+        }
+    }
 }
 
 public enum MatchKind { None, Close, Exact }
@@ -310,7 +348,7 @@ public record ScanHistoryEntry(int Rs, string TopResource, MatchKind Match)
 {
     public string RsColor => Match switch
     {
-        MatchKind.Exact => "#FF00C9A7",
+        MatchKind.Exact => "#FF3FB950",
         MatchKind.Close => "#FFE3B341",
         _               => "#FFFF4545",
     };

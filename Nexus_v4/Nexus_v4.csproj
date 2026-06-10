@@ -10,7 +10,7 @@
     <!-- SINGLE SOURCE OF TRUTH for the app version. The in-app badges read this
          at runtime and the installer reads it from the built exe. For a release,
          CI overrides it from the git tag (dotnet publish -p:Version=X.Y.Z). -->
-    <Version>4.4.1</Version>
+    <Version>5.0.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\nexus.ico</ApplicationIcon>
 <SelfContained>true</SelfContained>
@@ -44,8 +44,11 @@
   <ItemGroup>
     <Resource Include="Assets\nexus_icon.png"/>
     <Resource Include="Assets\nexus_logo.png"/>
+    <Resource Include="Assets\nexus_icon_classic.png"/>
+    <Resource Include="Assets\nexus_logo_classic.png"/>
     <Resource Include="Assets\nexus.ico"/>
     <Resource Include="Assets\scan_region_example.png"/>
     <Resource Include="Assets\RS_Signature.png"/>
+    <Resource Include="Assets\Fonts\Outfit-SemiBold.ttf"/>
   </ItemGroup>
 </Project>

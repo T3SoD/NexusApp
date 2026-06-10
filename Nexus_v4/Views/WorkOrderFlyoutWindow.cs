@@ -22,6 +22,8 @@ public class WorkOrderFlyoutWindow : Window
     private readonly TextBlock _sideBtnText;
     private readonly TextBlock _hideBtnText;
 
+    private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
+
     public WorkOrderFlyoutWindow(MainViewModel vm)
     {
         _vm = vm;
@@ -34,22 +36,19 @@ public class WorkOrderFlyoutWindow : Window
         ResizeMode = ResizeMode.NoResize;
         Width = 260;
 
-        _listPanel = new StackPanel { Margin = new Thickness(8, 4, 8, 8) };
+        _listPanel = new StackPanel { Margin = new Thickness(10, 4, 10, 10) };
 
-        // Header
-        var header = new Grid
-        {
-            Height = 36,
-            Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x0A, 0x10, 0x20)),
-        };
+        // ── Header ──
+        var header = new Grid { Height = 38, Background = Brushes.Transparent };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         header.Children.Add(new TextBlock
         {
             Text = "REFINERY TRACKER",
-            FontSize = 11, FontWeight = FontWeights.Bold,
-            Foreground = BrushFromHex("#00C9A7"),
+            FontSize = 12, FontWeight = FontWeights.Bold,
+            FontFamily = (FontFamily)System.Windows.Application.Current.FindResource("HeadFont"),
+            Foreground = Res("GoldBrush"),
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -57,48 +56,45 @@ public class WorkOrderFlyoutWindow : Window
         // Hide-completed toggle
         _hideBtnText = new TextBlock
         {
-            Text = "☐",
-            FontSize = 11,
-            Foreground = BrushFromHex("#8B949E"),
+            Text = "☐", FontSize = 11, Foreground = Res("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "Hide completed",
         };
-        var hideBtn = new Border
-        {
-            Child = _hideBtnText,
-            Padding = new Thickness(6, 0, 2, 0),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-        hideBtn.MouseEnter  += (s, _) => _hideBtnText.Foreground = BrushFromHex("#00C9A7");
-        hideBtn.MouseLeave  += (s, _) => _hideBtnText.Foreground = _hideCompleted ? BrushFromHex("#00C9A7") : BrushFromHex("#8B949E");
+        var hideBtn = MakeToolButton(_hideBtnText);
+        hideBtn.MouseEnter += (s, _) => _hideBtnText.Foreground = Res("GoldBrush");
+        hideBtn.MouseLeave += (s, _) => _hideBtnText.Foreground = _hideCompleted ? Res("GoldBrush") : Res("FgDimBrush");
         hideBtn.MouseLeftButtonDown += (s, _) => ToggleHideCompleted();
 
         // Side-toggle button
         _sideBtnText = new TextBlock
         {
-            Text = "⇄",
-            FontSize = 10,
-            Foreground = BrushFromHex("#8B949E"),
+            Text = "⇄", FontSize = 11, Foreground = Res("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var sideBtn = new Border
-        {
-            Child = _sideBtnText,
-            Padding = new Thickness(6, 0, 10, 0),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Switch side",
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-        sideBtn.MouseEnter  += (s, _) => _sideBtnText.Foreground = BrushFromHex("#00C9A7");
-        sideBtn.MouseLeave  += (s, _) => _sideBtnText.Foreground = BrushFromHex("#8B949E");
+        var sideBtn = MakeToolButton(_sideBtnText);
+        sideBtn.ToolTip = "Switch side";
+        sideBtn.Margin = new Thickness(0, 0, 10, 0);
+        sideBtn.MouseEnter += (s, _) => _sideBtnText.Foreground = Res("GoldBrush");
+        sideBtn.MouseLeave += (s, _) => _sideBtnText.Foreground = Res("FgDimBrush");
         sideBtn.MouseLeftButtonDown += (s, _) => ToggleSide();
 
-        var btnPanel = new StackPanel { Orientation = Orientation.Horizontal };
+        var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         btnPanel.Children.Add(hideBtn);
         btnPanel.Children.Add(sideBtn);
         Grid.SetColumn(btnPanel, 1);
         header.Children.Add(btnPanel);
+
+        // accent hairline under header
+        var hairline = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 0) };
+        var hlBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xC9, 0xA2, 0x4B), 0));
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, 0xC9, 0xA2, 0x4B), 0.5));
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xC9, 0xA2, 0x4B), 1));
+        hairline.Background = hlBrush;
+        Grid.SetColumnSpan(hairline, 2);
+        header.Children.Add(hairline);
 
         var scroll = new ScrollViewer
         {
@@ -111,11 +107,17 @@ public class WorkOrderFlyoutWindow : Window
         inner.Children.Add(header);
         inner.Children.Add(scroll);
 
+        // ── Panel: luxury-dark gradient + gold-tinted hairline ──
+        var panelBg = new LinearGradientBrush(
+            Color.FromArgb(0xF2, 0x15, 0x14, 0x1C),
+            Color.FromArgb(0xF2, 0x0C, 0x0C, 0x11),
+            new Point(0, 0), new Point(0, 1));
+
         Content = new Border
         {
-            CornerRadius = new CornerRadius(8),
-            Background = BrushFromHex("#E0070B12"),
-            BorderBrush = BrushFromHex("#FF30363D"),
+            CornerRadius = new CornerRadius(12),
+            Background = panelBg,
+            BorderBrush = BrushFromHex("#FF332F3D"),
             BorderThickness = new Thickness(1),
             Child = inner,
             RenderTransform = _slideTransform,
@@ -124,6 +126,19 @@ public class WorkOrderFlyoutWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => Rebuild();
         Rebuild();
     }
+
+    private static Border MakeToolButton(UIElement child) => new()
+    {
+        Child = child,
+        Width = 24, Height = 22,
+        Background = Res("Bg3Brush"),
+        BorderBrush = Res("BorderBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Margin = new Thickness(0, 0, 6, 0),
+        Cursor = System.Windows.Input.Cursors.Hand,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
 
     // ── Animation ────────────────────────────────────────────────────────────
 
@@ -161,7 +176,7 @@ public class WorkOrderFlyoutWindow : Window
     {
         _hideCompleted = !_hideCompleted;
         _hideBtnText.Text = _hideCompleted ? "☑" : "☐";
-        _hideBtnText.Foreground = BrushFromHex(_hideCompleted ? "#00C9A7" : "#8B949E");
+        _hideBtnText.Foreground = _hideCompleted ? Res("GoldBrush") : Res("FgDimBrush");
         Rebuild();
     }
 
@@ -213,13 +228,7 @@ public class WorkOrderFlyoutWindow : Window
 
         if (_vm.WorkOrders.Count == 0)
         {
-            _listPanel.Children.Add(new TextBlock
-            {
-                Text = "No work orders",
-                FontSize = 12,
-                Foreground = BrushFromHex("#8B949E"),
-                Margin = new Thickness(4, 8, 0, 0),
-            });
+            _listPanel.Children.Add(EmptyText("No work orders"));
             return;
         }
 
@@ -229,13 +238,7 @@ public class WorkOrderFlyoutWindow : Window
 
         if (visible.Count == 0 && _hideCompleted)
         {
-            _listPanel.Children.Add(new TextBlock
-            {
-                Text = "No active work orders",
-                FontSize = 12,
-                Foreground = BrushFromHex("#8B949E"),
-                Margin = new Thickness(4, 8, 0, 0),
-            });
+            _listPanel.Children.Add(EmptyText("No active work orders"));
             return;
         }
 
@@ -250,65 +253,93 @@ public class WorkOrderFlyoutWindow : Window
         }
     }
 
+    private static TextBlock EmptyText(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Foreground = Res("FgDimBrush"),
+        Margin = new Thickness(4, 10, 0, 0),
+    };
+
     private UIElement BuildRow(WorkOrder wo)
     {
-        var container = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var cardBg   = Res("Bg2NavBrush");
+        var navB     = Res("NavBorderBrush");
+        var fg       = Res("FgBrush");
+        var dim      = Res("FgDimBrush");
+        var chipBg   = Res("Bg3Brush");
+        var trackBg  = Res("BorderBrush");
+        var headFont = (FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var statusBrush = BrushFromHex(wo.StatusColorHex);
 
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.Children.Add(new Border { Background = BrushFromHex(wo.StatusColorHex) });
+        var outer = new Border { Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 8, 0, 0) };
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new Border { Background = statusBrush, CornerRadius = new CornerRadius(8, 0, 0, 8) });
 
-        var content = new Grid { Margin = new Thickness(8, 4, 8, 4) };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var stack = new StackPanel { Margin = new Thickness(12, 9, 10, 9) };
+        Grid.SetColumn(stack, 1);
 
-        var textStack = new StackPanel();
-        textStack.Children.Add(new TextBlock
+        // top: label | status pill
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.Children.Add(new TextBlock
         {
-            Text = wo.Label, FontSize = 11, FontWeight = FontWeights.SemiBold,
-            Foreground = BrushFromHex("#E6EDF3"),
+            Text = string.IsNullOrWhiteSpace(wo.Label) ? wo.Resources : wo.Label,
+            FontFamily = headFont, FontSize = 12, Foreground = fg,
+            VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
-
-        TextBlock? subtitleTb = null;
-        if (wo.HasActiveTimer)
+        var chip = new Border
         {
-            subtitleTb = new TextBlock
-            {
-                Text = wo.SubtitleText, FontSize = 9,
-                Foreground = BrushFromHex(wo.SubtitleForeground),
-                Margin = new Thickness(0, 1, 0, 0),
-            };
-            textStack.Children.Add(subtitleTb);
-        }
-        content.Children.Add(textStack);
-
-        var dot = new TextBlock
-        {
-            Text = "●", FontSize = 9, VerticalAlignment = VerticalAlignment.Center,
-            Foreground = BrushFromHex(wo.StatusColorHex), ToolTip = wo.StatusLabel,
+            Background = chipBg, CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(7, 1, 7, 1), Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = wo.StatusLabel.ToUpperInvariant(), FontSize = 8, FontWeight = FontWeights.Bold, Foreground = statusBrush },
         };
-        Grid.SetColumn(dot, 1);
-        content.Children.Add(dot);
+        Grid.SetColumn(chip, 1);
+        top.Children.Add(chip);
+        stack.Children.Add(top);
 
-        Grid.SetColumn(content, 1);
-        row.Children.Add(content);
-        container.Children.Add(row);
+        // meta: resources ◆ location
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(wo.Resources)) parts.Add(wo.Resources);
+        if (!string.IsNullOrWhiteSpace(wo.Location))  parts.Add("◆ " + wo.Location);
+        if (parts.Count > 0)
+            stack.Children.Add(new TextBlock { Text = string.Join("    ", parts), Margin = new Thickness(0, 5, 0, 0), FontSize = 9, Foreground = dim, TextTrimming = TextTrimming.CharacterEllipsis });
 
+        // timer + animated progress bar
+        TextBlock? subtitleTb = null;
         ScaleTransform? scale = null;
         if (wo.HasActiveTimer)
         {
-            scale = new ScaleTransform(wo.TimerFraction, 1);
-            var barContainer = new Grid { Height = 2, Margin = new Thickness(0, 2, 0, 0) };
-            barContainer.Children.Add(new Border
+            var timerRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            timerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            timerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            subtitleTb = new TextBlock
             {
-                Background = BrushFromHex(wo.StatusColorHex),
+                Text = wo.SubtitleText, FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = BrushFromHex(wo.SubtitleForeground),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            };
+            timerRow.Children.Add(subtitleTb);
+
+            scale = new ScaleTransform(wo.TimerFraction, 1);
+            var barGrid = new Grid { Height = 5, VerticalAlignment = VerticalAlignment.Center };
+            barGrid.Children.Add(new Border { Background = trackBg, CornerRadius = new CornerRadius(2) });
+            barGrid.Children.Add(new Border
+            {
+                Background = statusBrush, CornerRadius = new CornerRadius(2),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 RenderTransform = scale,
                 RenderTransformOrigin = new Point(0, 0.5),
             });
-            container.Children.Add(barContainer);
+            Grid.SetColumn(barGrid, 1);
+            timerRow.Children.Add(barGrid);
+            stack.Children.Add(timerRow);
 
             var remaining = wo.TimerEnd!.Value - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -324,7 +355,9 @@ public class WorkOrderFlyoutWindow : Window
         }
 
         _refs[wo.Id] = (scale, subtitleTb);
-        return container;
+        grid.Children.Add(stack);
+        outer.Child = grid;
+        return outer;
     }
 
     private void Ticker_Tick(object? sender, EventArgs e)
