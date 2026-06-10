@@ -3,9 +3,9 @@ namespace Nexus_v4;
 /// <summary>
 /// The Star Citizen patch this app's reference data targets. This is ISOLATED from the
 /// mining-data version on purpose: it is bumped manually, only when the game itself
-/// patches, and is never touched by the auto-update flow. The mining-data version
-/// (the seed's <c>miningDataVersion</c>) updates independently as seed content changes —
-/// see <see cref="Services.DataService.MiningDataVersion"/> and DataUpdateService.
+/// patches. The mining-data version (the seed's <c>miningDataVersion</c>) tracks the
+/// embedded seed content and changes when a new build ships updated data —
+/// see <see cref="Services.DataService.MiningDataVersion"/>.
 /// </summary>
 public static class GameData
 {

@@ -12,10 +12,6 @@ public class DataService : IDisposable
 
     private static readonly string _dbPath = Path.Combine(_dataDir, "nexus.db");
 
-    /// <summary>Downloaded mining-data cache. When present and newer than the applied
-    /// version, it supersedes the embedded seed — letting data ship without a new build.</summary>
-    public static readonly string CachedSeedPath = Path.Combine(_dataDir, "seed_data.json");
-
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private SqliteConnection? _conn;
@@ -123,23 +119,14 @@ public class DataService : IDisposable
 
     // ── Versioned seeding ───────────────────────────────────────────────────────
 
-    /// <summary>Loads the best available seed: a downloaded cache (if valid) wins over
-    /// the embedded copy, so mining data can be refreshed without shipping a new build.</summary>
+    /// <summary>Loads the mining-data seed embedded in this build. Reference data ships
+    /// with the app and only changes when a new version is installed.</summary>
     private SeedData LoadSeed()
     {
-        var cached = TryParseSeed(ReadCachedSeed());
-        if (cached is { Resources.Count: > 0 }) return cached;
-
         var embedded = TryParseSeed(ReadEmbeddedSeed());
         return embedded ?? new SeedData("0.0.0", null,
             new List<SeedResource>(), new Dictionary<string, string>(),
             new List<SeedBlueprint>(), null);
-    }
-
-    private static string? ReadCachedSeed()
-    {
-        try { return File.Exists(CachedSeedPath) ? File.ReadAllText(CachedSeedPath) : null; }
-        catch { return null; }
     }
 
     private static string? ReadEmbeddedSeed()
@@ -191,7 +178,7 @@ public class DataService : IDisposable
             return;
         }
 
-        // A newer data version is available (e.g. a downloaded cache) — full reseed.
+        // A newer build shipped newer embedded data — full reseed.
         if (CompareVersions(_seedVersion, applied) > 0)
         {
             SeedAll(seed);

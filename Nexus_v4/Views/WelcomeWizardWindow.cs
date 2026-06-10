@@ -12,7 +12,7 @@ public enum TutorialTarget
     OpenOverlay, ShowBox, DrawRegion, ScanToggle,  // Auto-scan (overlay)
     OverlayTabs, ShoppingTab,                       // Overlay tabs
     Blueprints, Reference, WorkOrders,             // Blueprint Library / Mining Codex / Refinery Tracker
-    DataVersion,                                    // Mining-data auto-update
+    DataVersion,                                    // Mining-data version badge
 }
 
 /// <summary>
@@ -54,7 +54,7 @@ public class WelcomeWizardWindow : Window
         TutorialTarget.Blueprints,  // Blueprint Library (search)
         TutorialTarget.Reference,   // Mining Codex (group/filter)
         TutorialTarget.WorkOrders,  // Refinery Tracker (+ New)
-        TutorialTarget.DataVersion, // Mining-data auto-update (version badge)
+        TutorialTarget.DataVersion, // Mining-data version badge
         TutorialTarget.None,        // You're all set
     ];
 
@@ -135,11 +135,11 @@ public class WelcomeWizardWindow : Window
             "Hit + New to start an order, fill in the materials and yields, then Save.",
             "Open it any time from here or the ORDERS tab on the overlay.",
         ]),
-        new("⟳", "Always up to date",
+        new("⟳", "Mining data version",
         [
-            "Nexus keeps its mining data current on its own — new prices and resources download quietly in the background.",
-            "When an update lands, a banner offers to apply it; the version badge up here shows what you’re running.",
-            "No reinstalls — you’ll always be mining with the latest numbers.",
+            "The version badge up here shows which mining dataset you’re running — resources, locations, and blueprints.",
+            "Refreshed data ships with each new release of Nexus, so installing the latest version brings the latest numbers.",
+            "Grab new releases from the project’s GitHub page (linked in the About window).",
         ]),
         new("✓", "You’re all set",
         [

@@ -25,7 +25,6 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="68"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -95,33 +94,8 @@
             </StackPanel>
         </Grid>
 
-        <!-- ── Data-update banner (hidden until an update is staged) ── -->
-        <Border x:Name="DataUpdateBanner" Grid.Row="1" Visibility="Collapsed"
-                Background="#1A00C9A7" BorderBrush="#5500C9A7" BorderThickness="0,0,0,1"
-                Padding="16,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="DataUpdateText" VerticalAlignment="Center" FontSize="12"
-                           TextWrapping="Wrap"
-                           Foreground="{StaticResource FgBrush}"
-                           Text="Updated mining data is available."/>
-                <Button Grid.Column="1" Content="Restart now"
-                        Style="{StaticResource AccentButton}" Padding="14,5"
-                        Margin="12,0,0,0" Click="RestartForUpdate_Click"/>
-                <Button Grid.Column="2" Content="✕"
-                        Style="{StaticResource NexusButton}"
-                        Width="26" Height="26" Padding="0" Margin="8,0,0,0"
-                        VerticalAlignment="Center"
-                        Click="DismissDataBanner_Click" ToolTip="Dismiss (the update still applies next launch)"/>
-            </Grid>
-        </Border>
-
         <!-- ── Body: sidebar + content ── -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="175"/>
                 <ColumnDefinition Width="*"/>

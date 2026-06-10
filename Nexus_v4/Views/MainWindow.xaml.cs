@@ -43,33 +43,7 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
-
-        _ = CheckForDataUpdatesAsync();
     }
-
-    // ── Mining-data updates ────────────────────────────────────────────────────
-
-    private async Task CheckForDataUpdatesAsync()
-    {
-        var staged = await DataUpdateService.CheckAsync(App.Data.MiningDataVersion);
-        if (staged == null) return;
-        Dispatcher.Invoke(() =>
-        {
-            DataUpdateText.Text = $"Updated mining data (v{staged}) downloaded — restart Nexus to apply.";
-            DataUpdateBanner.Visibility = Visibility.Visible;
-        });
-    }
-
-    private void RestartForUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-        if (!string.IsNullOrEmpty(exe))
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
-        Application.Current.Shutdown();
-    }
-
-    private void DismissDataBanner_Click(object sender, RoutedEventArgs e)
-        => DataUpdateBanner.Visibility = Visibility.Collapsed;
 
     // ── First-run welcome wizard ───────────────────────────────────────────────
 
