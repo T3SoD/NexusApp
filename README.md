@@ -1,7 +1,7 @@
 # Nexus — Star Citizen Mining Assistant
 
 <p align="center">
-  <img src="Nexus_v4/Assets/nexus_logo.png" alt="Nexus logo" width="240">
+  <img src="NexusApp/Assets/nexus_logo.png" alt="Nexus logo" width="240">
 </p>
 
 Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**. It decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and gives you a fast, searchable reference for resources and crafting blueprints — all from an overlay that floats over your game.
@@ -74,14 +74,14 @@ A guided setup that installs Nexus like normal Windows software.
 - One extra install step compared with just running the exe
 - Updating means re-running a newer installer
 
-### Option 2 — Portable (standalone `Nexus_v4.exe`)
+### Option 2 — Portable (standalone `NexusApp.exe`)
 
 Run the app directly, with no installation.
 
-1. Download **`Nexus_v4_portable.zip`** from the [Releases](../../releases) page.
+1. Download **`NexusApp_portable.zip`** from the [Releases](../../releases) page.
 2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK**.
 3. Right-click the ZIP → **Extract All…** and choose a location (Desktop or Documents is fine).
-4. Open the extracted folder and double-click **`Nexus_v4.exe`**.
+4. Open the extracted folder and double-click **`NexusApp.exe`**.
 
 **Pros**
 - No installation and no admin rights
@@ -93,7 +93,7 @@ Run the app directly, with no installation.
 - No Start-menu or desktop shortcut — you launch it from the folder
 - No entry in *Add or remove programs*
 - Updating means downloading and replacing the folder yourself
-- Keep the whole folder together — `Nexus_v4.exe` needs the files beside it
+- Keep the whole folder together — `NexusApp.exe` needs the files beside it
 
 > **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
@@ -110,10 +110,10 @@ Run the app directly, with no installation.
 **Project layout**
 
 ```
-Nexus_v4/
-├─ Nexus_v4.sln
+NexusApp/
+├─ NexusApp.sln
 ├─ nexus_installer.iss          # Inno Setup installer recipe
-└─ Nexus_v4/
+└─ NexusApp/
    ├─ Assets/                   # Icons and logos
    ├─ Converters/               # WPF value converters
    ├─ Data/seed_data.json       # Bundled mining/blueprint reference data

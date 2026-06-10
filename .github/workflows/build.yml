@@ -20,7 +20,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore Nexus_v4/Nexus_v4.csproj
+        run: dotnet restore NexusApp/NexusApp.csproj
 
       - name: Build (Release)
-        run: dotnet build Nexus_v4/Nexus_v4.csproj -c Release --no-restore
+        run: dotnet build NexusApp/NexusApp.csproj -c Release --no-restore
