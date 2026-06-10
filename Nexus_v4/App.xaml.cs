@@ -26,8 +26,13 @@ public partial class App : Application
                 System.Windows.MessageBoxImage.Error);
         };
 
-        base.OnStartup(e);
+        // Pick the palette BEFORE the main window is created. StartupUri builds
+        // MainWindow inside base.OnStartup, and its StaticResource theme brushes
+        // resolve once at load time — so the palette must already be swapped or
+        // those brushes freeze on the default (Luxury) gold even in Classic.
         Settings = new SettingsService();
+        ThemeService.Apply(Settings.Current.Theme, save: false);
+        base.OnStartup(e);
         Data = new DataService();
         Data.Initialize();
     }

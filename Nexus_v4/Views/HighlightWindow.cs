@@ -47,7 +47,7 @@ public class HighlightWindow : Window
         IsHitTestVisible = false;
 
         var accent = (Brush)Application.Current.FindResource("AccentBrush");
-        var accentColor = (accent as SolidColorBrush)?.Color ?? Colors.Cyan;
+        var accentColor = (accent as SolidColorBrush)?.Color ?? Color.FromRgb(0xC9, 0xA2, 0x4B);
 
         var grid = new Grid();
 

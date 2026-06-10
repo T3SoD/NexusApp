@@ -1,0 +1,34 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ══ LUXURY (v5) palette — near-black neutral + warm gold ══ -->
+    <Color x:Key="BgColor">#FF0E0E13</Color>
+    <Color x:Key="Bg2Color">#FF17161E</Color>
+    <Color x:Key="Bg3Color">#FF1C1A23</Color>
+    <Color x:Key="BorderColor">#FF2A2833</Color>
+    <Color x:Key="NavBorderColor">#FF201E27</Color>
+    <Color x:Key="FgColor">#FFECE7DD</Color>
+    <Color x:Key="FgDimColor">#FF8C887F</Color>
+    <Color x:Key="AccentColor">#FFC9A24B</Color>
+    <Color x:Key="AccentDimColor">#FF211D14</Color>
+    <Color x:Key="GoldColor">#FFD9B25C</Color>
+    <Color x:Key="NavBgColor">#FF0B0B10</Color>
+    <Color x:Key="PageBgColor">#FF100F15</Color>
+    <Color x:Key="Bg2NavColor">#FF1A1921</Color>
+    <Color x:Key="HighlightColor">#FF232029</Color>
+
+    <!-- accent-derived (alpha variants) -->
+    <Color x:Key="AccentClearColor">#00C9A24B</Color>
+    <Color x:Key="AccentFaintColor">#1AC9A24B</Color>
+    <Color x:Key="AccentTintColor">#26C9A24B</Color>
+    <Color x:Key="AccentSoftColor">#55C9A24B</Color>
+    <Color x:Key="AccentGlowColor">#66C9A24B</Color>
+    <Color x:Key="AccentStrongColor">#99C9A24B</Color>
+    <Color x:Key="AccentHoverColor">#FFD9B25C</Color>
+    <Color x:Key="AccentPressColor">#FFA8842F</Color>
+    <Color x:Key="OnAccentColor">#FF14120C</Color>
+
+    <!-- overlay panel gradient -->
+    <Color x:Key="OverlayBgTopColor">#F215141C</Color>
+    <Color x:Key="OverlayBgBotColor">#F20C0C11</Color>
+</ResourceDictionary>

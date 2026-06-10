@@ -3,7 +3,7 @@ namespace Nexus_v4.Models;
 public class AppSettings
 {
     public int SettingsSchemaVersion { get; set; } = 0;
-    public string AccentTheme { get; set; } = "teal";
+    public string Theme { get; set; } = "luxury";   // luxury (v5 gold) | classic (v4 slate/teal)
     public double WindowLeft { get; set; } = 100;
     public double WindowTop { get; set; } = 100;
     public double WindowWidth { get; set; } = 1280;

@@ -38,6 +38,10 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         _vm = vm;
 
+        OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(Nexus_v4.Services.ThemeService.IconUri));
+        Nexus_v4.Services.ThemeService.ThemeChanged += () =>
+            OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(Nexus_v4.Services.ThemeService.IconUri));
+
         var s = App.Settings.Current;
         Left = s.OverlayLeft; Top = s.OverlayTop;
         Width = s.OverlayWidth; Height = s.OverlayHeight;
@@ -50,6 +54,8 @@ public partial class OverlayWindow : Window
 
         _vm.FilteredScanHistory.CollectionChanged += (s, e) => RebuildHistory();
         RebuildHistory();
+
+        _vm.WorkOrders.CollectionChanged += (s, e) => { if (_activeTab == "orders") RebuildOrdersPanel(); };
 
         BuildOverlayHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
@@ -73,7 +79,7 @@ public partial class OverlayWindow : Window
     {
         OverlayRsInput.Text = value.ToString("N0");
         OverlayScanStatus.Text = $"◎  Auto-scanned: {value:N0}";
-        OverlayScanStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0xC9, 0xA7));
+        OverlayScanStatus.Foreground = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
         RunScan(value);
     }
 
@@ -152,6 +158,8 @@ public partial class OverlayWindow : Window
         App.Settings.Current.OverlayWidth = Width; App.Settings.Current.OverlayHeight = Height;
         App.Settings.Save();
         _woFlyout?.Hide();
+        _ordersTicker?.Stop();
+        _ordersTicker = null;
         Hide();
     }
 
@@ -206,7 +214,7 @@ public partial class OverlayWindow : Window
     {
         HistoryStrip.Children.Clear();
         var hoverBg  = (Brush)FindResource("HighlightBrush");
-        var cartTeal = new SolidColorBrush(Color.FromArgb(0x26, 0x00, 0xC9, 0xA7));
+        var cartTeal = new SolidColorBrush(Color.FromArgb(0x26, 0xC9, 0xA2, 0x4B));
 
         foreach (var entry in _vm.FilteredScanHistory)
         {
@@ -234,7 +242,7 @@ public partial class OverlayWindow : Window
                 Padding = new Thickness(3, 1, 3, 1),
                 CornerRadius = new CornerRadius(3),
                 Margin = new Thickness(6, 0, 0, 0),
-                Background = new SolidColorBrush(Color.FromRgb(0x00, 0xC9, 0xA7)),
+                Background = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = entry.IsInCart ? Visibility.Visible : Visibility.Collapsed,
                 Child = new TextBlock
@@ -338,13 +346,213 @@ public partial class OverlayWindow : Window
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
 
-        var accent = new SolidColorBrush(Color.FromRgb(0x00, 0xC9, 0xA7));
+        var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
         var none   = Brushes.Transparent;
         TabScanIndicator.Background     = tab == "scan"     ? accent : none;
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
 
         if (tab == "shopping") RebuildShoppingPanel();
+
+        if (tab == "orders")
+        {
+            RebuildOrdersPanel();
+        }
+        else
+        {
+            _ordersTicker?.Stop();
+            _ordersTicker = null;
+        }
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _ordersTicker;
+    private readonly Dictionary<string, (TextBlock Txt, ColumnDefinition Fill, ColumnDefinition Remain)> _orderTimerRefs = new();
+
+    private void RebuildOrdersPanel()
+    {
+        OrdersPanelItems.Children.Clear();
+        OrdersSummaryPanel.Children.Clear();
+        _orderTimerRefs.Clear();
+
+        var orders = _vm.WorkOrders;
+        bool any = orders.Count > 0;
+        OrdersEmptyState.Visibility   = any ? Visibility.Collapsed : Visibility.Visible;
+        OrdersSummaryPanel.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!any)
+        {
+            _ordersTicker?.Stop();
+            _ordersTicker = null;
+            return;
+        }
+
+        BuildOrdersSummary(orders);
+
+        foreach (var wo in orders)
+            OrdersPanelItems.Children.Add(BuildOverlayOrderCard(wo));
+
+        var hasTimers = orders.Any(w => w.HasActiveTimer);
+        if (hasTimers && _ordersTicker == null)
+        {
+            _ordersTicker = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _ordersTicker.Tick += OrdersTicker_Tick;
+            _ordersTicker.Start();
+        }
+        else if (!hasTimers)
+        {
+            _ordersTicker?.Stop();
+            _ordersTicker = null;
+        }
+    }
+
+    private void BuildOrdersSummary(System.Collections.Generic.IEnumerable<WorkOrder> orders)
+    {
+        var dim    = (Brush)FindResource("FgDimBrush");
+        var accent = (Brush)FindResource("AccentBrush");
+        var list   = orders.ToList();
+
+        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        headerRow.Children.Add(new TextBlock { Text = "ACTIVE ORDERS", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, VerticalAlignment = VerticalAlignment.Center });
+        headerRow.Children.Add(new TextBlock { Text = list.Count.ToString(), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = accent, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        OrdersSummaryPanel.Children.Add(headerRow);
+
+        var chips = new WrapPanel();
+        (WorkOrderStatus St, string Label)[] seq =
+        [
+            (WorkOrderStatus.Mining, "Mining"),
+            (WorkOrderStatus.Refining, "Refining"),
+            (WorkOrderStatus.ReadyToCollect, "Ready"),
+            (WorkOrderStatus.Complete, "Complete"),
+        ];
+        foreach (var (st, label) in seq)
+        {
+            int n = list.Count(w => w.Status == st);
+            if (n == 0) continue;
+            chips.Children.Add(MakeStatusChip($"{n} {label}", StatusHex(st)));
+        }
+        OrdersSummaryPanel.Children.Add(chips);
+    }
+
+    private static string StatusHex(WorkOrderStatus s) => s switch
+    {
+        WorkOrderStatus.Mining         => "#3B82F6",
+        WorkOrderStatus.Refining       => "#E67E22",
+        WorkOrderStatus.ReadyToCollect => "#2ECC71",
+        WorkOrderStatus.Complete       => "#7F8C8D",
+        _                              => "#7F8C8D",
+    };
+
+    private static SolidColorBrush HexBrush(string hex) =>
+        new((Color)ColorConverter.ConvertFromString(hex));
+
+    private Border MakeStatusChip(string text, string hex)
+    {
+        var col  = (Color)ColorConverter.ConvertFromString(hex);
+        var fill = new SolidColorBrush(col);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        sp.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = fill, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        sp.Children.Add(new TextBlock { Text = text, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = fill, VerticalAlignment = VerticalAlignment.Center });
+        return new Border
+        {
+            Child = sp,
+            Background = new SolidColorBrush(Color.FromArgb(0x22, col.R, col.G, col.B)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x88, col.R, col.G, col.B)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(0, 0, 6, 6),
+        };
+    }
+
+    private Border BuildOverlayOrderCard(WorkOrder wo)
+    {
+        var cardBg   = (Brush)FindResource("Bg2NavBrush");
+        var navB     = (Brush)FindResource("NavBorderBrush");
+        var fg       = (Brush)FindResource("FgBrush");
+        var dim      = (Brush)FindResource("FgDimBrush");
+        var chipBg   = (Brush)FindResource("Bg3Brush");
+        var trackBg  = (Brush)FindResource("BorderBrush");
+        var headFont = (FontFamily)FindResource("HeadFont");
+        var statusBrush = HexBrush(wo.StatusColorHex);
+
+        var outer = new Border { Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 8) };
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new Border { Background = statusBrush, CornerRadius = new CornerRadius(8, 0, 0, 8) });
+
+        var stack = new StackPanel { Margin = new Thickness(12, 9, 10, 9) };
+        Grid.SetColumn(stack, 1);
+
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(wo.Label) ? wo.Resources : wo.Label,
+            FontFamily = headFont, FontSize = 13, Foreground = fg,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        var chip = new Border
+        {
+            Background = chipBg, CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(7, 1, 7, 1), Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = wo.StatusLabel.ToUpperInvariant(), FontSize = 8, FontWeight = FontWeights.Bold, Foreground = statusBrush },
+        };
+        Grid.SetColumn(chip, 1);
+        top.Children.Add(chip);
+        stack.Children.Add(top);
+
+        var parts = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(wo.Resources)) parts.Add(wo.Resources);
+        if (!string.IsNullOrWhiteSpace(wo.Location))  parts.Add("◆ " + wo.Location);
+        if (parts.Count > 0)
+            stack.Children.Add(new TextBlock { Text = string.Join("    ", parts), Margin = new Thickness(0, 5, 0, 0), FontSize = 10, Foreground = dim, TextTrimming = TextTrimming.CharacterEllipsis });
+
+        if (wo.HasActiveTimer)
+        {
+            var timerRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            timerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            timerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var tTxt = new TextBlock { Text = wo.TimerRemainingShort, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = HexBrush("#E67E22"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+            timerRow.Children.Add(tTxt);
+
+            var frac = wo.TimerFraction;
+            var fillCol = new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) };
+            var restCol = new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) };
+            var barGrid = new Grid();
+            barGrid.ColumnDefinitions.Add(fillCol);
+            barGrid.ColumnDefinitions.Add(restCol);
+            barGrid.Children.Add(new Border { Background = statusBrush, CornerRadius = new CornerRadius(2) });
+            var track = new Border { Background = trackBg, CornerRadius = new CornerRadius(2), Height = 5, VerticalAlignment = VerticalAlignment.Center, Child = barGrid };
+            Grid.SetColumn(track, 1);
+            timerRow.Children.Add(track);
+            stack.Children.Add(timerRow);
+
+            _orderTimerRefs[wo.Id] = (tTxt, fillCol, restCol);
+        }
+
+        grid.Children.Add(stack);
+        outer.Child = grid;
+        return outer;
+    }
+
+    private void OrdersTicker_Tick(object? sender, EventArgs e)
+    {
+        bool anyActive = false;
+        foreach (var wo in _vm.WorkOrders)
+        {
+            if (!_orderTimerRefs.TryGetValue(wo.Id, out var refs)) continue;
+            if (!wo.HasActiveTimer) { RebuildOrdersPanel(); return; }
+            anyActive = true;
+            var frac = wo.TimerFraction;
+            refs.Fill.Width = new GridLength(frac, GridUnitType.Star);
+            refs.Remain.Width = new GridLength(1 - frac, GridUnitType.Star);
+            refs.Txt.Text = wo.TimerRemainingShort;
+        }
+        if (!anyActive) { _ordersTicker?.Stop(); _ordersTicker = null; }
     }
 
     private void RebuildShoppingPanel()
