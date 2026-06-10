@@ -15,8 +15,6 @@ public class AppSettings
     public ScanRegion? ScanRegion { get; set; }
     public double OverlayOpacity { get; set; } = 0.7;
     public List<string> PinnedResources { get; set; } = [];
-    public DateTime? LastDataUpdate { get; set; }
-    public string? DataEtag { get; set; }
     public bool FirstRunComplete { get; set; }
 }
 
