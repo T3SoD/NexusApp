@@ -145,6 +145,7 @@ public partial class OverlayWindow : Window
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         this.Opacity = e.NewValue;
+        if (_woFlyout != null) _woFlyout.Opacity = e.NewValue;
         if (OpacityLabel != null) OpacityLabel.Text = $"{(int)(e.NewValue * 100)}%";
         App.Settings.Current.OverlayOpacity = e.NewValue;
         App.Settings.Save();
@@ -327,6 +328,7 @@ public partial class OverlayWindow : Window
             {
                 _woFlyout.Rebuild();
             }
+            _woFlyout.Opacity = this.Opacity;
             _woFlyout.ShowWithAnimation();
         }
         else
