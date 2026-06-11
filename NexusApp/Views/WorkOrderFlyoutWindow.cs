@@ -87,13 +87,12 @@ public class WorkOrderFlyoutWindow : Window
         Grid.SetColumn(btnPanel, 1);
         header.Children.Add(btnPanel);
 
-        // accent hairline under header (theme accent, fading at both ends)
-        var ac = Col("AccentColor");
+        // accent hairline under header — same recipe as the overlay
         var hairline = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 0) };
         var hlBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, ac.R, ac.G, ac.B), 0));
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, ac.R, ac.G, ac.B), 0.5));
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, ac.R, ac.G, ac.B), 1));
+        hlBrush.GradientStops.Add(new GradientStop(Col("AccentClearColor"), 0));
+        hlBrush.GradientStops.Add(new GradientStop(Col("AccentGlowColor"), 0.5));
+        hlBrush.GradientStops.Add(new GradientStop(Col("AccentClearColor"), 1));
         hairline.Background = hlBrush;
         Grid.SetColumnSpan(hairline, 2);
         header.Children.Add(hairline);
@@ -109,12 +108,10 @@ public class WorkOrderFlyoutWindow : Window
         inner.Children.Add(header);
         inner.Children.Add(scroll);
 
-        // ── Panel: theme background gradient + accent-tinted hairline ──
-        var bgTop = Col("Bg2Color");
-        var bgBot = Col("BgColor");
+        // ── Panel: same translucent background as the overlay ──
         var panelBg = new LinearGradientBrush(
-            Color.FromArgb(0xF2, bgTop.R, bgTop.G, bgTop.B),
-            Color.FromArgb(0xF2, bgBot.R, bgBot.G, bgBot.B),
+            Col("OverlayBgTopColor"),
+            Col("OverlayBgBotColor"),
             new Point(0, 0), new Point(0, 1));
 
         Content = new Border
