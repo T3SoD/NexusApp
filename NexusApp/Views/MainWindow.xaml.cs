@@ -67,86 +67,37 @@ public partial class MainWindow : Window
 
     /// <summary>Runs the welcome tour. Always shows, regardless of FirstRunComplete —
     /// the first-run gate lives in MaybeShowFirstRunWizard, while Help can replay this.
-    /// Opens the overlay and points a pulsing ring at the button each step explains.</summary>
+    /// Launches the modeless anchored coach-mark tour (TourController).</summary>
     public void ShowTutorial()
     {
-        var highlight = new HighlightWindow();
-        var wizard = new WelcomeWizardWindow { Owner = this };
-        wizard.TargetChanged += t => ApplyTutorialHighlight(t, highlight);
-
-        // Reflect the wizard's opening step before it goes modal.
-        ApplyTutorialHighlight(wizard.CurrentTarget, highlight);
-        wizard.ShowDialog();
-
-        highlight.Close();
-
-        if (wizard.SetupRegionRequested)
-        {
-            var selector = new RegionSelectorWindow();
-            selector.RegionSelected += ApplyScanRegion;
-            selector.Show();
-        }
+        var tour = new TourController(this, ResolveTutorialTarget, StartScanRegionSetup);
+        tour.Start();
     }
 
-    private void ApplyTutorialHighlight(TutorialTarget t, HighlightWindow highlight)
+    /// <summary>Navigates to the page/overlay a tour step needs and returns the element to anchor on
+    /// (null = a centered, anchorless step).</summary>
+    private FrameworkElement? ResolveTutorialTarget(TutorialTarget t) => t switch
     {
-        FrameworkElement? target = null;
-        switch (t)
-        {
-            case TutorialTarget.RsDecoder:
-                SetActivePage("scan");
-                target = RsInputBox;
-                break;
-            case TutorialTarget.ScanHistory:
-                SetActivePage("scan");
-                target = ScanHistorySection;
-                break;
-            case TutorialTarget.OpenOverlay:
-                target = OverlayToggleBtn;
-                break;
-            case TutorialTarget.ShowBox:
-                target = PrepareOverlayForTutorial()?.BoxToggleTarget;
-                break;
-            case TutorialTarget.DrawRegion:
-                target = PrepareOverlayForTutorial()?.SetRegionTarget;
-                break;
-            case TutorialTarget.ScanToggle:
-                target = PrepareOverlayForTutorial()?.ScanToggleTarget;
-                break;
-            case TutorialTarget.OverlayTabs:
-                target = PrepareOverlayForTutorial()?.TabStripTarget;
-                break;
-            case TutorialTarget.ShoppingTab:
-                {
-                    var overlay = PrepareOverlayForTutorial();
-                    overlay?.ShowShoppingTabForTutorial();
-                    overlay?.UpdateLayout();
-                    target = overlay?.ShoppingTabTarget;
-                }
-                break;
-            case TutorialTarget.Blueprints:
-                SetActivePage("blueprints");
-                target = BlueprintSearchBox;
-                break;
-            case TutorialTarget.Reference:
-                SetActivePage("reference");
-                target = ReferenceList;
-                break;
-            case TutorialTarget.WorkOrders:
-                SetActivePage("workorders");
-                target = WoNewBtn;
-                break;
-            case TutorialTarget.DataVersion:
-                target = AppVersionBadge;
-                break;
-        }
+        TutorialTarget.RsDecoder      => Anchor("scan", RsInputBox),
+        TutorialTarget.OpenOverlay    => OverlayToggleBtn,
+        TutorialTarget.DrawRegion     => PrepareOverlayForTutorial()?.SetRegionTarget,
+        TutorialTarget.ScanToggle     => PrepareOverlayForTutorial()?.ScanToggleTarget,
+        TutorialTarget.OverlayTabs    => PrepareOverlayForTutorial()?.TabStripTarget,
+        TutorialTarget.ReferenceTools => NavBlue,
+        _                             => null,
+    };
 
-        if (target == null) { highlight.HideRing(); return; }
+    private FrameworkElement Anchor(string page, FrameworkElement element)
+    {
+        SetActivePage(page);
+        return element;
+    }
 
-        // Defer until layout settles (overlay may have just been shown / tab-switched).
-        var captured = target;
-        Dispatcher.BeginInvoke(new Action(() => highlight.HighlightControl(captured)),
-            System.Windows.Threading.DispatcherPriority.Loaded);
+    private void StartScanRegionSetup()
+    {
+        var selector = new RegionSelectorWindow();
+        selector.RegionSelected += ApplyScanRegion;
+        selector.Show();
     }
 
     /// <summary>Ensures the overlay is open, visible, and on the SCAN tab for the tour.</summary>
