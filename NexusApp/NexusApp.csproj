@@ -7,6 +7,12 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>NexusApp</AssemblyName>
     <RootNamespace>NexusApp</RootNamespace>
+    <!-- Authorship metadata, embedded in the built exe (Properties > Details). -->
+    <Authors>T3SoD</Authors>
+    <Company>T3SoD</Company>
+    <Product>Nexus</Product>
+    <Copyright>Copyright (c) 2026 T3SoD</Copyright>
+    <Description>Nexus — Star Citizen mining assistant by T3SoD. github.com/T3SoD/NexusApp</Description>
     <!-- SINGLE SOURCE OF TRUTH for the app version. The in-app badges read this
          at runtime and the installer reads it from the built exe. For a release,
          CI overrides it from the git tag (dotnet publish -p:Version=X.Y.Z). -->
