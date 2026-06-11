@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.1.0  —  Jun 11, 2026",
+        [
+            "Choose your look on first launch — a new welcome picker lets you start in Luxury Gold or Classic teal before the app opens, with no restart",
+            "The Refinery Tracker flyout now follows your theme — its panel was previously stuck on the gold look while in the Classic theme",
+            "Fixed the Classic theme logo and app icon showing a dark square behind them",
+        ]),
         ("App  5.0.1  —  Jun 10, 2026",
         [
             "Housekeeping — the project and its downloads dropped the version number from their names (the portable download and its program are now NexusApp); your existing settings, work orders and history carry over automatically",
