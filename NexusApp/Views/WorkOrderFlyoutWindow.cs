@@ -23,6 +23,7 @@ public class WorkOrderFlyoutWindow : Window
     private readonly TextBlock _hideBtnText;
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
+    private static Color Col(string key) => (Color)System.Windows.Application.Current.FindResource(key);
 
     public WorkOrderFlyoutWindow(MainViewModel vm)
     {
@@ -86,12 +87,13 @@ public class WorkOrderFlyoutWindow : Window
         Grid.SetColumn(btnPanel, 1);
         header.Children.Add(btnPanel);
 
-        // accent hairline under header
+        // accent hairline under header (theme accent, fading at both ends)
+        var ac = Col("AccentColor");
         var hairline = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 0) };
         var hlBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xC9, 0xA2, 0x4B), 0));
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, 0xC9, 0xA2, 0x4B), 0.5));
-        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xC9, 0xA2, 0x4B), 1));
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, ac.R, ac.G, ac.B), 0));
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, ac.R, ac.G, ac.B), 0.5));
+        hlBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, ac.R, ac.G, ac.B), 1));
         hairline.Background = hlBrush;
         Grid.SetColumnSpan(hairline, 2);
         header.Children.Add(hairline);
@@ -107,17 +109,19 @@ public class WorkOrderFlyoutWindow : Window
         inner.Children.Add(header);
         inner.Children.Add(scroll);
 
-        // ── Panel: luxury-dark gradient + gold-tinted hairline ──
+        // ── Panel: theme background gradient + accent-tinted hairline ──
+        var bgTop = Col("Bg2Color");
+        var bgBot = Col("BgColor");
         var panelBg = new LinearGradientBrush(
-            Color.FromArgb(0xF2, 0x15, 0x14, 0x1C),
-            Color.FromArgb(0xF2, 0x0C, 0x0C, 0x11),
+            Color.FromArgb(0xF2, bgTop.R, bgTop.G, bgTop.B),
+            Color.FromArgb(0xF2, bgBot.R, bgBot.G, bgBot.B),
             new Point(0, 0), new Point(0, 1));
 
         Content = new Border
         {
             CornerRadius = new CornerRadius(12),
             Background = panelBg,
-            BorderBrush = BrushFromHex("#FF332F3D"),
+            BorderBrush = Res("BorderBrush"),
             BorderThickness = new Thickness(1),
             Child = inner,
             RenderTransform = _slideTransform,
