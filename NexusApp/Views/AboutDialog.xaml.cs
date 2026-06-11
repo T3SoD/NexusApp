@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.1.1  —  Jun 11, 2026",
+        [
+            "Redesigned the welcome tour — a caption now sits beside each control it points at, instead of a centered dialog, in a shorter and clearer walkthrough",
+            "Redesigned the in-app User Guide — a searchable two-panel browser with each topic's key controls called out up top",
+            "User Guide fixes — corrected the start/stop scanning buttons, updated the Refinery Tracker control reference, and added an Appearance section covering themes",
+        ]),
         ("App  5.1.0  —  Jun 11, 2026",
         [
             "Choose your look on first launch — a new welcome picker lets you start in Luxury Gold or Classic teal before the app opens, with no restart",
