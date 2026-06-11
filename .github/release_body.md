@@ -2,6 +2,15 @@
 
 Both downloads are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline. Pick whichever suits you.
 
+### Screenshots
+
+| | |
+|:--:|:--:|
+| [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png) |
+| **Auto-scan overlay** — decodes RS values live over the game | **Blueprint Library** — recipes, ingredients, and unlock missions |
+| [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png) |
+| **Mining Codex** — full resource reference, filterable | **Refinery Tracker** — live countdown timers for jobs |
+
 ---
 
 ### Option 1 — Installer (`Nexus_Setup.exe`) — *recommended, user friendly*
