@@ -1,7 +1,7 @@
 # Nexus — Star Citizen Mining Assistant
 
 <p align="center">
-  <img src="NexusApp/Assets/nexus_logo.png" alt="Nexus logo" width="240">
+  <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
 </p>
 
 Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**. It decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and gives you a fast, searchable reference for resources and crafting blueprints — all from an overlay that floats over your game.
