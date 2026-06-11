@@ -30,11 +30,11 @@ public class HelpDialog : Window
             "Click ⊕ to draw a scan region — your cursor becomes a crosshair.",
             "Click and drag a rectangle over the RS value shown in your game.",
             "img:/Assets/RS_Signature.png",
-            "Click ■ to start scanning — the overlay reads the RS value automatically every ~0.5 seconds.",
-            "Click ▶ to stop scanning. Click ⊕ again to redraw the region.",
+            "Click ▶ to start scanning — the overlay reads the RS value automatically every ~0.5 seconds.",
+            "While scanning the button shows ■ — click it to stop. Click ⊕ again to redraw the region.",
             "Click ⊠ to show the magenta scan box indicator on screen; click ⊡ to hide it.",
             "The scan box is hidden by default on launch.",
-            "Use the opacity slider in the SCAN tab to adjust overlay transparency (20–100%).",
+            "Use the opacity slider in the SCAN tab to adjust overlay transparency (20–100%) — the refinery flyout dims along with it.",
             "◉ Reading… appears in the status bar when a candidate value is being confirmed.",
         ]),
 
@@ -62,7 +62,7 @@ public class HelpDialog : Window
             "Click a work order row on the left to open it for editing.",
             "Use Save to commit changes and Delete to remove the order.",
             "Work orders and their timers survive app restarts.",
-            "In the overlay, switch to the ORDERS tab and click 📋 Open Refinery Tracker to open the flyout panel.",
+            "In the overlay, switch to the ORDERS tab and click ▤ Open Refinery Tracker to open the flyout panel.",
             "The flyout has a hide-completed toggle (☐/☑) and a side-swap button (⇄) in its header.",
         ]),
 
@@ -99,7 +99,7 @@ public class HelpDialog : Window
             "Refinery: Bonus yield (green) · No modifier (gray) · Reduced yield (red).",
         ]),
 
-        ("🛒", "SHOPPING LIST",
+        ("▤", "SHOPPING LIST",
         [
             "Add items from RS Signal Decoder results, Blueprint Library ingredients, or the Mining Codex.",
             "Click 🛒 in the main toolbar to open the shopping list dialog.",
@@ -110,6 +110,14 @@ public class HelpDialog : Window
             "Resources already in your shopping list are highlighted with a teal background in both scan results and recent scan history.",
             "An IN CART badge appears on matching scan result cards; a CART badge appears on matching history entries.",
             "Highlights update automatically when you add or remove items from the list.",
+        ]),
+
+        ("◐", "APPEARANCE",
+        [
+            "On first launch, a welcome picker lets you choose your look: Luxury Gold or Classic teal.",
+            "Luxury Gold is the default near-black-and-gold theme; Classic is the original slate-and-teal style.",
+            "Switch themes anytime from About > Appearance — the change applies on restart.",
+            "Replay this guided tour anytime with the Replay Tutorial button below.",
         ]),
     ];
 
@@ -265,7 +273,7 @@ public class HelpDialog : Window
             Style = (Style)Application.Current.FindResource("AccentButton"),
             Padding = new Thickness(20, 8, 20, 8),
             HorizontalAlignment = HorizontalAlignment.Right,
-            ToolTip = "Walk through the auto-scan setup tour again",
+            ToolTip = "Replay the guided welcome tour",
         };
         tutorialBtn.Click += (s, e) => { TutorialRequested = true; Close(); };
         Grid.SetColumn(tutorialBtn, 2);
