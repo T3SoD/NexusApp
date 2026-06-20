@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using NexusApp.Models;
 
@@ -107,4 +108,28 @@ public class SettingsService
     }
 
     public void Save() => Save(Current);
+
+    // ── Blueprint ownership ────────────────────────────────────────────────────
+    // Stored name-keyed in settings.json (not nexus.db) so ownership survives the
+    // database reseed that happens on every app update.
+
+    public int OwnedBlueprintCount => Current.OwnedBlueprints.Count;
+
+    public bool IsBlueprintOwned(string name) =>
+        Current.OwnedBlueprints.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    public void SetBlueprintOwned(string name, bool owned)
+    {
+        var existing = Current.OwnedBlueprints
+            .FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+        if (owned)
+        {
+            if (existing == null) Current.OwnedBlueprints.Add(name);
+        }
+        else if (existing != null)
+        {
+            Current.OwnedBlueprints.Remove(existing);
+        }
+        Save();
+    }
 }
