@@ -812,7 +812,6 @@ public partial class MainWindow : Window
     // Maps a blueprint name to its nav-row toggle pill so a single toggle updates that
     // one row in place instead of rebuilding the whole list (the source of the lag).
     private readonly Dictionary<string, Border> _bpPills = new(StringComparer.OrdinalIgnoreCase);
-    private TextBlock? _bpFilterHeaderCount;       // count shown in the Owned/Not-owned filtered header
     private static readonly string[] _bpCategories = ["Armor", "Weapons", "Ship Components", "Ammo"];
     private static readonly string[] _armorPieces = ["Helmet", "Core", "Arms", "Legs", "Backpack", "Undersuit", "Suit"];
     private static readonly HashSet<string> _variantWords = new(StringComparer.OrdinalIgnoreCase)
@@ -977,12 +976,11 @@ public partial class MainWindow : Window
         BlueprintNavPanel.Children.Clear();
         _selectedBpRow = null;
         _bpPills.Clear();
-        _bpFilterHeaderCount = null;
         if (_allBlueprints == null) return;
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var catCol = CategoryBrush(_bpCat);
 
-        // Ownership filter takes over the nav with a flat matching list across all categories.
+        // Ownership filter takes over the nav with a category-grouped matching list.
         if (_bpOwnFilter != BpOwnFilter.All)
         {
             var wantOwned = _bpOwnFilter == BpOwnFilter.Owned;
@@ -992,27 +990,42 @@ public partial class MainWindow : Window
             var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
             var hdr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 0, 8) };
             hdr.Children.Add(new TextBlock { Text = wantOwned ? "Owned" : "Not owned", FontFamily = headFont, FontSize = 16, Foreground = accent, VerticalAlignment = VerticalAlignment.Center });
-            _bpFilterHeaderCount = new TextBlock { Text = $"  ·  {matches.Count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center };
-            hdr.Children.Add(_bpFilterHeaderCount);
+            hdr.Children.Add(new TextBlock { Text = $"  ·  {matches.Count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center });
             BlueprintNavPanel.Children.Add(hdr);
             if (matches.Count == 0)
+            {
                 BlueprintNavPanel.Children.Add(new TextBlock
                 {
                     Text = wantOwned ? "Nothing marked owned yet" : "Every blueprint is marked owned",
                     FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
                     Margin = new Thickness(6, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
                 });
-            // Cap how many rows are realized at once. The flat ownership list is not
-            // virtualized, so rendering the whole "Not owned" catalog (thousands of
-            // rows) froze the UI thread. Showing a bounded batch keeps it responsive;
-            // search narrows things down past the cap.
+                return;
+            }
+            // Group matches under colour-coded category headers. Cap total realized
+            // rows — the flat list isn't virtualized, so rendering the whole "Not
+            // owned" catalog froze the UI thread; search narrows past the cap.
             const int filterRenderCap = 150;
-            foreach (var bp in matches.Take(filterRenderCap))
-                BlueprintNavPanel.Children.Add(BlueprintRow(bp, true));
-            if (matches.Count > filterRenderCap)
+            var rendered = 0;
+            var groups = matches
+                .GroupBy(b => b.Category)
+                .OrderBy(g => { var i = Array.IndexOf(_bpCategories, g.Key); return i < 0 ? int.MaxValue : i; })
+                .ThenBy(g => g.Key);
+            foreach (var grp in groups)
+            {
+                if (rendered >= filterRenderCap) break;
+                BlueprintNavPanel.Children.Add(FilterCategoryHeader(grp.Key, grp.Count()));
+                foreach (var bp in grp.OrderBy(b => b.Name))
+                {
+                    if (rendered >= filterRenderCap) break;
+                    BlueprintNavPanel.Children.Add(BlueprintRow(bp, false));
+                    rendered++;
+                }
+            }
+            if (matches.Count > rendered)
                 BlueprintNavPanel.Children.Add(new TextBlock
                 {
-                    Text = $"Showing first {filterRenderCap} of {matches.Count}. Use search above to find a specific blueprint.",
+                    Text = $"Showing first {rendered} of {matches.Count}. Use search above to find a specific blueprint.",
                     FontSize = 11, FontStyle = FontStyles.Italic,
                     Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
                     Margin = new Thickness(6, 10, 6, 4), TextWrapping = TextWrapping.Wrap,
@@ -1270,36 +1283,37 @@ public partial class MainWindow : Window
         return pill;
     }
 
-    // Applies a single ownership change to the UI without rebuilding the whole nav:
-    // updates the row pill, the detail toggle, and the count; in a filtered view it
-    // removes just the row that no longer matches.
+    // Applies a single ownership change to the UI. Always updates the count and the
+    // detail toggle. In the drill-down (All) view it updates just the toggled row's
+    // pill in place — no rebuild. In a filtered view the matching set and its category
+    // grouping change, so it re-renders the (capped) filtered list, which is cheap.
     private void OnOwnershipChanged(string name, bool nowOwned)
     {
         UpdateOwnedCount();
-
-        if (_bpPills.TryGetValue(name, out var pill))
-            ApplyCheckVisual(pill, nowOwned);
 
         if (_detailBpName != null && string.Equals(_detailBpName, name, StringComparison.OrdinalIgnoreCase)
             && _detailOwnedToggle != null)
             ApplyOwnedToggleVisual(_detailOwnedToggle, nowOwned);
 
-        if (_bpOwnFilter == BpOwnFilter.All) return;
+        if (_bpOwnFilter == BpOwnFilter.All)
+        {
+            if (_bpPills.TryGetValue(name, out var pill))
+                ApplyCheckVisual(pill, nowOwned);
+            return;
+        }
 
-        var stillMatches = (_bpOwnFilter == BpOwnFilter.Owned) == nowOwned;
-        if (stillMatches) return;
-        if (_bpPills.TryGetValue(name, out var rowPill))
-        {
-            if ((rowPill.Parent as Grid)?.Parent is Border card)
-                BlueprintNavPanel.Children.Remove(card);
-            _bpPills.Remove(name);
-        }
-        if (_bpFilterHeaderCount != null)
-        {
-            var wantOwned = _bpOwnFilter == BpOwnFilter.Owned;
-            var n = _allBlueprints?.Count(b => App.Settings.IsBlueprintOwned(b.Name) == wantOwned) ?? 0;
-            _bpFilterHeaderCount.Text = $"  ·  {n}";
-        }
+        RenderBlueprintNav();
+    }
+
+    // Colour-coded category section header for the grouped ownership filter list.
+    private UIElement FilterCategoryHeader(string category, int count)
+    {
+        var col = CategoryBrush(category);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 12, 0, 4) };
+        sp.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = col, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
+        sp.Children.Add(new TextBlock { Text = category, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = $"  {count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center });
+        return sp;
     }
 
     private void ApplyCheckVisual(Border pill, bool owned)
