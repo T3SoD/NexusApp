@@ -811,7 +811,10 @@ public partial class MainWindow : Window
     private Border? _detailOwnedToggle;            // its "Owned" toggle, kept in sync with nav checkboxes
     // Maps a blueprint name to its nav-row toggle pill so a single toggle updates that
     // one row in place instead of rebuilding the whole list (the source of the lag).
-    private readonly Dictionary<string, Border> _bpPills = new(StringComparer.OrdinalIgnoreCase);
+    // Maps a blueprint name to a callback that refreshes that nav row's ownership
+    // visuals (left strip, ✓ tick, hover pill) in place — so one toggle updates the
+    // row without rebuilding the whole list.
+    private readonly Dictionary<string, Action<bool>> _bpRowOwned = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] _bpCategories = ["Armor", "Weapons", "Ship Components", "Ammo"];
     private static readonly string[] _armorPieces = ["Helmet", "Core", "Arms", "Legs", "Backpack", "Undersuit", "Suit"];
     private static readonly HashSet<string> _variantWords = new(StringComparer.OrdinalIgnoreCase)
@@ -975,7 +978,7 @@ public partial class MainWindow : Window
     {
         BlueprintNavPanel.Children.Clear();
         _selectedBpRow = null;
-        _bpPills.Clear();
+        _bpRowOwned.Clear();
         if (_allBlueprints == null) return;
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var catCol = CategoryBrush(_bpCat);
@@ -1037,7 +1040,7 @@ public partial class MainWindow : Window
         {
             case "category":
             {
-                BlueprintNavPanel.Children.Add(BackRow("All categories", GoRoot));
+                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, (Action?)null)));
                 BlueprintNavPanel.Children.Add(NavHeader(_bpCat, CatCount(_bpCat), catCol));
                 var inCat = _allBlueprints.Where(b => b.Category == _bpCat).ToList();
                 var groups = inCat.Where(b => Subgroup(b) != null)
@@ -1060,7 +1063,7 @@ public partial class MainWindow : Window
 
             case "subgroup":
             {
-                BlueprintNavPanel.Children.Add(BackRow(_bpCat, () => { _bpLevel = "category"; _bpSub = ""; RenderBlueprintNav(); ShowBlueprintLanding(); }));
+                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)), (_bpSub, (Action?)null)));
                 var items = _allBlueprints.Where(b => b.Category == _bpCat && Subgroup(b) == _bpSub).ToList();
                 BlueprintNavPanel.Children.Add(NavHeader(_bpSub, items.Count, catCol));
                 RenderLeafGroup(items, catCol);
@@ -1069,10 +1072,10 @@ public partial class MainWindow : Window
 
             case "family":
             {
-                Action backToLeaf = _bpSub.Length > 0
-                    ? () => { _bpLevel = "subgroup"; _bpFam = ""; RenderBlueprintNav(); ShowBlueprintLanding(); }
-                    : () => { _bpLevel = "category"; _bpFam = ""; RenderBlueprintNav(); ShowBlueprintLanding(); };
-                BlueprintNavPanel.Children.Add(BackRow(_bpSub.Length > 0 ? _bpSub : _bpCat, backToLeaf));
+                var famCrumbs = new System.Collections.Generic.List<(string, Action?)> { ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)) };
+                if (_bpSub.Length > 0) famCrumbs.Add((_bpSub, () => EnterSubgroup(_bpSub)));
+                famCrumbs.Add((_bpFam, (Action?)null));
+                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, famCrumbs.ToArray()));
                 var variants = _allBlueprints
                     .Where(b => b.Category == _bpCat && (_bpSub.Length == 0 ? Subgroup(b) == null : Subgroup(b) == _bpSub) && FamilyKey(b.Name) == _bpFam)
                     .OrderBy(b => b.Name).ToList();
@@ -1083,7 +1086,7 @@ public partial class MainWindow : Window
             }
 
             case "search":
-                BlueprintNavPanel.Children.Add(BackRow("Browse", GoRoot));
+                BlueprintNavPanel.Children.Add(Breadcrumb(accent, ("Browse", GoRoot), ("Results", (Action?)null)));
                 BlueprintNavPanel.Children.Add(NavHeader("Results", _bpSearchResults.Count, accent));
                 if (_bpSearchResults.Count == 0)
                     BlueprintNavPanel.Children.Add(new TextBlock { Text = "No matches", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), Margin = new Thickness(6, 8, 0, 0) });
@@ -1130,13 +1133,39 @@ public partial class MainWindow : Window
         ShowBlueprintLanding();
     }
 
-    private Border BackRow(string label, Action onClick)
+    // Clickable breadcrumb trail for the drill-down. Non-final segments navigate to
+    // that level; the final segment is the current location in the category colour.
+    private UIElement Breadcrumb(System.Windows.Media.Brush currentCol, params (string Label, Action? OnClick)[] segs)
     {
-        var tb = new TextBlock { FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"), VerticalAlignment = VerticalAlignment.Center };
-        tb.Inlines.Add(new System.Windows.Documents.Run("‹  " + label));
-        var b = new Border { Child = tb, Padding = new Thickness(6, 6, 6, 6), Margin = new Thickness(0, 0, 0, 4), Cursor = System.Windows.Input.Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left };
-        b.MouseLeftButtonDown += (_, __) => onClick();
-        return b;
+        var mono   = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+        var dim    = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var panel  = new System.Windows.Controls.WrapPanel { Margin = new Thickness(6, 4, 6, 8) };
+        for (int i = 0; i < segs.Length; i++)
+        {
+            var seg = segs[i];
+            bool isLast = i == segs.Length - 1;
+            var tb = new TextBlock { Text = seg.Label, FontFamily = mono, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            if (isLast)
+            {
+                tb.Foreground = currentCol; tb.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                tb.Foreground = dim;
+                if (seg.OnClick is { } onClick)
+                {
+                    tb.Cursor = System.Windows.Input.Cursors.Hand;
+                    tb.MouseEnter += (s, _) => tb.Foreground = accent;
+                    tb.MouseLeave += (s, _) => tb.Foreground = dim;
+                    tb.MouseLeftButtonDown += (s, _) => onClick();
+                }
+            }
+            panel.Children.Add(tb);
+            if (!isLast)
+                panel.Children.Add(new TextBlock { Text = "  ›  ", FontFamily = mono, FontSize = 11, Foreground = dim, VerticalAlignment = VerticalAlignment.Center });
+        }
+        return panel;
     }
 
     private UIElement NavHeader(string text, int count, System.Windows.Media.Brush col)
@@ -1212,24 +1241,56 @@ public partial class MainWindow : Window
         var hover = (System.Windows.Media.Brush)FindResource("HighlightBrush");
         var trans = System.Windows.Media.Brushes.Transparent;
 
-        var card = new Border { Background = trans, BorderBrush = trans, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 7, 10, 7), Margin = new Thickness(0, 0, 0, 2), Cursor = System.Windows.Input.Cursors.Hand };
+        bool owned0 = App.Settings.IsBlueprintOwned(bp.Name);
+
+        var card = new Border { Background = trans, BorderBrush = trans, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 7, 10, 7), Margin = new Thickness(0, 0, 0, 2), Cursor = System.Windows.Input.Cursors.Hand };
         var rowGrid = new Grid();
-        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var chk = OwnedCheckbox(bp);
-        _bpPills[bp.Name] = chk;
-        Grid.SetColumn(chk, 0);
-        rowGrid.Children.Add(chk);
+        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // ownership accent strip
+        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name
+        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // marker (tick / pill)
+
+        var strip = new Border { Width = 3, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 1, 11, 1), Background = owned0 ? _ownedGreen : trans };
+        Grid.SetColumn(strip, 0); rowGrid.Children.Add(strip);
+
         var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sp, 1);
         sp.Children.Add(new TextBlock { Text = bp.Name, FontWeight = FontWeights.SemiBold, Foreground = fg, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         if (showCategory)
             sp.Children.Add(new TextBlock { Text = bp.Category + (string.IsNullOrEmpty(bp.SubCategory) ? "" : " · " + bp.SubCategory), FontSize = 10, Foreground = dim, Margin = new Thickness(0, 2, 0, 0) });
         rowGrid.Children.Add(sp);
+
+        // Quiet ownership: a green ✓ tick at rest, the actionable pill only on hover.
+        var marker = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        var tick = new TextBlock { Text = "✓", FontSize = 12, FontWeight = FontWeights.Bold, Foreground = _ownedGreen, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Visibility = owned0 ? Visibility.Visible : Visibility.Collapsed };
+        var pill = OwnedCheckbox(bp);
+        pill.Margin = new Thickness(0);
+        pill.Visibility = Visibility.Collapsed;
+        marker.Children.Add(tick);
+        marker.Children.Add(pill);
+        Grid.SetColumn(marker, 2); rowGrid.Children.Add(marker);
+
         card.Child = rowGrid;
 
-        card.MouseEnter += (s, _) => { if (card != _selectedBpRow) card.Background = hover; };
-        card.MouseLeave += (s, _) => { if (card != _selectedBpRow) card.Background = trans; };
+        // in-place refresh of this row's ownership visuals (called by OnOwnershipChanged)
+        _bpRowOwned[bp.Name] = owned =>
+        {
+            strip.Background = owned ? _ownedGreen : trans;
+            ApplyCheckVisual(pill, owned);
+            tick.Visibility = owned && pill.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        };
+
+        card.MouseEnter += (s, _) =>
+        {
+            if (card != _selectedBpRow) card.Background = hover;
+            pill.Visibility = Visibility.Visible;
+            tick.Visibility = Visibility.Collapsed;
+        };
+        card.MouseLeave += (s, _) =>
+        {
+            if (card != _selectedBpRow) card.Background = trans;
+            pill.Visibility = Visibility.Collapsed;
+            tick.Visibility = App.Settings.IsBlueprintOwned(bp.Name) ? Visibility.Visible : Visibility.Collapsed;
+        };
         card.MouseLeftButtonDown += (s, _) =>
         {
             if (_selectedBpRow != null) { _selectedBpRow.Background = trans; _selectedBpRow.BorderBrush = trans; }
@@ -1297,8 +1358,8 @@ public partial class MainWindow : Window
 
         if (_bpOwnFilter == BpOwnFilter.All)
         {
-            if (_bpPills.TryGetValue(name, out var pill))
-                ApplyCheckVisual(pill, nowOwned);
+            if (_bpRowOwned.TryGetValue(name, out var apply))
+                apply(nowOwned);
             return;
         }
 
