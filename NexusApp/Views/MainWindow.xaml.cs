@@ -4,6 +4,7 @@ using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
 using NexusApp.ViewModels;
+using static NexusApp.Views.UiHelpers;
 
 namespace NexusApp.Views;
 
@@ -1532,14 +1533,6 @@ public partial class MainWindow : Window
         return container;
     }
 
-    private static System.Windows.Media.Brush CategoryBrush(string cat) => cat switch
-    {
-        "Weapons"         => BrushFromHex("#EF6B52"),
-        "Armor"           => BrushFromHex("#5BA0EB"),
-        "Ammo"            => BrushFromHex("#D4AA5A"),
-        "Ship Components" => BrushFromHex("#78C8A0"),
-        _                 => BrushFromHex("#8C887F"),
-    };
 
     private void BlueprintSearchRun_Click(object sender, RoutedEventArgs e)
     {
@@ -2190,44 +2183,4 @@ public partial class MainWindow : Window
         App.Settings.Save();
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static string GetSystem(string location)
-    {
-        if (location.StartsWith("Pyro") || location == "Akiro Cluster") return "Pyro";
-        if (location is "Glaciem Ring" or "Keeger Belt" or "Levski" or "Breaker Stations Interior" or "Breaker Stations Large Geode") return "Nyx";
-        return "Stanton";
-    }
-
-    private static string MethodLabel(string method) => method switch
-    {
-        "ship" => "Ship", "vehicle" => "ROC", "fps" => "FPS", "fps+vehicle" => "FPS · ROC", _ => method,
-    };
-
-    private static string CapFirst(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
-
-    private static System.Windows.Media.Brush RarityBrush(string rarity) => rarity switch
-    {
-        "legendary" => BrushFromHex("#FFD700"), "epic"   => BrushFromHex("#A855F7"),
-        "rare"      => BrushFromHex("#3B82F6"), "uncommon" => BrushFromHex("#22C55E"),
-        _ => BrushFromHex("#9E9E9E"),
-    };
-    private static System.Windows.Media.Brush TierBrush(string tier) => tier switch
-    {
-        "S" => BrushFromHex("#FFD700"), "A" => BrushFromHex("#4CAF50"),
-        "B" => BrushFromHex("#29B6F6"), _   => System.Windows.Media.Brushes.White,
-    };
-    private static System.Windows.Media.Brush SystemBrush(string sys) => sys switch
-    {
-        "Pyro" => BrushFromHex("#F97316"), "Nyx" => BrushFromHex("#A855F7"),
-        _ => BrushFromHex("#3B82F6"),
-    };
-    private static System.Windows.Media.Brush ModifierBrush(int mod) =>
-        mod > 0 ? BrushFromHex("#22C55E") : mod < 0 ? BrushFromHex("#EF4444") : BrushFromHex("#8B949E");
-    private static System.Windows.Media.Brush AccentBrush() => (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("AccentBrush");
-    private static System.Windows.Media.SolidColorBrush BrushFromHex(string hex)
-    {
-        var c = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
-        return new System.Windows.Media.SolidColorBrush(c);
-    }
 }
