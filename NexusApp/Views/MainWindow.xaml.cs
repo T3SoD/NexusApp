@@ -1630,12 +1630,6 @@ public partial class MainWindow : Window
             ? $"{full.Category} · {full.SubCategory}".ToUpperInvariant()
             : full.Category.ToUpperInvariant();
         double totalScu = full.Ingredients.Sum(i => i.Quantity);
-        string unlockShort = full.UnlockEntries.Count == 0
-            ? "Not listed"
-            : full.UnlockEntries.Select(e => e.Faction).Distinct().Count() is var fc && fc == 1
-                ? full.UnlockEntries[0].Faction
-                : $"{fc} factions";
-
         var heroContent = new StackPanel();
         heroContent.Children.Add(new TextBlock { Text = eyebrow, FontFamily = monoFont, FontSize = 11, Foreground = heroAccent });
         heroContent.Children.Add(new TextBlock
@@ -1651,7 +1645,6 @@ public partial class MainWindow : Window
         var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         specs.Children.Add(HeroSpec("INGREDIENTS", full.Ingredients.Count.ToString(), fgB, dimB, monoFont));
         specs.Children.Add(HeroSpec("TOTAL COST", $"{totalScu:0.##} SCU", fgB, dimB, monoFont));
-        specs.Children.Add(HeroSpec("UNLOCK", unlockShort, fgB, dimB, monoFont));
         Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
         var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         heroActions.Children.Add(OwnedToggle(full.Name));
@@ -1667,9 +1660,10 @@ public partial class MainWindow : Window
 
         var heroRoot = new Grid();
         heroRoot.Children.Add(heroContent);
-        // drafting corner ticks
-        heroRoot.Children.Add(new Border { Width = 12, Height = 12, BorderBrush = heroAccent, BorderThickness = new Thickness(2, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top });
-        heroRoot.Children.Add(new Border { Width = 12, Height = 12, BorderBrush = heroAccent, BorderThickness = new Thickness(0, 2, 2, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top });
+        // drafting corner ticks — pulled into the card's corner gutter so they sit
+        // clear of the eyebrow text rather than on top of it
+        heroRoot.Children.Add(new Border { Width = 11, Height = 11, BorderBrush = heroAccent, BorderThickness = new Thickness(2, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(-13, -11, 0, 0) });
+        heroRoot.Children.Add(new Border { Width = 11, Height = 11, BorderBrush = heroAccent, BorderThickness = new Thickness(0, 2, 2, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, -11, -13, 0) });
 
         var heroCard = new Border
         {
@@ -1741,13 +1735,15 @@ public partial class MainWindow : Window
                         var sysPart  = m.Systems is { Length: > 0 } ? string.Join("/", m.Systems) : null;
                         var meta     = sysPart != null ? $" ({rankPart}  ·  {sysPart})" : $" ({rankPart})";
 
-                        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 1, 0, 1) };
-                        row.Children.Add(new TextBlock
+                        var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(8, 1, 0, 1), LastChildFill = true };
+                        var bullet = new TextBlock
                         {
                             Text = "·  ", FontSize = 11,
                             Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
                             VerticalAlignment = VerticalAlignment.Top,
-                        });
+                        };
+                        System.Windows.Controls.DockPanel.SetDock(bullet, System.Windows.Controls.Dock.Left);
+                        row.Children.Add(bullet);
                         var missionLine = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
                         missionLine.Inlines.Add(new System.Windows.Documents.Run(m.MissionTitle)
                         {
