@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:NexusApp.ViewModels"
         xmlns:conv="clr-namespace:NexusApp.Converters"
         xmlns:models="clr-namespace:NexusApp.Models"
-        Title="Nexus" Icon="/Assets/nexus_icon.png" Height="820" Width="1280"
+        Title="Nexus" Icon="/Assets/nexus_icon_classic.png" Height="820" Width="1280"
         MinHeight="600" MinWidth="900"
         Background="{DynamicResource BgBrush}"
         Foreground="{DynamicResource FgBrush}"
