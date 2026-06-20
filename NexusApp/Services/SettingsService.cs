@@ -7,7 +7,9 @@ namespace NexusApp.Services;
 
 public class SettingsService
 {
-    private static readonly string _path = Path.Combine(
+    private readonly string _path;
+
+    private static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "NexusApp", "settings.json");
 
@@ -39,8 +41,13 @@ public class SettingsService
 
     public AppSettings Current { get; private set; }
 
-    public SettingsService()
+    /// <param name="settingsPath">
+    /// Override the settings file location. Defaults to %AppData%\NexusApp\settings.json.
+    /// Used by tests to point at a temp file instead of the real user profile.
+    /// </param>
+    public SettingsService(string? settingsPath = null)
     {
+        _path = settingsPath ?? DefaultPath;
         Current = Load();
     }
 
