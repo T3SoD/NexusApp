@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.3.1  —  Jun 20, 2026",
+        [
+            "Faster startup — the app no longer fully parses its mining database on every launch, only when the data actually changes",
+            "Smoother Mining Codex filtering — the list now updates when you pause typing instead of rebuilding on every keystroke",
+            "Friendlier error handling — unexpected errors show a clear message and are written to a local log file (%AppData%\\NexusApp\\logs) for troubleshooting",
+        ]),
         ("App  5.3.0  —  Jun 20, 2026",
         [
             "Redesigned the Blueprint Library — a selected blueprint now opens as a schematic sheet, with a category eyebrow, large title, and quick read-outs for ingredient count and total cost",
