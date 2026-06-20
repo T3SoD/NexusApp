@@ -542,9 +542,17 @@
 
                         <!-- Left: drill-down navigation (Category → Subcategory → blueprint) -->
                         <Border BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,4,12,0">
-                                <StackPanel x:Name="BlueprintNavPanel"/>
-                            </ScrollViewer>
+                            <Grid Margin="0,4,12,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <!-- Sticky breadcrumb: stays pinned while the list below scrolls -->
+                                <ContentControl x:Name="BlueprintCrumbHost" Grid.Row="0"/>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="BlueprintNavPanel"/>
+                                </ScrollViewer>
+                            </Grid>
                         </Border>
 
                         <!-- Right: ingredient detail panel -->

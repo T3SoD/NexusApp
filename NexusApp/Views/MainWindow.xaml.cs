@@ -868,8 +868,7 @@ public partial class MainWindow : Window
     {
         _bpOwnFilter = filter;
         UpdateOwnedChips();
-        RenderBlueprintNav();
-        ShowBlueprintLanding();
+        GoRoot();   // restart the (filtered) drill-down from the top
     }
 
     private void UpdateOwnedChips()
@@ -904,7 +903,16 @@ public partial class MainWindow : Window
         BpOwnedCount.Text = n == 1 ? "1 owned" : $"{n} owned";
     }
 
-    private int CatCount(string cat) => _allBlueprints?.Count(b => b.Category == cat) ?? 0;
+    private int CatCount(string cat) => _allBlueprints?.Count(b => b.Category == cat && MatchesOwnFilter(b)) ?? 0;
+
+    // True when a blueprint should appear under the active ownership filter. The
+    // filter constrains every level of the drill-down (the chips show which is on).
+    private bool MatchesOwnFilter(NexusApp.Models.Blueprint b) => _bpOwnFilter switch
+    {
+        BpOwnFilter.Owned    => App.Settings.IsBlueprintOwned(b.Name),
+        BpOwnFilter.NotOwned => !App.Settings.IsBlueprintOwned(b.Name),
+        _                    => true,
+    };
 
     // ── Cross-navigation ───────────────────────────────────────────────────────
     private void NavigateToBlueprint(string name)
@@ -996,75 +1004,54 @@ public partial class MainWindow : Window
         return parts.Count > 0 ? string.Join(" ", parts) : (s.Length > 0 ? s : name);
     }
 
+    // Family key used for grouping variants together. Weapon/ship skins are quoted
+    // or parenthesised, so the colour-list FamilyKey handles them. Armor skins are
+    // free-text words trailing the piece ("Antium Helmet Moss Camo") that a fixed
+    // colour list can't catch — so for armor we keep everything up to and including
+    // the piece word and drop the rest, collapsing all of a model's skins into one.
+    private static string FamilyKeyOf(NexusApp.Models.Blueprint b)
+        => b.Category == "Armor" ? ArmorFamilyKey(b.Name) : FamilyKey(b.Name);
+
+    private static string ArmorFamilyKey(string name)
+    {
+        var piece = ArmorPiece(name);
+        if (piece != "Other")
+        {
+            var s = System.Text.RegularExpressions.Regex.Replace(name, "\"[^\"]*\"", "");
+            s = System.Text.RegularExpressions.Regex.Replace(s, "\\([^)]*\\)", "");
+            s = System.Text.RegularExpressions.Regex.Replace(s, "\\s+", " ").Trim();
+            var parts = s.Split(' ');
+            for (int i = 0; i < parts.Length; i++)
+                if (string.Equals(parts[i], piece, StringComparison.OrdinalIgnoreCase))
+                    return string.Join(" ", parts.Take(i + 1));
+        }
+        return FamilyKey(name);   // no piece word found; fall back to the generic key
+    }
+
     private void RenderBlueprintNav()
     {
         BlueprintNavPanel.Children.Clear();
+        BlueprintCrumbHost.Content = null;
         _selectedBpRow = null;
         _bpRowOwned.Clear();
         if (_allBlueprints == null) return;
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var catCol = CategoryBrush(_bpCat);
 
-        // Ownership filter takes over the nav with a category-grouped matching list.
-        if (_bpOwnFilter != BpOwnFilter.All)
-        {
-            var wantOwned = _bpOwnFilter == BpOwnFilter.Owned;
-            var matches = _allBlueprints
-                .Where(b => App.Settings.IsBlueprintOwned(b.Name) == wantOwned)
-                .OrderBy(b => b.Category).ThenBy(b => b.Name).ToList();
-            var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
-            var hdr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 0, 8) };
-            hdr.Children.Add(new TextBlock { Text = wantOwned ? "Owned" : "Not owned", FontFamily = headFont, FontSize = 16, Foreground = accent, VerticalAlignment = VerticalAlignment.Center });
-            hdr.Children.Add(new TextBlock { Text = $"  ·  {matches.Count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center });
-            BlueprintNavPanel.Children.Add(hdr);
-            if (matches.Count == 0)
-            {
-                BlueprintNavPanel.Children.Add(new TextBlock
-                {
-                    Text = wantOwned ? "Nothing marked owned yet" : "Every blueprint is marked owned",
-                    FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                    Margin = new Thickness(6, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
-                });
-                return;
-            }
-            // Group matches under colour-coded category headers. Cap total realized
-            // rows — the flat list isn't virtualized, so rendering the whole "Not
-            // owned" catalog froze the UI thread; search narrows past the cap.
-            const int filterRenderCap = 150;
-            var rendered = 0;
-            var groups = matches
-                .GroupBy(b => b.Category)
-                .OrderBy(g => { var i = Array.IndexOf(_bpCategories, g.Key); return i < 0 ? int.MaxValue : i; })
-                .ThenBy(g => g.Key);
-            foreach (var grp in groups)
-            {
-                if (rendered >= filterRenderCap) break;
-                BlueprintNavPanel.Children.Add(FilterCategoryHeader(grp.Key, grp.Count()));
-                foreach (var bp in grp.OrderBy(b => b.Name))
-                {
-                    if (rendered >= filterRenderCap) break;
-                    BlueprintNavPanel.Children.Add(BlueprintRow(bp, false));
-                    rendered++;
-                }
-            }
-            if (matches.Count > rendered)
-                BlueprintNavPanel.Children.Add(new TextBlock
-                {
-                    Text = $"Showing first {rendered} of {matches.Count}. Use search above to find a specific blueprint.",
-                    FontSize = 11, FontStyle = FontStyles.Italic,
-                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                    Margin = new Thickness(6, 10, 6, 4), TextWrapping = TextWrapping.Wrap,
-                });
-            return;
-        }
+        // The ownership filter constrains the drill-down at every level (the chips
+        // above show which filter is active); the breadcrumb path is identical to
+        // the All view. Drilling never realizes the whole catalog at once, so no
+        // render cap is needed.
+        var src = _allBlueprints.Where(MatchesOwnFilter);
 
         switch (_bpLevel)
         {
             case "category":
             {
-                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, (Action?)null)));
+                BlueprintCrumbHost.Content = Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, (Action?)null));
                 BlueprintNavPanel.Children.Add(NavHeader(_bpCat, CatCount(_bpCat), catCol));
-                var inCat = _allBlueprints.Where(b => b.Category == _bpCat).ToList();
+                var inCat = src.Where(b => b.Category == _bpCat).ToList();
+                if (inCat.Count == 0) { BlueprintNavPanel.Children.Add(NavEmptyNote()); break; }
                 var groups = inCat.Where(b => Subgroup(b) != null)
                     .GroupBy(b => Subgroup(b)!).OrderBy(g => g.Key).ToList();
                 if (groups.Count > 0)
@@ -1085,10 +1072,11 @@ public partial class MainWindow : Window
 
             case "subgroup":
             {
-                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)), (_bpSub, (Action?)null)));
-                var items = _allBlueprints.Where(b => b.Category == _bpCat && Subgroup(b) == _bpSub).ToList();
+                BlueprintCrumbHost.Content = Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)), (_bpSub, (Action?)null));
+                var items = src.Where(b => b.Category == _bpCat && Subgroup(b) == _bpSub).ToList();
                 BlueprintNavPanel.Children.Add(NavHeader(_bpSub, items.Count, catCol));
-                RenderLeafGroup(items, catCol);
+                if (items.Count == 0) BlueprintNavPanel.Children.Add(NavEmptyNote());
+                else RenderLeafGroup(items, catCol);
                 break;
             }
 
@@ -1097,18 +1085,19 @@ public partial class MainWindow : Window
                 var famCrumbs = new System.Collections.Generic.List<(string, Action?)> { ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)) };
                 if (_bpSub.Length > 0) famCrumbs.Add((_bpSub, () => EnterSubgroup(_bpSub)));
                 famCrumbs.Add((_bpFam, (Action?)null));
-                BlueprintNavPanel.Children.Add(Breadcrumb(catCol, famCrumbs.ToArray()));
-                var variants = _allBlueprints
-                    .Where(b => b.Category == _bpCat && (_bpSub.Length == 0 ? Subgroup(b) == null : Subgroup(b) == _bpSub) && FamilyKey(b.Name) == _bpFam)
+                BlueprintCrumbHost.Content = Breadcrumb(catCol, famCrumbs.ToArray());
+                var variants = src
+                    .Where(b => b.Category == _bpCat && (_bpSub.Length == 0 ? Subgroup(b) == null : Subgroup(b) == _bpSub) && FamilyKeyOf(b) == _bpFam)
                     .OrderBy(b => b.Name).ToList();
                 BlueprintNavPanel.Children.Add(NavHeader(_bpFam, variants.Count, catCol));
+                if (variants.Count == 0) BlueprintNavPanel.Children.Add(NavEmptyNote());
                 foreach (var bp in variants)
                     BlueprintNavPanel.Children.Add(BlueprintRow(bp, false));
                 break;
             }
 
             case "search":
-                BlueprintNavPanel.Children.Add(Breadcrumb(accent, ("Browse", GoRoot), ("Results", (Action?)null)));
+                BlueprintCrumbHost.Content = Breadcrumb(accent, ("Browse", GoRoot), ("Results", (Action?)null));
                 BlueprintNavPanel.Children.Add(NavHeader("Results", _bpSearchResults.Count, accent));
                 if (_bpSearchResults.Count == 0)
                     BlueprintNavPanel.Children.Add(new TextBlock { Text = "No matches", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), Margin = new Thickness(6, 8, 0, 0) });
@@ -1117,16 +1106,33 @@ public partial class MainWindow : Window
                 break;
 
             default: // root
+            {
+                var cards = 0;
                 foreach (var cat in _bpCategories)
-                    BlueprintNavPanel.Children.Add(CategoryCard(cat, CatCount(cat)));
+                {
+                    var c = CatCount(cat);
+                    if (_bpOwnFilter != BpOwnFilter.All && c == 0) continue;   // hide empties when filtered
+                    BlueprintNavPanel.Children.Add(CategoryCard(cat, c));
+                    cards++;
+                }
+                if (cards == 0)
+                    BlueprintNavPanel.Children.Add(NavEmptyNote(
+                        _bpOwnFilter == BpOwnFilter.Owned ? "Nothing marked owned yet" : "Every blueprint is marked owned"));
                 break;
+            }
         }
     }
+
+    private TextBlock NavEmptyNote(string text = "Nothing here in this filter") => new()
+    {
+        Text = text, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+        Margin = new Thickness(6, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
+    };
 
     // within a leaf set: families with >1 variant become drill rows; singles become blueprint rows
     private void RenderLeafGroup(System.Collections.Generic.IEnumerable<NexusApp.Models.Blueprint> items, System.Windows.Media.Brush col)
     {
-        var fams = items.GroupBy(b => FamilyKey(b.Name)).OrderBy(g => g.Key).ToList();
+        var fams = items.GroupBy(FamilyKeyOf).OrderBy(g => g.Key).ToList();
         foreach (var fam in fams)
         {
             if (fam.Count() > 1)
@@ -1367,9 +1373,9 @@ public partial class MainWindow : Window
     }
 
     // Applies a single ownership change to the UI. Always updates the count and the
-    // detail toggle. In the drill-down (All) view it updates just the toggled row's
-    // pill in place — no rebuild. In a filtered view the matching set and its category
-    // grouping change, so it re-renders the (capped) filtered list, which is cheap.
+    // detail toggle. In the All view it updates just the toggled row's pill in place
+    // — no rebuild. In a filtered view that row no longer belongs in the list, so the
+    // current drill-down level is re-rendered (cheap — one level, not the catalog).
     private void OnOwnershipChanged(string name, bool nowOwned)
     {
         UpdateOwnedCount();
@@ -1386,17 +1392,6 @@ public partial class MainWindow : Window
         }
 
         RenderBlueprintNav();
-    }
-
-    // Colour-coded category section header for the grouped ownership filter list.
-    private UIElement FilterCategoryHeader(string category, int count)
-    {
-        var col = CategoryBrush(category);
-        var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 12, 0, 4) };
-        sp.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = col, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
-        sp.Children.Add(new TextBlock { Text = category, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
-        sp.Children.Add(new TextBlock { Text = $"  {count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center });
-        return sp;
     }
 
     private void ApplyCheckVisual(Border pill, bool owned)
