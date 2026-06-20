@@ -68,7 +68,7 @@ public class SettingsService
                 return settings;
             }
         }
-        catch { return new AppSettings(); }
+        catch (Exception ex) { Logger.Error($"Failed to load settings from {_path}; using defaults", ex); return new AppSettings(); }
 
         // Schema migrations — bump SettingsSchemaVersion after each one
         var migrated = false;
@@ -111,7 +111,7 @@ public class SettingsService
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             File.WriteAllText(_path, JsonSerializer.Serialize(settings, _opts));
         }
-        catch { }
+        catch (Exception ex) { Logger.Error($"Failed to save settings to {_path}", ex); }
     }
 
     public void Save() => Save(Current);
