@@ -868,7 +868,11 @@ public partial class MainWindow : Window
     {
         _bpOwnFilter = filter;
         UpdateOwnedChips();
-        GoRoot();   // restart the (filtered) drill-down from the top
+        // A filter is a lens, not a mode switch: stay where the user is and just
+        // re-filter the current level. Search results are filter-independent, so
+        // toggling a filter from a search drops back to the (filtered) root.
+        if (_bpLevel == "search") GoRoot();
+        else { RenderBlueprintNav(); ShowBlueprintLanding(); }
     }
 
     private void UpdateOwnedChips()
@@ -993,12 +997,18 @@ public partial class MainWindow : Window
         return "Other";
     }
 
-    // family = name with quoted skins / parentheticals / trailing colour words removed (collapses variants)
-    private static string FamilyKey(string name)
+    // Drops quoted skins + parentheticals and collapses whitespace, leaving the bare model words.
+    private static string StripDecorations(string name)
     {
         var s = System.Text.RegularExpressions.Regex.Replace(name, "\"[^\"]*\"", "");
         s = System.Text.RegularExpressions.Regex.Replace(s, "\\([^)]*\\)", "");
-        s = System.Text.RegularExpressions.Regex.Replace(s, "\\s+", " ").Trim();
+        return System.Text.RegularExpressions.Regex.Replace(s, "\\s+", " ").Trim();
+    }
+
+    // family = name with quoted skins / parentheticals / trailing colour words removed (collapses variants)
+    private static string FamilyKey(string name)
+    {
+        var s = StripDecorations(name);
         var parts = s.Split(' ').ToList();
         while (parts.Count > 0 && _variantWords.Contains(parts[^1])) parts.RemoveAt(parts.Count - 1);
         return parts.Count > 0 ? string.Join(" ", parts) : (s.Length > 0 ? s : name);
@@ -1017,15 +1027,12 @@ public partial class MainWindow : Window
         var piece = ArmorPiece(name);
         if (piece != "Other")
         {
-            var s = System.Text.RegularExpressions.Regex.Replace(name, "\"[^\"]*\"", "");
-            s = System.Text.RegularExpressions.Regex.Replace(s, "\\([^)]*\\)", "");
-            s = System.Text.RegularExpressions.Regex.Replace(s, "\\s+", " ").Trim();
-            var parts = s.Split(' ');
+            var parts = StripDecorations(name).Split(' ');
             for (int i = 0; i < parts.Length; i++)
                 if (string.Equals(parts[i], piece, StringComparison.OrdinalIgnoreCase))
                     return string.Join(" ", parts.Take(i + 1));
         }
-        return FamilyKey(name);   // no piece word found; fall back to the generic key
+        return FamilyKey(name);   // piece word not found as a standalone token; fall back
     }
 
     private void RenderBlueprintNav()
