@@ -1501,6 +1501,14 @@ public partial class MainWindow : Window
         return tb;
     }
 
+    private UIElement HeroSpec(string label, string value, System.Windows.Media.Brush fg, System.Windows.Media.Brush dim, System.Windows.Media.FontFamily mono)
+    {
+        var sp = new StackPanel { Margin = new Thickness(0, 0, 26, 0) };
+        sp.Children.Add(new TextBlock { Text = label, FontFamily = mono, FontSize = 9, Foreground = dim });
+        sp.Children.Add(new TextBlock { Text = value, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 2, 0, 0) });
+        return sp;
+    }
+
     private void ShowBlueprintDetail(NexusApp.Models.Blueprint selected)
     {
         var full = App.Data.GetBlueprintFull(selected.Name);
@@ -1510,29 +1518,41 @@ public partial class MainWindow : Window
         if (full == null) return;
         _detailBpName = full.Name;
 
-        var heroCard = new Border
+        // ── Schematic hero: drafting-sheet header ─────────────────────────────
+        var heroAccent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var fgB      = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dimB     = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+        var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+
+        var eyebrow = full.SubCategory is { Length: > 0 }
+            ? $"{full.Category} · {full.SubCategory}".ToUpperInvariant()
+            : full.Category.ToUpperInvariant();
+        double totalScu = full.Ingredients.Sum(i => i.Quantity);
+        string unlockShort = full.UnlockEntries.Count == 0
+            ? "Not listed"
+            : full.UnlockEntries.Select(e => e.Faction).Distinct().Count() is var fc && fc == 1
+                ? full.UnlockEntries[0].Faction
+                : $"{fc} factions";
+
+        var heroContent = new StackPanel();
+        heroContent.Children.Add(new TextBlock { Text = eyebrow, FontFamily = monoFont, FontSize = 11, Foreground = heroAccent });
+        heroContent.Children.Add(new TextBlock
         {
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 13, 14, 13), Margin = new Thickness(0, 0, 0, 6),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
-        };
-        var heroGrid = new Grid();
-        heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var heroText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        heroText.Children.Add(new TextBlock
-        {
-            Text = full.Name, FontSize = 22, FontWeight = FontWeights.Bold,
-            FontFamily = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont"),
-            Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+            Text = full.Name, FontFamily = headFont, FontSize = 25, FontWeight = FontWeights.SemiBold,
+            Foreground = fgB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap,
         });
-        heroText.Children.Add(new TextBlock
-        {
-            Text = full.Category, FontSize = 12, Margin = new Thickness(0, 2, 0, 0),
-            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-        });
-        heroGrid.Children.Add(heroText);
-        var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        heroContent.Children.Add(new Border { Height = 1, Background = heroAccent, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0) });
+
+        var heroRow = new Grid { Margin = new Thickness(0, 13, 0, 0) };
+        heroRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heroRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
+        specs.Children.Add(HeroSpec("INGREDIENTS", full.Ingredients.Count.ToString(), fgB, dimB, monoFont));
+        specs.Children.Add(HeroSpec("TOTAL COST", $"{totalScu:0.##} SCU", fgB, dimB, monoFont));
+        specs.Children.Add(HeroSpec("UNLOCK", unlockShort, fgB, dimB, monoFont));
+        Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
+        var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         heroActions.Children.Add(OwnedToggle(full.Name));
         var heroAddBtn = new Button
         {
@@ -1541,9 +1561,22 @@ public partial class MainWindow : Window
         };
         heroAddBtn.Click += (s, e) => { foreach (var i in full.Ingredients) _vm.AddToShoppingCommand.Execute(i); };
         heroActions.Children.Add(heroAddBtn);
-        Grid.SetColumn(heroActions, 1);
-        heroGrid.Children.Add(heroActions);
-        heroCard.Child = heroGrid;
+        Grid.SetColumn(heroActions, 1); heroRow.Children.Add(heroActions);
+        heroContent.Children.Add(heroRow);
+
+        var heroRoot = new Grid();
+        heroRoot.Children.Add(heroContent);
+        // drafting corner ticks
+        heroRoot.Children.Add(new Border { Width = 12, Height = 12, BorderBrush = heroAccent, BorderThickness = new Thickness(2, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top });
+        heroRoot.Children.Add(new Border { Width = 12, Height = 12, BorderBrush = heroAccent, BorderThickness = new Thickness(0, 2, 2, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top });
+
+        var heroCard = new Border
+        {
+            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 16, 18, 16), Margin = new Thickness(0, 0, 0, 8),
+            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            Child = heroRoot,
+        };
         BlueprintDetailPanel.Children.Add(heroCard);
 
         // ── two-column split: ingredients (left) | unlock + locations (right) ──
@@ -1649,73 +1682,74 @@ public partial class MainWindow : Window
         }
 
         host = leftHost;
-        var ingHeader = new TextBlock
-        {
-            Text = $"INGREDIENTS  ·  {full.Ingredients.Count}",
-            FontSize = 10, FontWeight = FontWeights.Bold,
-            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-            Margin = new Thickness(0, 8, 0, 4),
-        };
-        host.Children.Add(ingHeader);
+        var navBorder0 = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
 
-        double maxQty = full.Ingredients.Count > 0 ? full.Ingredients.Max(i => i.Quantity) : 1;
-        if (maxQty <= 0) maxQty = 1;
+        // Bill of materials header (label + QTY column heading)
+        var bomHead = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bomHead.Children.Add(new TextBlock { Text = "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
+        var bomQtyHd = new TextBlock { Text = "QTY", FontFamily = monoFont, FontSize = 11, Foreground = dimB };
+        Grid.SetColumn(bomQtyHd, 1); bomHead.Children.Add(bomQtyHd);
+        host.Children.Add(new Border { Child = bomHead, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8), Margin = new Thickness(0, 0, 0, 2) });
+
+        double bomTotal = full.Ingredients.Sum(i => i.Quantity);
 
         foreach (var ing in full.Ingredients)
         {
+            var ingCopy = ing;
             var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
             var rb = RarityBrush(rarity);
-            var card = new Border
-            {
-                Margin = new Thickness(0, 3, 0, 3), Padding = new Thickness(12, 8, 12, 9), CornerRadius = new CornerRadius(8),
-                Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-                BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
-            };
-            var ingStack = new StackPanel();
-            var top = new Grid();
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var tier = rarity.Length > 0 ? char.ToUpper(rarity[0]) + rarity.Substring(1) : "";
 
-            var gem = new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(3), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-            Grid.SetColumn(gem, 0); top.Children.Add(gem);
-            var name = new TextBlock { Text = ing.ResourceName, FontSize = 13, Foreground = rb, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(name, 1); top.Children.Add(name);
-            var qty = new TextBlock { Text = $"{ing.Quantity:0.##} {ing.Unit}", FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-            Grid.SetColumn(qty, 2); top.Children.Add(qty);
-            var ingCopy = ing;
-            var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(9, 2, 9, 2), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ingCopy, VerticalAlignment = VerticalAlignment.Center };
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name + tier
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // qty + unit
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // add
+
+            var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
+            Grid.SetColumn(dot, 0); g.Children.Add(dot);
+
+            var nameWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            nameWrap.Children.Add(new TextBlock { Text = ing.ResourceName, FontSize = 13.5, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
+            if (tier.Length > 0)
+                nameWrap.Children.Add(new TextBlock { Text = "   " + tier, FontSize = 10, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(nameWrap, 1); g.Children.Add(nameWrap);
+
+            var qtyWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+            qtyWrap.Children.Add(new TextBlock { Text = $"{ing.Quantity:0.##}", FontFamily = monoFont, FontSize = 13, Foreground = fgB, Width = 50, TextAlignment = System.Windows.TextAlignment.Right });
+            qtyWrap.Children.Add(new TextBlock { Text = " " + ing.Unit, FontFamily = monoFont, FontSize = 11, Foreground = dimB, Width = 38, TextAlignment = System.Windows.TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(qtyWrap, 2); g.Children.Add(qtyWrap);
+
+            var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ingCopy, VerticalAlignment = VerticalAlignment.Center };
             addBtn.Click += (s, e) => _vm.AddToShoppingCommand.Execute(((Button)s).Tag);
-            Grid.SetColumn(addBtn, 3); top.Children.Add(addBtn);
-            ingStack.Children.Add(top);
+            Grid.SetColumn(addBtn, 3); g.Children.Add(addBtn);
 
-            double frac = System.Math.Min(1.0, ing.Quantity / maxQty);
-            var barGrid = new Grid { Height = 5, Margin = new Thickness(0, 7, 0, 0) };
-            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
-            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
-            var trackBar = new Border { Background = (System.Windows.Media.Brush)FindResource("Bg3Brush"), CornerRadius = new CornerRadius(2) };
-            Grid.SetColumnSpan(trackBar, 2); barGrid.Children.Add(trackBar);
-            var fillBar = new Border { Background = rb, CornerRadius = new CornerRadius(2) };
-            Grid.SetColumn(fillBar, 0); barGrid.Children.Add(fillBar);
-            ingStack.Children.Add(barGrid);
+            var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1) };
 
-            card.Child = ingStack;
-
-            // cross-link: clicking an ingredient that exists as a resource opens it in the Codex
+            // cross-link: clicking the row opens the ingredient in the Mining Codex
             if (_vm.AllResources.Any(r => r.Name.Equals(ing.ResourceName, StringComparison.OrdinalIgnoreCase)))
             {
-                card.Cursor = System.Windows.Input.Cursors.Hand;
-                card.ToolTip = "Open in Mining Codex";
-                var navBorder = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
-                var accentB   = (System.Windows.Media.Brush)FindResource("AccentBrush");
-                card.MouseEnter += (s, _) => card.BorderBrush = accentB;
-                card.MouseLeave += (s, _) => card.BorderBrush = navBorder;
-                card.MouseLeftButtonDown += (s, _) => NavigateToResource(ingCopy.ResourceName);
+                rowBorder.Cursor = System.Windows.Input.Cursors.Hand;
+                rowBorder.ToolTip = "Open in Mining Codex";
+                var hov = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+                rowBorder.MouseEnter += (s, _) => rowBorder.Background = hov;
+                rowBorder.MouseLeave += (s, _) => rowBorder.Background = System.Windows.Media.Brushes.Transparent;
+                rowBorder.MouseLeftButtonDown += (s, _) => NavigateToResource(ingCopy.ResourceName);
             }
 
-            host.Children.Add(card);
+            host.Children.Add(rowBorder);
         }
+
+        // Total footer
+        var totalGrid = new Grid { Margin = new Thickness(2, 11, 2, 0) };
+        totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        totalGrid.Children.Add(new TextBlock { Text = "TOTAL", FontFamily = monoFont, FontSize = 11, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+        var totalVal = new TextBlock { Text = $"{bomTotal:0.##} SCU", FontFamily = monoFont, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = heroAccent, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(totalVal, 1); totalGrid.Children.Add(totalVal);
+        host.Children.Add(new Border { Child = totalGrid, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 10, 0, 0), Margin = new Thickness(0, 2, 0, 0) });
 
         host = rightHost;
 
