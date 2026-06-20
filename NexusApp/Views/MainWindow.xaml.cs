@@ -1385,29 +1385,69 @@ public partial class MainWindow : Window
         _detailOwnedToggle = null;
         var fg       = (System.Windows.Media.Brush)FindResource("FgBrush");
         var dim      = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var accent   = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
-        var total    = _allBlueprints?.Count ?? 0;
+        var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
 
-        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "Blueprint Library", FontFamily = headFont, FontSize = 24, Foreground = fg, Margin = new Thickness(4, 4, 0, 0) });
-        BlueprintDetailPanel.Children.Add(new TextBlock { Text = $"{total} blueprints across {_bpCategories.Length} categories", FontSize = 12, Foreground = dim, Margin = new Thickness(4, 6, 0, 2) });
-        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "Pick a category on the left to drill in, or search above. Choose a blueprint to see its recipe and where to unlock it.", FontSize = 12, Foreground = dim, Margin = new Thickness(4, 0, 0, 16), TextWrapping = TextWrapping.Wrap, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left });
+        var all   = _allBlueprints ?? new List<NexusApp.Models.Blueprint>();
+        int total = all.Count;
+        int owned = all.Count(b => App.Settings.IsBlueprintOwned(b.Name));
+        int pct   = total > 0 ? (int)System.Math.Round(owned * 100.0 / total) : 0;
 
-        var wrap = new System.Windows.Controls.WrapPanel();
+        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "BLUEPRINT MANIFEST", FontFamily = monoFont, FontSize = 11, Foreground = accent, Margin = new Thickness(2, 4, 0, 8) });
+
+        var line = new TextBlock { FontSize = 15, Margin = new Thickness(2, 0, 0, 0), TextWrapping = TextWrapping.Wrap };
+        line.Inlines.Add(new System.Windows.Documents.Run("You own ") { Foreground = dim });
+        line.Inlines.Add(new System.Windows.Documents.Run(owned.ToString("N0")) { Foreground = fg, FontWeight = FontWeights.SemiBold });
+        line.Inlines.Add(new System.Windows.Documents.Run(" of ") { Foreground = dim });
+        line.Inlines.Add(new System.Windows.Documents.Run(total.ToString("N0")) { Foreground = fg, FontWeight = FontWeights.SemiBold });
+        line.Inlines.Add(new System.Windows.Documents.Run(" blueprints") { Foreground = dim });
+        BlueprintDetailPanel.Children.Add(line);
+
+        BlueprintDetailPanel.Children.Add(new TextBlock { Text = $"{pct}%", FontFamily = headFont, FontSize = 48, FontWeight = FontWeights.Bold, Foreground = accent, Margin = new Thickness(2, 4, 0, 0) });
+        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "Mark blueprints as Owned as you unlock them in-game — your manifest fills in here.", FontSize = 12, Foreground = dim, Margin = new Thickness(2, 2, 0, 18), TextWrapping = TextWrapping.Wrap, MaxWidth = 540, HorizontalAlignment = HorizontalAlignment.Left });
+
         foreach (var cat in _bpCategories)
-            wrap.Children.Add(CategoryStatChip(cat, CatCount(cat)));
-        BlueprintDetailPanel.Children.Add(wrap);
+        {
+            int catTotal = all.Count(b => b.Category == cat);
+            int catOwned = all.Count(b => b.Category == cat && App.Settings.IsBlueprintOwned(b.Name));
+            BlueprintDetailPanel.Children.Add(CategoryProgress(cat, catOwned, catTotal));
+        }
     }
 
-    private Border CategoryStatChip(string cat, int count)
+    private UIElement CategoryProgress(string cat, int owned, int total)
     {
-        var col = CategoryBrush(cat);
-        var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        sp.Children.Add(new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Fill = col, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
-        sp.Children.Add(new TextBlock { Text = cat, FontSize = 11, Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
-        sp.Children.Add(new TextBlock { Text = $"  {count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
-        var chip = new Border { Child = sp, Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 6, 14, 6), Margin = new Thickness(0, 0, 10, 10), Cursor = System.Windows.Input.Cursors.Hand };
-        chip.MouseLeftButtonDown += (_, __) => EnterCategory(cat);
-        return chip;
+        var col  = CategoryBrush(cat);
+        var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+
+        var container = new StackPanel { Margin = new Thickness(2, 8, 6, 8), Cursor = System.Windows.Input.Cursors.Hand };
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        left.Children.Add(new System.Windows.Shapes.Ellipse { Width = 10, Height = 10, Fill = col, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0) });
+        left.Children.Add(new TextBlock { Text = cat, FontSize = 13, Foreground = fg, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(left);
+        var cnt = new TextBlock { Text = $"{owned} / {total}", FontFamily = mono, FontSize = 12, Foreground = dim, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(cnt, 1); row.Children.Add(cnt);
+        container.Children.Add(row);
+
+        double frac = total > 0 ? (double)owned / total : 0;
+        var barGrid = new Grid { Height = 8, Margin = new Thickness(0, 6, 0, 0) };
+        barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0.0001, frac), GridUnitType.Star) });
+        barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0.0001, 1 - frac), GridUnitType.Star) });
+        var track = new Border { Background = (System.Windows.Media.Brush)FindResource("Bg3Brush"), CornerRadius = new CornerRadius(4) };
+        Grid.SetColumnSpan(track, 2); barGrid.Children.Add(track);
+        if (frac > 0)
+        {
+            var fill = new Border { Background = col, CornerRadius = new CornerRadius(4) };
+            Grid.SetColumn(fill, 0); barGrid.Children.Add(fill);
+        }
+        container.Children.Add(barGrid);
+        container.MouseLeftButtonDown += (_, __) => EnterCategory(cat);
+        return container;
     }
 
     private static System.Windows.Media.Brush CategoryBrush(string cat) => cat switch
