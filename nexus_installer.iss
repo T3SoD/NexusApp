@@ -26,6 +26,10 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 CloseApplications=yes
 UninstallDisplayName={#AppName}
+; Teal app icon for the "Installed apps" / uninstall entry (Inno does not set this
+; automatically — without it Windows shows a generic icon). Points at the icon we
+; ship below, not the exe, so it's a clean teal regardless of exe embedding.
+UninstallDisplayIcon={app}\nexus.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,10 +45,16 @@ Type: files; Name: "{app}\Nexus_v4.*"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Ship the teal app icon so the shortcuts + uninstall entry can reference a real
+; .ico file (the <ApplicationIcon> is embedded in the exe, not copied loose).
+Source: "NexusApp\Assets\nexus.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#ExeName}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; Tasks: desktopicon
+; IconFilename pins the teal .ico explicitly. Besides guaranteeing teal, pointing
+; the shortcut at a new icon path makes Windows load it fresh instead of reusing a
+; cached gold icon from a previous install.
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#ExeName}"; IconFilename: "{app}\nexus.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; IconFilename: "{app}\nexus.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#ExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
