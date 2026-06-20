@@ -452,6 +452,7 @@
                 <Grid x:Name="PageBlueprints" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -509,8 +510,31 @@
                                 Click="BlueprintSearchRun_Click"/>
                     </Grid>
 
+                    <!-- Ownership filter chips + owned count -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="20,2,20,10"
+                                VerticalAlignment="Center">
+                        <Border x:Name="BpChipAll" CornerRadius="11" BorderThickness="1"
+                                Padding="12,4" Margin="0,0,6,0" Cursor="Hand"
+                                MouseLeftButtonDown="BpChipAll_Click">
+                            <TextBlock x:Name="BpChipAllText" Text="All" FontSize="11"/>
+                        </Border>
+                        <Border x:Name="BpChipOwned" CornerRadius="11" BorderThickness="1"
+                                Padding="12,4" Margin="0,0,6,0" Cursor="Hand"
+                                MouseLeftButtonDown="BpChipOwned_Click">
+                            <TextBlock x:Name="BpChipOwnedText" Text="Owned" FontSize="11"/>
+                        </Border>
+                        <Border x:Name="BpChipNotOwned" CornerRadius="11" BorderThickness="1"
+                                Padding="12,4" Margin="0,0,6,0" Cursor="Hand"
+                                MouseLeftButtonDown="BpChipNotOwned_Click">
+                            <TextBlock x:Name="BpChipNotOwnedText" Text="Not owned" FontSize="11"/>
+                        </Border>
+                        <TextBlock x:Name="BpOwnedCount" Margin="6,0,0,0"
+                                   VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                    </StackPanel>
+
                     <!-- Two-panel: left drill-down nav / right detail -->
-                    <Grid Grid.Row="1" Margin="20,0,20,16">
+                    <Grid Grid.Row="2" Margin="20,0,20,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="300"/>
                             <ColumnDefinition Width="*"/>
