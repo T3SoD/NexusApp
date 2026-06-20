@@ -10,5 +10,5 @@ namespace NexusApp;
 public static class GameData
 {
     /// <summary>SC live patch, e.g. "4.8.1". Edit this (and only this) on a game patch.</summary>
-    public const string Version = "4.8.1";
+    public const string Version = "4.8.2";
 }
