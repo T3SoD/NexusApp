@@ -512,9 +512,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefSearch_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) BuildReferenceTree(); }
-    private void RefSearch_KeyUp(object sender, KeyEventArgs e) => BuildReferenceTree();
-    private void RefSearch_Click(object sender, RoutedEventArgs e) => BuildReferenceTree();
+    // The Codex list is rebuilt imperatively, so rebuilding on every keystroke is
+    // costly. Debounce: rebuild once the user pauses typing (Enter / button = immediate).
+    private System.Windows.Threading.DispatcherTimer? _refFilterDebounce;
+
+    private void RefSearch_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        _refFilterDebounce?.Stop();
+        BuildReferenceTree();
+    }
+
+    private void RefSearch_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) return;   // already handled on key down
+        if (_refFilterDebounce == null)
+        {
+            _refFilterDebounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+            _refFilterDebounce.Tick += (_, __) => { _refFilterDebounce!.Stop(); BuildReferenceTree(); };
+        }
+        _refFilterDebounce.Stop();
+        _refFilterDebounce.Start();
+    }
+
+    private void RefSearch_Click(object sender, RoutedEventArgs e) { _refFilterDebounce?.Stop(); BuildReferenceTree(); }
 
     private System.Windows.FrameworkElement BuildResourceHeader(Resource r)
     {
