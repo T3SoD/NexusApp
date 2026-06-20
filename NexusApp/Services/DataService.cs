@@ -543,10 +543,14 @@ public class DataService : IDisposable
 
     public void ClearShoppingList() => Exec("DELETE FROM shopping_list");
 
+    public void ClearWorkOrders() => Exec("DELETE FROM work_orders");
+
     // ── Pinning ──────────────────────────────────────────────────────────────
 
     public void SetPinned(string resourceName, bool pinned) =>
         Exec("UPDATE resources SET is_pinned=@p WHERE name=@n", ("@p", pinned ? 1 : 0), ("@n", resourceName));
+
+    public void ClearAllPins() => Exec("UPDATE resources SET is_pinned=0");
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

@@ -257,6 +257,41 @@ public class AboutDialog : Window
         AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
             "https://github.com/T3SoD/NexusApp");
 
+        // ── Saved data ────────────────────────────────────────────────────────
+        aboutPanel.Children.Add(new Border
+        {
+            Height = 1, Margin = new Thickness(0, 16, 0, 16),
+            Background = (Brush)Application.Current.FindResource("NavBorderBrush"),
+        });
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Saved data", FontSize = 13, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Clear everything you've saved in Nexus — owned blueprints, shopping cart, " +
+                   "work orders and pinned resources. Your theme and the mining reference data are not affected.",
+            FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 0, 0, 12),
+        });
+
+        var danger = new SolidColorBrush(Color.FromRgb(0xE5, 0x53, 0x53));
+        var clearBtn = new Border
+        {
+            Background = Brushes.Transparent,
+            BorderBrush = danger, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(16, 8, 16, 8),
+            HorizontalAlignment = HorizontalAlignment.Left, Cursor = Cursors.Hand,
+            Child = new TextBlock { Text = "Clear saved data…", FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = danger },
+        };
+        clearBtn.MouseEnter += (s, e) => clearBtn.Background = new SolidColorBrush(Color.FromArgb(0x18, 0xE5, 0x53, 0x53));
+        clearBtn.MouseLeave += (s, e) => clearBtn.Background = Brushes.Transparent;
+        clearBtn.MouseLeftButtonUp += (s, e) => ClearSavedData();
+        aboutPanel.Children.Add(clearBtn);
+
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 
@@ -420,6 +455,38 @@ public class AboutDialog : Window
         outer.Children.Add(footer);
 
         Content = outer;
+    }
+
+    // ── Saved data ──────────────────────────────────────────────────────────────
+
+    private void ClearSavedData()
+    {
+        var confirm = MessageBox.Show(
+            this,
+            "This permanently deletes all of your saved data:\n\n" +
+            "    •  Owned blueprints\n" +
+            "    •  Shopping cart\n" +
+            "    •  Work orders\n" +
+            "    •  Pinned resources\n\n" +
+            "Your theme/window settings and the mining reference data are kept.\n\n" +
+            "This cannot be undone. Are you sure?",
+            "Clear all saved data?",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        App.Data.ClearShoppingList();
+        App.Data.ClearWorkOrders();
+        App.Data.ClearAllPins();
+        App.Settings.ClearOwnedBlueprints();
+        App.Settings.ClearPinnedResources();
+
+        var restart = MessageBox.Show(
+            this,
+            "All saved data has been cleared.\n\nNexus needs to restart to refresh. Restart now?",
+            "Data cleared",
+            MessageBoxButton.YesNo, MessageBoxImage.Information, MessageBoxResult.Yes);
+        if (restart == MessageBoxResult.Yes)
+            ThemeService.RestartApp();
     }
 
     // ── Appearance helpers ────────────────────────────────────────────────────
