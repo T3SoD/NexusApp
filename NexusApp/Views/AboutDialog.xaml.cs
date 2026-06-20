@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.2.0  —  Jun 20, 2026",
+        [
+            "Track which blueprints you own — mark any blueprint as Owned right in the Blueprint Library, with a toggle on each row and a button in its detail panel, so you no longer have to check in-game",
+            "Filter the Blueprint Library by All, Owned, or Not owned, with a live owned count; the filtered view groups your blueprints under their categories",
+            "New Clear saved data button under About — wipes your owned blueprints, shopping cart, work orders and pinned resources after a confirmation prompt (your theme and the mining reference data are left untouched)",
+        ]),
         ("App  5.1.2  —  Jun 19, 2026",
         [
             "Updated for Star Citizen patch 4.8.2 — mining reference data verified current for the new patch",
