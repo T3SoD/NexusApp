@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.3.2  —  Jun 20, 2026",
+        [
+            "Armor blueprints group cleaner — every paint and skin variant of a piece now collapses into one entry (for example, all Antium Helmet skins), instead of some grouping and some appearing as separate rows",
+            "Browse owned and not-owned blueprints by category — the Owned and Not owned filters now use the same Browse → category → blueprint drill-down as All, rather than one long flat list",
+            "The breadcrumb trail now stays pinned at the top of the list as you scroll, so you can always see where you are",
+        ]),
         ("App  5.3.1  —  Jun 20, 2026",
         [
             "Faster startup — the app no longer fully parses its mining database on every launch, only when the data actually changes",
