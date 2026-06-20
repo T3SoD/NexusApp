@@ -809,6 +809,10 @@ public partial class MainWindow : Window
     private BpOwnFilter _bpOwnFilter = BpOwnFilter.All;
     private string? _detailBpName;                 // blueprint currently shown in the detail panel
     private Border? _detailOwnedToggle;            // its "Owned" toggle, kept in sync with nav checkboxes
+    // Maps a blueprint name to its nav-row toggle pill so a single toggle updates that
+    // one row in place instead of rebuilding the whole list (the source of the lag).
+    private readonly Dictionary<string, Border> _bpPills = new(StringComparer.OrdinalIgnoreCase);
+    private TextBlock? _bpFilterHeaderCount;       // count shown in the Owned/Not-owned filtered header
     private static readonly string[] _bpCategories = ["Armor", "Weapons", "Ship Components", "Ammo"];
     private static readonly string[] _armorPieces = ["Helmet", "Core", "Arms", "Legs", "Backpack", "Undersuit", "Suit"];
     private static readonly HashSet<string> _variantWords = new(StringComparer.OrdinalIgnoreCase)
@@ -972,6 +976,8 @@ public partial class MainWindow : Window
     {
         BlueprintNavPanel.Children.Clear();
         _selectedBpRow = null;
+        _bpPills.Clear();
+        _bpFilterHeaderCount = null;
         if (_allBlueprints == null) return;
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var catCol = CategoryBrush(_bpCat);
@@ -983,7 +989,12 @@ public partial class MainWindow : Window
             var matches = _allBlueprints
                 .Where(b => App.Settings.IsBlueprintOwned(b.Name) == wantOwned)
                 .OrderBy(b => b.Category).ThenBy(b => b.Name).ToList();
-            BlueprintNavPanel.Children.Add(NavHeader(wantOwned ? "Owned" : "Not owned", matches.Count, accent));
+            var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+            var hdr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 0, 8) };
+            hdr.Children.Add(new TextBlock { Text = wantOwned ? "Owned" : "Not owned", FontFamily = headFont, FontSize = 16, Foreground = accent, VerticalAlignment = VerticalAlignment.Center });
+            _bpFilterHeaderCount = new TextBlock { Text = $"  ·  {matches.Count}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center };
+            hdr.Children.Add(_bpFilterHeaderCount);
+            BlueprintNavPanel.Children.Add(hdr);
             if (matches.Count == 0)
                 BlueprintNavPanel.Children.Add(new TextBlock
                 {
@@ -991,8 +1002,21 @@ public partial class MainWindow : Window
                     FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
                     Margin = new Thickness(6, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
                 });
-            foreach (var bp in matches)
+            // Cap how many rows are realized at once. The flat ownership list is not
+            // virtualized, so rendering the whole "Not owned" catalog (thousands of
+            // rows) froze the UI thread. Showing a bounded batch keeps it responsive;
+            // search narrows things down past the cap.
+            const int filterRenderCap = 150;
+            foreach (var bp in matches.Take(filterRenderCap))
                 BlueprintNavPanel.Children.Add(BlueprintRow(bp, true));
+            if (matches.Count > filterRenderCap)
+                BlueprintNavPanel.Children.Add(new TextBlock
+                {
+                    Text = $"Showing first {filterRenderCap} of {matches.Count}. Use search above to find a specific blueprint.",
+                    FontSize = 11, FontStyle = FontStyles.Italic,
+                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                    Margin = new Thickness(6, 10, 6, 4), TextWrapping = TextWrapping.Wrap,
+                });
             return;
         }
 
@@ -1180,6 +1204,7 @@ public partial class MainWindow : Window
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var chk = OwnedCheckbox(bp);
+        _bpPills[bp.Name] = chk;
         Grid.SetColumn(chk, 0);
         rowGrid.Children.Add(chk);
         var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -1203,55 +1228,96 @@ public partial class MainWindow : Window
         return card;
     }
 
-    // ── Ownership checkbox (nav rows) ───────────────────────────────────────────
+    // ── Ownership labeled toggle (nav rows) ─────────────────────────────────────
+    // Reads "Own" (faint) when not owned and "✓ Owned" (green) once marked, so the
+    // control says what it does instead of looking like a bare checkbox.
+    private static readonly System.Windows.Media.SolidColorBrush _ownedGreen     = BrushFromHex("#3FB950");
+    private static readonly System.Windows.Media.SolidColorBrush _ownedGreenFill = BrushFromHex("#2E3FB950");
+
     private Border OwnedCheckbox(NexusApp.Models.Blueprint bp)
     {
-        var box = new Border
+        var label = new TextBlock { FontSize = 10.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var pill = new Border
         {
-            Width = 18, Height = 18, CornerRadius = new CornerRadius(4),
-            BorderThickness = new Thickness(1.5),
+            Child = label,
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(9, 2, 10, 2),
             Margin = new Thickness(0, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Mark as owned",
+            ToolTip = "Click to mark whether you own this blueprint",
         };
-        ApplyCheckVisual(box, App.Settings.IsBlueprintOwned(bp.Name));
-        box.MouseLeftButtonDown += (s, e) =>
+        ApplyCheckVisual(pill, App.Settings.IsBlueprintOwned(bp.Name));
+        pill.MouseEnter += (s, e) =>
+        {
+            if (App.Settings.IsBlueprintOwned(bp.Name)) return;
+            var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+            pill.BorderBrush = accent;
+            label.Foreground = accent;
+        };
+        pill.MouseLeave += (s, e) =>
+        {
+            if (!App.Settings.IsBlueprintOwned(bp.Name)) ApplyCheckVisual(pill, false);
+        };
+        pill.MouseLeftButtonDown += (s, e) =>
         {
             e.Handled = true;   // toggle ownership without opening the detail panel
             var now = !App.Settings.IsBlueprintOwned(bp.Name);
             App.Settings.SetBlueprintOwned(bp.Name, now);
-            ApplyCheckVisual(box, now);
-            UpdateOwnedCount();
-            if (_detailBpName != null && string.Equals(_detailBpName, bp.Name, StringComparison.OrdinalIgnoreCase)
-                && _detailOwnedToggle != null)
-                ApplyOwnedToggleVisual(_detailOwnedToggle, now);
-            // A filtered list may no longer include this row — rebuild it.
-            if (_bpOwnFilter != BpOwnFilter.All) RenderBlueprintNav();
+            OnOwnershipChanged(bp.Name, now);
         };
-        return box;
+        return pill;
     }
 
-    private void ApplyCheckVisual(Border box, bool owned)
+    // Applies a single ownership change to the UI without rebuilding the whole nav:
+    // updates the row pill, the detail toggle, and the count; in a filtered view it
+    // removes just the row that no longer matches.
+    private void OnOwnershipChanged(string name, bool nowOwned)
     {
+        UpdateOwnedCount();
+
+        if (_bpPills.TryGetValue(name, out var pill))
+            ApplyCheckVisual(pill, nowOwned);
+
+        if (_detailBpName != null && string.Equals(_detailBpName, name, StringComparison.OrdinalIgnoreCase)
+            && _detailOwnedToggle != null)
+            ApplyOwnedToggleVisual(_detailOwnedToggle, nowOwned);
+
+        if (_bpOwnFilter == BpOwnFilter.All) return;
+
+        var stillMatches = (_bpOwnFilter == BpOwnFilter.Owned) == nowOwned;
+        if (stillMatches) return;
+        if (_bpPills.TryGetValue(name, out var rowPill))
+        {
+            if ((rowPill.Parent as Grid)?.Parent is Border card)
+                BlueprintNavPanel.Children.Remove(card);
+            _bpPills.Remove(name);
+        }
+        if (_bpFilterHeaderCount != null)
+        {
+            var wantOwned = _bpOwnFilter == BpOwnFilter.Owned;
+            var n = _allBlueprints?.Count(b => App.Settings.IsBlueprintOwned(b.Name) == wantOwned) ?? 0;
+            _bpFilterHeaderCount.Text = $"  ·  {n}";
+        }
+    }
+
+    private void ApplyCheckVisual(Border pill, bool owned)
+    {
+        if (pill.Child is not TextBlock label) return;
         if (owned)
         {
-            var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
-            box.Background = accent;
-            box.BorderBrush = accent;
-            box.Child = new TextBlock
-            {
-                Text = "✓", FontSize = 12, FontWeight = FontWeights.Bold,
-                Foreground = (System.Windows.Media.Brush)FindResource("OnAccentBrush"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
+            pill.Background = _ownedGreenFill;
+            pill.BorderBrush = _ownedGreen;
+            label.Text = "✓ Owned";
+            label.Foreground = _ownedGreen;
         }
         else
         {
-            box.Background = System.Windows.Media.Brushes.Transparent;
-            box.BorderBrush = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-            box.Child = null;
+            pill.Background = System.Windows.Media.Brushes.Transparent;
+            pill.BorderBrush = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+            label.Text = "Own";
+            label.Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         }
     }
 
@@ -1271,8 +1337,7 @@ public partial class MainWindow : Window
             var now = !App.Settings.IsBlueprintOwned(bpName);
             App.Settings.SetBlueprintOwned(bpName, now);
             ApplyOwnedToggleVisual(toggle, now);
-            UpdateOwnedCount();
-            RenderBlueprintNav();   // reflect new state on the nav checkbox / filtered list
+            OnOwnershipChanged(bpName, now);   // sync nav row + count in place (no full rebuild)
         };
         return toggle;
     }
@@ -1285,10 +1350,10 @@ public partial class MainWindow : Window
         toggle.Child = label;
         if (owned)
         {
-            toggle.Background = accent;
-            toggle.BorderBrush = accent;
+            toggle.Background = _ownedGreenFill;
+            toggle.BorderBrush = _ownedGreen;
             label.Text = "✓ Owned";
-            label.Foreground = (System.Windows.Media.Brush)FindResource("OnAccentBrush");
+            label.Foreground = _ownedGreen;
         }
         else
         {

@@ -113,22 +113,27 @@ public class SettingsService
     // Stored name-keyed in settings.json (not nexus.db) so ownership survives the
     // database reseed that happens on every app update.
 
+    // O(1) membership lookups. The List<string> is what gets serialized; this set
+    // mirrors it so the per-row ownership checks during a nav render are not O(n²).
+    private HashSet<string>? _ownedSet;
+    private HashSet<string> OwnedSet =>
+        _ownedSet ??= new HashSet<string>(Current.OwnedBlueprints, StringComparer.OrdinalIgnoreCase);
+
     public int OwnedBlueprintCount => Current.OwnedBlueprints.Count;
 
-    public bool IsBlueprintOwned(string name) =>
-        Current.OwnedBlueprints.Contains(name, StringComparer.OrdinalIgnoreCase);
+    public bool IsBlueprintOwned(string name) => OwnedSet.Contains(name);
 
     public void SetBlueprintOwned(string name, bool owned)
     {
-        var existing = Current.OwnedBlueprints
-            .FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         if (owned)
         {
-            if (existing == null) Current.OwnedBlueprints.Add(name);
+            if (!OwnedSet.Add(name)) return;      // already owned — no change, no disk write
+            Current.OwnedBlueprints.Add(name);
         }
-        else if (existing != null)
+        else
         {
-            Current.OwnedBlueprints.Remove(existing);
+            if (!OwnedSet.Remove(name)) return;   // wasn't owned — no change, no disk write
+            Current.OwnedBlueprints.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         }
         Save();
     }
