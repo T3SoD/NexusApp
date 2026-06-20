@@ -18,6 +18,7 @@ public class AboutDialog : Window
             "Faster startup — the app no longer fully parses its mining database on every launch, only when the data actually changes",
             "Smoother Mining Codex filtering — the list now updates when you pause typing instead of rebuilding on every keystroke",
             "Friendlier error handling — unexpected errors show a clear message and are written to a local log file (%AppData%\\NexusApp\\logs) for troubleshooting",
+            "Updated app icon — the taskbar and installed-app icons now use the teal Nexus logo",
         ]),
         ("App  5.3.0  —  Jun 20, 2026",
         [
