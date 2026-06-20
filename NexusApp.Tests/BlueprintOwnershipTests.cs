@@ -72,4 +72,21 @@ public class BlueprintOwnershipTests : IDisposable
         Assert.True(s2.IsBlueprintOwned("Hellion Cannon"));
         Assert.Equal(2, s2.OwnedBlueprintCount);
     }
+
+    [Fact]
+    public void ClearOwnedBlueprints_RemovesAll_ResetsLookup_AndPersists()
+    {
+        var s = new SettingsService(_tempPath);
+        s.SetBlueprintOwned("Bracket Cooler", true);
+        s.SetBlueprintOwned("Hellion Cannon", true);
+
+        s.ClearOwnedBlueprints();
+
+        Assert.Equal(0, s.OwnedBlueprintCount);
+        Assert.False(s.IsBlueprintOwned("Bracket Cooler"));   // lookup set reset, not stale
+        Assert.False(s.IsBlueprintOwned("Hellion Cannon"));
+
+        var reloaded = new SettingsService(_tempPath);        // empty state was saved
+        Assert.Equal(0, reloaded.OwnedBlueprintCount);
+    }
 }

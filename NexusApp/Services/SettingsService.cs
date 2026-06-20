@@ -144,4 +144,17 @@ public class SettingsService
         }
         Save();
     }
+
+    public void ClearOwnedBlueprints()
+    {
+        Current.OwnedBlueprints.Clear();
+        _ownedSet = null;   // force the lookup set to rebuild from the now-empty list
+        Save();
+    }
+
+    public void ClearPinnedResources()
+    {
+        Current.PinnedResources.Clear();
+        Save();
+    }
 }
