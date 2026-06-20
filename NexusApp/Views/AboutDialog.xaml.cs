@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.1.2  —  Jun 19, 2026",
+        [
+            "Updated for Star Citizen patch 4.8.2 — mining reference data verified current for the new patch",
+        ]),
         ("App  5.1.1  —  Jun 11, 2026",
         [
             "Redesigned the welcome tour — a caption now sits beside each control it points at, instead of a centered dialog, in a shorter and clearer walkthrough",
