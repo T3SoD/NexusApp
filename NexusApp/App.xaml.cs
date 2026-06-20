@@ -10,10 +10,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        const string crashMessage =
+            "Nexus hit an unexpected error and needs to close.\n\n" +
+            "Details have been saved to the log file at:\n%AppData%\\NexusApp\\logs\\nexus.log";
+
         DispatcherUnhandledException += (s, ex) =>
         {
-            System.Windows.MessageBox.Show(ex.Exception.ToString(),
-                "Nexus — Error", System.Windows.MessageBoxButton.OK,
+            Logger.Error("Unhandled UI exception", ex.Exception);
+            System.Windows.MessageBox.Show(crashMessage,
+                "Nexus — Unexpected Error", System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
             ex.Handled = true;
             Shutdown(1);
@@ -21,10 +26,13 @@ public partial class App : Application
 
         AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
         {
-            System.Windows.MessageBox.Show(ex.ExceptionObject.ToString(),
-                "Nexus — Fatal Error", System.Windows.MessageBoxButton.OK,
+            Logger.Error("Unhandled non-UI exception", ex.ExceptionObject as Exception);
+            System.Windows.MessageBox.Show(crashMessage,
+                "Nexus — Unexpected Error", System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         };
+
+        Logger.Info($"Nexus {AppInfo.Version} starting");
 
         // Pick the palette BEFORE the main window is created. StartupUri builds
         // MainWindow inside base.OnStartup, and its StaticResource theme brushes

@@ -121,33 +121,59 @@ public class DataService : IDisposable
 
     /// <summary>Loads the mining-data seed embedded in this build. Reference data ships
     /// with the app and only changes when a new version is installed.</summary>
-    private SeedData LoadSeed()
+    private static SeedData LoadSeed(byte[]? bytes)
     {
-        var embedded = TryParseSeed(ReadEmbeddedSeed());
-        return embedded ?? new SeedData("0.0.0", null,
+        return TryParseSeed(bytes) ?? new SeedData("0.0.0", null,
             new List<SeedResource>(), new Dictionary<string, string>(),
             new List<SeedBlueprint>(), null);
     }
 
-    private static string? ReadEmbeddedSeed()
+    private static byte[]? ReadEmbeddedSeedBytes()
     {
         using var stream = typeof(DataService).Assembly
             .GetManifestResourceStream("NexusApp.Data.seed_data.json");
-        return stream == null ? null : new StreamReader(stream).ReadToEnd();
+        if (stream == null) return null;
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
     }
 
-    private static SeedData? TryParseSeed(string? json)
+    // Streams just the top-level version property out of the seed JSON without
+    // building the full object graph — keeps cold start cheap on every launch.
+    private static string? ReadSeedVersion(byte[]? bytes)
     {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try { return JsonSerializer.Deserialize<SeedData>(json, _jsonOpts); }
-        catch { return null; }
+        if (bytes == null || bytes.Length == 0) return null;
+        try
+        {
+            var reader = new Utf8JsonReader(bytes);
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject) return null;
+            string? mining = null, legacy = null;
+            while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                var prop = reader.GetString();
+                reader.Read(); // advance to the value
+                if (prop == "miningDataVersion" && reader.TokenType == JsonTokenType.String) mining = reader.GetString();
+                else if (prop == "dataVersion" && reader.TokenType == JsonTokenType.String) legacy = reader.GetString();
+                else reader.Skip(); // skip arrays/objects we don't need
+            }
+            return mining ?? legacy;
+        }
+        catch (Exception ex) { Logger.Error("Failed to read seed version", ex); return null; }
+    }
+
+    private static SeedData? TryParseSeed(byte[]? bytes)
+    {
+        if (bytes == null || bytes.Length == 0) return null;
+        try { return JsonSerializer.Deserialize<SeedData>(bytes, _jsonOpts); }
+        catch (Exception ex) { Logger.Error("Failed to parse embedded seed", ex); return null; }
     }
 
     private void ApplySeed()
     {
-        var seed = LoadSeed();
-        // Accept both the new key (miningDataVersion) and the legacy one (dataVersion).
-        var seedVer = seed.MiningDataVersion ?? seed.DataVersion;
+        // Read the raw seed bytes once and probe only the version string — the common
+        // path (no reseed) never pays to deserialize the whole ~1 MB payload.
+        var bytes   = ReadEmbeddedSeedBytes();
+        var seedVer = ReadSeedVersion(bytes);
         _seedVersion = string.IsNullOrWhiteSpace(seedVer) ? "0.0.0" : seedVer!;
 
         var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
@@ -156,7 +182,7 @@ public class DataService : IDisposable
         // Fresh install — seed everything.
         if (resourceCount == 0)
         {
-            SeedAll(seed);
+            SeedAll(LoadSeed(bytes));
             SetMeta("data_version", _seedVersion);
             return;
         }
@@ -164,7 +190,7 @@ public class DataService : IDisposable
         // Old schema that just gained a column — repopulate from the current seed.
         if (_forceReseed)
         {
-            SeedAll(seed);
+            SeedAll(LoadSeed(bytes));
             SetMeta("data_version", _seedVersion);
             return;
         }
@@ -173,7 +199,7 @@ public class DataService : IDisposable
         // version without a disruptive reseed; backfill unlocks if missing (v4.1).
         if (applied == null)
         {
-            if (Scalar<long>("SELECT COUNT(*) FROM blueprint_unlocks") == 0) SeedUnlocks(seed);
+            if (Scalar<long>("SELECT COUNT(*) FROM blueprint_unlocks") == 0) SeedUnlocks(LoadSeed(bytes));
             SetMeta("data_version", _seedVersion);
             return;
         }
@@ -181,9 +207,10 @@ public class DataService : IDisposable
         // A newer build shipped newer embedded data — full reseed.
         if (CompareVersions(_seedVersion, applied) > 0)
         {
-            SeedAll(seed);
+            SeedAll(LoadSeed(bytes));
             SetMeta("data_version", _seedVersion);
         }
+        // Otherwise: nothing to do, and the full seed was never deserialized.
     }
 
     /// <summary>Replaces all reference data from <paramref name="seed"/>, preserving the
