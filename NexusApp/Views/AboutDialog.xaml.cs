@@ -13,6 +13,15 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.3.0  —  Jun 20, 2026",
+        [
+            "Redesigned the Blueprint Library — a selected blueprint now opens as a schematic sheet, with a category eyebrow, large title, and quick read-outs for ingredient count and total cost",
+            "Ingredients are now a clean Bill of Materials — rarity-coded, with right-aligned quantities and a running total in SCU",
+            "New Blueprint Manifest on the landing view — see how many blueprints you own overall and a completion bar for each category",
+            "Clearer drill-down — a clickable breadcrumb trail replaces the single back button, carrying each category's colour as you navigate",
+            "Calmer ownership in the list — owned blueprints show a quiet green tick at rest, with the full Owned toggle appearing on hover; the detail panel keeps the prominent toggle",
+            "Fixed blueprint unlock missions running off the edge — long mission lines now wrap correctly",
+        ]),
         ("App  5.2.0  —  Jun 20, 2026",
         [
             "Track which blueprints you own — mark any blueprint as Owned right in the Blueprint Library, with a toggle on each row and a button in its detail panel, so you no longer have to check in-game",
