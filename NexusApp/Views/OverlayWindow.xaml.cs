@@ -364,6 +364,9 @@ public partial class OverlayWindow : Window
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
 
+        // RECENT scans are scan-only — hide that strip on the STATS tab.
+        SetHistoryStripVisible(tab != "stats");
+
         if (tab == "stats") RebuildStatsPanel();
         if (tab == "shopping") RebuildShoppingPanel();
 
@@ -375,6 +378,39 @@ public partial class OverlayWindow : Window
         {
             _ordersTicker?.Stop();
             _ordersTicker = null;
+        }
+    }
+
+    // The RECENT scan-history strip + its splitter live in the window chrome (below the
+    // tabs), so they'd otherwise show on every tab. They're scan-only — collapse them and
+    // reclaim their rows on the STATS tab, preserving any height the user dragged them to.
+    private GridLength _savedHistoryHeight = new(120);
+    private double _savedHistoryMinHeight = 50;
+    private bool _historyHidden;
+
+    private void SetHistoryStripVisible(bool show)
+    {
+        if (show && _historyHidden)
+        {
+            HistoryStripRow.Height = _savedHistoryHeight;
+            HistoryStripRow.MinHeight = _savedHistoryMinHeight;
+            HistorySplitterRow.Height = new GridLength(4);
+            HistorySplitterRow.MinHeight = 4;
+            HistoryStrip_Container.Visibility = Visibility.Visible;
+            HistorySplitter.Visibility = Visibility.Visible;
+            _historyHidden = false;
+        }
+        else if (!show && !_historyHidden)
+        {
+            _savedHistoryHeight = HistoryStripRow.Height;
+            _savedHistoryMinHeight = HistoryStripRow.MinHeight;
+            HistoryStripRow.MinHeight = 0;
+            HistoryStripRow.Height = new GridLength(0);
+            HistorySplitterRow.MinHeight = 0;
+            HistorySplitterRow.Height = new GridLength(0);
+            HistoryStrip_Container.Visibility = Visibility.Collapsed;
+            HistorySplitter.Visibility = Visibility.Collapsed;
+            _historyHidden = true;
         }
     }
 

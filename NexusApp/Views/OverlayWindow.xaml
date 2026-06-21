@@ -56,14 +56,15 @@
                 <RowDefinition Height="38"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="4" MinHeight="4"/>
-                <RowDefinition Height="120" MinHeight="50"/>
+                <RowDefinition x:Name="HistorySplitterRow" Height="4" MinHeight="4"/>
+                <RowDefinition x:Name="HistoryStripRow" Height="120" MinHeight="50"/>
             </Grid.RowDefinitions>
 
-            <!-- ── Header: drag zone + close ── -->
+            <!-- ── Header: drag zone + opacity + close ── -->
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
@@ -78,11 +79,22 @@
                                FontSize="8" FontWeight="Bold" VerticalAlignment="Center"
                                Margin="7,2,0,0"/>
                 </StackPanel>
-                <Button Grid.Column="1" Content="✕" Style="{StaticResource NexusButton}"
+                <!-- Window opacity — shared across every tab -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Slider x:Name="OpacitySlider" Style="{StaticResource OverlaySlider}"
+                            Minimum="0.2" Maximum="1.0" SmallChange="0.05"
+                            Width="74" VerticalAlignment="Center" Margin="0,0,6,0"
+                            ToolTip="Overlay opacity"
+                            ValueChanged="OpacitySlider_ValueChanged"/>
+                    <TextBlock x:Name="OpacityLabel" Text="100%"
+                               FontSize="9" Foreground="{DynamicResource FgDimBrush}"
+                               VerticalAlignment="Center" Width="30"/>
+                </StackPanel>
+                <Button Grid.Column="2" Content="✕" Style="{StaticResource NexusButton}"
                         Width="26" Height="26" Padding="0" VerticalAlignment="Center"
                         Margin="0,0,8,0" Click="Close_Click"/>
                 <!-- accent hairline under header -->
-                <Border VerticalAlignment="Bottom" Height="1" Margin="12,0,12,0">
+                <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1" Margin="12,0,12,0">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                             <GradientStop Color="{DynamicResource AccentClearColor}" Offset="0"/>
@@ -210,7 +222,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Tool rail: scan controls + opacity -->
+                    <!-- Tool rail: scan controls (opacity lives in the shared header) -->
                     <Border Grid.Row="0" Margin="10,10,10,0" CornerRadius="9"
                             Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
                             BorderThickness="1" Padding="6,5">
@@ -223,14 +235,7 @@
                                     Margin="0,0,4,0" Click="BoxToggle_Click" ToolTip="Show scan box"/>
                             <Button x:Name="ScanToggleBtn" Content="■" Style="{StaticResource NexusButton}"
                                     Foreground="{DynamicResource AccentBrush}" Padding="6,3"
-                                    Margin="0,0,10,0" Click="ScanToggle_Click" ToolTip="Stop auto-scan"/>
-                            <Slider x:Name="OpacitySlider" Style="{StaticResource OverlaySlider}"
-                                    Minimum="0.2" Maximum="1.0" SmallChange="0.05"
-                                    Width="80" VerticalAlignment="Center" Margin="0,0,6,0"
-                                    ValueChanged="OpacitySlider_ValueChanged"/>
-                            <TextBlock x:Name="OpacityLabel" Text="100%"
-                                       FontSize="9" Foreground="{DynamicResource FgDimBrush}"
-                                       VerticalAlignment="Center" Width="30"/>
+                                    Margin="0" Click="ScanToggle_Click" ToolTip="Stop auto-scan"/>
                         </StackPanel>
                     </Border>
 
@@ -371,12 +376,12 @@
             </Grid>
 
             <!-- Drag handle to resize history strip -->
-            <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            <GridSplitter x:Name="HistorySplitter" Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Background="{DynamicResource NavBorderBrush}" Cursor="SizeNS"
                           ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 
-            <!-- History strip -->
-            <Border Grid.Row="4" CornerRadius="0,0,12,12" Background="{DynamicResource NavBgBrush}">
+            <!-- History strip (RECENT scans — hidden on the STATS tab; it's scan-only) -->
+            <Border x:Name="HistoryStrip_Container" Grid.Row="4" CornerRadius="0,0,12,12" Background="{DynamicResource NavBgBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="12,6,8,4">
                         <TextBlock Text="RECENT" FontSize="9" FontWeight="Bold"
