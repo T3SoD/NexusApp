@@ -16,7 +16,7 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 | Page | What it does |
 |------|--------------|
 | **RS Signal Decoder** | Manually enter or **auto-scan** an RS value to identify the resource and node count. |
-| **Blueprint Library** | Search ship / weapon / armor blueprints and see the raw resources each one requires. |
+| **Blueprint Library** | Search ship / weapon / armor blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
 | **Mining Codex** | Full reference table of all mineable resources, filterable by system (Stanton / Pyro / Nyx) and method (Ship / ROC / FPS). |
 | **Refinery Tracker** | Track active refinery jobs with live countdown timers and status indicators. |
 
@@ -24,6 +24,7 @@ Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**.
 
 - **Auto-scan overlay** — draw a region over the RS value on your screen and Nexus reads it automatically using the native Windows OCR engine.
 - **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
+- **Blueprint ownership tracking** — mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
 - **Shopping list** — add resources or blueprint ingredients and have them highlighted in scan results and history.
 - **Persistent work orders** — refinery timers survive app restarts.
 - Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
