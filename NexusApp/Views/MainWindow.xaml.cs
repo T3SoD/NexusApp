@@ -2097,6 +2097,31 @@ public partial class MainWindow : Window
         new AboutDialog { Owner = this }.ShowDialog();
     }
 
+    // BETA (beta branch only): floating live Game.log monitor — kept modeless and
+    // un-owned so it can float over the game while you play.
+    private LogMonitorWindow? _logMonitor;
+    private void OpenLogMonitor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_logMonitor == null)
+        {
+            var names = App.Data.GetAllBlueprints().Select(b => b.Name);
+            _logMonitor = new LogMonitorWindow(names, RefreshBlueprintOwnership);
+            _logMonitor.Closed += (_, _) => _logMonitor = null;
+        }
+        if (_logMonitor.WindowState == WindowState.Minimized) _logMonitor.WindowState = WindowState.Normal;
+        _logMonitor.Show();
+        _logMonitor.Activate();
+    }
+
+    // Called by the beta Game.log importer after it auto-marks ownership, so the
+    // Blueprint page's owned count + nav reflect the change immediately.
+    public void RefreshBlueprintOwnership()
+    {
+        if (!_bpInit) return;            // not visited yet — it'll read current ownership on first open
+        UpdateOwnedCount();
+        RenderBlueprintNav();
+    }
+
     // ── Easter egg (app version badge) ───────────────────────────────────────
     private int _eggClicks;
     private System.Windows.Threading.DispatcherTimer? _eggTimer;

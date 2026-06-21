@@ -1,0 +1,274 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using NexusApp.Services;
+
+namespace NexusApp.Views;
+
+// BETA / EXPERIMENTAL — floating viewer that tails Star Citizen's Game.log live, and can
+// auto-mark blueprint ownership from "Received Blueprint" events (live + a retroactive
+// scan of logbackups). Reads a game-authored file; do NOT ship to a release without
+// reworking the "no game files" EAC wording. See GameLogWatcher / GameLogBlueprintImporter.
+public sealed class LogMonitorWindow : Window
+{
+    private const int MaxEntries = 6000;
+
+    private readonly GameLogWatcher _watcher = new();
+    private readonly GameLogBlueprintImporter _importer;
+    private readonly Action? _onOwnershipChanged;
+    private readonly List<GameLogEntry> _all = new();
+    private readonly ListBox _list;
+    private readonly TextBox _pathBox;
+    private readonly TextBox _filterBox;
+    private readonly TextBlock _status;
+    private readonly Button _startBtn;
+    private readonly Button _bpBtn;
+    private readonly Button _importBtn;
+    private readonly CheckBox _autoScroll;
+    private readonly CheckBox _fromStart;
+    private readonly CheckBox _autoMark;
+    private bool _blueprintsOnly;
+
+    private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
+    private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
+
+    public LogMonitorWindow(IEnumerable<string> seedBlueprintNames, Action? onOwnershipChanged = null)
+    {
+        _importer = new GameLogBlueprintImporter(seedBlueprintNames);
+        _onOwnershipChanged = onOwnershipChanged;
+
+        Title = "Game.log Live Monitor (Beta)";
+        Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
+        Background = Res("BgBrush");
+        Foreground = Res("FgBrush");
+        Topmost = true;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+        var root = new Grid { Margin = new Thickness(10) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 0 path
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 1 viewer controls
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 2 blueprint import
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // 3 list
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 4 status
+
+        // Built up front so earlier control lambdas (e.g. Clear) can capture it safely.
+        _list = new ListBox
+        {
+            Background = Res("Bg2NavBrush"), BorderBrush = Res("NavBorderBrush"),
+            BorderThickness = new Thickness(1), FontFamily = Mono, FontSize = 12, Margin = new Thickness(0, 8, 0, 0),
+        };
+        ScrollViewer.SetHorizontalScrollBarVisibility(_list, ScrollBarVisibility.Auto);
+
+        // Row 0 — log path + browse + start/stop
+        var pathRow = new Grid();
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _pathBox = new TextBox
+        {
+            Text = GameLogWatcher.DefaultLivePath,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
+            ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
+        };
+        Grid.SetColumn(_pathBox, 0); pathRow.Children.Add(_pathBox);
+        var browse = MakeButton("Browse…"); browse.Click += (_, _) => Browse();
+        Grid.SetColumn(browse, 1); pathRow.Children.Add(browse);
+        _startBtn = MakeButton("Start"); _startBtn.Margin = new Thickness(6, 0, 0, 0); _startBtn.Click += (_, _) => ToggleStart();
+        Grid.SetColumn(_startBtn, 2); pathRow.Children.Add(_startBtn);
+        Grid.SetRow(pathRow, 0); root.Children.Add(pathRow);
+
+        // Row 1 — viewer controls
+        var ctl = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
+        _filterBox = new TextBox { Width = 240, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
+        _filterBox.TextChanged += (_, _) => RebuildView();
+        ctl.Children.Add(_filterBox);
+        _bpBtn = MakeButton("Blueprints only"); _bpBtn.Margin = new Thickness(8, 0, 0, 0);
+        _bpBtn.Click += (_, _) => { _blueprintsOnly = !_blueprintsOnly; _bpBtn.Background = _blueprintsOnly ? Res("AccentBrush") : Res("Bg2NavBrush"); RebuildView(); };
+        ctl.Children.Add(_bpBtn);
+        _autoScroll = MakeCheck("Auto-scroll", true); ctl.Children.Add(_autoScroll);
+        _fromStart = MakeCheck("From start of file", false);
+        _fromStart.ToolTip = "On = read the whole current session from the top; Off = only new lines from now";
+        ctl.Children.Add(_fromStart);
+        var clearBtn = MakeButton("Clear"); clearBtn.Margin = new Thickness(12, 0, 0, 0);
+        clearBtn.Click += (_, _) => { _all.Clear(); _list.Items.Clear(); };
+        ctl.Children.Add(clearBtn);
+        var saveBtn = MakeButton("Save snapshot…"); saveBtn.Margin = new Thickness(6, 0, 0, 0);
+        saveBtn.ToolTip = "Save the currently shown lines to a .txt so you can share them";
+        saveBtn.Click += (_, _) => SaveSnapshot();
+        ctl.Children.Add(saveBtn);
+        Grid.SetRow(ctl, 1); root.Children.Add(ctl);
+
+        // Row 2 — blueprint auto-import (the feature)
+        var bp = new Border
+        {
+            Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(8, 6, 8, 6),
+            Background = Res("Bg2NavBrush"), BorderBrush = Res("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6),
+        };
+        var bpRow = new StackPanel { Orientation = Orientation.Horizontal };
+        bpRow.Children.Add(new TextBlock { Text = "Blueprint ownership (Beta):", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
+        _autoMark = MakeCheck("Auto-mark blueprints I receive while watching", false);
+        _autoMark.Margin = new Thickness(0, 0, 0, 0);
+        _autoMark.ToolTip = "When the log shows a 'Received Blueprint' event, mark it owned in Nexus automatically";
+        bpRow.Children.Add(_autoMark);
+        _importBtn = MakeButton("Import owned from past logs…"); _importBtn.Margin = new Thickness(16, 0, 0, 0);
+        _importBtn.ToolTip = "Scan this log + the logbackups folder for blueprints you've already received, and mark them owned";
+        _importBtn.Click += async (_, _) => await ImportFromLogsAsync();
+        bpRow.Children.Add(_importBtn);
+        bp.Child = bpRow;
+        Grid.SetRow(bp, 2); root.Children.Add(bp);
+
+        // Row 3 — live list (created above)
+        Grid.SetRow(_list, 3); root.Children.Add(_list);
+
+        // Row 4 — status
+        _status = new TextBlock
+        {
+            Text = "Beta: tails Game.log. Turn on auto-mark + Start to capture blueprints live, or import from past logs.",
+            Foreground = Res("FgDimBrush"), Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetRow(_status, 4); root.Children.Add(_status);
+
+        Content = root;
+
+        _watcher.LineAppended += OnLine;
+        _watcher.StatusChanged += s => _status.Text = s;
+        Closed += (_, _) => _watcher.Dispose();
+    }
+
+    private void OnLine(GameLogEntry e)
+    {
+        // Live auto-mark: a receipt -> resolve to a Nexus name -> mark owned once.
+        if (_autoMark.IsChecked == true && e.Category == LogCategory.Blueprint)
+        {
+            var canon = _importer.ResolveLine(e.Raw);
+            if (canon is not null && !App.Settings.IsBlueprintOwned(canon))
+            {
+                App.Settings.SetBlueprintOwned(canon, true);
+                _onOwnershipChanged?.Invoke();
+                _status.Text = $"Auto-marked owned: {canon}";
+            }
+        }
+
+        _all.Add(e);
+        if (_all.Count > MaxEntries) _all.RemoveRange(0, _all.Count - MaxEntries);
+        if (!PassesFilter(e)) return;
+        AddRow(e);
+        while (_list.Items.Count > MaxEntries) _list.Items.RemoveAt(0);
+        if (_autoScroll.IsChecked == true && _list.Items.Count > 0)
+            _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
+    }
+
+    private async Task ImportFromLogsAsync()
+    {
+        var path = _pathBox.Text.Trim();
+        _importBtn.IsEnabled = false;
+        _status.Text = "Scanning logs…";
+        GameLogBlueprintImporter.HistoryScan scan;
+        try
+        {
+            scan = await Task.Run(() => _importer.ScanHistory(path, n => Dispatcher.Invoke(() => _status.Text = $"Scanning… {n} file(s)")));
+        }
+        catch (Exception ex) { _status.Text = $"Scan failed: {ex.Message}"; _importBtn.IsEnabled = true; return; }
+        _importBtn.IsEnabled = true;
+
+        if (scan.Matched.Count == 0)
+        {
+            _status.Text = $"No known blueprints found ({scan.FilesScanned} file(s) scanned, {scan.Unmatched.Count} unrecognized).";
+            return;
+        }
+
+        var preview = string.Join("\n", scan.Matched.Take(20));
+        if (scan.Matched.Count > 20) preview += $"\n…and {scan.Matched.Count - 20} more";
+        var msg = $"Found {scan.Matched.Count} blueprint(s) across {scan.FilesScanned} log file(s).\n"
+                + (scan.Unmatched.Count > 0 ? $"({scan.Unmatched.Count} name(s) weren't recognized and will be skipped.)\n" : "")
+                + $"\nMark these as owned in Nexus?\n\n{preview}";
+        var res = MessageBox.Show(this, msg, "Import owned blueprints (Beta)", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) { _status.Text = "Import cancelled."; return; }
+
+        int added = App.Settings.SetBlueprintsOwned(scan.Matched);
+        _onOwnershipChanged?.Invoke();
+        _status.Text = $"Imported {added} newly marked owned ({scan.Matched.Count} found, {scan.Matched.Count - added} were already owned).";
+    }
+
+    private bool PassesFilter(GameLogEntry e)
+    {
+        if (_blueprintsOnly && e.Category != LogCategory.Blueprint) return false;
+        var f = _filterBox.Text;
+        return string.IsNullOrWhiteSpace(f) || e.Raw.Contains(f, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AddRow(GameLogEntry e) => _list.Items.Add(new TextBlock
+    {
+        Text = $"{e.ReceivedAt:HH:mm:ss}  {e.Raw}",
+        Foreground = ColorFor(e.Category),
+        FontFamily = Mono, FontSize = 12, TextWrapping = TextWrapping.NoWrap,
+    });
+
+    private void RebuildView()
+    {
+        _list.Items.Clear();
+        foreach (var e in _all) if (PassesFilter(e)) AddRow(e);
+        if (_autoScroll.IsChecked == true && _list.Items.Count > 0)
+            _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
+    }
+
+    private static Brush ColorFor(LogCategory c) => c switch
+    {
+        LogCategory.Blueprint => Brushes.MediumSpringGreen,
+        LogCategory.Kill => Brushes.IndianRed,
+        LogCategory.Location => Brushes.MediumTurquoise,
+        LogCategory.Mission => Brushes.Gold,
+        LogCategory.Economy => Brushes.LightGreen,
+        LogCategory.Version => Brushes.Khaki,
+        LogCategory.Quantum => Brushes.CornflowerBlue,
+        LogCategory.Login or LogCategory.Connection => Brushes.Plum,
+        LogCategory.Spawn or LogCategory.VehicleDestruction => Brushes.SandyBrown,
+        _ => Brushes.Gainsboro,
+    };
+
+    private void ToggleStart()
+    {
+        if (_watcher.IsRunning) { _watcher.Stop(); _startBtn.Content = "Start"; }
+        else { _watcher.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true); _startBtn.Content = "Stop"; }
+    }
+
+    private void Browse()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Game log (*.log)|*.log|All files (*.*)|*.*", FileName = "Game.log" };
+        if (dlg.ShowDialog() == true) _pathBox.Text = dlg.FileName;
+    }
+
+    private void SaveSnapshot()
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Text (*.txt)|*.txt", FileName = $"nexus_gamelog_{DateTime.Now:yyyyMMdd_HHmmss}.txt" };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var lines = _all.Where(PassesFilter).Select(e => $"{e.ReceivedAt:HH:mm:ss}\t{e.Category}\t{e.Raw}");
+            File.WriteAllLines(dlg.FileName, lines);
+            _status.Text = $"Saved {_list.Items.Count} shown line(s) to {dlg.FileName}";
+        }
+        catch (Exception ex) { _status.Text = $"Save failed: {ex.Message}"; }
+    }
+
+    private Button MakeButton(string text) => new()
+    {
+        Content = text, Padding = new Thickness(12, 6, 12, 6),
+        Background = Res("Bg2NavBrush"), Foreground = Res("FgBrush"),
+        BorderBrush = Res("NavBorderBrush"), BorderThickness = new Thickness(1),
+        Cursor = System.Windows.Input.Cursors.Hand,
+    };
+
+    private CheckBox MakeCheck(string text, bool isChecked) => new()
+    {
+        Content = text, IsChecked = isChecked, Foreground = Res("FgBrush"),
+        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0),
+    };
+}
