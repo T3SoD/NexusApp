@@ -32,10 +32,12 @@ public class HelpDialog : Window
                 "Drag the NEXUS header bar to reposition the overlay anywhere on screen.",
                 "The overlay stays on top of all windows including your game.",
                 "Close it with the ✕ button — position and size are saved for next time.",
-                "The overlay has three tabs: SCAN, ORDERS, and SHOPPING.",
-                "SCAN — auto-scan controls, RS input, results, and scan history.",
+                "The overlay has four tabs: STATS, SCAN, ORDERS, and SHOPPING.",
+                "STATS — the Game.log blueprint session: Start/Stop watching, Auto-mark, a live count and a list of every blueprint marked this session (see Blueprint Auto-mark).",
+                "SCAN — auto-scan controls, RS input, results, and the RECENT scan history (shown on this tab only).",
                 "ORDERS — opens the Refinery Tracker flyout panel beside the overlay.",
                 "SHOPPING — an inline view of your current shopping list.",
+                "The opacity slider sits in the overlay header, so it's available from every tab.",
             ]),
 
         new("◎", "Auto-scan",
@@ -50,7 +52,7 @@ public class HelpDialog : Window
                 "While scanning the button shows ■ — click it to stop. Click ⊕ again to redraw the region.",
                 "Click ⊠ to show the magenta scan box indicator on screen; click ⊡ to hide it.",
                 "The scan box is hidden by default on launch.",
-                "Use the opacity slider in the SCAN tab to adjust overlay transparency (20–100%) — the refinery flyout dims along with it.",
+                "Use the opacity slider in the overlay header to adjust transparency (20–100%) — it's on every tab and the refinery flyout dims along with it.",
                 "◉ Reading… appears in the status bar when a candidate value is being confirmed.",
             ]),
 
@@ -88,7 +90,7 @@ public class HelpDialog : Window
 
         new("▣", "Blueprint Library",
             "Search any craftable item to see the exact resources it needs and the best places to mine them.",
-            [new("Enter", "search"), new("Add All", "to shopping list")],
+            [new("Enter", "search"), new("Add All", "to shopping list"), new("Owned", "toggle")],
             [
                 "Navigate to BLUEPRINT LIBRARY from the left sidebar.",
                 "Start typing a blueprint name — autocomplete suggestions appear as you type.",
@@ -100,6 +102,22 @@ public class HelpDialog : Window
                 "A WHERE TO MINE section below the ingredients ranks the most efficient mining locations to gather all required resources.",
                 "The first recommended location covers the most ingredients; subsequent entries cover what remains.",
                 "Resources with no known mining location are listed separately at the bottom.",
+                "Mark a blueprint as Owned with its toggle — a manifest (You own X of Y blueprints) and per-category progress appear at the top of the library.",
+                "Filter the library by All, Owned, or Not owned; the owned count updates live as you mark blueprints.",
+                "Let Nexus mark these for you automatically as you play — see Blueprint Auto-mark.",
+            ]),
+
+        new("✓", "Blueprint Auto-mark",
+            "Let Nexus read Star Citizen's Game.log to mark blueprints you receive as Owned — live as you play, or in bulk from past logs. (Beta)",
+            [new("Start", "watch"), new("Auto-mark", "toggle"), new("Import", "past logs")],
+            [
+                "Open it from the Settings (cog) button in the top-right › Game.log › Open Game.log Monitor.",
+                "Click Start to begin tailing your Game.log, Stop to end. The path defaults to the LIVE install — use Browse for PTU/EPTU.",
+                "Turn on Auto-mark so each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library automatically.",
+                "A toast appears each time a blueprint is auto-marked, and the Blueprint Library's owned count updates live.",
+                "Click Import owned from past logs to scan your current log plus the logbackups folder and mark everything you've already received (after a preview and confirmation).",
+                "The overlay's STATS tab mirrors this with Start/Stop, Auto-mark, a live session count, and a list of each blueprint marked this session.",
+                "Nexus only reads the log file — it never writes to game files or touches the game process.",
             ]),
 
         new("◆", "Mining Codex",
@@ -138,13 +156,23 @@ public class HelpDialog : Window
                 "Highlights update automatically when you add or remove items from the list.",
             ]),
 
+        new("≡", "Settings",
+            "The cog button in the top-right of the main window opens Settings — your theme, the Game.log blueprint watcher, and a reset for saved data all live here.",
+            [new("Settings", "cog, top-right")],
+            [
+                "Click the cog (Settings) button in the top-right of the main window to open it.",
+                "Appearance — switch between the Luxury Gold and Classic themes (applies on restart).",
+                "Game.log (Beta) — opens the Game.log Monitor that auto-marks blueprints you receive as owned (see Blueprint Auto-mark).",
+                "Data — Clear saved data wipes your owned blueprints, shopping cart, work orders and pinned resources after a confirmation; your theme and the mining reference data are left untouched.",
+            ]),
+
         new("◐", "Appearance",
             "Choose how Nexus looks — pick a theme on first launch, or switch it anytime.",
-            [new("Settings", "⚙ › Appearance")],
+            [new("Settings", "› Appearance")],
             [
                 "On first launch, a welcome picker lets you choose your look: Luxury Gold or Classic teal.",
                 "Luxury Gold is the default near-black-and-gold theme; Classic is the original slate-and-teal style.",
-                "Switch themes anytime from the Settings (⚙) button › Appearance — the change applies on restart.",
+                "Switch themes anytime from the Settings (cog) button in the top-right › Appearance — the change applies on restart.",
                 "Replay this guided tour anytime with the Replay Tutorial button below.",
             ]),
     ];
