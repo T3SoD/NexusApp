@@ -2104,8 +2104,9 @@ public partial class MainWindow : Window
     {
         if (_logMonitor == null)
         {
-            var names = App.Data.GetAllBlueprints().Select(b => b.Name);
-            _logMonitor = new LogMonitorWindow(names, RefreshBlueprintOwnership);
+            // Drives the shared App.GameLog session; the toast + Blueprint Library refresh
+            // are wired centrally in App, so no seed names / callback are passed here.
+            _logMonitor = new LogMonitorWindow();
             _logMonitor.Closed += (_, _) => _logMonitor = null;
         }
         if (_logMonitor.WindowState == WindowState.Minimized) _logMonitor.WindowState = WindowState.Normal;

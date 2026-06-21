@@ -66,6 +66,13 @@ public partial class OverlayWindow : Window
 
         SwitchTab("scan");
 
+        // BETA Game.log blueprint session — drive + mirror it from the STATS tab. The
+        // overlay lives for the app's lifetime (created once, hidden/shown), so these
+        // never need unsubscribing.
+        App.GameLog.Marked += OnGameLogMarked;
+        App.GameLog.StateChanged += SyncStatsControls;
+        SyncStatsControls();
+
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
 
         IsVisibleChanged += (_, e) =>
@@ -337,6 +344,7 @@ public partial class OverlayWindow : Window
         }
     }
 
+    private void TabStats_Click(object sender, RoutedEventArgs e) => SwitchTab("stats");
     private void TabScan_Click(object sender, RoutedEventArgs e) => SwitchTab("scan");
     private void TabOrders_Click(object sender, RoutedEventArgs e) => SwitchTab("orders");
     private void TabShopping_Click(object sender, RoutedEventArgs e) => SwitchTab("shopping");
@@ -344,16 +352,19 @@ public partial class OverlayWindow : Window
     private void SwitchTab(string tab)
     {
         _activeTab = tab;
+        StatsTabContent.Visibility    = tab == "stats"    ? Visibility.Visible : Visibility.Collapsed;
         ScanTabContent.Visibility     = tab == "scan"     ? Visibility.Visible : Visibility.Collapsed;
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
 
         var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
         var none   = Brushes.Transparent;
+        TabStatsIndicator.Background    = tab == "stats"    ? accent : none;
         TabScanIndicator.Background     = tab == "scan"     ? accent : none;
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
 
+        if (tab == "stats") RebuildStatsPanel();
         if (tab == "shopping") RebuildShoppingPanel();
 
         if (tab == "orders")
@@ -364,6 +375,80 @@ public partial class OverlayWindow : Window
         {
             _ordersTicker?.Stop();
             _ordersTicker = null;
+        }
+    }
+
+    // ── STATS tab (Beta Game.log blueprint session) ────────────────────────────
+    private void StatsWatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.GameLog.IsRunning) App.GameLog.Stop();
+        else App.GameLog.Start(string.IsNullOrWhiteSpace(App.GameLog.Path) ? GameLogSession.DefaultPath : App.GameLog.Path);
+        // Button label/status resync via SyncStatsControls (StateChanged).
+    }
+
+    private void StatsAutoMark_Click(object sender, RoutedEventArgs e)
+        => App.GameLog.SetAutoMark(!App.GameLog.AutoMark);
+
+    private void OnGameLogMarked(BlueprintMark m)
+    {
+        StatsCount.Text = App.GameLog.Count.ToString();
+        if (_activeTab == "stats") RebuildStatsPanel();
+    }
+
+    private void SyncStatsControls()
+    {
+        bool running = App.GameLog.IsRunning;
+        StatsWatchBtn.Content = running ? "■ Stop" : "▶ Start";
+        StatsWatchBtn.ToolTip = running ? "Stop watching Game.log" : "Start watching Game.log";
+
+        bool am = App.GameLog.AutoMark;
+        StatsAutoMarkBtn.Content = am ? "● Auto-mark" : "○ Auto-mark";
+        StatsAutoMarkBtn.Foreground = (Brush)FindResource(am ? "AccentBrush" : "FgDimBrush");
+
+        StatsStatus.Text = running ? (am ? "Watching · auto-mark on" : "Watching") : "Stopped";
+        StatsCount.Text  = App.GameLog.Count.ToString();
+    }
+
+    private void RebuildStatsPanel()
+    {
+        SyncStatsControls();
+        StatsFeedItems.Children.Clear();
+
+        var marks = App.GameLog.Marks;
+        StatsEmptyState.Visibility = marks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var dim    = (Brush)FindResource("FgDimBrush");
+        var fg     = (Brush)FindResource("FgBrush");
+        var border = (Brush)FindResource("NavBorderBrush");
+
+        for (int i = marks.Count - 1; i >= 0; i--)   // newest first
+        {
+            var mk = marks[i];
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var time = new TextBlock
+            {
+                Text = mk.At.ToString("HH:mm:ss"), FontSize = 9, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            };
+            var name = new TextBlock
+            {
+                Text = mk.Name, FontSize = 11, Foreground = fg,
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            Grid.SetColumn(name, 1);
+            row.Children.Add(time);
+            row.Children.Add(name);
+
+            StatsFeedItems.Children.Add(new Border
+            {
+                Child = row,
+                Padding = new Thickness(2, 3, 2, 3),
+                BorderBrush = border,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+            });
         }
     }
 

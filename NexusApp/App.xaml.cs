@@ -8,6 +8,9 @@ public partial class App : Application
     public static DataService Data { get; private set; } = null!;
     public static SettingsService Settings { get; private set; } = null!;
 
+    // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
+    public static GameLogSession GameLog { get; private set; } = null!;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         const string crashMessage =
@@ -69,10 +72,27 @@ public partial class App : Application
         base.OnStartup(e);
         Data = new DataService();
         Data.Initialize();
+
+        // BETA Game.log blueprint watch. Created after seed data loads (the importer needs
+        // the blueprint name list). One instance app-wide, shared by the standalone monitor
+        // window and the overlay STATS tab so they stay in sync. A live auto-mark pops a
+        // toast and refreshes the Blueprint Library count; a past-logs import just refreshes.
+        GameLog = new GameLogSession(
+            () => Data.GetAllBlueprints().Select(b => b.Name),
+            name => Settings.IsBlueprintOwned(name),
+            (name, owned) => Settings.SetBlueprintOwned(name, owned));
+        GameLog.Marked += m =>
+        {
+            Views.ToastWindow.Show($"Marked owned: {m.Name}");
+            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
+        };
+        GameLog.BulkOwnershipChanged += () =>
+            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        GameLog?.Dispose();
         Data?.Dispose();
         base.OnExit(e);
     }

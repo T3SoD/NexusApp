@@ -10,17 +10,17 @@ using NexusApp.Services;
 
 namespace NexusApp.Views;
 
-// BETA / EXPERIMENTAL — floating viewer that tails Star Citizen's Game.log live, and can
-// auto-mark blueprint ownership from "Received Blueprint" events (live + a retroactive
-// scan of logbackups). Reads a game-authored file; do NOT ship to a release without
-// reworking the "no game files" EAC wording. See GameLogWatcher / GameLogBlueprintImporter.
+// BETA / EXPERIMENTAL — floating viewer that tails Star Citizen's Game.log live and shows
+// the raw lines, with a retroactive "import from past logs" scan. The live tail, blueprint
+// auto-mark and the per-session tally all live in the shared App.GameLog session, so this
+// window and the overlay's STATS tab share one watcher and stay in sync. This stays the
+// full/advanced tool (raw log, filter, snapshot, import); the overlay is the lightweight
+// in-game surface. Reads a game-authored file — rework the "no game files" EAC wording
+// before any release. See GameLogSession / GameLogWatcher / GameLogBlueprintImporter.
 public sealed class LogMonitorWindow : Window
 {
     private const int MaxEntries = 6000;
 
-    private readonly GameLogWatcher _watcher = new();
-    private readonly GameLogBlueprintImporter _importer;
-    private readonly Action? _onOwnershipChanged;
     private readonly List<GameLogEntry> _all = new();
     private readonly ListBox _list;
     private readonly TextBox _pathBox;
@@ -33,17 +33,14 @@ public sealed class LogMonitorWindow : Window
     private readonly CheckBox _fromStart;
     private readonly CheckBox _autoMark;
     private readonly TextBlock _markCountLabel;
-    private int _markCount;
     private bool _blueprintsOnly;
+    private bool _syncing;   // guards programmatic control updates from re-entering the session
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
 
-    public LogMonitorWindow(IEnumerable<string> seedBlueprintNames, Action? onOwnershipChanged = null)
+    public LogMonitorWindow()
     {
-        _importer = new GameLogBlueprintImporter(seedBlueprintNames);
-        _onOwnershipChanged = onOwnershipChanged;
-
         Title = "Game.log Live Monitor (Beta)";
         Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
         Background = Res("BgBrush");
@@ -73,7 +70,7 @@ public sealed class LogMonitorWindow : Window
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _pathBox = new TextBox
         {
-            Text = GameLogWatcher.DefaultLivePath,
+            Text = string.IsNullOrEmpty(App.GameLog.Path) ? GameLogSession.DefaultPath : App.GameLog.Path,
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
             ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
@@ -81,7 +78,8 @@ public sealed class LogMonitorWindow : Window
         Grid.SetColumn(_pathBox, 0); pathRow.Children.Add(_pathBox);
         var browse = MakeButton("Browse…"); browse.Click += (_, _) => Browse();
         Grid.SetColumn(browse, 1); pathRow.Children.Add(browse);
-        _startBtn = MakeButton("Start"); _startBtn.Margin = new Thickness(6, 0, 0, 0); _startBtn.Click += (_, _) => ToggleStart();
+        _startBtn = MakeButton(App.GameLog.IsRunning ? "Stop" : "Start");
+        _startBtn.Margin = new Thickness(6, 0, 0, 0); _startBtn.Click += (_, _) => ToggleStart();
         Grid.SetColumn(_startBtn, 2); pathRow.Children.Add(_startBtn);
         Grid.SetRow(pathRow, 0); root.Children.Add(pathRow);
 
@@ -115,15 +113,21 @@ public sealed class LogMonitorWindow : Window
         };
         var bpRow = new StackPanel { Orientation = Orientation.Horizontal };
         bpRow.Children.Add(new TextBlock { Text = "Blueprint ownership (Beta):", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
-        _autoMark = MakeCheck("Auto-mark blueprints I receive while watching", false);
+        _autoMark = MakeCheck("Auto-mark blueprints I receive while watching", App.GameLog.AutoMark);
         _autoMark.Margin = new Thickness(0, 0, 0, 0);
         _autoMark.ToolTip = "When the log shows a 'Received Blueprint' event, mark it owned in Nexus automatically";
+        _autoMark.Checked   += (_, _) => { if (!_syncing) App.GameLog.SetAutoMark(true); };
+        _autoMark.Unchecked += (_, _) => { if (!_syncing) App.GameLog.SetAutoMark(false); };
         bpRow.Children.Add(_autoMark);
         _importBtn = MakeButton("Import owned from past logs…"); _importBtn.Margin = new Thickness(16, 0, 0, 0);
         _importBtn.ToolTip = "Scan this log + the logbackups folder for blueprints you've already received, and mark them owned";
         _importBtn.Click += async (_, _) => await ImportFromLogsAsync();
         bpRow.Children.Add(_importBtn);
-        _markCountLabel = new TextBlock { Text = "", Foreground = Res("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+        _markCountLabel = new TextBlock
+        {
+            Text = App.GameLog.Count > 0 ? $"Auto-marked this session: {App.GameLog.Count}" : "",
+            Foreground = Res("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0),
+        };
         bpRow.Children.Add(_markCountLabel);
         bp.Child = bpRow;
         Grid.SetRow(bp, 2); root.Children.Add(bp);
@@ -141,29 +145,24 @@ public sealed class LogMonitorWindow : Window
 
         Content = root;
 
-        _watcher.LineAppended += OnLine;
-        _watcher.StatusChanged += s => _status.Text = s;
-        Closed += (_, _) => _watcher.Dispose();
+        // Bind to the shared session. Unsubscribe on close so the app-lifetime session
+        // doesn't accumulate handlers each time this window is reopened.
+        App.GameLog.LineAppended += OnLine;
+        App.GameLog.StatusChanged += OnStatus;
+        App.GameLog.Marked += OnMarked;
+        App.GameLog.StateChanged += OnStateChanged;
+        Closed += (_, _) =>
+        {
+            App.GameLog.LineAppended -= OnLine;
+            App.GameLog.StatusChanged -= OnStatus;
+            App.GameLog.Marked -= OnMarked;
+            App.GameLog.StateChanged -= OnStateChanged;
+        };
     }
 
+    // Raw live tail display (the auto-mark itself now happens in the shared session).
     private void OnLine(GameLogEntry e)
     {
-        // Live auto-mark: a receipt -> resolve to a Nexus name -> mark owned once.
-        if (_autoMark.IsChecked == true && e.Category == LogCategory.Blueprint)
-        {
-            var canon = _importer.ResolveLine(e.Raw);
-            if (canon is not null && !App.Settings.IsBlueprintOwned(canon))
-            {
-                App.Settings.SetBlueprintOwned(canon, true);
-                _onOwnershipChanged?.Invoke();
-                _markCount++;
-                _markCountLabel.Text = $"Auto-marked this session: {_markCount}";
-                _status.Text = $"Auto-marked owned: {canon}";
-                Logger.Info($"[GameLog] auto-marked blueprint owned: {canon}");   // timestamped record in nexus.log
-                ToastWindow.Show($"Marked owned: {canon}");
-            }
-        }
-
         _all.Add(e);
         if (_all.Count > MaxEntries) _all.RemoveRange(0, _all.Count - MaxEntries);
         if (!PassesFilter(e)) return;
@@ -171,6 +170,23 @@ public sealed class LogMonitorWindow : Window
         while (_list.Items.Count > MaxEntries) _list.Items.RemoveAt(0);
         if (_autoScroll.IsChecked == true && _list.Items.Count > 0)
             _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
+    }
+
+    private void OnStatus(string s) => _status.Text = s;
+
+    private void OnMarked(BlueprintMark m)
+    {
+        _markCountLabel.Text = $"Auto-marked this session: {App.GameLog.Count}";
+        _status.Text = $"Auto-marked owned: {m.Name}";
+    }
+
+    // Keep Start/Stop + Auto-mark in step when the overlay (or anything) changes them.
+    private void OnStateChanged()
+    {
+        _syncing = true;
+        _startBtn.Content = App.GameLog.IsRunning ? "Stop" : "Start";
+        _autoMark.IsChecked = App.GameLog.AutoMark;
+        _syncing = false;
     }
 
     private async Task ImportFromLogsAsync()
@@ -181,7 +197,7 @@ public sealed class LogMonitorWindow : Window
         GameLogBlueprintImporter.HistoryScan scan;
         try
         {
-            scan = await Task.Run(() => _importer.ScanHistory(path, n => Dispatcher.Invoke(() => _status.Text = $"Scanning… {n} file(s)")));
+            scan = await Task.Run(() => App.GameLog.ScanHistory(path, n => Dispatcher.Invoke(() => _status.Text = $"Scanning… {n} file(s)")));
         }
         catch (Exception ex) { _status.Text = $"Scan failed: {ex.Message}"; _importBtn.IsEnabled = true; return; }
         _importBtn.IsEnabled = true;
@@ -200,8 +216,10 @@ public sealed class LogMonitorWindow : Window
         var res = MessageBox.Show(this, msg, "Import owned blueprints (Beta)", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (res != MessageBoxResult.Yes) { _status.Text = "Import cancelled."; return; }
 
+        // Import is a bulk action — it marks ownership but is deliberately NOT part of the
+        // live "this session" tally (auto-marks only), so it doesn't touch the session feed.
         int added = App.Settings.SetBlueprintsOwned(scan.Matched);
-        _onOwnershipChanged?.Invoke();
+        App.GameLog.NotifyBulkOwnershipChanged();
         _status.Text = $"Imported {added} newly marked owned ({scan.Matched.Count} found, {scan.Matched.Count - added} were already owned).";
     }
 
@@ -243,8 +261,9 @@ public sealed class LogMonitorWindow : Window
 
     private void ToggleStart()
     {
-        if (_watcher.IsRunning) { _watcher.Stop(); _startBtn.Content = "Start"; }
-        else { _watcher.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true); _startBtn.Content = "Stop"; }
+        // Button content resyncs via OnStateChanged (which also covers overlay-driven changes).
+        if (App.GameLog.IsRunning) App.GameLog.Stop();
+        else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true);
     }
 
     private void Browse()

@@ -99,8 +99,17 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
+                    <Button x:Name="TabStatsBtn" Content="STATS"
+                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                            Background="Transparent" BorderThickness="0"
+                            Click="TabStats_Click" Padding="0,6" Margin="0"/>
+                    <Border x:Name="TabStatsIndicator" Height="2" Width="34"
+                            CornerRadius="1" Background="Transparent"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
                     <Button x:Name="TabScanBtn" Content="SCAN"
                             Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
                             Background="Transparent" BorderThickness="0"
@@ -108,7 +117,7 @@
                     <Border x:Name="TabScanIndicator" Height="2" Width="34"
                             CornerRadius="1" Background="{DynamicResource AccentBrush}"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1">
+                <StackPanel Grid.Column="2">
                     <Button x:Name="TabOrdersBtn" Content="ORDERS"
                             Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
                             Background="Transparent" BorderThickness="0"
@@ -116,7 +125,7 @@
                     <Border x:Name="TabOrdersIndicator" Height="2" Width="44"
                             CornerRadius="1" Background="Transparent"/>
                 </StackPanel>
-                <StackPanel Grid.Column="2">
+                <StackPanel Grid.Column="3">
                     <Button x:Name="TabShoppingBtn" Content="SHOPPING"
                             Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
                             Background="Transparent" BorderThickness="0"
@@ -124,12 +133,73 @@
                     <Border x:Name="TabShoppingIndicator" Height="2" Width="54"
                             CornerRadius="1" Background="Transparent"/>
                 </StackPanel>
-                <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1"
+                <Border Grid.ColumnSpan="4" VerticalAlignment="Bottom" Height="1"
                         Background="{DynamicResource NavBorderBrush}"/>
             </Grid>
 
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
+
+                <!-- STATS tab (Beta): Game.log blueprint auto-mark session -->
+                <Grid x:Name="StatsTabContent" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Gamelog control rail: start/stop watching + auto-mark toggle -->
+                    <Border Grid.Row="0" Margin="10,10,10,0" CornerRadius="9"
+                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
+                            BorderThickness="1" Padding="6,5">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="StatsWatchBtn" Content="▶ Start"
+                                    Style="{StaticResource NexusButton}" FontSize="10"
+                                    Foreground="{DynamicResource AccentBrush}" Padding="8,3"
+                                    Margin="0,0,6,0" Click="StatsWatch_Click"
+                                    ToolTip="Start/stop watching Game.log"/>
+                            <Button x:Name="StatsAutoMarkBtn" Content="○ Auto-mark"
+                                    Style="{StaticResource NexusButton}" FontSize="10"
+                                    Foreground="{DynamicResource FgDimBrush}" Padding="8,3"
+                                    Click="StatsAutoMark_Click"
+                                    ToolTip="Auto-mark blueprints you receive while watching"/>
+                            <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
+                                       Foreground="{DynamicResource FgDimBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Count banner -->
+                    <Border Grid.Row="1" Margin="10,9,10,0" CornerRadius="9"
+                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
+                            BorderThickness="1" Padding="12,9">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatsCount" Text="0" FontFamily="{StaticResource HeadFont}"
+                                       FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="new blueprints&#x0a;marked this session" FontSize="10"
+                                       Foreground="{DynamicResource FgBrush}" Margin="11,0,0,0"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Grid.Row="2" Text="MARKED THIS SESSION" FontSize="9" FontWeight="Bold"
+                               Foreground="{DynamicResource AccentBrush}" Margin="12,12,10,4"/>
+
+                    <!-- Marked feed (newest first) -->
+                    <Grid Grid.Row="3">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,0">
+                            <StackPanel x:Name="StatsFeedItems"/>
+                        </ScrollViewer>
+                        <TextBlock x:Name="StatsEmptyState"
+                                   Text="No blueprints marked yet.&#x0a;Start watching with Auto-mark on."
+                                   FontSize="10" Foreground="{DynamicResource FgDimBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Grid>
+                </Grid>
 
                 <!-- SCAN tab -->
                 <Grid x:Name="ScanTabContent">
