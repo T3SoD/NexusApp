@@ -2120,6 +2120,11 @@ public partial class MainWindow : Window
         if (!_bpInit) return;            // not visited yet — it'll read current ownership on first open
         UpdateOwnedCount();
         RenderBlueprintNav();
+        // Rebuild the manifest landing so its "You own X of Y blueprints" line, percentage and
+        // category bars reflect the new count live. Only when the landing is showing — if a single
+        // blueprint's detail is open (_detailBpName != null) it has no manifest count, and rebuilding
+        // would replace the detail the user is reading.
+        if (_detailBpName == null) ShowBlueprintLanding();
     }
 
     // ── Easter egg (app version badge) ───────────────────────────────────────
