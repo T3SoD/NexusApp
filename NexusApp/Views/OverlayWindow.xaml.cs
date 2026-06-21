@@ -66,7 +66,7 @@ public partial class OverlayWindow : Window
                 BuildOverlayHistoryFilterPills();
         };
 
-        SwitchTab("scan");
+        SwitchTab("stats");
 
         // BETA Game.log blueprint session — drive + mirror it from the STATS tab. The
         // overlay lives for the app's lifetime (created once, hidden/shown), so these
