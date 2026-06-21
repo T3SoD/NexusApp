@@ -36,8 +36,37 @@ public sealed class GameLogWatcher : IDisposable
 
     public event Action<GameLogEntry>? LineAppended;
     public event Action<string>? StatusChanged;
+    /// <summary>The log file was truncated/recreated — Star Citizen started a new session.</summary>
+    public event Action? LogReset;
     public bool IsRunning { get; private set; }
     public string Path => _path;
+
+    // Best-effort search for an existing Game.log across common RSI install locations and
+    // channels, so the overlay (which has no path field) can start without manual setup.
+    // Falls back to the LIVE default path if nothing is found.
+    public static string FindGameLog()
+    {
+        string[] channels = { "LIVE", "PTU", "EPTU", "TECH-PREVIEW" };
+        string[] roots =
+        {
+            @"C:\Program Files\Roberts Space Industries\StarCitizen",
+            @"C:\Program Files (x86)\Roberts Space Industries\StarCitizen",
+            @"D:\Roberts Space Industries\StarCitizen",
+            @"D:\Program Files\Roberts Space Industries\StarCitizen",
+            @"E:\Roberts Space Industries\StarCitizen",
+        };
+        try
+        {
+            foreach (var root in roots)
+                foreach (var ch in channels)
+                {
+                    var p = System.IO.Path.Combine(root, ch, "Game.log");
+                    if (File.Exists(p)) return p;
+                }
+        }
+        catch { /* ignore probe errors */ }
+        return DefaultLivePath;
+    }
 
     public GameLogWatcher()
     {
@@ -91,6 +120,7 @@ public sealed class GameLogWatcher : IDisposable
                 _position = 0;
                 _partial.Clear();
                 StatusChanged?.Invoke($"Log reset (new session) — {_path}");
+                LogReset?.Invoke();
             }
             if (len <= _position) return;
 

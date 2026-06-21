@@ -35,6 +35,19 @@ public sealed class GameLogSession : IDisposable
         _setOwned  = setOwned;
         _watcher.LineAppended  += Ingest;
         _watcher.StatusChanged += s => StatusChanged?.Invoke(s);
+        _watcher.LogReset      += Reset;   // a new SC session starts a fresh tally
+    }
+
+    /// <summary>Path to start watching: the current one if it exists, else a best-effort probe.</summary>
+    public string StartPath() =>
+        !string.IsNullOrEmpty(Path) && File.Exists(Path) ? Path : GameLogWatcher.FindGameLog();
+
+    /// <summary>Clears the session tally (blueprints + combat). Fires on a new SC session or on demand.</summary>
+    public void Reset()
+    {
+        _marks.Clear();
+        PlayersKilled = KilledByPlayers = OverallDeaths = 0;
+        CombatChanged?.Invoke();
     }
 
     // Built lazily: the blueprint name list isn't ready until seed data loads.
@@ -88,7 +101,7 @@ public sealed class GameLogSession : IDisposable
         AutoMark = on;
         // "Auto-Track Blueprints" implies watching — you can't mark from a log you're not reading.
         if (on && !_watcher.IsRunning)
-            _watcher.Start(string.IsNullOrEmpty(Path) ? DefaultPath : Path, false);
+            _watcher.Start(StartPath(), false);
         StateChanged?.Invoke();
     }
 

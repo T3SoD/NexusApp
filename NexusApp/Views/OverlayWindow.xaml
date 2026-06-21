@@ -152,17 +152,23 @@
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
 
-                <!-- STATS tab (Beta): Game.log blueprint auto-mark session -->
+                <!-- STATS tab (Beta): Session Tracking — Game.log blueprint/combat session -->
                 <Grid x:Name="StatsTabContent" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Track Session / Auto-Track Blueprints switches (built in code-behind) -->
-                    <WrapPanel x:Name="StatsControlBar" Grid.Row="0" Margin="10,10,10,2"/>
+                    <!-- Track Session / Auto-Track Blueprints switches (built in code-behind) + status -->
+                    <StackPanel Grid.Row="0" Margin="10,10,10,2">
+                        <WrapPanel x:Name="StatsControlBar"/>
+                        <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
+                                   Foreground="{DynamicResource FgDimBrush}" Margin="1,4,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
 
                     <!-- Session counts: blueprints + combat (combat reads 0 until the kill parser lands) -->
                     <Border Grid.Row="1" Margin="10,7,10,0" CornerRadius="11"
@@ -189,6 +195,16 @@
                                    FontSize="10" Foreground="{DynamicResource FgDimBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Footer: reach the advanced monitor + reset the session tally -->
+                    <Grid Grid.Row="4" Margin="12,4,10,8">
+                        <TextBlock Text="Open advanced monitor…" FontSize="9"
+                                   Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
+                                   HorizontalAlignment="Left" MouseLeftButtonUp="OpenMonitorFromStats_Click"/>
+                        <TextBlock Text="Reset session" FontSize="9"
+                                   Foreground="{DynamicResource FgDimBrush}" Cursor="Hand"
+                                   HorizontalAlignment="Right" MouseLeftButtonUp="ResetSession_Click"/>
                     </Grid>
                 </Grid>
 
