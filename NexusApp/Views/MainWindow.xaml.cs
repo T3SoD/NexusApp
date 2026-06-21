@@ -2097,10 +2097,14 @@ public partial class MainWindow : Window
         new AboutDialog { Owner = this }.ShowDialog();
     }
 
-    // BETA (beta branch only): floating live Game.log monitor — kept modeless and
-    // un-owned so it can float over the game while you play.
+    private void Settings_Click(object sender, RoutedEventArgs e)
+        => new SettingsDialog(ShowLogMonitor) { Owner = this }.ShowDialog();
+
     private LogMonitorWindow? _logMonitor;
-    private void OpenLogMonitor_Click(object sender, RoutedEventArgs e)
+
+    // BETA: opens (or re-surfaces) the floating Game.log monitor — kept modeless and un-owned
+    // so it can float over the game while you play. Reached from Settings → Game.log.
+    public void ShowLogMonitor()
     {
         if (_logMonitor == null)
         {
