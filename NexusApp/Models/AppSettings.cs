@@ -17,6 +17,11 @@ public class AppSettings
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
     public bool FirstRunComplete { get; set; }
+
+    // BETA Session Tracking — remember whether the watch / auto-collect were on, so they
+    // resume on next launch.
+    public bool GameLogTrackSession { get; set; }
+    public bool GameLogAutoTrack { get; set; }
 }
 
 public class ScanRegion

@@ -201,9 +201,11 @@
                     <Grid Grid.Row="4" Margin="12,4,10,8">
                         <TextBlock Text="Open advanced monitor…" FontSize="9"
                                    Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
+                                   Background="Transparent" Padding="2,3"
                                    HorizontalAlignment="Left" MouseLeftButtonUp="OpenMonitorFromStats_Click"/>
                         <TextBlock Text="Reset session" FontSize="9"
                                    Foreground="{DynamicResource FgDimBrush}" Cursor="Hand"
+                                   Background="Transparent" Padding="2,3"
                                    HorizontalAlignment="Right" MouseLeftButtonUp="ResetSession_Click"/>
                     </Grid>
                 </Grid>
