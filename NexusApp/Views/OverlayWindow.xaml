@@ -161,43 +161,22 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Gamelog control rail: start/stop watching + auto-mark toggle -->
-                    <Border Grid.Row="0" Margin="10,10,10,0" CornerRadius="9"
+                    <!-- Track Session / Auto-Track Blueprints switches (built in code-behind) -->
+                    <WrapPanel x:Name="StatsControlBar" Grid.Row="0" Margin="10,10,10,2"/>
+
+                    <!-- Session counts: blueprints + combat (combat reads 0 until the kill parser lands) -->
+                    <Border Grid.Row="1" Margin="10,7,10,0" CornerRadius="11"
                             Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
-                            BorderThickness="1" Padding="6,5">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="StatsWatchBtn" Content="▶ Start"
-                                    Style="{StaticResource NexusButton}" FontSize="10"
-                                    Foreground="{DynamicResource AccentBrush}" Padding="8,3"
-                                    Margin="0,0,6,0" Click="StatsWatch_Click"
-                                    ToolTip="Start/stop watching Game.log"/>
-                            <Button x:Name="StatsAutoMarkBtn" Content="○ Auto-mark"
-                                    Style="{StaticResource NexusButton}" FontSize="10"
-                                    Foreground="{DynamicResource FgDimBrush}" Padding="8,3"
-                                    Click="StatsAutoMark_Click"
-                                    ToolTip="Auto-mark blueprints you receive while watching"/>
-                            <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
-                                       Foreground="{DynamicResource FgDimBrush}"
-                                       VerticalAlignment="Center" Margin="8,0,0,0"
-                                       TextTrimming="CharacterEllipsis"/>
+                            BorderThickness="1" Padding="13,2,13,6">
+                        <StackPanel>
+                            <TextBlock x:Name="StatsSessionHeader" Text="THIS SESSION" FontSize="9"
+                                       FontWeight="Bold" Foreground="{DynamicResource FgDimBrush}" Padding="0,7,0,7"/>
+                            <Border Height="1" Background="{DynamicResource NavBorderBrush}" Margin="0,0,0,2"/>
+                            <StackPanel x:Name="StatsListItems"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- Count banner -->
-                    <Border Grid.Row="1" Margin="10,9,10,0" CornerRadius="9"
-                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
-                            BorderThickness="1" Padding="12,9">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="StatsCount" Text="0" FontFamily="{StaticResource HeadFont}"
-                                       FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="new blueprints&#x0a;marked this session" FontSize="10"
-                                       Foreground="{DynamicResource FgBrush}" Margin="11,0,0,0"
-                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Grid.Row="2" Text="MARKED THIS SESSION" FontSize="9" FontWeight="Bold"
+                    <TextBlock Grid.Row="2" Text="BLUEPRINTS COLLECTED THIS SESSION" FontSize="9" FontWeight="Bold"
                                Foreground="{DynamicResource AccentBrush}" Margin="12,12,10,4"/>
 
                     <!-- Marked feed (newest first) -->
@@ -206,7 +185,7 @@
                             <StackPanel x:Name="StatsFeedItems"/>
                         </ScrollViewer>
                         <TextBlock x:Name="StatsEmptyState"
-                                   Text="No blueprints marked yet.&#x0a;Start watching with Auto-mark on."
+                                   Text="No blueprints yet.&#x0a;Turn on Auto-Track Blueprints."
                                    FontSize="10" Foreground="{DynamicResource FgDimBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"/>

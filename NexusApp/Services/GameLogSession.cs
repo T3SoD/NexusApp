@@ -49,6 +49,14 @@ public sealed class GameLogSession : IDisposable
     public string Path => _watcher.Path;
     public static string DefaultPath => GameLogWatcher.DefaultLivePath;
 
+    // Combat tally (Beta) — filled by the Game.log kill parser once sample lines are
+    // available; 0 until then. PlayerHandle is auto-detected from the log's login line
+    // and labels the session ("THIS SESSION — <handle>"); empty until detected.
+    public int PlayersKilled { get; internal set; }
+    public int KilledByPlayers { get; internal set; }
+    public int OverallDeaths { get; internal set; }
+    public string PlayerHandle { get; internal set; } = "";
+
     /// <summary>A blueprint was just auto-marked owned (raised once per distinct new blueprint).</summary>
     public event Action<BlueprintMark>? Marked;
     /// <summary>Running / Auto-mark changed — bound UIs resync their Start-Stop + toggle.</summary>
@@ -58,6 +66,8 @@ public sealed class GameLogSession : IDisposable
     public event Action<string>? StatusChanged;
     /// <summary>A bulk ownership change happened outside the live feed (the past-logs import).</summary>
     public event Action? BulkOwnershipChanged;
+    /// <summary>The combat tally (kills/deaths/handle) changed — bound UIs refresh their counts.</summary>
+    public event Action? CombatChanged;
 
     public void Start(string path, bool fromBeginning = false)
     {
@@ -68,6 +78,7 @@ public sealed class GameLogSession : IDisposable
     public void Stop()
     {
         _watcher.Stop();
+        AutoMark = false;   // stopping the watch turns off auto-tracking — nothing to mark from
         StateChanged?.Invoke();
     }
 
@@ -75,6 +86,9 @@ public sealed class GameLogSession : IDisposable
     {
         if (AutoMark == on) return;
         AutoMark = on;
+        // "Auto-Track Blueprints" implies watching — you can't mark from a log you're not reading.
+        if (on && !_watcher.IsRunning)
+            _watcher.Start(string.IsNullOrEmpty(Path) ? DefaultPath : Path, false);
         StateChanged?.Invoke();
     }
 
@@ -85,6 +99,9 @@ public sealed class GameLogSession : IDisposable
         => Importer.ScanHistory(liveLogPath, progress);
 
     public void NotifyBulkOwnershipChanged() => BulkOwnershipChanged?.Invoke();
+
+    /// <summary>Called by the kill parser after updating the combat tally / handle.</summary>
+    public void NotifyCombatChanged() => CombatChanged?.Invoke();
 
     /// <summary>
     /// Process one tailed line: surface it raw, and — when Auto-mark is on — mark a newly
