@@ -145,6 +145,21 @@ public class SettingsService
         Save();
     }
 
+    // Bulk-mark owned with a single disk write — used by the Game.log importer so a
+    // retroactive scan of dozens of blueprints doesn't save settings dozens of times.
+    // Returns how many were newly marked (already-owned ones are skipped).
+    public int SetBlueprintsOwned(IEnumerable<string> names)
+    {
+        int added = 0;
+        foreach (var name in names)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            if (OwnedSet.Add(name)) { Current.OwnedBlueprints.Add(name); added++; }
+        }
+        if (added > 0) Save();
+        return added;
+    }
+
     public void ClearOwnedBlueprints()
     {
         Current.OwnedBlueprints.Clear();
