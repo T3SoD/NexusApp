@@ -71,7 +71,8 @@ public partial class OverlayWindow : Window
         // never need unsubscribing.
         App.GameLog.Marked += OnGameLogMarked;
         App.GameLog.StateChanged += SyncStatsControls;
-        SyncStatsControls();
+        App.GameLog.CombatChanged += OnCombatChanged;
+        BuildStatsControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
 
@@ -414,42 +415,116 @@ public partial class OverlayWindow : Window
         }
     }
 
-    // ── STATS tab (Beta Game.log blueprint session) ────────────────────────────
-    private void StatsWatch_Click(object sender, RoutedEventArgs e)
+    // ── STATS tab (Beta Game.log session) ──────────────────────────────────────
+    private Border? _trackSwTrack, _trackSwKnob, _autoSwTrack, _autoSwKnob;
+
+    // Builds the two compact on/off switches (Track Session, Auto-Track Blueprints) once.
+    private void BuildStatsControls()
+    {
+        StatsControlBar.Children.Clear();
+
+        _trackSwTrack = NewSwitchTrack();
+        _trackSwKnob  = NewSwitchKnob();
+        _trackSwTrack.Child = _trackSwKnob;
+        StatsControlBar.Children.Add(SwitchPair(_trackSwTrack, "Track Session", ToggleTrackSession));
+
+        _autoSwTrack = NewSwitchTrack();
+        _autoSwKnob  = NewSwitchKnob();
+        _autoSwTrack.Child = _autoSwKnob;
+        StatsControlBar.Children.Add(SwitchPair(_autoSwTrack, "Auto-Track Blueprints", ToggleAutoTrack));
+
+        SyncStatsControls();
+    }
+
+    private void ToggleTrackSession()
     {
         if (App.GameLog.IsRunning) App.GameLog.Stop();
         else App.GameLog.Start(string.IsNullOrWhiteSpace(App.GameLog.Path) ? GameLogSession.DefaultPath : App.GameLog.Path);
-        // Button label/status resync via SyncStatsControls (StateChanged).
     }
 
-    private void StatsAutoMark_Click(object sender, RoutedEventArgs e)
-        => App.GameLog.SetAutoMark(!App.GameLog.AutoMark);
+    // Auto-Track on also starts the watch (handled in GameLogSession); turning it off leaves the watch running.
+    private void ToggleAutoTrack() => App.GameLog.SetAutoMark(!App.GameLog.AutoMark);
+
+    private static Border NewSwitchTrack() => new()
+    {
+        Width = 30, Height = 17, CornerRadius = new CornerRadius(9),
+        BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    private static Border NewSwitchKnob() => new()
+    {
+        Width = 13, Height = 13, CornerRadius = new CornerRadius(7),
+        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 2, 0),
+    };
+
+    private UIElement SwitchPair(Border track, string label, Action onToggle)
+    {
+        var pair = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Cursor = Cursors.Hand,
+            Margin = new Thickness(0, 0, 14, 4), VerticalAlignment = VerticalAlignment.Center,
+        };
+        pair.Children.Add(track);
+        pair.Children.Add(new TextBlock
+        {
+            Text = label, FontSize = 11, Foreground = (Brush)FindResource("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+        });
+        pair.MouseLeftButtonUp += (_, _) => { onToggle(); SyncStatsControls(); };
+        return pair;
+    }
+
+    private void SetSwitch(Border? track, Border? knob, bool on)
+    {
+        if (track == null || knob == null) return;
+        track.Background  = on ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("Bg3Brush");
+        track.BorderBrush = on ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("NavBorderBrush");
+        knob.HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        knob.Background = on ? (Brush)FindResource("OnAccentBrush") : (Brush)FindResource("FgDimBrush");
+    }
 
     private void OnGameLogMarked(BlueprintMark m)
     {
-        StatsCount.Text = App.GameLog.Count.ToString();
         if (_activeTab == "stats") RebuildStatsPanel();
     }
 
+    private void OnCombatChanged()
+    {
+        if (_activeTab == "stats") RebuildStatsPanel();
+    }
+
+    // Reflects watcher / auto-mark state onto the two switches.
     private void SyncStatsControls()
     {
-        bool running = App.GameLog.IsRunning;
-        StatsWatchBtn.Content = running ? "■ Stop" : "▶ Start";
-        StatsWatchBtn.ToolTip = running ? "Stop watching Game.log" : "Start watching Game.log";
-
-        bool am = App.GameLog.AutoMark;
-        StatsAutoMarkBtn.Content = am ? "● Auto-mark" : "○ Auto-mark";
-        StatsAutoMarkBtn.Foreground = (Brush)FindResource(am ? "AccentBrush" : "FgDimBrush");
-
-        StatsStatus.Text = running ? (am ? "Watching · auto-mark on" : "Watching") : "Stopped";
-        StatsCount.Text  = App.GameLog.Count.ToString();
+        SetSwitch(_trackSwTrack, _trackSwKnob, App.GameLog.IsRunning);
+        SetSwitch(_autoSwTrack, _autoSwKnob, App.GameLog.AutoMark);
     }
 
     private void RebuildStatsPanel()
     {
         SyncStatsControls();
-        StatsFeedItems.Children.Clear();
 
+        // Session header with the auto-detected handle (blank until the login parser lands).
+        var accent = (Brush)FindResource("AccentBrush");
+        StatsSessionHeader.Inlines.Clear();
+        StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run("THIS SESSION"));
+        if (!string.IsNullOrEmpty(App.GameLog.PlayerHandle))
+        {
+            StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run(" — "));
+            StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run(App.GameLog.PlayerHandle)
+            { Foreground = accent, FontWeight = FontWeights.Bold });
+        }
+
+        // Count list: blueprints (live) + combat (0 until the kill parser lands).
+        var red = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+        StatsListItems.Children.Clear();
+        AddStatRow("Blueprints collected", App.GameLog.Count, accent, false);
+        AddStatRow("Players killed", App.GameLog.PlayersKilled, accent, false);
+        AddStatRow("Killed by players", App.GameLog.KilledByPlayers, red, false);
+        AddStatRow("Overall deaths", App.GameLog.OverallDeaths, red, true);
+
+        // Blueprints-collected feed (newest first).
+        StatsFeedItems.Children.Clear();
         var marks = App.GameLog.Marks;
         StatsEmptyState.Visibility = marks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -486,6 +561,34 @@ public partial class OverlayWindow : Window
                 BorderThickness = new Thickness(0, 0, 0, 1),
             });
         }
+    }
+
+    // One "Label .............. Value" row in the session count list.
+    private void AddStatRow(string label, int value, Brush valueBrush, bool last)
+    {
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock
+        {
+            Text = label, FontSize = 12, Foreground = (Brush)FindResource("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        var v = new TextBlock
+        {
+            Text = value.ToString(), FontSize = 16, FontWeight = FontWeights.Bold,
+            Foreground = valueBrush, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(v, 1);
+        row.Children.Add(v);
+
+        StatsListItems.Children.Add(new Border
+        {
+            Child = row,
+            Padding = new Thickness(0, 7, 0, 7),
+            BorderBrush = (Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(0, 0, 0, last ? 0 : 1),
+        });
     }
 
     private System.Windows.Threading.DispatcherTimer? _ordersTicker;
