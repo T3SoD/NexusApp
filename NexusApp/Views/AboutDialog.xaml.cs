@@ -383,14 +383,17 @@ public class AboutDialog : Window
             "Star Citizen® is a registered trademark of Cloud Imperium Games Corporation.");
 
         AddLegalSection("How This App Works",
-            "Nexus only reads pixel data from your screen (screen capture) and displays reference " +
-            "information from a local database. It does not read game memory, inject code into any " +
-            "process, modify game files, or communicate with game servers in any way.");
+            "Nexus reads pixel data from your screen (screen capture) and displays reference information " +
+            "from a local database. The optional Session Tracking feature (Beta) additionally reads — " +
+            "read-only — the Game.log text file Star Citizen writes to disk, to auto-collect blueprints. " +
+            "Nexus does not read game memory, inject code into any process, modify any game files, or " +
+            "communicate with game servers in any way.");
 
         AddLegalSection("Anti-Cheat Compatibility",
             "Nexus does not interact with the game process in any way and is EAC-Safe (Easy Anti-Cheat " +
             "compatible). It operates entirely outside the game — similar to having a browser or " +
-            "spreadsheet open alongside Star Citizen.");
+            "spreadsheet open alongside Star Citizen. Reading the Game.log is an out-of-process, " +
+            "read-only file read and never modifies game files.");
 
         AddLegalSection("Use at Your Own Risk",
             "While every effort has been made to ensure this tool is safe and compliant with Star " +

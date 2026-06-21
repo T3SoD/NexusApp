@@ -46,8 +46,8 @@ public class SettingsDialog : Window
         // ── Game.log (Beta) ───────────────────────────────────────────────────
         panel.Children.Add(SectionHeader("GAME.LOG (BETA)"));
         panel.Children.Add(SectionBlurb(
-            "Live-tail Star Citizen's Game.log to auto-mark blueprints you receive as owned, " +
-            "or import the ones you already own from past logs."));
+            "Track your session from Star Citizen's Game.log: auto-collect blueprints you receive " +
+            "(they're marked Owned in your library), or import the ones you already own from past logs."));
         var openLogBtn = new Button
         {
             Content = "Open Game.log Monitor",
