@@ -4,12 +4,23 @@
   <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
 </p>
 
-Nexus is a lightweight Windows desktop companion for mining in **Star Citizen**. It decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and gives you a fast, searchable reference for resources and crafting blueprints — all from an overlay that floats over your game.
+**Mine · Refine · Craft — the offline, EAC-safe companion for Star Citizen's industrial loop.**
 
-> **Disclaimer**
-> Nexus is an **unofficial, fan-made tool**. It is **NOT** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
->
-> Nexus reads pixel data from your screen and serves reference information from a **local database only**. It does **not** read game memory, inject code, or modify game files. It is **EAC-safe** (Easy Anti-Cheat compatible) and runs entirely outside the game process.
+Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own — all from an overlay that floats over your game, **fully offline**.
+
+> **Disclaimer:** Nexus is an **unofficial, fan-made tool** — **NOT** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
+
+## How Nexus stays EAC-safe
+
+Nexus runs entirely **outside** Star Citizen — it sits beside the game like a second monitor and never reaches into it.
+
+- **Screen only** — Nexus reads your screen using the standard Windows screen-capture + OCR APIs (the same ones screenshot tools use). It never reads Star Citizen's memory.
+- **No injection** — no DLLs, no hooks, nothing loaded into the game process. Nexus is a separate window.
+- **No game files** — it never reads or modifies any Star Citizen file. Its data comes from a local database bundled with the app.
+- **No admin, no network** — it installs per-user, needs no elevation, and runs fully offline. Verify it yourself with a firewall.
+- **Open source** — the entire OCR pipeline is in this repo. Don't take our word for it — read the code.
+
+The result: there's nothing for Easy Anti-Cheat to flag.
 
 ## Features
 
