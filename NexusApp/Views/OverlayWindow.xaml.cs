@@ -19,6 +19,8 @@ public partial class OverlayWindow : Window
     public event Action<bool>? BoxVisibilityToggled;
     public event Action? Hidden;
     public event Action? Shown;
+    /// <summary>STATS tab asked to open the advanced Game.log monitor window.</summary>
+    public event Action? OpenMonitorRequested;
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
     public FrameworkElement SetRegionTarget   => SetRegionBtn;
@@ -72,6 +74,7 @@ public partial class OverlayWindow : Window
         App.GameLog.Marked += OnGameLogMarked;
         App.GameLog.StateChanged += SyncStatsControls;
         App.GameLog.CombatChanged += OnCombatChanged;
+        App.GameLog.StatusChanged += OnGameLogStatus;
         BuildStatsControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
@@ -439,7 +442,31 @@ public partial class OverlayWindow : Window
     private void ToggleTrackSession()
     {
         if (App.GameLog.IsRunning) App.GameLog.Stop();
-        else App.GameLog.Start(string.IsNullOrWhiteSpace(App.GameLog.Path) ? GameLogSession.DefaultPath : App.GameLog.Path);
+        else App.GameLog.Start(App.GameLog.StartPath());   // probes common installs if no path yet
+    }
+
+    private void OpenMonitorFromStats_Click(object sender, MouseButtonEventArgs e) => OpenMonitorRequested?.Invoke();
+
+    private void ResetSession_Click(object sender, MouseButtonEventArgs e)
+    {
+        App.GameLog.Reset();
+        _lastCollected = "";
+        if (_activeTab == "stats") RebuildStatsPanel(); else UpdateStatsStatus();
+    }
+
+    // Feedback line under the switches: what the watcher is doing + the last blueprint collected.
+    private string _lastWatcherStatus = "";
+    private string _lastCollected = "";
+
+    private void OnGameLogStatus(string s) { _lastWatcherStatus = s; UpdateStatsStatus(); }
+
+    private void UpdateStatsStatus()
+    {
+        if (StatsStatus == null) return;
+        if (!App.GameLog.IsRunning) { StatsStatus.Text = "Stopped"; return; }
+        var s = string.IsNullOrEmpty(_lastWatcherStatus) ? "Watching" : _lastWatcherStatus;
+        if (!string.IsNullOrEmpty(_lastCollected)) s += $"  ·  last: {_lastCollected}";
+        StatsStatus.Text = s;
     }
 
     // Auto-Track on also starts the watch (handled in GameLogSession); turning it off leaves the watch running.
@@ -485,6 +512,8 @@ public partial class OverlayWindow : Window
 
     private void OnGameLogMarked(BlueprintMark m)
     {
+        _lastCollected = m.Name;
+        UpdateStatsStatus();
         if (_activeTab == "stats") RebuildStatsPanel();
     }
 
@@ -498,6 +527,7 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_trackSwTrack, _trackSwKnob, App.GameLog.IsRunning);
         SetSwitch(_autoSwTrack, _autoSwKnob, App.GameLog.AutoMark);
+        UpdateStatsStatus();
     }
 
     private void RebuildStatsPanel()
@@ -519,7 +549,8 @@ public partial class OverlayWindow : Window
         var red = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
         StatsListItems.Children.Clear();
         AddStatRow("Blueprints collected", App.GameLog.Count, accent, false);
-        AddStatRow("Players killed", App.GameLog.PlayersKilled, accent, false);
+        AddStatRow("Players killed", App.GameLog.PlayersKilled, accent, true);   // end of the "kills" group
+        StatsListItems.Children.Add(new Border { Height = 8 });                  // gap: kills above, deaths below
         AddStatRow("Killed by players", App.GameLog.KilledByPlayers, red, false);
         AddStatRow("Overall deaths", App.GameLog.OverallDeaths, red, true);
 

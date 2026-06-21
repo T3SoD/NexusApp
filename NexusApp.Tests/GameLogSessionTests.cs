@@ -104,4 +104,48 @@ public class GameLogSessionTests
         Assert.Equal("Bracket Cooler", s.Marks[0].Name);
         Assert.Equal("Hellion Cannon", s.Marks[1].Name);
     }
+
+    [Fact]
+    public void AutoTrack_On_AutoStartsTheWatch()
+    {
+        var s = Make(out _, "Bracket Cooler");
+        Assert.False(s.IsRunning);
+        s.SetAutoMark(true);
+        Assert.True(s.AutoMark);
+        Assert.True(s.IsRunning);
+    }
+
+    [Fact]
+    public void Stop_ClearsAutoTrack()
+    {
+        var s = Make(out _, "Bracket Cooler");
+        s.SetAutoMark(true);
+        s.Stop();
+        Assert.False(s.AutoMark);
+        Assert.False(s.IsRunning);
+    }
+
+    [Fact]
+    public void AutoTrack_Off_LeavesTheWatchRunning()
+    {
+        var s = Make(out _, "Bracket Cooler");
+        s.SetAutoMark(true);
+        s.SetAutoMark(false);
+        Assert.False(s.AutoMark);
+        Assert.True(s.IsRunning);
+    }
+
+    [Fact]
+    public void Reset_ClearsTheSessionTally()
+    {
+        var s = Make(out _, "Bracket Cooler");
+        s.SetAutoMark(true);
+        s.Ingest(Bp("Bracket Cooler"));
+        Assert.Equal(1, s.Count);
+
+        s.Reset();
+
+        Assert.Equal(0, s.Count);
+        Assert.Empty(s.Marks);
+    }
 }

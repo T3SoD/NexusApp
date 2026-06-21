@@ -2029,6 +2029,7 @@ public partial class MainWindow : Window
         };
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
+        _overlay.OpenMonitorRequested += ShowLogMonitor;
     }
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
