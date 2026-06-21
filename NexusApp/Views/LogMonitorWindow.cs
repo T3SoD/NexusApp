@@ -32,6 +32,8 @@ public sealed class LogMonitorWindow : Window
     private readonly CheckBox _autoScroll;
     private readonly CheckBox _fromStart;
     private readonly CheckBox _autoMark;
+    private readonly TextBlock _markCountLabel;
+    private int _markCount;
     private bool _blueprintsOnly;
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
@@ -121,6 +123,8 @@ public sealed class LogMonitorWindow : Window
         _importBtn.ToolTip = "Scan this log + the logbackups folder for blueprints you've already received, and mark them owned";
         _importBtn.Click += async (_, _) => await ImportFromLogsAsync();
         bpRow.Children.Add(_importBtn);
+        _markCountLabel = new TextBlock { Text = "", Foreground = Res("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+        bpRow.Children.Add(_markCountLabel);
         bp.Child = bpRow;
         Grid.SetRow(bp, 2); root.Children.Add(bp);
 
@@ -152,7 +156,11 @@ public sealed class LogMonitorWindow : Window
             {
                 App.Settings.SetBlueprintOwned(canon, true);
                 _onOwnershipChanged?.Invoke();
+                _markCount++;
+                _markCountLabel.Text = $"Auto-marked this session: {_markCount}";
                 _status.Text = $"Auto-marked owned: {canon}";
+                Logger.Info($"[GameLog] auto-marked blueprint owned: {canon}");   // timestamped record in nexus.log
+                ToastWindow.Show($"Marked owned: {canon}");
             }
         }
 
