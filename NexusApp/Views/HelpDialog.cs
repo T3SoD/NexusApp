@@ -140,11 +140,11 @@ public class HelpDialog : Window
 
         new("◐", "Appearance",
             "Choose how Nexus looks — pick a theme on first launch, or switch it anytime.",
-            [new("About", "› Appearance")],
+            [new("Settings", "⚙ › Appearance")],
             [
                 "On first launch, a welcome picker lets you choose your look: Luxury Gold or Classic teal.",
                 "Luxury Gold is the default near-black-and-gold theme; Classic is the original slate-and-teal style.",
-                "Switch themes anytime from About > Appearance — the change applies on restart.",
+                "Switch themes anytime from the Settings (⚙) button › Appearance — the change applies on restart.",
                 "Replay this guided tour anytime with the Replay Tutorial button below.",
             ]),
     ];

@@ -91,11 +91,10 @@
                         Style="{StaticResource HeaderButton}"
                         Width="38" Height="38" Margin="2,0"
                         Click="About_Click"/>
-                <!-- BETA: live Game.log monitor (beta branch only) -->
-                <Button x:Name="LogMonitorBtn" Content="LOG" ToolTip="Game.log Live Monitor (Beta)"
+                <Button Content="⚙" ToolTip="Settings"
                         Style="{StaticResource HeaderButton}"
-                        Width="38" Height="38" Margin="2,0" FontSize="9" FontWeight="Bold"
-                        Click="OpenLogMonitor_Click"/>
+                        Width="38" Height="38" Margin="2,0"
+                        Click="Settings_Click"/>
             </StackPanel>
         </Grid>
 

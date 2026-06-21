@@ -364,8 +364,8 @@ public partial class OverlayWindow : Window
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
 
-        // RECENT scans are scan-only — hide that strip on the STATS tab.
-        SetHistoryStripVisible(tab != "stats");
+        // RECENT scans belong to the SCAN tab only — hide the strip on every other tab.
+        SetHistoryStripVisible(tab == "scan");
 
         if (tab == "stats") RebuildStatsPanel();
         if (tab == "shopping") RebuildShoppingPanel();
