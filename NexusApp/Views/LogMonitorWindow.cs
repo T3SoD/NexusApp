@@ -41,7 +41,7 @@ public sealed class LogMonitorWindow : Window
 
     public LogMonitorWindow()
     {
-        Title = "Game.log Live Monitor (Beta)";
+        Title = "Game.log Monitor — Advanced (Beta)";
         Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
         Background = Res("BgBrush");
         Foreground = Res("FgBrush");
@@ -112,10 +112,10 @@ public sealed class LogMonitorWindow : Window
             Background = Res("Bg2NavBrush"), BorderBrush = Res("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6),
         };
         var bpRow = new StackPanel { Orientation = Orientation.Horizontal };
-        bpRow.Children.Add(new TextBlock { Text = "Blueprint ownership (Beta):", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
-        _autoMark = MakeCheck("Auto-mark blueprints I receive while watching", App.GameLog.AutoMark);
+        bpRow.Children.Add(new TextBlock { Text = "Session tracking (Beta):", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
+        _autoMark = MakeCheck("Auto-Track Blueprints (collects them to your library)", App.GameLog.AutoMark);
         _autoMark.Margin = new Thickness(0, 0, 0, 0);
-        _autoMark.ToolTip = "When the log shows a 'Received Blueprint' event, mark it owned in Nexus automatically";
+        _autoMark.ToolTip = "When the log shows a 'Received Blueprint' event, collect it (mark it Owned in your library) automatically";
         _autoMark.Checked   += (_, _) => { if (!_syncing) App.GameLog.SetAutoMark(true); };
         _autoMark.Unchecked += (_, _) => { if (!_syncing) App.GameLog.SetAutoMark(false); };
         bpRow.Children.Add(_autoMark);
@@ -125,7 +125,7 @@ public sealed class LogMonitorWindow : Window
         bpRow.Children.Add(_importBtn);
         _markCountLabel = new TextBlock
         {
-            Text = App.GameLog.Count > 0 ? $"Auto-marked this session: {App.GameLog.Count}" : "",
+            Text = App.GameLog.Count > 0 ? $"Collected this session: {App.GameLog.Count}" : "",
             Foreground = Res("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0),
         };
         bpRow.Children.Add(_markCountLabel);
@@ -138,7 +138,7 @@ public sealed class LogMonitorWindow : Window
         // Row 4 — status
         _status = new TextBlock
         {
-            Text = "Beta: tails Game.log. Turn on auto-mark + Start to capture blueprints live, or import from past logs.",
+            Text = "Beta: tails Game.log. Turn on Auto-Track Blueprints to collect them live, or import from past logs.",
             Foreground = Res("FgDimBrush"), Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
         };
         Grid.SetRow(_status, 4); root.Children.Add(_status);
@@ -176,8 +176,8 @@ public sealed class LogMonitorWindow : Window
 
     private void OnMarked(BlueprintMark m)
     {
-        _markCountLabel.Text = $"Auto-marked this session: {App.GameLog.Count}";
-        _status.Text = $"Auto-marked owned: {m.Name}";
+        _markCountLabel.Text = $"Collected this session: {App.GameLog.Count}";
+        _status.Text = $"Collected: {m.Name}";
     }
 
     // Keep Start/Stop + Auto-mark in step when the overlay (or anything) changes them.
