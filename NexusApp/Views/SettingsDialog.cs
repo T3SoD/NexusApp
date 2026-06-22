@@ -66,7 +66,8 @@ public class SettingsDialog : Window
         panel.Children.Add(SectionHeader("DIAGNOSTICS"));
         panel.Children.Add(SectionBlurb(
             "See Nexus's own activity log live, and save a snapshot (app info + log) to send to " +
-            "the developer if you hit a bug."));
+            "the developer if you hit a bug — on Discord, or attached to a GitHub issue at " +
+            "github.com/T3SoD/NexusApp/issues."));
         var openAppLogBtn = new Button
         {
             Content = "Open App Log Monitor",

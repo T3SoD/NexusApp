@@ -66,7 +66,7 @@ public sealed class AppLogMonitorWindow : Window
         copyBtn.Click += (_, _) => CopySnapshot();
         ctl.Children.Add(copyBtn);
         var saveBtn = MakeButton("Save snapshot…"); saveBtn.Margin = new Thickness(6, 0, 0, 0);
-        saveBtn.ToolTip = "Save app/system info + this log to a file you can send to T3SoD for debugging";
+        saveBtn.ToolTip = "Save app/system info + this log to a file you can send to T3SoD on Discord or attach to a GitHub issue (github.com/T3SoD/NexusApp/issues)";
         saveBtn.Click += (_, _) => SaveSnapshot();
         ctl.Children.Add(saveBtn);
         Grid.SetRow(ctl, 0); root.Children.Add(ctl);
@@ -150,7 +150,7 @@ public sealed class AppLogMonitorWindow : Window
         try
         {
             Clipboard.SetText(BuildSnapshot());
-            _status.Text = "Snapshot copied to the clipboard — paste it to T3SoD on Discord.";
+            _status.Text = "Snapshot copied — paste it to T3SoD on Discord or into a GitHub issue (github.com/T3SoD/NexusApp/issues).";
         }
         catch (Exception ex) { _status.Text = $"Copy failed: {ex.Message}"; }
     }
@@ -166,7 +166,7 @@ public sealed class AppLogMonitorWindow : Window
         try
         {
             File.WriteAllText(dlg.FileName, BuildSnapshot());
-            _status.Text = $"Saved snapshot to {dlg.FileName}";
+            _status.Text = $"Saved to {dlg.FileName} — send it to T3SoD on Discord or attach it to a GitHub issue (github.com/T3SoD/NexusApp/issues).";
         }
         catch (Exception ex) { _status.Text = $"Save failed: {ex.Message}"; }
     }

@@ -22,7 +22,8 @@ public partial class App : Application
             "Nexus hit an unexpected error and needs to close.\n\n" +
             "Details have been saved to the log file at:\n%AppData%\\NexusApp\\logs\\nexus.log\n\n" +
             "To help fix this: reopen Nexus, go to Settings (cog) → Diagnostics, click \"Save snapshot\", " +
-            "and send the file to T3SoD on Discord.";
+            "and send the file to T3SoD on Discord, or attach it to a GitHub issue:\n" +
+            "https://github.com/T3SoD/NexusApp/issues";
 
         DispatcherUnhandledException += (s, ex) =>
         {
