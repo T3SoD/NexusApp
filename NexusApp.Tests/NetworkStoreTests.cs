@@ -118,6 +118,20 @@ public class NetworkStoreTests : IDisposable
     }
 
     [Fact]
+    public void MemberOwnedCounts_CountsPerMember()
+    {
+        using var s = new NetworkStore(_tempPath);
+        s.UpsertMember(NewMember("g1", "Dave"));
+        s.UpsertMember(NewMember("g2", "Mara"));
+        s.ReplaceOwnership("g1", new[] { "A", "B", "C" });
+        s.ReplaceOwnership("g2", new[] { "A" });
+
+        var counts = s.MemberOwnedCounts();
+        Assert.Equal(3, counts["g1"]);
+        Assert.Equal(1, counts["g2"]);
+    }
+
+    [Fact]
     public void OwnerCounts_ScopedToMemberSubset()
     {
         using var s = new NetworkStore(_tempPath);

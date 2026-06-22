@@ -251,6 +251,17 @@ public sealed class NetworkStore : IDisposable
         return result;
     }
 
+    /// <summary>member id → how many blueprints they own, for all members in one query.</summary>
+    public IReadOnlyDictionary<string, int> MemberOwnedCounts()
+    {
+        var d = new Dictionary<string, int>();
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT member_id, COUNT(*) FROM member_blueprints GROUP BY member_id;";
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) d[r.GetString(0)] = Convert.ToInt32(r.GetInt64(1));
+        return d;
+    }
+
     // ── Groups ──────────────────────────────────────────────────────────────────
 
     public NetworkGroup CreateGroup(string name)
