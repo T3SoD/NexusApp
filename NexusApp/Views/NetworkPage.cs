@@ -172,7 +172,7 @@ public sealed class NetworkPage : UserControl
         _host.Child = _tab switch
         {
             "members"    => BuildMembersView(),
-            "overview"   => Placeholder("Overview — group coverage and gaps land in the next update."),
+            "overview"   => BuildOverviewView(),
             "blueprints" => BuildBlueprintsView(),
             _            => Placeholder(""),
         };
@@ -327,6 +327,169 @@ public sealed class NetworkPage : UserControl
 
     private static Brush Amber() => new SolidColorBrush(Color.FromRgb(0xE8, 0xA2, 0x3A));
     private static Brush Redish() => new SolidColorBrush(Color.FromRgb(0xE0, 0x6A, 0x55));
+
+    // ── overview (dashboard) ─────────────────────────────────────────────────────
+
+    private UIElement BuildOverviewView()
+    {
+        var all = App.Data.GetAllBlueprints();
+        var scopeIds = _groupFilter != null
+            ? _store.GetGroupMemberIds(_groupFilter)
+            : _store.GetMembers().Select(m => m.Id).ToList();
+        var scopeSet = new HashSet<string>(scopeIds);
+        var counts = _store.OwnerCounts(scopeIds);
+        int Owned(string n) => (counts.TryGetValue(n, out var c) ? c : 0) + (_settings.IsBlueprintOwned(n) ? 1 : 0);
+
+        int total = all.Count, covered = 0, nobody = 0, single = 0;
+        var singleBps = new List<string>();
+        foreach (var b in all)
+        {
+            var o = Owned(b.Name);
+            if (o == 0) nobody++;
+            else
+            {
+                covered++;
+                if (o == 1) { single++; if (singleBps.Count < 30) singleBps.Add(b.Name); }
+            }
+        }
+        var pct = total > 0 ? (int)Math.Round(100.0 * covered / total) : 0;
+
+        var body = new StackPanel();
+        body.Children.Add(CoverageBand(pct, covered, total, nobody, single));
+
+        // Per-member coverage cards (self + members in scope), most owned first.
+        body.Children.Add(SectionHeader("Members"));
+        var ownedCounts = _store.MemberOwnedCounts();
+        var people = new List<(string name, int count, bool self)>
+        {
+            (string.IsNullOrEmpty(_settings.Current.LocalDisplayName) ? "You" : $"{_settings.Current.LocalDisplayName} (you)",
+                _settings.OwnedBlueprintCount, true),
+        };
+        foreach (var m in _store.GetMembers())
+        {
+            if (_groupFilter != null && !scopeSet.Contains(m.Id)) continue;
+            people.Add((m.DisplayName, ownedCounts.TryGetValue(m.Id, out var c) ? c : 0, false));
+        }
+        var cards = new WrapPanel();
+        foreach (var person in people.OrderByDescending(p => p.count))
+            cards.Children.Add(MemberCard(person.name, person.count, total, person.self));
+        body.Children.Add(cards);
+
+        // Watch list: gaps + single-owner risk.
+        body.Children.Add(SectionHeader("Watch list"));
+        body.Children.Add(WatchSummary(nobody, single));
+        if (singleBps.Count > 0)
+        {
+            var nameMap = _store.GetMembers().ToDictionary(m => m.Id, m => m.DisplayName);
+            string OwnerOf(string bp)
+            {
+                if (_settings.IsBlueprintOwned(bp)) return "you";
+                var id = _store.OwnerIdsOf(bp).FirstOrDefault(scopeSet.Contains);
+                return id != null && nameMap.TryGetValue(id, out var nm) ? nm : "?";
+            }
+            foreach (var bp in singleBps) body.Children.Add(SingleOwnerRow(bp, OwnerOf(bp)));
+            if (single > singleBps.Count)
+                body.Children.Add(new TextBlock
+                {
+                    Text = $"+{single - singleBps.Count} more single-owner blueprints", Foreground = Br("FgDimBrush"),
+                    FontSize = 11.5, Margin = new Thickness(4, 6, 0, 0),
+                });
+        }
+
+        return new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body };
+    }
+
+    private UIElement CoverageBand(int pct, int covered, int total, int nobody, int single)
+    {
+        var grid = new Grid { Margin = new Thickness(14, 12, 16, 12) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new TextBlock
+        {
+            Text = $"{pct}%", FontFamily = Head, FontSize = 40, FontWeight = FontWeights.Bold,
+            Foreground = Br("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 20, 0),
+        });
+        var right = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(ProportionalBar(pct, Br("AccentBrush"), 10));
+        right.Children.Add(new TextBlock
+        {
+            Text = $"{covered} of {total} covered  ·  {nobody} nobody owns  ·  {single} single-owner",
+            FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 7, 0, 0),
+        });
+        Grid.SetColumn(right, 1); grid.Children.Add(right);
+        return new Border
+        {
+            Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 0, 14), Child = grid,
+        };
+    }
+
+    private UIElement MemberCard(string name, int count, int total, bool self)
+    {
+        var inner = new StackPanel { Width = 118 };
+        inner.Children.Add(new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = self ? Br("AccentBrush") : Br("FgBrush") });
+        inner.Children.Add(new TextBlock { Text = $"{count} owned", FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 6) });
+        var p = total > 0 ? (int)Math.Round(100.0 * count / total) : 0;
+        inner.Children.Add(ProportionalBar(p, Br("AccentBrush"), 5));
+        return new Border
+        {
+            Background = Br("BgBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8), Padding = new Thickness(11), Margin = new Thickness(0, 0, 10, 10), Child = inner,
+        };
+    }
+
+    private UIElement WatchSummary(int nobody, int single)
+    {
+        var sp = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+        sp.Children.Add(new TextBlock
+        {
+            Text = $"{nobody} blueprints nobody owns — farm targets (filter Blueprints → Nobody owns to list them).",
+            Foreground = nobody > 0 ? Redish() : Br("FgDimBrush"), FontSize = 12.5, TextWrapping = TextWrapping.Wrap,
+        });
+        if (single > 0)
+            sp.Children.Add(new TextBlock
+            {
+                Text = $"{single} held by a single person — at risk if they stop sharing:",
+                Foreground = Amber(), FontSize = 12.5, Margin = new Thickness(0, 6, 0, 0), TextWrapping = TextWrapping.Wrap,
+            });
+        return sp;
+    }
+
+    private UIElement SingleOwnerRow(string bp, string owner)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(new TextBlock { Text = bp, Foreground = Br("FgBrush"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 6, 8, 6) });
+        var who = new TextBlock { Text = $"only {owner}", Foreground = Amber(), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        Grid.SetColumn(who, 1); grid.Children.Add(who);
+        return new Border
+        {
+            Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 0, 4), Child = grid,
+        };
+    }
+
+    private UIElement ProportionalBar(int pct, Brush fill, double height)
+    {
+        pct = Math.Clamp(pct, 0, 100);
+        var grid = new Grid { Height = height };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(pct, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - pct, GridUnitType.Star) });
+        var f = new Border { Background = fill, CornerRadius = new CornerRadius(height / 2) };
+        Grid.SetColumn(f, 0); grid.Children.Add(f);
+        return new Border
+        {
+            Height = height, CornerRadius = new CornerRadius(height / 2), Background = Br("BgBrush"),
+            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Child = grid,
+        };
+    }
+
+    private UIElement SectionHeader(string text) => new TextBlock
+    {
+        Text = text.ToUpperInvariant(), FontFamily = Head, FontSize = 10, FontWeight = FontWeights.Bold,
+        Foreground = Br("FgDimBrush"), Margin = new Thickness(2, 6, 0, 8),
+    };
 
     // ── import ────────────────────────────────────────────────────────────────
 
