@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.0  —  Jun 21, 2026",
+        [
+            "New Session Tracking (Beta) — Nexus can read Star Citizen's Game.log to automatically mark blueprints Owned the moment you receive them in-game, so your library fills in as you play",
+            "Import owned blueprints from past logs — scan your previous sessions in one pass and mark everything you've already collected, after a preview and confirmation",
+            "New STATS tab in the overlay — a live THIS SESSION tally of blueprints collected, with a feed of what was just added; start or stop tracking right there",
+            "New Settings dialog — a cog button in the top-right now gathers your theme, the Game.log monitor, and the clear-saved-data action in one place",
+            "Reads the log read-only — Nexus never writes to or modifies any game file and reads no game memory, so it stays EAC-safe",
+        ]),
         ("App  5.3.2  —  Jun 20, 2026",
         [
             "Armor blueprints group cleaner — every paint and skin variant of a piece now collapses into one entry (for example, all Antium Helmet skins), instead of some grouping and some appearing as separate rows",
