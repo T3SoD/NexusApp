@@ -201,26 +201,33 @@ public sealed class LogMonitorWindow : Window
         _importBtn.IsEnabled = false;
         _status.Text = "Scanning logs…";
         GameLogBlueprintImporter.HistoryScan scan;
+        string? buildLine;
         try
         {
             scan = await Task.Run(() => App.GameLog.ScanHistory(path, n => Dispatcher.Invoke(() => _status.Text = $"Scanning… {n} file(s)")));
+            buildLine = await Task.Run(() => UnrecognizedBlueprintReport.TryReadBuildLine(path));
         }
         catch (Exception ex) { _status.Text = $"Scan failed: {ex.Message}"; _importBtn.IsEnabled = true; return; }
         _importBtn.IsEnabled = true;
 
-        if (scan.Matched.Count == 0)
+        if (scan.Matched.Count == 0 && scan.Unmatched.Count == 0)
         {
-            _status.Text = $"No known blueprints found ({scan.FilesScanned} file(s) scanned, {scan.Unmatched.Count} unrecognized).";
+            _status.Text = $"No blueprint receipts found ({scan.FilesScanned} file(s) scanned).";
             return;
         }
 
-        var preview = string.Join("\n", scan.Matched.Take(20));
-        if (scan.Matched.Count > 20) preview += $"\n…and {scan.Matched.Count - 20} more";
-        var msg = $"Found {scan.Matched.Count} blueprint(s) across {scan.FilesScanned} log file(s).\n"
-                + (scan.Unmatched.Count > 0 ? $"({scan.Unmatched.Count} name(s) weren't recognized and will be skipped.)\n" : "")
-                + $"\nMark these as owned in Nexus?\n\n{preview}";
-        var res = MessageBox.Show(this, msg, "Import owned blueprints (Beta)", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (res != MessageBoxResult.Yes) { _status.Text = "Import cancelled."; return; }
+        // Report (for the dialog's Copy / Export) of the names we couldn't map, plus context
+        // that helps the maintainer fix it. No PII — versions + build line + raw names only.
+        var report = UnrecognizedBlueprintReport.Build(
+            AppInfo.Version, App.Data.MiningDataVersion, buildLine,
+            scan.FilesScanned, scan.Matched.Count, scan.Unmatched, DateTime.Now);
+
+        var dlg = new ImportResultDialog(scan.Matched, scan.Unmatched, scan.FilesScanned, report) { Owner = this };
+        if (dlg.ShowDialog() != true)
+        {
+            _status.Text = scan.Matched.Count == 0 ? "Nothing to import." : "Import cancelled.";
+            return;
+        }
 
         // Import is a bulk action — it marks ownership but is deliberately NOT part of the
         // live "this session" tally (auto-marks only), so it doesn't touch the session feed.

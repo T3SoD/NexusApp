@@ -57,6 +57,10 @@ public sealed class GameLogBlueprintImporter
         return raw is null ? null : Resolve(raw);
     }
 
+    /// <summary>True if a raw name carries a StarStrings "Type/Size/Grade " prefix (modded ship
+    /// components). Used to flag likely-modded names in the unrecognized-import report.</summary>
+    public static bool HasStarStringsPrefix(string name) => StarStringsPrefix.IsMatch(name);
+
     public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, int FilesScanned);
 
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
