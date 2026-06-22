@@ -101,6 +101,9 @@ public partial class App : Application
         GameLog.BulkOwnershipChanged += () =>
             (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
 
+        // Cache the RSI handle auto-detected from Game.log (read-only) so export can pre-fill it.
+        GameLog.HandleDetected += handle => Settings.SetDetectedRsiHandle(handle);
+
         // Restore the saved Game.log path + Session Tracking toggles, then persist future changes
         // so the path and the watch / auto-collect selections survive a reboot.
         GameLog.PreferredPath = Settings.Current.GameLogPath;

@@ -26,6 +26,7 @@ public sealed class GameLogSession : IDisposable
     private readonly Action<string, bool> _setOwned;
     private readonly List<BlueprintMark> _marks = new();
     private GameLogBlueprintImporter? _importer;
+    private string _lastHandle = "";   // dedupe the HandleDetected event
 
     public GameLogSession(
         Func<IEnumerable<string>> seedNames,
@@ -83,6 +84,8 @@ public sealed class GameLogSession : IDisposable
     public event Action? BulkOwnershipChanged;
     /// <summary>The session tally was cleared (new SC session, or a manual reset) — bound UIs reset their counts.</summary>
     public event Action? SessionReset;
+    /// <summary>The local player's RSI handle was detected in Game.log (read-only). Fires once per distinct handle.</summary>
+    public event Action<string>? HandleDetected;
 
     public void Start(string path, bool fromBeginning = false)
     {
@@ -123,6 +126,11 @@ public sealed class GameLogSession : IDisposable
     public void Ingest(GameLogEntry e)
     {
         LineAppended?.Invoke(e);
+
+        // Capture the player's RSI handle from login lines as they stream past (read-only), so
+        // export can pre-fill it. Independent of Auto-mark / the blueprint handling below.
+        if (RsiHandleParser.TryExtract(e.Raw, out var liveHandle)) PublishHandle(liveHandle);
+
         if (!AutoMark || e.Category != LogCategory.Blueprint) return;
 
         var canon = Importer.ResolveLine(e.Raw);
@@ -133,6 +141,23 @@ public sealed class GameLogSession : IDisposable
         _marks.Add(mark);
         Logger.Info($"[GameLog] auto-marked blueprint owned: {canon}");
         Marked?.Invoke(mark);
+    }
+
+    /// <summary>One-shot scan of the current Game.log for the player's RSI handle (written at login,
+    /// near the top). Lets export pre-fill the handle even when the live tail started after login.
+    /// Reads with shared access since the game keeps the file open for writing.</summary>
+    public void DetectHandleFromCurrentFile()
+    {
+        var handle = RsiHandleParser.ScanFile(StartPath());
+        if (!string.IsNullOrWhiteSpace(handle)) PublishHandle(handle!);
+    }
+
+    private void PublishHandle(string handle)
+    {
+        if (string.IsNullOrWhiteSpace(handle) || string.Equals(handle, _lastHandle, StringComparison.OrdinalIgnoreCase)) return;
+        _lastHandle = handle;
+        Logger.Info("[NET] local RSI handle detected from Game.log");
+        HandleDetected?.Invoke(handle);
     }
 
     public void Dispose() => _watcher.Dispose();
