@@ -24,6 +24,13 @@ public class AppSettings
     public bool GameLogTrackSession { get; set; }
     public bool GameLogAutoTrack { get; set; }
     public string GameLogPath { get; set; } = "";
+
+    // Blueprint Network — local identity only. The shared roster (other people's libraries)
+    // lives in network.db; these few fields are just "who you are" when you export/share.
+    public string LocalNetworkId { get; set; } = "";          // stable GUID, generated once
+    public string LocalDisplayName { get; set; } = "";        // the label other users see
+    public string LocalIdentityKind { get; set; } = "handle"; // "handle" | "nickname"
+    public string DetectedRsiHandle { get; set; } = "";       // auto-detected from Game.log (export default)
 }
 
 public class ScanRegion
