@@ -84,7 +84,9 @@ public partial class OverlayWindow : Window
 
         IsVisibleChanged += (_, e) =>
         {
-            if ((bool)e.NewValue) Shown?.Invoke();
+            bool visible = (bool)e.NewValue;
+            Logger.Info($"[WIN] overlay {(visible ? "shown" : "hidden")}");
+            if (visible) Shown?.Invoke();
             else Hidden?.Invoke();
         };
     }
@@ -124,6 +126,7 @@ public partial class OverlayWindow : Window
 
     private void SetRegion_Click(object sender, MouseButtonEventArgs e)
     {
+        InteractionLog.Click("Set scan region", (System.Windows.DependencyObject)sender);
         var selector = new RegionSelectorWindow();
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
         selector.Show();
@@ -317,6 +320,7 @@ public partial class OverlayWindow : Window
             rowBorder.MouseLeftButtonDown += (s, _) =>
             {
                 var e2 = (ScanHistoryEntry)((Border)s).Tag!;
+                InteractionLog.Click($"recent scan RS {e2.Rs:N0}", (Border)s);
                 OverlayRsInput.Text = e2.Rs.ToString("N0");
                 _vm.RunScanNoHistory(e2.Rs);
                 OverlayResults.ItemsSource = _vm.ScanResults;
@@ -332,6 +336,7 @@ public partial class OverlayWindow : Window
 
     private void ResultCard_Click(object sender, MouseButtonEventArgs e)
     {
+        InteractionLog.Click("result card", (System.Windows.DependencyObject)sender);
         // Mirror click to main window lookup — already synced via shared vm
     }
 
@@ -465,10 +470,18 @@ public partial class OverlayWindow : Window
         else App.GameLog.Start(App.GameLog.StartPath());   // probes common installs if no path yet
     }
 
-    private void OpenMonitorFromStats_Click(object sender, MouseButtonEventArgs e) => OpenMonitorRequested?.Invoke();
+    private void OpenMonitorFromStats_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("Open advanced monitor", (System.Windows.DependencyObject)sender);
+        OpenMonitorRequested?.Invoke();
+    }
 
     // Reset() raises SessionReset, which OnSessionReset handles (clears the note + refreshes).
-    private void ResetSession_Click(object sender, MouseButtonEventArgs e) => App.GameLog.Reset();
+    private void ResetSession_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("Reset session", (System.Windows.DependencyObject)sender);
+        App.GameLog.Reset();
+    }
 
     // Feedback line under the switches: what the watcher is doing + the last blueprint collected.
     private string _lastWatcherStatus = "";
@@ -513,7 +526,7 @@ public partial class OverlayWindow : Window
             Text = label, FontSize = 11, Foreground = (Brush)FindResource("FgBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
         });
-        pair.MouseLeftButtonUp += (_, _) => { onToggle(); sync(); };
+        pair.MouseLeftButtonUp += (_, _) => { InteractionLog.Toggle(label, pair); onToggle(); sync(); };
         return pair;
     }
 
@@ -544,6 +557,21 @@ public partial class OverlayWindow : Window
     // The overlay is app-lifetime (hidden/shown, not closed) in normal use; this only runs if
     // it's discarded — e.g. MainWindow recreates it after an error — so detach the app-lifetime
     // session handlers to avoid leaking them onto a dead window.
+    // Focus changes on the in-game overlay are a prime diagnostic for the mid-session tab-out
+    // reports: an [WIN] overlay activated line at the moment a user got pulled out of the game
+    // points the finger at the overlay grabbing focus.
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        Logger.Info("[WIN] overlay activated (gained focus)");
+    }
+
+    protected override void OnDeactivated(EventArgs e)
+    {
+        base.OnDeactivated(e);
+        Logger.Info("[WIN] overlay deactivated (lost focus)");
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         App.GameLog.Marked -= OnGameLogMarked;

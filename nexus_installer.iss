@@ -58,3 +58,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; IconFilename: "{
 
 [Run]
 Filename: "{app}\{#ExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; The marker is written in [Code] (not tracked as an installed file), so remove it explicitly.
+Type: files; Name: "{app}\install.marker"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // Drop a marker so the running app can tell it was installed via Setup (vs the portable zip).
+  if CurStep = ssPostInstall then
+    SaveStringToFile(ExpandConstant('{app}\install.marker'), 'installer {#AppVersion}', False);
+end;

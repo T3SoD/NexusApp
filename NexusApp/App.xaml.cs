@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using NexusApp.Services;
 
 namespace NexusApp;
@@ -10,6 +12,9 @@ public partial class App : Application
 
     // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
     public static GameLogSession GameLog { get; private set; } = null!;
+
+    // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
+    private static ForegroundMonitor? _foreground;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -38,6 +43,10 @@ public partial class App : Application
         };
 
         Logger.Info($"Nexus {AppInfo.Version} starting");
+        Logger.Info($"Distribution: {AppInfo.Distribution}");
+        RegisterInteractionLogging();
+        _foreground = new ForegroundMonitor();
+        _foreground.Start();
 
         // Pick the palette BEFORE the main window is created. StartupUri builds
         // MainWindow inside base.OnStartup, and its StaticResource theme brushes
@@ -105,8 +114,31 @@ public partial class App : Application
         };
     }
 
+    // App-wide class handlers that log every Button click and nav (RadioButton) to nexus.log via
+    // InteractionLog, so a diagnostic snapshot shows what the user was doing. Non-Button clickables
+    // (overlay toggle switches, links, filter chips, the version badge) log themselves from their
+    // own handlers. The 150ms scan tick is NOT logged here — it has its own sparse [SCAN]
+    // breadcrumbs (start/stop + a 10s heartbeat) in ScannerService.
+    private static void RegisterInteractionLogging()
+    {
+        EventManager.RegisterClassHandler(typeof(Button), ButtonBase.ClickEvent,
+            new RoutedEventHandler((s, _) =>
+            {
+                if (s is Button b)
+                    InteractionLog.Click(!string.IsNullOrEmpty(b.Name) ? b.Name : b.Content?.ToString(), b);
+            }));
+
+        EventManager.RegisterClassHandler(typeof(RadioButton), ToggleButton.CheckedEvent,
+            new RoutedEventHandler((s, _) =>
+            {
+                if (s is RadioButton rb)
+                    InteractionLog.Nav((rb.Tag as string) ?? rb.Content?.ToString(), rb);
+            }));
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        _foreground?.Dispose();
         GameLog?.Dispose();
         Data?.Dispose();
         base.OnExit(e);

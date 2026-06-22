@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 
 namespace NexusApp;
@@ -16,6 +17,26 @@ public static class AppInfo
         {
             var v = Assembly.GetExecutingAssembly().GetName().Version;
             return v is null ? "0.0.0" : $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
+    /// <summary>"Installer" (Setup.exe) or "Portable" — the same exe ships both ways, so this is
+    /// detected from an installer-dropped marker, falling back to whether the app runs from the
+    /// installer's %LocalAppData%\Nexus location. "Unknown" if detection fails.</summary>
+    public static string Distribution
+    {
+        get
+        {
+            try
+            {
+                var dir = AppContext.BaseDirectory;
+                if (File.Exists(Path.Combine(dir, "install.marker"))) return "Installer";
+                var installDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nexus");
+                return string.Equals(dir.TrimEnd('\\'), installDir, StringComparison.OrdinalIgnoreCase)
+                    ? "Installer" : "Portable";
+            }
+            catch { return "Unknown"; }
         }
     }
 

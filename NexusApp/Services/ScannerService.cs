@@ -14,6 +14,7 @@ public class ScannerService : IDisposable
     private int _lastEmitted;
     private bool _running;
     private ScanPhase _currentPhase = ScanPhase.Watching;
+    private DateTime _lastBeat;   // throttles the [SCAN] capture heartbeat (see OnTick)
 
     public event Action<int>? ValueDetected;
     public event Action<ScanPhase>? PhaseChanged;
@@ -30,6 +31,9 @@ public class ScannerService : IDisposable
     {
         if (_running) return;
         _running = true;
+        // Diagnostic breadcrumb: marks when continuous full-screen capture begins. Lets a tab-out
+        // report be lined up against capture activity — confirming OR clearing the auto-scan theory.
+        Logger.Info("[SCAN] auto-scan started (continuous full-screen capture @150ms)");
         StatusChanged?.Invoke(_ocr.IsAvailable ? "active" : "no OCR engine");
         _timer = new System.Timers.Timer(150);
         _timer.Elapsed += OnTick;
@@ -39,6 +43,7 @@ public class ScannerService : IDisposable
 
     public void Stop()
     {
+        if (_running) Logger.Info("[SCAN] auto-scan stopped");
         _running = false;
         _timer?.Stop();
         _timer?.Dispose();
@@ -51,6 +56,15 @@ public class ScannerService : IDisposable
 
         if (_ocr.IsAvailable)
         {
+            // Sparse heartbeat (every ~10s, NOT per 150ms tick) so a tab-out timestamp can be
+            // matched to "capture was active then" without flooding the log.
+            var now = DateTime.UtcNow;
+            if (now - _lastBeat >= TimeSpan.FromSeconds(10))
+            {
+                _lastBeat = now;
+                Logger.Info($"[SCAN] capturing (region: {(_ocr.LastScanHadRegion ? "set" : "full-screen")})");
+            }
+
             try
             {
                 var (val, pinFound) = await _ocr.ScanFullScreenAsync();
