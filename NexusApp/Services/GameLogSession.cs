@@ -48,6 +48,7 @@ public sealed class GameLogSession : IDisposable
     public void Reset()
     {
         _marks.Clear();
+        SessionReset?.Invoke();
     }
 
     // Built lazily: the blueprint name list isn't ready until seed data loads.
@@ -71,6 +72,8 @@ public sealed class GameLogSession : IDisposable
     public event Action<string>? StatusChanged;
     /// <summary>A bulk ownership change happened outside the live feed (the past-logs import).</summary>
     public event Action? BulkOwnershipChanged;
+    /// <summary>The session tally was cleared (new SC session, or a manual reset) — bound UIs reset their counts.</summary>
+    public event Action? SessionReset;
 
     public void Start(string path, bool fromBeginning = false)
     {

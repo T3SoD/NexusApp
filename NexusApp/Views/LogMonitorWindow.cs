@@ -151,12 +151,14 @@ public sealed class LogMonitorWindow : Window
         App.GameLog.StatusChanged += OnStatus;
         App.GameLog.Marked += OnMarked;
         App.GameLog.StateChanged += OnStateChanged;
+        App.GameLog.SessionReset += OnSessionReset;
         Closed += (_, _) =>
         {
             App.GameLog.LineAppended -= OnLine;
             App.GameLog.StatusChanged -= OnStatus;
             App.GameLog.Marked -= OnMarked;
             App.GameLog.StateChanged -= OnStateChanged;
+            App.GameLog.SessionReset -= OnSessionReset;
         };
     }
 
@@ -179,6 +181,10 @@ public sealed class LogMonitorWindow : Window
         _markCountLabel.Text = $"Collected this session: {App.GameLog.Count}";
         _status.Text = $"Collected: {m.Name}";
     }
+
+    // A new SC session (or a manual reset elsewhere) cleared the tally — clear the count label
+    // to match its empty initial state (Count is 0 again).
+    private void OnSessionReset() => _markCountLabel.Text = "";
 
     // Keep Start/Stop + Auto-mark in step when the overlay (or anything) changes them.
     private void OnStateChanged()

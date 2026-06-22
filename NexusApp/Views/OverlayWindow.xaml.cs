@@ -74,6 +74,7 @@ public partial class OverlayWindow : Window
         App.GameLog.Marked += OnGameLogMarked;
         App.GameLog.StateChanged += SyncStatsControls;
         App.GameLog.StatusChanged += OnGameLogStatus;
+        App.GameLog.SessionReset += OnSessionReset;
         BuildStatsControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
@@ -446,12 +447,8 @@ public partial class OverlayWindow : Window
 
     private void OpenMonitorFromStats_Click(object sender, MouseButtonEventArgs e) => OpenMonitorRequested?.Invoke();
 
-    private void ResetSession_Click(object sender, MouseButtonEventArgs e)
-    {
-        App.GameLog.Reset();
-        _lastCollected = "";
-        if (_activeTab == "stats") RebuildStatsPanel(); else UpdateStatsStatus();
-    }
+    // Reset() raises SessionReset, which OnSessionReset handles (clears the note + refreshes).
+    private void ResetSession_Click(object sender, MouseButtonEventArgs e) => App.GameLog.Reset();
 
     // Feedback line under the switches: what the watcher is doing + the last blueprint collected.
     private string _lastWatcherStatus = "";
@@ -514,6 +511,26 @@ public partial class OverlayWindow : Window
         _lastCollected = m.Name;
         UpdateStatsStatus();
         if (_activeTab == "stats") RebuildStatsPanel();
+    }
+
+    // Session tally was cleared (new SC session, or a manual reset) — drop the last-collected
+    // note and refresh the visible counts.
+    private void OnSessionReset()
+    {
+        _lastCollected = "";
+        if (_activeTab == "stats") RebuildStatsPanel(); else UpdateStatsStatus();
+    }
+
+    // The overlay is app-lifetime (hidden/shown, not closed) in normal use; this only runs if
+    // it's discarded — e.g. MainWindow recreates it after an error — so detach the app-lifetime
+    // session handlers to avoid leaking them onto a dead window.
+    protected override void OnClosed(EventArgs e)
+    {
+        App.GameLog.Marked -= OnGameLogMarked;
+        App.GameLog.StateChanged -= SyncStatsControls;
+        App.GameLog.StatusChanged -= OnGameLogStatus;
+        App.GameLog.SessionReset -= OnSessionReset;
+        base.OnClosed(e);
     }
 
     // Reflects watcher / auto-mark state onto the two switches.
