@@ -96,6 +96,8 @@ TIPS
 SUPPORT
 -------
 
-  For bugs or feedback contact TurboV1RG1N.
+  Found a bug or have feedback? Open an issue on GitHub:
+    https://github.com/T3SoD/NexusApp/issues
+  or reach T3SoD on Discord.
 
 ========================================

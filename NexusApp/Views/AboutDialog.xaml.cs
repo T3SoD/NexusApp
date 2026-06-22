@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.6  —  Jun 22, 2026",
+        [
+            "Minor backend changes",
+        ]),
         ("App  5.4.5  —  Jun 22, 2026",
         [
             "Auto-scan is now opt-in — it starts off and you switch it on in the overlay's SCAN tab, so Nexus only captures the screen when you ask it to; the SCAN tab's controls were redesigned as on/off switches to match the STATS tab",
@@ -316,6 +320,8 @@ public class AboutDialog : Window
         AddInfoLine(aboutPanel, "Mining Data", $"v{App.Data.MiningDataVersion}");
         AddLinkLine(aboutPanel, "Source", "github.com/T3SoD/NexusApp",
             "https://github.com/T3SoD/NexusApp");
+        AddLinkLine(aboutPanel, "Report a bug", "github.com/T3SoD/NexusApp/issues",
+            "https://github.com/T3SoD/NexusApp/issues");
 
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
