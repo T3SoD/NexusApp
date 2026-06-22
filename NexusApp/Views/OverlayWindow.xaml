@@ -152,7 +152,7 @@
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
 
-                <!-- STATS tab (Beta): Session Tracking — Game.log blueprint/combat session -->
+                <!-- STATS tab (Beta): Session Tracking — Game.log blueprint session -->
                 <Grid x:Name="StatsTabContent" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -170,7 +170,7 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <!-- Session counts: blueprints + combat (combat reads 0 until the kill parser lands) -->
+                    <!-- Session counts: blueprints collected this session -->
                     <Border Grid.Row="1" Margin="10,7,10,0" CornerRadius="11"
                             Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
                             BorderThickness="1" Padding="13,2,13,6">

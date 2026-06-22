@@ -73,7 +73,6 @@ public partial class OverlayWindow : Window
         // never need unsubscribing.
         App.GameLog.Marked += OnGameLogMarked;
         App.GameLog.StateChanged += SyncStatsControls;
-        App.GameLog.CombatChanged += OnCombatChanged;
         App.GameLog.StatusChanged += OnGameLogStatus;
         BuildStatsControls();
 
@@ -517,11 +516,6 @@ public partial class OverlayWindow : Window
         if (_activeTab == "stats") RebuildStatsPanel();
     }
 
-    private void OnCombatChanged()
-    {
-        if (_activeTab == "stats") RebuildStatsPanel();
-    }
-
     // Reflects watcher / auto-mark state onto the two switches.
     private void SyncStatsControls()
     {
@@ -534,25 +528,10 @@ public partial class OverlayWindow : Window
     {
         SyncStatsControls();
 
-        // Session header with the auto-detected handle (blank until the login parser lands).
+        // Count list: blueprints collected this session (header is static "THIS SESSION" from XAML).
         var accent = (Brush)FindResource("AccentBrush");
-        StatsSessionHeader.Inlines.Clear();
-        StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run("THIS SESSION"));
-        if (!string.IsNullOrEmpty(App.GameLog.PlayerHandle))
-        {
-            StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run(" — "));
-            StatsSessionHeader.Inlines.Add(new System.Windows.Documents.Run(App.GameLog.PlayerHandle)
-            { Foreground = accent, FontWeight = FontWeights.Bold });
-        }
-
-        // Count list: blueprints (live) + combat (0 until the kill parser lands).
-        var red = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
         StatsListItems.Children.Clear();
-        AddStatRow("Blueprints collected", App.GameLog.Count, accent, false);
-        AddStatRow("Players killed", App.GameLog.PlayersKilled, accent, true);   // end of the "kills" group
-        StatsListItems.Children.Add(new Border { Height = 8 });                  // gap: kills above, deaths below
-        AddStatRow("Killed by players", App.GameLog.KilledByPlayers, red, false);
-        AddStatRow("Overall deaths", App.GameLog.OverallDeaths, red, true);
+        AddStatRow("Blueprints collected", App.GameLog.Count, accent, true);
 
         // Blueprints-collected feed (newest first).
         StatsFeedItems.Children.Clear();

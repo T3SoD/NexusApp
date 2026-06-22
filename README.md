@@ -16,7 +16,7 @@ Nexus runs entirely **outside** Star Citizen — it sits beside the game like a 
 
 - **Screen only** — Nexus reads your screen using the standard Windows screen-capture + OCR APIs (the same ones screenshot tools use). It never reads Star Citizen's memory.
 - **No injection** — no DLLs, no hooks, nothing loaded into the game process. Nexus is a separate window.
-- **No game files** — it never reads or modifies any Star Citizen file. Its data comes from a local database bundled with the app.
+- **No game files modified** — Nexus never writes to or alters any Star Citizen file; its reference data comes from a local database bundled with the app. The optional **Session Tracking** feature *reads* the plain-text logs the game writes to disk (`Game.log` and its rotated backups) — read-only, opened shared so it never locks them — to detect blueprints you've unlocked. It never reads the game's memory or process, and never touches the packed game data (`.p4k`).
 - **No admin, no network** — it installs per-user, needs no elevation, and runs fully offline. Verify it yourself with a firewall.
 - **Open source** — the entire OCR pipeline is in this repo. Don't take our word for it — read the code.
 
