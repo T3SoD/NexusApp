@@ -65,8 +65,10 @@ public partial class MainViewModel : ObservableObject
 
         ShoppingList.CollectionChanged += (_, _) => RefreshCartStatus();
 
-        _scanner.Start();
-        IsScanActive = true;
+        // Auto-scan is OPT-IN — deliberately NOT started here. Continuously capturing the screen
+        // knocks games running in exclusive fullscreen out of fullscreen (it was tabbing players
+        // out mid-session), so the user starts it from the overlay's SCAN tab only when they
+        // actually want to decode RS values. IsScanActive defaults to false.
     }
 
     private void LoadAllResources()

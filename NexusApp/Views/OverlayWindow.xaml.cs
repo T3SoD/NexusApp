@@ -24,8 +24,8 @@ public partial class OverlayWindow : Window
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
     public FrameworkElement SetRegionTarget   => SetRegionBtn;
-    public FrameworkElement BoxToggleTarget   => BoxToggleBtn;
-    public FrameworkElement ScanToggleTarget  => ScanToggleBtn;
+    public FrameworkElement BoxToggleTarget   => _boxSwitchPair ?? SetRegionBtn;
+    public FrameworkElement ScanToggleTarget  => _scanSwitchPair ?? SetRegionBtn;
     public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the SCAN/ORDERS/SHOPPING strip
     public FrameworkElement ShoppingTabTarget => TabShoppingBtn;
 
@@ -64,6 +64,8 @@ public partial class OverlayWindow : Window
         {
             if (e.PropertyName == nameof(MainViewModel.HistoryFilter))
                 BuildOverlayHistoryFilterPills();
+            else if (e.PropertyName == nameof(MainViewModel.IsScanActive))
+                SyncScanControls();
         };
 
         SwitchTab("stats");
@@ -76,6 +78,7 @@ public partial class OverlayWindow : Window
         App.GameLog.StatusChanged += OnGameLogStatus;
         App.GameLog.SessionReset += OnSessionReset;
         BuildStatsControls();
+        BuildScanControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
 
@@ -119,38 +122,54 @@ public partial class OverlayWindow : Window
         OverlayScanStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
     }
 
-    private void BoxToggle_Click(object sender, RoutedEventArgs e)
-    {
-        _boxVisible = !_boxVisible;
-        BoxToggleBtn.Content = _boxVisible ? "⊡" : "⊠";
-        BoxToggleBtn.ToolTip = _boxVisible ? "Hide scan box" : "Show scan box";
-        BoxVisibilityToggled?.Invoke(_boxVisible);
-    }
-
-    private void SetRegion_Click(object sender, RoutedEventArgs e)
+    private void SetRegion_Click(object sender, MouseButtonEventArgs e)
     {
         var selector = new RegionSelectorWindow();
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
         selector.Show();
     }
 
-    private void ScanToggle_Click(object sender, RoutedEventArgs e)
+    // ── SCAN tab controls (toggle switches matching the STATS tab) ──────────────
+    private Border? _scanSwTrack, _scanSwKnob, _boxSwTrack, _boxSwKnob;
+    private FrameworkElement? _scanSwitchPair, _boxSwitchPair;
+
+    // Builds the two compact on/off switches (Auto-scan, Scan box) once, like the STATS tab.
+    private void BuildScanControls()
     {
-        _vm.ToggleScanCommand.Execute(null);
-        if (_vm.IsScanActive)
-        {
-            ScanToggleBtn.Content = "■";
-            ScanToggleBtn.ToolTip = "Stop auto-scan";
-            OverlayScanStatus.Text = "◎  Scanning…";
-            OverlayScanStatus.Foreground = (Brush)FindResource("FgDimBrush");
-        }
-        else
-        {
-            ScanToggleBtn.Content = "▶";
-            ScanToggleBtn.ToolTip = "Start auto-scan";
-            OverlayScanStatus.Text = "◎  Scan stopped";
-            OverlayScanStatus.Foreground = (Brush)FindResource("FgDimBrush");
-        }
+        ScanControlBar.Children.Clear();
+
+        _scanSwTrack = NewSwitchTrack();
+        _scanSwKnob  = NewSwitchKnob();
+        _scanSwTrack.Child = _scanSwKnob;
+        _scanSwitchPair = SwitchPair(_scanSwTrack, "Auto-scan", ToggleScanSwitch, SyncScanControls);
+        ScanControlBar.Children.Add(_scanSwitchPair);
+
+        _boxSwTrack = NewSwitchTrack();
+        _boxSwKnob  = NewSwitchKnob();
+        _boxSwTrack.Child = _boxSwKnob;
+        _boxSwitchPair = SwitchPair(_boxSwTrack, "Scan box", ToggleBoxSwitch, SyncScanControls);
+        ScanControlBar.Children.Add(_boxSwitchPair);
+
+        SyncScanControls();
+    }
+
+    // Auto-scan is opt-in; flipping the switch starts/stops the screen scanner.
+    private void ToggleScanSwitch() => _vm.ToggleScanCommand.Execute(null);
+
+    private void ToggleBoxSwitch()
+    {
+        _boxVisible = !_boxVisible;
+        BoxVisibilityToggled?.Invoke(_boxVisible);
+    }
+
+    // Reflects scanner-running / box-visible state onto the two switches + the status chip.
+    private void SyncScanControls()
+    {
+        SetSwitch(_scanSwTrack, _scanSwKnob, _vm.IsScanActive);
+        SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
+        if (OverlayScanStatus == null) return;
+        OverlayScanStatus.Text = _vm.IsScanActive ? "◎  Scanning…" : "◎  Scan off";
+        OverlayScanStatus.Foreground = (Brush)FindResource("FgDimBrush");
     }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -372,6 +391,7 @@ public partial class OverlayWindow : Window
         SetHistoryStripVisible(tab == "scan");
 
         if (tab == "stats") RebuildStatsPanel();
+        if (tab == "scan") SyncScanControls();
         if (tab == "shopping") RebuildShoppingPanel();
 
         if (tab == "orders")
@@ -429,12 +449,12 @@ public partial class OverlayWindow : Window
         _trackSwTrack = NewSwitchTrack();
         _trackSwKnob  = NewSwitchKnob();
         _trackSwTrack.Child = _trackSwKnob;
-        StatsControlBar.Children.Add(SwitchPair(_trackSwTrack, "Track Session", ToggleTrackSession));
+        StatsControlBar.Children.Add(SwitchPair(_trackSwTrack, "Track Session", ToggleTrackSession, SyncStatsControls));
 
         _autoSwTrack = NewSwitchTrack();
         _autoSwKnob  = NewSwitchKnob();
         _autoSwTrack.Child = _autoSwKnob;
-        StatsControlBar.Children.Add(SwitchPair(_autoSwTrack, "Auto-Track Blueprints", ToggleAutoTrack));
+        StatsControlBar.Children.Add(SwitchPair(_autoSwTrack, "Auto-Track Blueprints", ToggleAutoTrack, SyncStatsControls));
 
         SyncStatsControls();
     }
@@ -480,7 +500,7 @@ public partial class OverlayWindow : Window
         VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 2, 0),
     };
 
-    private UIElement SwitchPair(Border track, string label, Action onToggle)
+    private FrameworkElement SwitchPair(Border track, string label, Action onToggle, Action sync)
     {
         var pair = new StackPanel
         {
@@ -493,7 +513,7 @@ public partial class OverlayWindow : Window
             Text = label, FontSize = 11, Foreground = (Brush)FindResource("FgBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
         });
-        pair.MouseLeftButtonUp += (_, _) => { onToggle(); SyncStatsControls(); };
+        pair.MouseLeftButtonUp += (_, _) => { onToggle(); sync(); };
         return pair;
     }
 

@@ -219,22 +219,15 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Tool rail: scan controls (opacity lives in the shared header) -->
-                    <Border Grid.Row="0" Margin="10,10,10,0" CornerRadius="9"
-                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
-                            BorderThickness="1" Padding="6,5">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="SetRegionBtn" Content="⊕" Style="{StaticResource NexusButton}"
-                                    Foreground="{DynamicResource AccentBrush}" Padding="6,3"
-                                    Margin="0,0,4,0" Click="SetRegion_Click" ToolTip="Set scan region"/>
-                            <Button x:Name="BoxToggleBtn" Content="⊠" Style="{StaticResource NexusButton}"
-                                    Foreground="{DynamicResource AccentBrush}" Padding="6,3"
-                                    Margin="0,0,4,0" Click="BoxToggle_Click" ToolTip="Show scan box"/>
-                            <Button x:Name="ScanToggleBtn" Content="■" Style="{StaticResource NexusButton}"
-                                    Foreground="{DynamicResource AccentBrush}" Padding="6,3"
-                                    Margin="0" Click="ScanToggle_Click" ToolTip="Stop auto-scan"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- Scan controls: Auto-scan / Scan box toggle switches (built in code-behind to
+                         match the STATS tab) + a Set scan region link. -->
+                    <StackPanel Grid.Row="0" Margin="10,10,10,2">
+                        <WrapPanel x:Name="ScanControlBar"/>
+                        <TextBlock x:Name="SetRegionBtn" Text="⊕  Set scan region" FontSize="11"
+                                   Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
+                                   Background="Transparent" Padding="2,3,2,2"
+                                   HorizontalAlignment="Left" MouseLeftButtonUp="SetRegion_Click"/>
+                    </StackPanel>
 
                     <!-- Scan status chip -->
                     <Border Grid.Row="1" HorizontalAlignment="Left" Margin="10,8,10,0"
@@ -242,7 +235,7 @@
                             BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1"
                             Padding="10,3">
                         <TextBlock x:Name="OverlayScanStatus"
-                                   Text="◎  Scanning…" FontSize="10"
+                                   Text="◎  Scan off" FontSize="10"
                                    Foreground="{DynamicResource FgDimBrush}"
                                    TextTrimming="CharacterEllipsis"/>
                     </Border>
