@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.2  —  Jun 22, 2026",
+        [
+            "Session Tracking — importing owned blueprints from past logs now recognizes the painted/skinned weapon variants that were previously skipped, so they get collected too: Arclight, Atzkav, Coda, Devastator, Fresnel, Novian, Parallax, Pulse, Yubarev, and Zenith",
+            "Session Tracking — the import summary now lists every blueprint in full (no \"…and X more\"), reliably flags when the StarStrings mod is in use, and the Copy/Export of unrecognized names includes the full log line for each so they can be reported and fixed",
+        ]),
         ("App  5.4.1  —  Jun 21, 2026",
         [
             "Session Tracking — when importing owned blueprints from past logs, Nexus now shows the names it couldn't recognize and lets you Copy or Export them, so you can send them in to get them added",
