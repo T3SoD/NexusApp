@@ -1,6 +1,8 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -48,6 +50,24 @@ public sealed class ToastWindow : Window
         SizeChanged += (_, _) => Reposition();
         Loaded += (_, _) => Reposition();
     }
+
+    // Apply the same no-activate / tool-window / click-through styles the other in-game overlays
+    // use, so the toast NEVER pulls focus from Star Citizen. ShowActivated=false alone isn't
+    // reliable against a fullscreen/borderless game — this was tabbing players out mid-session.
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+        SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT);
+    }
+
+    private const int GWL_EXSTYLE       = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_TOOLWINDOW  = 0x00000080;
+    private const int WS_EX_NOACTIVATE  = 0x08000000;
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private void Reposition()
     {

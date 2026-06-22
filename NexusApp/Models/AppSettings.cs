@@ -19,9 +19,11 @@ public class AppSettings
     public bool FirstRunComplete { get; set; }
 
     // BETA Session Tracking — remember whether the watch / auto-collect were on, so they
-    // resume on next launch.
+    // resume on next launch, plus the Game.log path the user picked (so a custom location
+    // isn't lost on restart — it was reverting to the default C: path).
     public bool GameLogTrackSession { get; set; }
     public bool GameLogAutoTrack { get; set; }
+    public string GameLogPath { get; set; } = "";
 }
 
 public class ScanRegion

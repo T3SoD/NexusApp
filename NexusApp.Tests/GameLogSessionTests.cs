@@ -148,4 +148,12 @@ public class GameLogSessionTests
         Assert.Equal(0, s.Count);
         Assert.Empty(s.Marks);
     }
+
+    [Fact]
+    public void StartPath_HonorsPreferredPath_WhenNoActivePath()
+    {
+        var s = Make(out _);
+        s.PreferredPath = @"D:\Games\StarCitizen\LIVE\Game.log";
+        Assert.Equal(@"D:\Games\StarCitizen\LIVE\Game.log", s.StartPath());
+    }
 }

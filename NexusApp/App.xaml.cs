@@ -89,14 +89,16 @@ public partial class App : Application
         GameLog.BulkOwnershipChanged += () =>
             (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
 
-        // Restore the saved Session Tracking toggles, then persist future changes so the
-        // watch / auto-collect selections survive a reboot.
+        // Restore the saved Game.log path + Session Tracking toggles, then persist future changes
+        // so the path and the watch / auto-collect selections survive a reboot.
+        GameLog.PreferredPath = Settings.Current.GameLogPath;
         if (Settings.Current.GameLogAutoTrack) GameLog.SetAutoMark(true);            // also starts the watch
         else if (Settings.Current.GameLogTrackSession) GameLog.Start(GameLog.StartPath());
         GameLog.StateChanged += () =>
         {
             Settings.Current.GameLogTrackSession = GameLog.IsRunning;
             Settings.Current.GameLogAutoTrack = GameLog.AutoMark;
+            if (!string.IsNullOrEmpty(GameLog.Path)) Settings.Current.GameLogPath = GameLog.Path;
             Settings.Save();
         };
     }

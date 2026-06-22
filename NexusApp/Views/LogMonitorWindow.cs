@@ -70,7 +70,9 @@ public sealed class LogMonitorWindow : Window
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _pathBox = new TextBox
         {
-            Text = string.IsNullOrEmpty(App.GameLog.Path) ? GameLogSession.DefaultPath : App.GameLog.Path,
+            Text = !string.IsNullOrEmpty(App.GameLog.Path) ? App.GameLog.Path
+                 : !string.IsNullOrEmpty(App.GameLog.PreferredPath) ? App.GameLog.PreferredPath
+                 : GameLogSession.DefaultPath,
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
             ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
