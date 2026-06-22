@@ -860,9 +860,23 @@ public partial class MainWindow : Window
     }
 
     // ── Ownership filter chips + count ──────────────────────────────────────────
-    private void BpChipAll_Click(object sender, MouseButtonEventArgs e)      => SetBpOwnFilter(BpOwnFilter.All);
-    private void BpChipOwned_Click(object sender, MouseButtonEventArgs e)    => SetBpOwnFilter(BpOwnFilter.Owned);
-    private void BpChipNotOwned_Click(object sender, MouseButtonEventArgs e) => SetBpOwnFilter(BpOwnFilter.NotOwned);
+    private void BpChipAll_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("filter: All", (DependencyObject)sender);
+        SetBpOwnFilter(BpOwnFilter.All);
+    }
+
+    private void BpChipOwned_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("filter: Owned", (DependencyObject)sender);
+        SetBpOwnFilter(BpOwnFilter.Owned);
+    }
+
+    private void BpChipNotOwned_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("filter: Not owned", (DependencyObject)sender);
+        SetBpOwnFilter(BpOwnFilter.NotOwned);
+    }
 
     private void SetBpOwnFilter(BpOwnFilter filter)
     {
@@ -944,6 +958,7 @@ public partial class MainWindow : Window
     {
         var res = _vm.AllResources.FirstOrDefault(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (res == null) return;
+        InteractionLog.Nav($"Mining Codex: open {name}");
         _vm.RefFilter = "";
         _systemFilter.Clear();
         _methodFilter.Clear();
@@ -969,6 +984,7 @@ public partial class MainWindow : Window
 
     private void GoRoot()
     {
+        InteractionLog.Nav("Blueprint Library: Browse (root)");
         _bpLevel = "root"; _bpCat = ""; _bpSub = "";
         RenderBlueprintNav();
         ShowBlueprintLanding();
@@ -976,6 +992,7 @@ public partial class MainWindow : Window
 
     private void EnterCategory(string cat)
     {
+        InteractionLog.Nav($"Blueprint Library: category {cat}");
         _bpCat = cat; _bpSub = ""; _bpLevel = "category";
         RenderBlueprintNav();
         ShowBlueprintLanding();
@@ -1156,6 +1173,7 @@ public partial class MainWindow : Window
 
     private void EnterSubgroup(string sub)
     {
+        InteractionLog.Nav($"Blueprint Library: subgroup {sub}");
         _bpSub = sub; _bpFam = ""; _bpLevel = "subgroup";
         RenderBlueprintNav();
         ShowBlueprintLanding();
@@ -1163,6 +1181,7 @@ public partial class MainWindow : Window
 
     private void EnterFamily(string fam)
     {
+        InteractionLog.Nav($"Blueprint Library: family {fam}");
         _bpFam = fam; _bpLevel = "family";
         RenderBlueprintNav();
         ShowBlueprintLanding();
@@ -1628,6 +1647,7 @@ public partial class MainWindow : Window
 
     private void ShowBlueprintDetail(NexusApp.Models.Blueprint selected)
     {
+        InteractionLog.Nav($"Blueprint Library: open {selected.Name}");
         var full = App.Data.GetBlueprintFull(selected.Name);
         BlueprintDetailPanel.Children.Clear();
         _detailBpName = null;
@@ -2024,6 +2044,7 @@ public partial class MainWindow : Window
         {
             _boxVisible = visible;
             if (_scanIndicator == null) return;
+            Logger.Info($"[WIN] scan-indicator {(visible ? "shown" : "hidden")}");
             if (visible) _scanIndicator.Show();
             else         _scanIndicator.Hide();
         };
@@ -2073,9 +2094,23 @@ public partial class MainWindow : Window
         if (_scanIndicator == null)
         {
             _scanIndicator = new ScanIndicatorWindow();
-            if (_boxVisible) _scanIndicator.Show();
+            if (_boxVisible) { Logger.Info("[WIN] scan-indicator shown"); _scanIndicator.Show(); }
         }
         _scanIndicator.SetRegion(r, System.Windows.Media.VisualTreeHelper.GetDpi(this));
+    }
+
+    // Main-window focus changes round out the tab-out picture: if a user is pulled from the game
+    // and the main window (not the overlay) gained focus, an [WIN] main activated line shows it.
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        Logger.Info("[WIN] main window activated (gained focus)");
+    }
+
+    protected override void OnDeactivated(EventArgs e)
+    {
+        base.OnDeactivated(e);
+        Logger.Info("[WIN] main window deactivated (lost focus)");
     }
 
     // ── Shopping ─────────────────────────────────────────────────────────────
@@ -2158,6 +2193,7 @@ public partial class MainWindow : Window
 
     private void AppBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        InteractionLog.Click("app version badge", (DependencyObject)sender);
         _eggClicks++;
         EggHintLabel.Text = _eggWarnings[Math.Min(_eggClicks - 1, _eggWarnings.Length - 1)];
         EggHintLabel.Visibility = Visibility.Visible;

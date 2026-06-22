@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.5  —  Jun 22, 2026",
+        [
+            "Auto-scan is now opt-in — it starts off and you switch it on in the overlay's SCAN tab, so Nexus only captures the screen when you ask it to; the SCAN tab's controls were redesigned as on/off switches to match the STATS tab",
+            "New Diagnostics tools in Settings (cog) — an App Log Monitor shows Nexus's own activity live, and a Save snapshot button bundles app info and the log into one file you can send in when reporting a bug; the crash message now points here",
+            "More detailed troubleshooting logs behind the scenes — Nexus notes what you click, which window has focus, and when it's scanning (never any game data or window titles), so problems like being tabbed out mid-session are easier to pin down; the log caps its own size and refreshes every few days",
+        ]),
         ("App  5.4.4  —  Jun 22, 2026",
         [
             "Fixed the overlay occasionally tabbing you out of Star Citizen during a session — the \"blueprint collected\" toast no longer steals focus from the game",

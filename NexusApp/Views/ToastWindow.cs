@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -82,6 +83,9 @@ public sealed class ToastWindow : Window
     {
         if (_current is null)
         {
+            // A new toast is a non-activating window appearing over the game — log its creation so
+            // it can be ruled in or out as a cause of a mid-session tab-out.
+            Logger.Info("[WIN] toast shown");
             _current = new ToastWindow();
             _current.Closed += (_, _) => _current = null;
             _current.Show();
