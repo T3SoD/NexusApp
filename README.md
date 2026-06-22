@@ -1,12 +1,12 @@
-# Nexus — Star Citizen Mining Assistant
+# Nexus — Star Citizen Companion App
 
 <p align="center">
   <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
 </p>
 
-**Mine · Refine · Craft — the offline, EAC-safe companion for Star Citizen's industrial loop.**
+**An offline, EAC-safe companion app for Star Citizen — built for the mine · refine · craft loop.**
 
-Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own — all from an overlay that floats over your game, **fully offline**.
+Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own. It can even read your game log to auto-collect blueprints the moment you unlock them in-game (Beta) — all from an overlay that floats over your game, **fully offline**.
 
 > **Disclaimer:** Nexus is an **unofficial, fan-made tool** — **NOT** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
 
@@ -36,6 +36,7 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 - **Auto-scan overlay** — draw a region over the RS value on your screen and Nexus reads it automatically using the native Windows OCR engine.
 - **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
 - **Blueprint ownership tracking** — mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
+- **Session Tracking (Beta)** — opt in and Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or import everything you've already unlocked from past logs. Read-only — it never writes to or modifies any game file.
 - **Shopping list** — add resources or blueprint ingredients and have them highlighted in scan results and history.
 - **Persistent work orders** — refinery timers survive app restarts.
 - Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
