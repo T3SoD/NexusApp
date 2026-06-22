@@ -220,7 +220,7 @@ public sealed class LogMonitorWindow : Window
         // that helps the maintainer fix it. No PII — versions + build line + raw names only.
         var report = UnrecognizedBlueprintReport.Build(
             AppInfo.Version, App.Data.MiningDataVersion, buildLine,
-            scan.FilesScanned, scan.Matched.Count, scan.Unmatched, DateTime.Now);
+            scan.FilesScanned, scan.Matched.Count, scan.UnmatchedLines, scan.StarStringsDetected, DateTime.Now);
 
         var dlg = new ImportResultDialog(scan.Matched, scan.Unmatched, scan.FilesScanned, report) { Owner = this };
         if (dlg.ShowDialog() != true)
