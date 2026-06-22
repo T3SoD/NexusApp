@@ -173,7 +173,7 @@ public sealed class NetworkPage : UserControl
         {
             "members"    => BuildMembersView(),
             "overview"   => Placeholder("Overview — group coverage and gaps land in the next update."),
-            "blueprints" => Placeholder("Blueprints — per-blueprint ownership lands in the next update."),
+            "blueprints" => BuildBlueprintsView(),
             _            => Placeholder(""),
         };
     }
@@ -233,6 +233,100 @@ public sealed class NetworkPage : UserControl
         Logger.Info($"[NET] member removed (count now {_store.MemberCount})");
         Refresh();
     }
+
+    // ── blueprints (coverage) ────────────────────────────────────────────────────
+
+    private UIElement BuildBlueprintsView()
+    {
+        var all = App.Data.GetAllBlueprints();
+
+        // Member scope: the selected group, or everyone. Self is always counted on top.
+        var scopeIds = _groupFilter != null
+            ? _store.GetGroupMemberIds(_groupFilter)
+            : _store.GetMembers().Select(m => m.Id).ToList();
+        var total = scopeIds.Count + 1;
+        var counts = _store.OwnerCounts(scopeIds);
+
+        int Owned(string name) =>
+            (counts.TryGetValue(name, out var c) ? c : 0) + (_settings.IsBlueprintOwned(name) ? 1 : 0);
+
+        var filters = new List<BlueprintListView.FilterChip>
+        {
+            new() { Label = "All",          Match = _ => true },
+            new() { Label = "Nobody owns",  Match = b => Owned(b.Name) == 0 },
+            new() { Label = "Single owner", Match = b => Owned(b.Name) == 1 },
+            new() { Label = "I'm missing",  Match = b => !_settings.IsBlueprintOwned(b.Name) },
+        };
+
+        return new BlueprintListView(
+            all,
+            b => CoverageCell(Owned(b.Name), total),
+            b => OwnersPanel(b.Name, scopeIds),
+            filters);
+    }
+
+    private UIElement CoverageCell(int owned, int total)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+        var pct = total > 0 ? (double)owned / total : 0;
+        var fill = new Border
+        {
+            Height = 7, CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left,
+            Width = Math.Max(0, 108 * pct),
+            Background = owned == 0 ? Brushes.Transparent : (owned == 1 ? Amber() : Br("AccentBrush")),
+        };
+        var track = new Border
+        {
+            Width = 110, Height = 7, CornerRadius = new CornerRadius(4), Background = Br("BgBrush"),
+            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 9, 0),
+            VerticalAlignment = VerticalAlignment.Center, Child = fill,
+        };
+        row.Children.Add(track);
+
+        row.Children.Add(new TextBlock
+        {
+            Text = $"{owned} / {total}", FontSize = 12, MinWidth = 54, TextAlignment = TextAlignment.Right,
+            FontFamily = (FontFamily)Application.Current.FindResource("MonoFont"),
+            Foreground = owned == 0 ? Redish() : owned == 1 ? Amber() : Br("AccentBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        return row;
+    }
+
+    private UIElement OwnersPanel(string bpName, IReadOnlyList<string> scopeIds)
+    {
+        var scope = new HashSet<string>(scopeIds);
+        var ownerIds = _store.OwnerIdsOf(bpName).Where(scope.Contains).ToList();
+        var nameMap = _store.GetMembers().ToDictionary(m => m.Id, m => m.DisplayName);
+
+        var names = new List<string>();
+        if (_settings.IsBlueprintOwned(bpName)) names.Add("You");
+        names.AddRange(ownerIds.Select(id => nameMap.TryGetValue(id, out var nm) ? nm : "?"));
+
+        var wrap = new WrapPanel();
+        if (names.Count == 0)
+        {
+            wrap.Children.Add(new TextBlock { Text = "Nobody here owns it yet.", Foreground = Redish(), FontSize = 12 });
+            return wrap;
+        }
+        wrap.Children.Add(new TextBlock
+        {
+            Text = $"Owned by {names.Count}:", Foreground = Br("FgDimBrush"), FontSize = 11,
+            Margin = new Thickness(0, 0, 8, 6), VerticalAlignment = VerticalAlignment.Center,
+        });
+        foreach (var nm in names)
+            wrap.Children.Add(new Border
+            {
+                Background = Br("BgBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(11), Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 6, 6),
+                Child = new TextBlock { Text = nm, FontSize = 11.5, Foreground = Br("FgBrush") },
+            });
+        return wrap;
+    }
+
+    private static Brush Amber() => new SolidColorBrush(Color.FromRgb(0xE8, 0xA2, 0x3A));
+    private static Brush Redish() => new SolidColorBrush(Color.FromRgb(0xE0, 0x6A, 0x55));
 
     // ── import ────────────────────────────────────────────────────────────────
 

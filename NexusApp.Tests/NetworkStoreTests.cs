@@ -102,6 +102,22 @@ public class NetworkStoreTests : IDisposable
     }
 
     [Fact]
+    public void OwnerIdsOf_ReturnsOwningMembers_CaseInsensitive()
+    {
+        using var s = new NetworkStore(_tempPath);
+        s.UpsertMember(NewMember("g1", "Dave"));
+        s.UpsertMember(NewMember("g2", "Mara"));
+        s.ReplaceOwnership("g1", new[] { "Bracket Cooler" });
+        s.ReplaceOwnership("g2", new[] { "bracket cooler" });
+
+        var owners = s.OwnerIdsOf("BRACKET COOLER");
+        Assert.Equal(2, owners.Count);
+        Assert.Contains("g1", owners);
+        Assert.Contains("g2", owners);
+        Assert.Empty(s.OwnerIdsOf("Nonexistent"));
+    }
+
+    [Fact]
     public void OwnerCounts_ScopedToMemberSubset()
     {
         using var s = new NetworkStore(_tempPath);

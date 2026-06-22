@@ -208,6 +208,18 @@ public sealed class NetworkStore : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
+    /// <summary>The ids of stored members who own this blueprint (case-insensitive). Excludes self.</summary>
+    public IReadOnlyList<string> OwnerIdsOf(string blueprintName)
+    {
+        var list = new List<string>();
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT member_id FROM member_blueprints WHERE blueprint_name = $b COLLATE NOCASE;";
+        cmd.Parameters.AddWithValue("$b", blueprintName);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
     /// <summary>blueprint name → number of stored members who own it. Pass a member-id set to scope
     /// the count to a group; null counts all stored members. Self is added by the layer above.</summary>
     public IReadOnlyDictionary<string, int> OwnerCounts(IReadOnlyCollection<string>? memberIds = null)
