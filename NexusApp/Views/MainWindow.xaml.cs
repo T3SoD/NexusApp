@@ -2100,7 +2100,7 @@ public partial class MainWindow : Window
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
-        => new SettingsDialog(ShowLogMonitor) { Owner = this }.ShowDialog();
+        => new SettingsDialog(ShowLogMonitor, ShowAppLogMonitor) { Owner = this }.ShowDialog();
 
     private LogMonitorWindow? _logMonitor;
 
@@ -2118,6 +2118,22 @@ public partial class MainWindow : Window
         if (_logMonitor.WindowState == WindowState.Minimized) _logMonitor.WindowState = WindowState.Normal;
         _logMonitor.Show();
         _logMonitor.Activate();
+    }
+
+    private AppLogMonitorWindow? _appLogMonitor;
+
+    // Opens (or re-surfaces) the Nexus app-log monitor — Settings → Diagnostics. Modeless so it can
+    // float beside the app while a bug is reproduced; its Save-snapshot button bundles a bug report.
+    public void ShowAppLogMonitor()
+    {
+        if (_appLogMonitor == null)
+        {
+            _appLogMonitor = new AppLogMonitorWindow();
+            _appLogMonitor.Closed += (_, _) => _appLogMonitor = null;
+        }
+        if (_appLogMonitor.WindowState == WindowState.Minimized) _appLogMonitor.WindowState = WindowState.Normal;
+        _appLogMonitor.Show();
+        _appLogMonitor.Activate();
     }
 
     // Called by the beta Game.log importer after it auto-marks ownership, so the

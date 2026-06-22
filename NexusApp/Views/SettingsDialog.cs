@@ -13,10 +13,12 @@ namespace NexusApp.Views;
 public class SettingsDialog : Window
 {
     private readonly Action _openLogMonitor;
+    private readonly Action _openAppLogMonitor;
 
-    public SettingsDialog(Action openLogMonitor)
+    public SettingsDialog(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
+        _openAppLogMonitor = openAppLogMonitor;
 
         Title = "Settings";
         Width = 600; Height = 520;
@@ -57,6 +59,23 @@ public class SettingsDialog : Window
         };
         openLogBtn.Click += (s, e) => { _openLogMonitor?.Invoke(); Close(); };
         panel.Children.Add(openLogBtn);
+
+        panel.Children.Add(Divider());
+
+        // ── Diagnostics ─────────────────────────────────────────────────────────
+        panel.Children.Add(SectionHeader("DIAGNOSTICS"));
+        panel.Children.Add(SectionBlurb(
+            "See Nexus's own activity log live, and save a snapshot (app info + log) to send to " +
+            "the developer if you hit a bug."));
+        var openAppLogBtn = new Button
+        {
+            Content = "Open App Log Monitor",
+            Style = (Style)Application.Current.FindResource("NexusButton"),
+            Padding = new Thickness(16, 8, 16, 8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        openAppLogBtn.Click += (s, e) => { _openAppLogMonitor?.Invoke(); Close(); };
+        panel.Children.Add(openAppLogBtn);
 
         panel.Children.Add(Divider());
 
