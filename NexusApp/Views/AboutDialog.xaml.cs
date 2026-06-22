@@ -274,7 +274,7 @@ public class AboutDialog : Window
         AddBadge(verRow, $"v{AppInfo.Version}");
         verRow.Children.Add(new TextBlock
         {
-            Text = "  ·  Star Citizen Industry Companion",
+            Text = "  ·  Star Citizen Companion",
             FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
         });
