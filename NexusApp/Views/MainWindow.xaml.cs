@@ -17,6 +17,8 @@ public partial class MainWindow : Window
 
     private bool _suppressAutocomplete;
 
+    private NetworkPage? _networkPage;   // Blueprint Network page, built lazily on first visit
+
     public MainWindow()
     {
         InitializeComponent();
@@ -126,11 +128,13 @@ public partial class MainWindow : Window
         PageBlueprints.Visibility = page == "blueprints" ? Visibility.Visible : Visibility.Collapsed;
         PageReference.Visibility  = page == "reference"  ? Visibility.Visible : Visibility.Collapsed;
         PageWorkOrders.Visibility = page == "workorders" ? Visibility.Visible : Visibility.Collapsed;
+        PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
 
-        NavScan.IsChecked  = page == "scan";
-        NavBlue.IsChecked  = page == "blueprints";
-        NavRef.IsChecked   = page == "reference";
-        NavWork.IsChecked  = page == "workorders";
+        NavScan.IsChecked    = page == "scan";
+        NavBlue.IsChecked    = page == "blueprints";
+        NavRef.IsChecked     = page == "reference";
+        NavWork.IsChecked    = page == "workorders";
+        NavNetwork.IsChecked = page == "network";
 
         Title = page switch
         {
@@ -138,12 +142,24 @@ public partial class MainWindow : Window
             "blueprints" => "Nexus — Blueprint Library",
             "reference"  => "Nexus — Mining Codex",
             "workorders" => "Nexus — Refinery Tracker",
+            "network"    => "Nexus — Blueprint Network",
             _            => "Nexus",
         };
 
         if (page == "blueprints") InitBlueprintBrowse();
         if (page == "reference") { BuildFilterPills(); BuildReferenceTree(); }
         if (page == "workorders") RebuildWorkOrderList();
+        if (page == "network") InitNetworkPage();
+    }
+
+    private void InitNetworkPage()
+    {
+        if (_networkPage == null)
+        {
+            _networkPage = new NetworkPage(App.Network, App.Settings);
+            PageNetwork.Children.Add(_networkPage);
+        }
+        _networkPage.Refresh();
     }
 
     // ── RS Scan ──────────────────────────────────────────────────────────────

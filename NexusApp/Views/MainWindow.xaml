@@ -186,12 +186,46 @@
                                 </StackPanel>
                             </RadioButton.Content>
                         </RadioButton>
+
+                        <RadioButton x:Name="NavNetwork" Tag="network" Style="{StaticResource NavButton}"
+                                     Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Share glyph: three nodes joined by lines (vector, recolors with selection) -->
+                                    <Grid Width="26" Margin="0,0,4,0">
+                                        <Viewbox Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Line X1="8.2" Y1="10.9" X2="15.8" Y2="7.1" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="8.2" Y1="13.1" X2="15.8" Y2="16.9" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Ellipse Canvas.Left="3.5" Canvas.Top="9.5" Width="5" Height="5" StrokeThickness="1.7" Fill="Transparent"
+                                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Ellipse Canvas.Left="15.5" Canvas.Top="3.5" Width="5" Height="5" StrokeThickness="1.7" Fill="Transparent"
+                                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Ellipse Canvas.Left="15.5" Canvas.Top="15.5" Width="5" Height="5" StrokeThickness="1.7" Fill="Transparent"
+                                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="BLUEPRINT" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="NETWORK" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
                     </StackPanel>
                 </DockPanel>
             </Border>
 
             <!-- ── Page content ── -->
             <Grid Grid.Column="1" Background="{DynamicResource PageBgBrush}">
+
+                <!-- ── BLUEPRINT NETWORK PAGE (built in code — Views/NetworkPage.cs) ── -->
+                <Grid x:Name="PageNetwork" Visibility="Collapsed"/>
 
                 <!-- ── RS SIGNAL DECODER PAGE (C1 dashboard) ── -->
                 <Grid x:Name="PageScan" Visibility="Visible">

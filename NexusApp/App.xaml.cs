@@ -13,6 +13,9 @@ public partial class App : Application
     // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
     public static GameLogSession GameLog { get; private set; } = null!;
 
+    /// <summary>Blueprint Network store (network.db) — imported members, their owned blueprints, and groups.</summary>
+    public static NetworkStore Network { get; private set; } = null!;
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -85,6 +88,9 @@ public partial class App : Application
         Data = new DataService();
         Data.Initialize();
 
+        // Blueprint Network store (separate db, survives the nexus.db reseed).
+        Network = new NetworkStore();
+
         // BETA Game.log blueprint watch. Created after seed data loads (the importer needs
         // the blueprint name list). One instance app-wide, shared by the standalone monitor
         // window and the overlay STATS tab so they stay in sync. A live auto-mark pops a
@@ -144,6 +150,7 @@ public partial class App : Application
     {
         _foreground?.Dispose();
         GameLog?.Dispose();
+        Network?.Dispose();
         Data?.Dispose();
         base.OnExit(e);
     }
