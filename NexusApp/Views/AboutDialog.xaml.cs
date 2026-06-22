@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.4  —  Jun 22, 2026",
+        [
+            "Fixed the overlay occasionally tabbing you out of Star Citizen during a session — the \"blueprint collected\" toast no longer steals focus from the game",
+            "Session Tracking — the Game.log location you set is now remembered across restarts instead of reverting to the default C: path, so non-default Star Citizen installs stay put (portable and installer alike)",
+        ]),
         ("App  5.4.3  —  Jun 22, 2026",
         [
             "Mining data — added the Antium Arms Maroon armor blueprint (it was missing from the source data), so it's now in the Blueprint Library and gets recognized when you import owned blueprints from your logs",
