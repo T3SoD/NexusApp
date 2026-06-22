@@ -172,4 +172,38 @@ public class SettingsService
         Current.PinnedResources.Clear();
         Save();
     }
+
+    // ── Blueprint Network local identity ───────────────────────────────────────
+    // Only the local user's own identity lives in settings; the shared roster is in network.db.
+
+    /// <summary>Returns the stable per-user GUID that identifies this user across exported
+    /// library files, generating and persisting it on first use.</summary>
+    public string EnsureLocalNetworkId()
+    {
+        if (string.IsNullOrEmpty(Current.LocalNetworkId))
+        {
+            Current.LocalNetworkId = Guid.NewGuid().ToString();
+            Save();
+        }
+        return Current.LocalNetworkId;
+    }
+
+    /// <summary>Records how the user wants to be shown when they export — their RSI handle or a
+    /// freeform nickname. The GUID, not this label, is the stable identity.</summary>
+    public void SetLocalIdentity(string displayName, string identityKind)
+    {
+        Current.LocalDisplayName = displayName ?? "";
+        Current.LocalIdentityKind =
+            identityKind == NetworkIdentityKind.Nickname ? NetworkIdentityKind.Nickname : NetworkIdentityKind.Handle;
+        Save();
+    }
+
+    /// <summary>Caches the RSI handle detected from Game.log (used to pre-fill the export label).
+    /// No-ops when unchanged so it doesn't rewrite settings on every matching login line.</summary>
+    public void SetDetectedRsiHandle(string handle)
+    {
+        if (string.IsNullOrWhiteSpace(handle) || handle == Current.DetectedRsiHandle) return;
+        Current.DetectedRsiHandle = handle;
+        Save();
+    }
 }
