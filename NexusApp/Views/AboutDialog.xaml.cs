@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.3  —  Jun 22, 2026",
+        [
+            "Mining data — added the Antium Arms Maroon armor blueprint (it was missing from the source data), so it's now in the Blueprint Library and gets recognized when you import owned blueprints from your logs",
+        ]),
         ("App  5.4.2  —  Jun 22, 2026",
         [
             "Session Tracking — importing owned blueprints from past logs now recognizes the painted/skinned weapon variants that were previously skipped, so they get collected too: Arclight, Atzkav, Coda, Devastator, Fresnel, Novian, Parallax, Pulse, Yubarev, and Zenith",
