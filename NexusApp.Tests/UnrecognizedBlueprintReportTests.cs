@@ -30,25 +30,30 @@ public class UnrecognizedBlueprintReportTests
     }
 
     [Fact]
-    public void HasStarStringsPrefix_DetectsModdedShipComponentNames()
+    public void HasStarStringsComponentSignature_DetectsComponentTokensInAnyLine()
     {
-        Assert.True(GameLogBlueprintImporter.HasStarStringsPrefix("Mil/2/B Tundra"));
-        Assert.True(GameLogBlueprintImporter.HasStarStringsPrefix("Ind/1/D QuadraCell MX"));
-        Assert.False(GameLogBlueprintImporter.HasStarStringsPrefix("Tundra"));
-        Assert.False(GameLogBlueprintImporter.HasStarStringsPrefix("A03 Sniper Rifle"));
+        Assert.True(GameLogBlueprintImporter.HasStarStringsComponentSignature("<…> equipped Mil/1/D Tundra cooler"));
+        Assert.True(GameLogBlueprintImporter.HasStarStringsComponentSignature("Civ/3/B Ranger"));
+        Assert.False(GameLogBlueprintImporter.HasStarStringsComponentSignature("2026/06/22 a normal log line"));
+        Assert.False(GameLogBlueprintImporter.HasStarStringsComponentSignature("Atzkav Sniper Rifle"));
     }
 
     [Fact]
     public void Build_IncludesContextHeaderAndEveryName()
     {
-        var unmatched = new List<string> { "Mystery Part", "Mil/1/D Foo Cooler" };
+        var unmatchedLines = new List<string>
+        {
+            "<ts> Added notification \"Received Blueprint: Mystery Part: \" [1] to queue",
+            "<ts> Added notification \"Received Blueprint: Mil/1/D Foo Cooler: \" [2] to queue",
+        };
         var report = UnrecognizedBlueprintReport.Build(
             appVersion: "5.4.0",
             miningDataVersion: "1.2.4",
             buildLine: "Changelist: 123 Branch: sc-alpha-4.8.0",
             filesScanned: 7,
             matchedCount: 80,
-            unmatched: unmatched,
+            unmatchedLines: unmatchedLines,
+            starStringsDetected: true,
             timestamp: new DateTime(2026, 6, 21, 14, 32, 0));
 
         Assert.Contains("Nexus v5.4.0", report);
@@ -56,16 +61,16 @@ public class UnrecognizedBlueprintReportTests
         Assert.Contains("2026-06-21 14:32", report);
         Assert.Contains("Changelist: 123", report);
         Assert.Contains("Scanned 7 log file(s) — matched 80, unrecognized 2", report);
-        Assert.Contains("StarStrings mod: detected", report);   // "Mil/1/D Foo Cooler" carries the prefix
-        Assert.Contains("Mystery Part", report);
-        Assert.Contains("Mil/1/D Foo Cooler", report);
+        Assert.Contains("StarStrings mod: detected", report);   // passed in (detected from log scan)
+        Assert.Contains("Received Blueprint: Mystery Part", report);
+        Assert.Contains("Received Blueprint: Mil/1/D Foo Cooler", report);
     }
 
     [Fact]
     public void Build_ShowsUnknownBuild_AndNoStarStrings_WhenAbsent()
     {
         var report = UnrecognizedBlueprintReport.Build(
-            "5.4.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, new DateTime(2026, 6, 21, 0, 0, 0));
+            "5.4.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, false, new DateTime(2026, 6, 21, 0, 0, 0));
         Assert.Contains("Star Citizen build: unknown", report);
         Assert.Contains("StarStrings mod: not detected", report);
     }

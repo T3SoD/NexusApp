@@ -17,6 +17,11 @@ public sealed class GameLogBlueprintImporter
     // Leading StarStrings "Type/Size/Grade " prefix, e.g. "Mil/2/B " or "Ind/3/A ".
     private static readonly Regex StarStringsPrefix = new(@"^[A-Za-z]+/\d+/[A-Za-z]+\s+", RegexOptions.Compiled);
 
+    // StarStrings renames ship components to "<Class>/<Size>/<Grade> Name" (e.g. "Mil/1/D Tundra").
+    // Spotting that token anywhere in the log reliably signals the mod is active — even when the
+    // player received no component blueprints. The class set is fixed: Civ/Cmp/Ind/Mil/Sth.
+    private static readonly Regex StarStringsSignature = new(@"\b(Civ|Cmp|Ind|Mil|Sth)/\d{1,2}/[A-Za-z]\b", RegexOptions.Compiled);
+
     private readonly Dictionary<string, string> _known;   // case-insensitive lookup -> canonical seed name
 
     public GameLogBlueprintImporter(IEnumerable<string> seedBlueprintNames)
@@ -26,15 +31,19 @@ public sealed class GameLogBlueprintImporter
             if (!string.IsNullOrWhiteSpace(n)) _known[n] = n;
     }
 
-    // Pulls the blueprint name from a log line, or null if it isn't a receipt. Lines:
-    //   ... "Received Blueprint: A03 Sniper Rifle: " [122] ...   (older logs omit the ":")
+    // Pulls the blueprint name from a log line, or null if it isn't a receipt. The game wraps it:
+    //   Added notification "Received Blueprint: <NAME>: " [n] to queue. ...   (older logs omit the ":")
+    // The name itself can contain quotes for skinned variants (e.g. Atzkav "Igniter" Sniper Rifle),
+    // so end at the notification's CLOSING quote — the one right before " [" — not the first quote.
     public static string? ExtractRawName(string line)
     {
         int i = line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase);
         if (i < 0) return null;
         i += Marker.Length;
-        int q = line.IndexOf('"', i);
-        string seg = (q >= 0 ? line[i..q] : line[i..]).Trim();
+
+        int end = line.IndexOf("\" [", i, System.StringComparison.Ordinal);   // closing quote before " [n]"
+        if (end < 0) end = line.IndexOf('"', i);                              // older/odd lines: first quote
+        string seg = (end >= 0 ? line[i..end] : line[i..]).Trim();
         if (seg.EndsWith(":")) seg = seg[..^1].TrimEnd();
         return seg.Length == 0 ? null : seg;
     }
@@ -57,11 +66,12 @@ public sealed class GameLogBlueprintImporter
         return raw is null ? null : Resolve(raw);
     }
 
-    /// <summary>True if a raw name carries a StarStrings "Type/Size/Grade " prefix (modded ship
-    /// components). Used to flag likely-modded names in the unrecognized-import report.</summary>
-    public static bool HasStarStringsPrefix(string name) => StarStringsPrefix.IsMatch(name);
+    /// <summary>True if a log line contains a StarStrings component token (e.g. "Mil/1/D") — a
+    /// reliable signal the mod is active, checked across all log lines during a history scan.</summary>
+    public static bool HasStarStringsComponentSignature(string line) =>
+        line.IndexOf('/') >= 0 && StarStringsSignature.IsMatch(line);
 
-    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, int FilesScanned);
+    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, List<string> UnmatchedLines, int FilesScanned, bool StarStringsDetected);
 
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
     // Returns DISTINCT canonical matched names + distinct unmatched raw names. Read-only,
@@ -70,6 +80,8 @@ public sealed class GameLogBlueprintImporter
     {
         var matched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         var unmatched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        var unmatchedLines = new List<string>();   // one full example log line per distinct unmatched name
+        bool starStrings = false;
 
         var files = new List<string>();
         try
@@ -94,17 +106,19 @@ public sealed class GameLogBlueprintImporter
                 string? line;
                 while ((line = sr.ReadLine()) != null)
                 {
+                    if (!starStrings && HasStarStringsComponentSignature(line)) starStrings = true;
                     if (line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var raw = ExtractRawName(line);
                     if (raw is null) continue;
                     var canon = Resolve(raw);
-                    if (canon is not null) matched.Add(canon); else unmatched.Add(raw);
+                    if (canon is not null) matched.Add(canon);
+                    else if (unmatched.Add(raw)) unmatchedLines.Add(line.Trim());   // keep the raw line as a sample
                 }
             }
             catch { /* skip unreadable / locked file */ }
             progress?.Invoke(++done);
         }
 
-        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), files.Count);
+        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), unmatchedLines, files.Count, starStrings);
     }
 }

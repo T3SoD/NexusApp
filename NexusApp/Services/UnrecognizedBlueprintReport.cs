@@ -52,26 +52,25 @@ public static class UnrecognizedBlueprintReport
         catch { return null; }
     }
 
-    /// <summary>The Copy/Export payload: a short context header followed by the raw unmatched names.</summary>
+    /// <summary>The Copy/Export payload: a short context header followed by the full Game.log line for each unmatched blueprint.</summary>
     public static string Build(
         string appVersion,
         string miningDataVersion,
         string? buildLine,
         int filesScanned,
         int matchedCount,
-        IReadOnlyList<string> unmatched,
+        IReadOnlyList<string> unmatchedLines,
+        bool starStringsDetected,
         DateTime timestamp)
     {
-        bool starStrings = unmatched.Any(GameLogBlueprintImporter.HasStarStringsPrefix);
-
         var sb = new StringBuilder();
         sb.AppendLine($"Nexus v{appVersion}  ·  Mining data v{miningDataVersion}  ·  {timestamp:yyyy-MM-dd HH:mm}");
         sb.AppendLine($"Star Citizen build: {(string.IsNullOrWhiteSpace(buildLine) ? "unknown" : buildLine)}");
-        sb.AppendLine($"Scanned {filesScanned} log file(s) — matched {matchedCount}, unrecognized {unmatched.Count}");
-        sb.AppendLine($"StarStrings mod: {(starStrings ? "detected" : "not detected")}");
+        sb.AppendLine($"Scanned {filesScanned} log file(s) — matched {matchedCount}, unrecognized {unmatchedLines.Count}");
+        sb.AppendLine($"StarStrings mod: {(starStringsDetected ? "detected" : "not detected")}");
         sb.AppendLine();
-        sb.AppendLine("Unrecognized blueprint names (raw, exactly as they appeared in Game.log):");
-        foreach (var name in unmatched) sb.AppendLine(name);
+        sb.AppendLine("Unrecognized blueprints — the full Game.log line for each (samples to fix the mapping):");
+        foreach (var line in unmatchedLines) sb.AppendLine(line);
         return sb.ToString();
     }
 }

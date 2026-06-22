@@ -48,7 +48,7 @@ public sealed class ImportResultDialog : Window
         if (anyMatched)
         {
             panel.Children.Add(SectionLabel("WILL BE MARKED OWNED"));
-            panel.Children.Add(NamesBox(matched, max: 30));
+            panel.Children.Add(NamesBox(matched));
         }
 
         if (unmatched.Count > 0)
@@ -62,7 +62,7 @@ public sealed class ImportResultDialog : Window
                 Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
                 Margin = new Thickness(0, 0, 0, 6),
             });
-            panel.Children.Add(NamesBox(unmatched, max: int.MaxValue));
+            panel.Children.Add(NamesBox(unmatched));
 
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
             actions.Children.Add(MakeButton("Copy", (_, _) => CopyToClipboard()));
@@ -103,17 +103,12 @@ public sealed class ImportResultDialog : Window
         Margin = new Thickness(0, 14, 0, 6),
     };
 
-    // A read-only, selectable, scrollable box of names (so the user can hand-pick too).
-    private static UIElement NamesBox(IReadOnlyList<string> names, int max)
+    // A read-only, selectable, scrollable box of the full list of names (so the user can hand-pick too).
+    private static UIElement NamesBox(IReadOnlyList<string> names)
     {
-        var shown = (max == int.MaxValue || names.Count <= max) ? (IEnumerable<string>)names : names.Take(max);
-        var text = string.Join(Environment.NewLine, shown);
-        if (max != int.MaxValue && names.Count > max)
-            text += $"{Environment.NewLine}…and {names.Count - max} more";
-
         return new TextBox
         {
-            Text = text,
+            Text = string.Join(Environment.NewLine, names),
             IsReadOnly = true,
             TextWrapping = TextWrapping.NoWrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
