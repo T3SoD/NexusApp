@@ -14,6 +14,9 @@ public static class Logger
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "NexusApp", "logs", "nexus.log");
 
+    /// <summary>Absolute path of the app log file (for the in-app log monitor / diagnostic snapshot).</summary>
+    public static string LogPath => _path;
+
     public static void Info(string message) => Write("INFO", message, null);
 
     public static void Error(string message, Exception? ex = null) => Write("ERROR", message, ex);
