@@ -33,6 +33,7 @@ public sealed class GameLogWatcher : IDisposable
     private readonly StringBuilder _partial = new();   // carries a trailing partial line between polls
     private string _path = "";
     private long _position;
+    private DateTime _creationTimeUtc;
 
     public event Action<GameLogEntry>? LineAppended;
     public event Action<string>? StatusChanged;
@@ -84,11 +85,13 @@ public sealed class GameLogWatcher : IDisposable
             if (File.Exists(_path))
             {
                 _position = fromBeginning ? 0 : new FileInfo(_path).Length;
+                _creationTimeUtc = File.GetCreationTimeUtc(_path);
                 StatusChanged?.Invoke($"Watching {_path}");
             }
             else
             {
                 _position = 0;
+                _creationTimeUtc = default;
                 StatusChanged?.Invoke($"Waiting for file to appear: {_path}");
             }
         }
@@ -115,7 +118,16 @@ public sealed class GameLogWatcher : IDisposable
             if (!File.Exists(_path)) return;
 
             long len = new FileInfo(_path).Length;
-            if (len < _position)   // file shrank => recreated/truncated (new session)
+            // New-session detection: SC starts a fresh Game.log each launch. Catch both a
+            // recreated file (creation time changes) and an in-place truncation (length drops
+            // below where we were). The creation-time check also covers the case where the new
+            // session grows past our old offset between polls — which a length check alone would
+            // miss if the previous session was short.
+            DateTime creation;
+            try { creation = File.GetCreationTimeUtc(_path); } catch { creation = _creationTimeUtc; }
+            bool recreated = _creationTimeUtc != default && creation != _creationTimeUtc;
+            _creationTimeUtc = creation;
+            if (recreated || len < _position)   // recreated, or shrank => new session
             {
                 _position = 0;
                 _partial.Clear();

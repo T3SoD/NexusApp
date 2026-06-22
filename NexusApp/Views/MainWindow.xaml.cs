@@ -2047,6 +2047,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show($"Overlay error:\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
                             "Overlay Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            try { _overlay?.Close(); } catch { /* discarding a broken overlay — its OnClosed detaches handlers */ }
             _overlay = null;
         }
     }
