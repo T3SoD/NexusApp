@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.4.1  —  Jun 21, 2026",
+        [
+            "Session Tracking — when importing owned blueprints from past logs, Nexus now shows the names it couldn't recognize and lets you Copy or Export them, so you can send them in to get them added",
+        ]),
         ("App  5.4.0  —  Jun 21, 2026",
         [
             "New Session Tracking (Beta) — Nexus can read Star Citizen's Game.log to automatically mark blueprints Owned the moment you receive them in-game, so your library fills in as you play",
