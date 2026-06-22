@@ -40,9 +40,18 @@ public sealed class GameLogSession : IDisposable
         _watcher.LogReset      += Reset;   // a new SC session starts a fresh tally
     }
 
-    /// <summary>Path to start watching: the current one if it exists, else a best-effort probe.</summary>
-    public string StartPath() =>
-        !string.IsNullOrEmpty(Path) && File.Exists(Path) ? Path : GameLogWatcher.FindGameLog();
+    /// <summary>The user's saved Game.log path (injected from settings); honored over the install
+    /// probe so a custom location survives restarts, even if the file isn't present yet. "" = none.</summary>
+    public string PreferredPath { get; set; } = "";
+
+    /// <summary>Path to start watching: the active one if it exists, then the user's saved path,
+    /// else a best-effort probe of common installs.</summary>
+    public string StartPath()
+    {
+        if (!string.IsNullOrEmpty(Path) && File.Exists(Path)) return Path;
+        if (!string.IsNullOrEmpty(PreferredPath)) return PreferredPath;
+        return GameLogWatcher.FindGameLog();
+    }
 
     /// <summary>Clears the session tally (blueprints collected). Fires on a new SC session or on demand.</summary>
     public void Reset()

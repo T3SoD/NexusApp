@@ -28,6 +28,7 @@ public class ScanIndicatorWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         Topmost = true;
+        ShowActivated = false;   // never grab focus from the game (defense-in-depth with WS_EX_NOACTIVATE)
         ShowInTaskbar = false;
         ResizeMode = ResizeMode.NoResize;
         IsHitTestVisible = false;
