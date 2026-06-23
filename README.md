@@ -4,21 +4,21 @@
   <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
 </p>
 
-**An offline, EAC-safe companion app for Star Citizen — built for the mine · refine · craft loop.**
+**An offline, EAC-safe companion app for Star Citizen, built for the mine · refine · craft loop.**
 
-Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own. It can even read your game log to auto-collect blueprints the moment you unlock them in-game (Beta) — all from an overlay that floats over your game, **fully offline**. And with the **Blueprint Network**, you can pool your owned-blueprint library with friends or your org — offline, by trading files — so your whole group can see who owns what.
+Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and works as a fast, searchable reference for resources, crafting blueprints, and the blueprints you own. It can also read your game log to auto-collect blueprints the moment you unlock them in-game (Beta), all from an overlay that floats over your game while staying **fully offline**. With the **Blueprint Network**, you can pool your owned-blueprint library with friends or your org by trading files, so your whole group can see who owns what.
 
-> **Disclaimer:** Nexus is an **unofficial, fan-made tool** — **NOT** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
+> **Disclaimer:** Nexus is an unofficial, fan-made tool. It is **not** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
 
 ## How Nexus stays EAC-safe
 
-Nexus runs entirely **outside** Star Citizen — it sits beside the game like a second monitor and never reaches into it.
+Nexus runs entirely **outside** Star Citizen. It sits beside the game like a second monitor and never reaches into it.
 
-- **Screen only** — Nexus reads your screen using the standard Windows screen-capture + OCR APIs (the same ones screenshot tools use). It never reads Star Citizen's memory.
-- **No injection** — no DLLs, no hooks, nothing loaded into the game process. Nexus is a separate window.
-- **No game files modified** — Nexus never writes to or alters any Star Citizen file; its reference data comes from a local database bundled with the app. The optional **Session Tracking** feature *reads* the plain-text logs the game writes to disk (`Game.log` and its rotated backups) — read-only, opened shared so it never locks them — to detect blueprints you've unlocked. The **Blueprint Network** feature additionally reads your RSI handle from `Game.log` (read-only) to pre-fill a shared-library export — you can use a nickname instead, and nothing is shared unless you export a file yourself. It never reads the game's memory or process, and never touches the packed game data (`.p4k`).
-- **No admin, no network** — it installs per-user, needs no elevation, and runs fully offline. Verify it yourself with a firewall.
-- **Open source** — the entire OCR pipeline is in this repo. Don't take our word for it — read the code.
+- **Screen only:** Nexus reads your screen using the standard Windows screen-capture and OCR APIs (the same ones screenshot tools use). It never reads Star Citizen's memory.
+- **No injection:** no DLLs, no hooks, nothing loaded into the game process. Nexus is a separate window.
+- **No game files modified:** Nexus never writes to or alters any Star Citizen file; its reference data comes from a local database bundled with the app. The optional **Session Tracking** feature *reads* the plain-text logs the game writes to disk (`Game.log` and its rotated backups), read-only and opened shared so it never locks them, to detect blueprints you've unlocked. The **Blueprint Network** feature additionally reads your RSI handle from `Game.log` (read-only) to pre-fill a shared-library export; you can use a nickname instead, and nothing is shared unless you export a file yourself. It never reads the game's memory or process, and never touches the packed game data (`.p4k`).
+- **No admin, no network:** it installs per-user, needs no elevation, and runs fully offline. Verify it yourself with a firewall.
+- **Open source:** the entire OCR pipeline is in this repo. Read it for yourself.
 
 The result: there's nothing for Easy Anti-Cheat to flag.
 
@@ -34,18 +34,18 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 
 **Highlights**
 
-- **Auto-scan overlay** — draw a region over the RS value on your screen and Nexus reads it automatically using the native Windows OCR engine.
+- **Auto-scan overlay:** draw a region over the RS value on your screen and Nexus reads it automatically using the native Windows OCR engine.
 - **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
-- **Blueprint ownership tracking** — mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
-- **Session Tracking (Beta)** — opt in and Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or import everything you've already unlocked from past logs. Read-only — it never writes to or modifies any game file.
-- **Blueprint Network** — share your owned-blueprint library with friends or your org by exchanging files, and see who owns what: per-blueprint coverage, gaps nobody has yet, and blueprints only one person holds. Organize people into groups; a coordinator can merge everyone into a single roster. Fully offline — you move the files, nothing syncs.
-- **Shopping list** — add resources or blueprint ingredients and have them highlighted in scan results and history.
-- **Persistent work orders** — refinery timers survive app restarts.
-- Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
+- **Blueprint ownership tracking:** mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
+- **Session Tracking (Beta):** opt in and Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or import everything you've already unlocked from past logs. It is read-only and never writes to or modifies any game file.
+- **Blueprint Network:** share your owned-blueprint library with friends or your org by exchanging files, and see who owns what: per-blueprint coverage, gaps nobody has yet, and blueprints only one person holds. Organize people into groups, and let a coordinator merge everyone into a single roster. You move the files yourself, and nothing syncs.
+- **Shopping list:** add resources or blueprint ingredients and have them highlighted in scan results and history.
+- **Persistent work orders:** refinery timers survive app restarts.
+- Fully **offline:** no account or internet connection required. Settings and work orders are stored locally on your PC.
 
 ## Blueprint Network — share your library, see who owns what
 
-Most companion tools stop at *your* data. **Blueprint Network** is what sets Nexus apart: an **offline** way to pool blueprint libraries with your friends or your org. Export your owned blueprints to a small file, send it however you like (Discord, a shared drive), and import theirs — then see your whole group's coverage at a glance: what everyone owns, the gaps nobody has yet, and the blueprints only a single person holds. Filter the view to any one person to see exactly what they own or are missing, group people into Friends/org lists, and let a coordinator merge everyone into a single roster the group imports once. No server, no account — you move the files yourself, and nothing leaves your PC unless you choose to share it.
+Most companion tools only track *your* data. **Blueprint Network** adds an offline way to pool blueprint libraries with your friends or your org. Export your owned blueprints to a small file, send it however you like (Discord, a shared drive), and import theirs. You then see your whole group's coverage at a glance: what everyone owns, the gaps nobody has yet, and the blueprints only a single person holds. Filter the view to any one person to see exactly what they own or are missing, group people into Friends/org lists, and let a coordinator merge everyone into a single roster the group imports once. There is no server and no account; you move the files yourself, and nothing leaves your PC unless you choose to share it.
 
 ## Screenshots
 
@@ -55,28 +55,28 @@ The floating overlay sits over Star Citizen and reads the RS value straight off 
 [![Nexus auto-scan overlay floating over Star Citizen gameplay](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
 ### Blueprint Library
-Search any ship, weapon, or armor blueprint to see exactly what it takes to craft — the raw resources and quantities, where to mine them, and the missions that unlock it.
+Search any ship, weapon, or armor blueprint to see exactly what it takes to craft: the raw resources and quantities, where to mine them, and the missions that unlock it.
 
 [![Nexus Blueprint Library showing the ADP-mk4 Arms Woodland armor recipe, bill of materials, and unlock missions](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
 
 ### Blueprint Network
-Pool your owned-blueprint library with friends or your org by trading files — then see the whole group's coverage at a glance: how many blueprints are owned between you, the gaps nobody has yet, and the ones only a single person holds (at risk if they stop playing).
+Pool your owned-blueprint library with friends or your org by trading files, then see the whole group's coverage at a glance: how many blueprints are owned between you, the gaps nobody has yet, and the ones only a single person holds (at risk if they stop playing).
 
 [![Nexus Blueprint Network showing group blueprint coverage, per-member ownership, and single-owner blueprints](docs/screenshots/blueprint-network.png)](docs/screenshots/blueprint-network.png)
 
 ### Mining Codex
-A full reference of every mineable resource — grouped by rarity, searchable, and filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS).
+A full reference of every mineable resource, grouped by rarity, searchable, and filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS).
 
 [![Nexus Mining Codex reference table grouped by rarity](docs/screenshots/mining-codex.png)](docs/screenshots/mining-codex.png)
 
 ### Refinery Tracker
-Track active refinery jobs with live countdown timers and status indicators, so you always know what's cooking and when it's ready to collect.
+Track active refinery jobs with live countdown timers and status indicators, so you always know what's refining and when it's ready to collect.
 
 [![Nexus Refinery Tracker with active refinery jobs, timers, and status](docs/screenshots/refinery-tracker.png)](docs/screenshots/refinery-tracker.png)
 
 ## Installation (end users)
 
-Nexus ships two ways — pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline.
+Nexus ships two ways; pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings and work orders locally, and run fully offline.
 
 ### Option 1 — Installer (`Nexus_Setup.exe`) — *recommended, user friendly*
 
@@ -152,9 +152,9 @@ NexusApp/
 
 ## Support & Feedback
 
-Nexus is built by one person for the mining community, and hearing from people who use it is the best part. **If you enjoy the app, please reach out and say so — it genuinely makes a difference.**
+Nexus is built by one person for the mining community, and hearing from people who use it is the best part. If you enjoy the app, please reach out and say so.
 
-Got a bug, a feature idea, or just want to share how Nexus is working for you? **Message T3SoD on Discord** or **[open an issue on GitHub](https://github.com/T3SoD/NexusApp/issues)**. All feedback — good, bad, or wishlist — is welcome and helps shape where Nexus goes next.
+Got a bug, a feature idea, or want to share how Nexus is working for you? **Message T3SoD on Discord** or **[open an issue on GitHub](https://github.com/T3SoD/NexusApp/issues)**. All feedback is welcome and helps shape where Nexus goes next.
 
 ## License
 
