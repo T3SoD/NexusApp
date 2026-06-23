@@ -10,9 +10,12 @@ DISCLAIMER
   Space Industries (RSI). Star Citizen is a trademark of CIG.
 
   This app reads pixel data from your screen and provides reference
-  information from a local database only. It does NOT read game memory,
-  inject code, or modify game files. It is EAC-Safe (Easy Anti-Cheat
-  compatible) and operates entirely outside the game process.
+  information from a local database. The optional Session Tracking and
+  Blueprint Network features additionally read Star Citizen's Game.log
+  (read-only) to auto-collect blueprints and to pre-fill your RSI handle
+  for a shared-library export. It does NOT read game memory, inject code,
+  or modify game files. It is EAC-Safe (Easy Anti-Cheat compatible) and
+  operates entirely outside the game process.
 
 
 GETTING STARTED
@@ -71,6 +74,10 @@ PAGES
 
   BLUEPRINT LIBRARY  - Search for ship/weapon/armor blueprints and see
                        which raw resources each one requires
+
+  BLUEPRINT NETWORK  - Share your owned blueprints with friends/org by
+                       trading library files, and see who owns what
+                       (coverage, gaps, single-owner risk). Fully offline.
 
   MINING CODEX       - Full reference table of all mineable resources,
                        filterable by system (Stanton / Pyro / Nyx) and

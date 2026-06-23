@@ -16,7 +16,7 @@ Nexus runs entirely **outside** Star Citizen — it sits beside the game like a 
 
 - **Screen only** — Nexus reads your screen using the standard Windows screen-capture + OCR APIs (the same ones screenshot tools use). It never reads Star Citizen's memory.
 - **No injection** — no DLLs, no hooks, nothing loaded into the game process. Nexus is a separate window.
-- **No game files modified** — Nexus never writes to or alters any Star Citizen file; its reference data comes from a local database bundled with the app. The optional **Session Tracking** feature *reads* the plain-text logs the game writes to disk (`Game.log` and its rotated backups) — read-only, opened shared so it never locks them — to detect blueprints you've unlocked. It never reads the game's memory or process, and never touches the packed game data (`.p4k`).
+- **No game files modified** — Nexus never writes to or alters any Star Citizen file; its reference data comes from a local database bundled with the app. The optional **Session Tracking** feature *reads* the plain-text logs the game writes to disk (`Game.log` and its rotated backups) — read-only, opened shared so it never locks them — to detect blueprints you've unlocked. The **Blueprint Network** feature additionally reads your RSI handle from `Game.log` (read-only) to pre-fill a shared-library export — you can use a nickname instead, and nothing is shared unless you export a file yourself. It never reads the game's memory or process, and never touches the packed game data (`.p4k`).
 - **No admin, no network** — it installs per-user, needs no elevation, and runs fully offline. Verify it yourself with a firewall.
 - **Open source** — the entire OCR pipeline is in this repo. Don't take our word for it — read the code.
 
@@ -28,6 +28,7 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 |------|--------------|
 | **RS Signal Decoder** | Manually enter or **auto-scan** an RS value to identify the resource and node count. |
 | **Blueprint Library** | Search ship / weapon / armor blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
+| **Blueprint Network** | Share which blueprints you own with friends or your org by trading library files, and see who in your group owns what — coverage, gaps to farm, and single-owner risk. Fully offline: you exchange files, nothing syncs. |
 | **Mining Codex** | Full reference table of all mineable resources, filterable by system (Stanton / Pyro / Nyx) and method (Ship / ROC / FPS). |
 | **Refinery Tracker** | Track active refinery jobs with live countdown timers and status indicators. |
 
@@ -37,6 +38,7 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 - **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
 - **Blueprint ownership tracking** — mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
 - **Session Tracking (Beta)** — opt in and Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or import everything you've already unlocked from past logs. Read-only — it never writes to or modifies any game file.
+- **Blueprint Network** — share your owned-blueprint library with friends or your org by exchanging files, and see who owns what: per-blueprint coverage, gaps nobody has yet, and blueprints only one person holds. Organize people into groups; a coordinator can merge everyone into a single roster. Fully offline — you move the files, nothing syncs.
 - **Shopping list** — add resources or blueprint ingredients and have them highlighted in scan results and history.
 - **Persistent work orders** — refinery timers survive app restarts.
 - Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
