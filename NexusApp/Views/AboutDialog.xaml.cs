@@ -424,6 +424,9 @@ public class AboutDialog : Window
             "Nexus reads pixel data from your screen (screen capture) and displays reference information " +
             "from a local database. The optional Session Tracking feature (Beta) additionally reads — " +
             "read-only — the Game.log text file Star Citizen writes to disk, to auto-collect blueprints. " +
+            "When you choose to export your library in the Blueprint Network, Nexus also reads your RSI " +
+            "handle from that same Game.log (read-only) to pre-fill it — you can use a nickname instead. " +
+            "Sharing is opt-in: nothing leaves your PC unless you export a file and send it yourself. " +
             "Nexus does not read game memory, inject code into any process, modify any game files, or " +
             "communicate with game servers in any way.");
 
