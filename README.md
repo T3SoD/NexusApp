@@ -57,7 +57,12 @@ The floating overlay sits over Star Citizen and reads the RS value straight off 
 ### Blueprint Library
 Search any ship, weapon, or armor blueprint to see exactly what it takes to craft — the raw resources and quantities, where to mine them, and the missions that unlock it.
 
-[![Nexus Blueprint Library showing the P6-LR Sniper Rifle recipe, ingredients, and unlock missions](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
+[![Nexus Blueprint Library showing the ADP-mk4 Arms Woodland armor recipe, bill of materials, and unlock missions](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
+
+### Blueprint Network
+Pool your owned-blueprint library with friends or your org by trading files — then see the whole group's coverage at a glance: how many blueprints are owned between you, the gaps nobody has yet, and the ones only a single person holds (at risk if they stop playing).
+
+[![Nexus Blueprint Network showing group blueprint coverage, per-member ownership, and single-owner blueprints](docs/screenshots/blueprint-network.png)](docs/screenshots/blueprint-network.png)
 
 ### Mining Codex
 A full reference of every mineable resource — grouped by rarity, searchable, and filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS).
