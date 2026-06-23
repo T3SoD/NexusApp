@@ -25,6 +25,11 @@ public class AppSettings
     public bool GameLogAutoTrack { get; set; }
     public string GameLogPath { get; set; } = "";
 
+    // Optional path to Star Citizen's localization file (Data/Localization/english/global.ini).
+    // Read-only; lets the importer translate blueprint names renamed by community localization mods
+    // (any custom format) back to seed names. "" = auto-detect next to the Game.log path.
+    public string GlobalIniPath { get; set; } = "";
+
     // Blueprint Network — local identity only. The shared roster (other people's libraries)
     // lives in network.db; these few fields are just "who you are" when you export/share.
     public string LocalNetworkId { get; set; } = "";          // stable GUID, generated once

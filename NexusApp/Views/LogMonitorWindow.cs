@@ -24,6 +24,7 @@ public sealed class LogMonitorWindow : Window
     private readonly List<GameLogEntry> _all = new();
     private readonly ListBox _list;
     private readonly TextBox _pathBox;
+    private readonly TextBox _globalIniBox;
     private readonly TextBox _filterBox;
     private readonly TextBlock _status;
     private readonly Button _startBtn;
@@ -83,7 +84,35 @@ public sealed class LogMonitorWindow : Window
         _startBtn = MakeButton(App.GameLog.IsRunning ? "Stop" : "Start");
         _startBtn.Margin = new Thickness(6, 0, 0, 0); _startBtn.Click += (_, _) => ToggleStart();
         Grid.SetColumn(_startBtn, 2); pathRow.Children.Add(_startBtn);
-        Grid.SetRow(pathRow, 0); root.Children.Add(pathRow);
+
+        // Optional localization file (global.ini). When set (or auto-detected next to Game.log),
+        // the import translates blueprint names renamed by community localization mods — any custom
+        // format — back to library names. Read-only.
+        var globalRow = new Grid();
+        globalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        globalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _globalIniBox = new TextBox
+        {
+            Text = App.Settings.Current.GlobalIniPath,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
+            ToolTip = "Optional: Star Citizen's global.ini (…\\Data\\Localization\\english). Leave blank to auto-detect next to Game.log. Read-only — used to translate mod-renamed blueprint names.",
+        };
+        Grid.SetColumn(_globalIniBox, 0); globalRow.Children.Add(_globalIniBox);
+        // Remember the path as soon as it's set — same as the Game.log path — not just on import.
+        _globalIniBox.LostFocus += (_, _) => PersistGlobalIniPath();
+        var browseGlobal = MakeButton("Browse…"); browseGlobal.Click += (_, _) => BrowseGlobalIni();
+        Grid.SetColumn(browseGlobal, 1); globalRow.Children.Add(browseGlobal);
+
+        var pathStack = new StackPanel();
+        pathStack.Children.Add(pathRow);
+        pathStack.Children.Add(new TextBlock
+        {
+            Text = "Localization file for mod-renamed blueprints (optional — auto-detected if blank):",
+            Foreground = Res("FgDimBrush"), FontSize = 11, Margin = new Thickness(0, 6, 0, 2),
+        });
+        pathStack.Children.Add(globalRow);
+        Grid.SetRow(pathStack, 0); root.Children.Add(pathStack);
 
         // Row 1 — viewer controls
         var ctl = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
@@ -156,6 +185,7 @@ public sealed class LogMonitorWindow : Window
         App.GameLog.SessionReset += OnSessionReset;
         Closed += (_, _) =>
         {
+            PersistGlobalIniPath();   // catch a path typed but never imported
             App.GameLog.LineAppended -= OnLine;
             App.GameLog.StatusChanged -= OnStatus;
             App.GameLog.Marked -= OnMarked;
@@ -200,6 +230,7 @@ public sealed class LogMonitorWindow : Window
     private async Task ImportFromLogsAsync()
     {
         var path = _pathBox.Text.Trim();
+        PersistGlobalIniPath();   // honor the optional localization override; blank = auto-detect
         _importBtn.IsEnabled = false;
         _status.Text = "Scanning logs…";
         GameLogBlueprintImporter.HistoryScan scan;
@@ -285,6 +316,22 @@ public sealed class LogMonitorWindow : Window
     {
         var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Game log (*.log)|*.log|All files (*.*)|*.*", FileName = "Game.log" };
         if (dlg.ShowDialog() == true) _pathBox.Text = dlg.FileName;
+    }
+
+    private void BrowseGlobalIni()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Localization (*.ini)|*.ini|All files (*.*)|*.*", FileName = "global.ini" };
+        if (dlg.ShowDialog() == true) { _globalIniBox.Text = dlg.FileName; PersistGlobalIniPath(); }
+    }
+
+    // Persists the user's chosen global.ini path (blank = auto-detect) so it survives restarts,
+    // mirroring how the Game.log path is remembered once set.
+    private void PersistGlobalIniPath()
+    {
+        var path = _globalIniBox.Text.Trim();
+        if (App.Settings.Current.GlobalIniPath == path) return;   // no-op if unchanged
+        App.Settings.Current.GlobalIniPath = path;
+        App.Settings.Save();
     }
 
     private void SaveSnapshot()

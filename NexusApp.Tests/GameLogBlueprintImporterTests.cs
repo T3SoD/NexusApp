@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using NexusApp.Services;
 using Xunit;
 
@@ -91,5 +94,57 @@ public class GameLogBlueprintImporterTests
     {
         var imp = new GameLogBlueprintImporter(new[] { "7SA 'Concord'" });
         Assert.Equal("7SA 'Concord'", imp.ResolveLine(RealLine("Civ/1/A 7SA 'Concord'")));
+    }
+
+    // ── Custom localization (any mod) resolution via the user's global.ini map ─────────────────
+    // global2-style no-separator custom string: only the key join (captured in the map) can resolve it.
+    private static Dictionary<string, string> LocMap() =>
+        new(StringComparer.OrdinalIgnoreCase) { ["2AFR-76"] = "FR-76" };
+
+    [Fact]
+    public void Resolve_UsesLocalizationMap_ForCustomModString()
+    {
+        var imp = new GameLogBlueprintImporter(new[] { "FR-76" });
+        Assert.Equal("FR-76", imp.Resolve("2AFR-76", LocMap()));
+    }
+
+    [Fact]
+    public void Resolve_WithoutLocalizationMap_CustomStringUnresolved()
+    {
+        var imp = new GameLogBlueprintImporter(new[] { "FR-76" });
+        Assert.Null(imp.Resolve("2AFR-76"));
+    }
+
+    [Fact]
+    public void Resolve_LocalizationMapHit_ButOfficialNotInSeed_ReturnsNull()
+    {
+        var imp = new GameLogBlueprintImporter(new[] { "Tundra" });   // seed lacks FR-76
+        Assert.Null(imp.Resolve("2AFR-76", LocMap()));
+    }
+
+    [Fact]
+    public void ResolveLine_UsesLocalizationMap_FromRealLine()
+    {
+        var imp = new GameLogBlueprintImporter(new[] { "FR-76" });
+        Assert.Equal("FR-76", imp.ResolveLine(RealLine("2AFR-76"), LocMap()));
+    }
+
+    [Fact]
+    public void ScanHistory_LocalizationMap_ResolvesCustomNamesIntoMatched()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(log, new[] { RealLine("2AFR-76"), RealLine("Tundra") });
+        try
+        {
+            var imp = new GameLogBlueprintImporter(new[] { "FR-76", "Tundra" });
+            var scan = imp.ScanHistory(log, null, LocMap());
+
+            Assert.Contains("FR-76", scan.Matched);
+            Assert.Contains("Tundra", scan.Matched);
+            Assert.DoesNotContain("2AFR-76", scan.Unmatched);
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }

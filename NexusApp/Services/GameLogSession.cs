@@ -24,18 +24,25 @@ public sealed class GameLogSession : IDisposable
     private readonly Func<IEnumerable<string>> _seedNames;
     private readonly Func<string, bool> _isOwned;
     private readonly Action<string, bool> _setOwned;
+    // Given a Game.log path, returns the user's customDisplay -> official localization map (or null).
+    // Injected so the session stays headlessly testable; built from their global.ini in App.
+    private readonly Func<string, IReadOnlyDictionary<string, string>?>? _localizationMapFor;
     private readonly List<BlueprintMark> _marks = new();
     private GameLogBlueprintImporter? _importer;
     private string _lastHandle = "";   // dedupe the HandleDetected event
+    private IReadOnlyDictionary<string, string>? _liveLocalizationMap;   // cached for the live tail
+    private bool _liveLocalizationBuilt;                                 // rebuilt on a new SC session
 
     public GameLogSession(
         Func<IEnumerable<string>> seedNames,
         Func<string, bool> isOwned,
-        Action<string, bool> setOwned)
+        Action<string, bool> setOwned,
+        Func<string, IReadOnlyDictionary<string, string>?>? localizationMapFor = null)
     {
         _seedNames = seedNames;
         _isOwned   = isOwned;
         _setOwned  = setOwned;
+        _localizationMapFor = localizationMapFor;
         _watcher.LineAppended  += Ingest;
         _watcher.StatusChanged += s => StatusChanged?.Invoke(s);
         _watcher.LogReset      += Reset;   // a new SC session starts a fresh tally
@@ -58,7 +65,21 @@ public sealed class GameLogSession : IDisposable
     public void Reset()
     {
         _marks.Clear();
+        _liveLocalizationMap = null;   // a new SC session may follow a localization change — rebuild lazily
+        _liveLocalizationBuilt = false;
         SessionReset?.Invoke();
+    }
+
+    // The user's localization map for the live tail, built once (lazily, off the active log path) and
+    // reused per line; rebuilt after a session reset. Null when no builder is wired or no file is found.
+    private IReadOnlyDictionary<string, string>? LiveLocalizationMap()
+    {
+        if (!_liveLocalizationBuilt)
+        {
+            _liveLocalizationMap = _localizationMapFor?.Invoke(StartPath());
+            _liveLocalizationBuilt = true;
+        }
+        return _liveLocalizationMap;
     }
 
     // Built lazily: the blueprint name list isn't ready until seed data loads.
@@ -111,10 +132,10 @@ public sealed class GameLogSession : IDisposable
     }
 
     /// <summary>Resolve a raw line to a canonical blueprint name without marking it (raw-log aid).</summary>
-    public string? Resolve(string rawLine) => Importer.ResolveLine(rawLine);
+    public string? Resolve(string rawLine) => Importer.ResolveLine(rawLine, LiveLocalizationMap());
 
     public GameLogBlueprintImporter.HistoryScan ScanHistory(string liveLogPath, Action<int>? progress = null)
-        => Importer.ScanHistory(liveLogPath, progress);
+        => Importer.ScanHistory(liveLogPath, progress, _localizationMapFor?.Invoke(liveLogPath));
 
     public void NotifyBulkOwnershipChanged() => BulkOwnershipChanged?.Invoke();
 
@@ -133,7 +154,7 @@ public sealed class GameLogSession : IDisposable
 
         if (!AutoMark || e.Category != LogCategory.Blueprint) return;
 
-        var canon = Importer.ResolveLine(e.Raw);
+        var canon = Importer.ResolveLine(e.Raw, LiveLocalizationMap());
         if (canon is null || _isOwned(canon)) return;
 
         _setOwned(canon, true);
