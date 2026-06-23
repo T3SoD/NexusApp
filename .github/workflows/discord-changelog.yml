@@ -10,6 +10,9 @@ name: Discord changelog notify (manual)
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest

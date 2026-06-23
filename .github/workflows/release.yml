@@ -12,6 +12,10 @@ on:
     tags: ['v*']
   workflow_dispatch: {}
 
+# Default least privilege for all jobs; the release job overrides to write below.
+permissions:
+  contents: read
+
 jobs:
   release:
     runs-on: windows-2025-vs2026
