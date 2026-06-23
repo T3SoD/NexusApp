@@ -169,7 +169,7 @@ public class HelpDialog : Window
                 "Overview tab — your group's coverage: percent owned, blueprints nobody has yet (farm targets), and ones only a single person holds.",
                 "Blueprints tab — every blueprint with how many of you own it; filter to Nobody owns / Single owner / I'm missing, and expand a row to see exactly who has it.",
                 "The group switcher scopes coverage to a group or to everyone; you're always counted in coverage.",
-                "Fully offline — you trade files by hand and your data stays on your PC. Nexus never uploads anything.",
+                "No server, no account — Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
             ]),
 
         new("≡", "Settings",

@@ -45,7 +45,7 @@ public sealed class TourController
         new(TutorialTarget.ReferenceTools, "Your reference tools",
             "Three tools live in the nav: the Blueprint Library for recipes, the Mining Codex reference table, and the Refinery Tracker for your refines."),
         new(TutorialTarget.BlueprintNetwork, "Blueprint Network",
-            "Share your blueprint library with friends and your org — export yours, import theirs, and see who owns what together. Fully offline."),
+            "Share your blueprint library with friends and your org — export yours, import theirs, and see who owns what together. No server, no account — you share the files yourself."),
         new(TutorialTarget.None, "You're set",
             "That's the tour. Want to set up auto-scan now? Have Star Citizen open with an RS value on screen. You can replay this anytime from Help."),
     ];
