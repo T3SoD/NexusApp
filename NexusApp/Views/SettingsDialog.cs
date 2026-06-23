@@ -77,8 +77,8 @@ public class SettingsDialog : Window
         var handleLabel = new TextBlock
         {
             Text = string.IsNullOrEmpty(App.Settings.Current.DetectedRsiHandle)
-                ? "Handle: not detected yet."
-                : $"Handle: {App.Settings.Current.DetectedRsiHandle}",
+                ? "RSI Handle: not detected yet."
+                : $"RSI Handle: {App.Settings.Current.DetectedRsiHandle}",
             FontSize = 12, Margin = new Thickness(0, 8, 0, 0),
             Foreground = (Brush)Application.Current.FindResource("FgBrush"),
         };
@@ -87,8 +87,8 @@ public class SettingsDialog : Window
             App.GameLog?.DetectHandleFromCurrentFile();
             var h = App.Settings.Current.DetectedRsiHandle;
             handleLabel.Text = string.IsNullOrEmpty(h)
-                ? "Handle: not found — open Star Citizen (it writes Game.log at login), then try again."
-                : $"Handle: {h}";
+                ? "RSI Handle: not found — open Star Citizen (it writes Game.log at login), then try again."
+                : $"RSI Handle: {h}";
         };
         panel.Children.Add(detectHandleBtn);
         panel.Children.Add(handleLabel);

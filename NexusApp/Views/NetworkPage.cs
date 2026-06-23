@@ -20,7 +20,7 @@ public sealed class NetworkPage : UserControl
     private readonly SettingsService _settings;
     private readonly NetworkFileService _files = new();
 
-    private string _tab = "members";     // overview | blueprints | members
+    private string _tab = "overview";    // overview | blueprints | members
     private string? _groupFilter;        // null = All, else a group id
 
     private readonly StackPanel _subTabBar = new() { Orientation = Orientation.Horizontal };
@@ -80,7 +80,7 @@ public sealed class NetworkPage : UserControl
         actions.Children.Add(buttonRow);
         actions.Children.Add(new TextBlock
         {
-            Text = "Trade .nexuslib files with friends to see who owns which blueprints — export yours, import theirs. Nothing leaves your PC.",
+            Text = "Trade .nexuslib files with friends to see who owns which blueprints — export yours, import theirs. No server, no account — you share the files yourself.",
             FontSize = 10, Foreground = Br("FgDimBrush"), TextWrapping = TextWrapping.Wrap,
             MaxWidth = 340, TextAlignment = TextAlignment.Right, HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 5, 2, 0),
@@ -764,6 +764,13 @@ public sealed class NetworkPage : UserControl
         var allRadio = new RadioButton { GroupName = "scope", Foreground = Br("FgBrush"), Margin = new Thickness(0, 4, 0, 0), Content = $"Everyone ({_store.MemberCount} + me) as a roster" };
         panel.Children.Add(meRadio);
         panel.Children.Add(allRadio);
+
+        panel.Children.Add(SectionLabel("Shared in this file:"));
+        panel.Children.Add(new TextBlock
+        {
+            Text = "•  Owned blueprints\n•  RSI handle or nickname\n•  Nothing else — no game files or PC info",
+            Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(2, 6, 0, 0), TextWrapping = TextWrapping.Wrap,
+        });
 
         var ok = ActionButton("Export");
         var cancel = ActionButton("Cancel");
