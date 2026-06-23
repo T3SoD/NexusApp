@@ -41,6 +41,8 @@
   <ItemGroup>
     <None Remove="Data\seed_data.json" />
     <EmbeddedResource Include="Data\seed_data.json" />
+    <None Remove="Data\components.ini" />
+    <EmbeddedResource Include="Data\components.ini" />
     <None Update="README.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>

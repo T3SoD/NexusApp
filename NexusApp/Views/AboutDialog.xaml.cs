@@ -432,6 +432,10 @@ public class AboutDialog : Window
             "read-only — the Game.log text file Star Citizen writes to disk, to auto-collect blueprints. " +
             "When you choose to export your library in the Blueprint Network, Nexus also reads your RSI " +
             "handle from that same Game.log (read-only) to pre-fill it — you can use a nickname instead. " +
+            "If you use a community localization mod that renames components, Nexus can also read — " +
+            "read-only — Star Citizen's localization file (global.ini) to translate those renamed " +
+            "blueprint names back to their standard names when importing; community localization is " +
+            "sanctioned by CIG. " +
             "Sharing is opt-in: nothing leaves your PC unless you export a file and send it yourself. " +
             "Nexus does not read game memory, inject code into any process, modify any game files, or " +
             "communicate with game servers in any way.");

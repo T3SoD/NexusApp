@@ -7,10 +7,12 @@ using System.Text.RegularExpressions;
 namespace NexusApp.Services;
 
 // BETA. Parses "Received Blueprint: <name>" events out of SC's Game.log and maps them
-// to Nexus blueprint names so ownership can auto-fill. Handles BOTH vanilla names and
-// the StarStrings text mod (MrKraken/StarStrings), which prefixes SHIP COMPONENTS with
+// to Nexus blueprint names so ownership can auto-fill. Handles BOTH vanilla names and the
+// community StarStrings text mod, which (in its default format) prefixes SHIP COMPONENTS with
 // Type/Size/Grade (e.g. "Tundra" -> "Mil/1/D Tundra") and leaves armor/FPS-weapons/ammo
-// alone. Reads a game-authored file — see the EAC note in [[nexus-gamelog-ownership]].
+// alone. Other custom localization formats are resolved via the user's own global.ini — see
+// GlobalIniReader / ComponentStringReference. Reads a game-authored file — see the EAC note
+// in [[nexus-gamelog-ownership]].
 public sealed class GameLogBlueprintImporter
 {
     private const string Marker = "Received Blueprint:";
@@ -50,20 +52,27 @@ public sealed class GameLogBlueprintImporter
 
     // Raw log name -> canonical Nexus name, or null if unknown.
     //   1) exact (vanilla everything + modded armor/weapons/ammo StarStrings doesn't touch)
-    //   2) strip the StarStrings ship-component prefix, retry (modded ship components)
-    // A vanilla name has no prefix, so step 2 is a harmless no-op for unmodded users.
-    public string? Resolve(string rawName)
+    //   2) strip the default StarStrings ship-component prefix, retry (modded ship components)
+    //   3) translate via the user's localization file (any custom mod / format), then match
+    // A vanilla name has no prefix, so step 2 is a harmless no-op for unmodded users; step 3 is a
+    // no-op when no localizationMap is supplied.
+    public string? Resolve(string rawName, IReadOnlyDictionary<string, string>? localizationMap = null)
     {
         if (_known.TryGetValue(rawName, out var canon)) return canon;
         var stripped = StarStringsPrefix.Replace(rawName, "");
         if (stripped.Length != rawName.Length && _known.TryGetValue(stripped, out canon)) return canon;
+        // The user's global.ini (built into localizationMap as customDisplay -> official) handles any
+        // mod or custom format — including no-separator strings the prefix strip can't touch.
+        if (localizationMap is not null
+            && localizationMap.TryGetValue(rawName, out var official)
+            && _known.TryGetValue(official, out canon)) return canon;
         return null;
     }
 
-    public string? ResolveLine(string line)
+    public string? ResolveLine(string line, IReadOnlyDictionary<string, string>? localizationMap = null)
     {
         var raw = ExtractRawName(line);
-        return raw is null ? null : Resolve(raw);
+        return raw is null ? null : Resolve(raw, localizationMap);
     }
 
     /// <summary>True if a log line contains a StarStrings component token (e.g. "Mil/1/D") — a
@@ -76,7 +85,8 @@ public sealed class GameLogBlueprintImporter
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
     // Returns DISTINCT canonical matched names + distinct unmatched raw names. Read-only,
     // but logbackups can be hundreds of MB — call from a background thread.
-    public HistoryScan ScanHistory(string liveLogPath, System.Action<int>? progress = null)
+    public HistoryScan ScanHistory(string liveLogPath, System.Action<int>? progress = null,
+        IReadOnlyDictionary<string, string>? localizationMap = null)
     {
         var matched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         var unmatched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
@@ -110,7 +120,7 @@ public sealed class GameLogBlueprintImporter
                     if (line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var raw = ExtractRawName(line);
                     if (raw is null) continue;
-                    var canon = Resolve(raw);
+                    var canon = Resolve(raw, localizationMap);
                     if (canon is not null) matched.Add(canon);
                     else if (unmatched.Add(raw)) unmatchedLines.Add(line.Trim());   // keep the raw line as a sample
                 }

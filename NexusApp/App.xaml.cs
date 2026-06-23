@@ -101,7 +101,8 @@ public partial class App : Application
         GameLog = new GameLogSession(
             () => Data.GetAllBlueprints().Select(b => b.Name),
             name => Settings.IsBlueprintOwned(name),
-            (name, owned) => Settings.SetBlueprintOwned(name, owned));
+            (name, owned) => Settings.SetBlueprintOwned(name, owned),
+            BuildLocalizationMap);
         GameLog.Marked += m =>
         {
             Views.ToastWindow.Show($"Marked owned: {m.Name}");
@@ -125,6 +126,24 @@ public partial class App : Application
             if (!string.IsNullOrEmpty(GameLog.Path)) Settings.Current.GameLogPath = GameLog.Path;
             Settings.Save();
         };
+    }
+
+    // Builds the user's customDisplay -> official localization map from their global.ini, so the
+    // importer can translate blueprint names renamed by any community localization mod. The file is
+    // read-only and CIG-sanctioned community localization. Uses the saved override path if set, else
+    // auto-detects next to the active Game.log. Null (and a no-op) when nothing is found.
+    private IReadOnlyDictionary<string, string>? BuildLocalizationMap(string logPath)
+    {
+        var path = !string.IsNullOrWhiteSpace(Settings.Current.GlobalIniPath)
+            ? Settings.Current.GlobalIniPath
+            : GlobalIniReader.DeriveGlobalIniPath(logPath);
+        if (string.IsNullOrEmpty(path)) { Logger.Info("[LOC] no global.ini path resolved"); return null; }
+
+        var map = GlobalIniReader.TryBuildFromFile(path, ComponentStringReference.KeyToOfficialName);
+        Logger.Info(map is null
+            ? "[LOC] global.ini not found or unreadable"
+            : $"[LOC] global.ini parsed: {map.Count} custom blueprint name(s)");
+        return map;
     }
 
     // App-wide class handlers that log every Button click and nav (RadioButton) to nexus.log via
