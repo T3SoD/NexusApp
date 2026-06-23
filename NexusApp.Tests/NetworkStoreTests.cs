@@ -132,6 +132,23 @@ public class NetworkStoreTests : IDisposable
     }
 
     [Fact]
+    public void ClearAll_WipesMembersOwnershipAndGroups()
+    {
+        using var s = new NetworkStore(_tempPath);
+        s.UpsertMember(NewMember("g1", "Dave"));
+        s.ReplaceOwnership("g1", new[] { "A", "B" });
+        var grp = s.CreateGroup("Friends");
+        s.AddToGroup(grp.Id, "g1");
+
+        s.ClearAll();
+
+        Assert.Equal(0, s.MemberCount);
+        Assert.Empty(s.GetOwnedNames("g1"));
+        Assert.Empty(s.GetGroups());
+        Assert.Empty(s.GetGroupMemberIds(grp.Id));
+    }
+
+    [Fact]
     public void OwnerCounts_ScopedToMemberSubset()
     {
         using var s = new NetworkStore(_tempPath);

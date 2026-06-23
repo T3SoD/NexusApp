@@ -67,11 +67,24 @@ public sealed class NetworkPage : UserControl
         titleStack.Children.Add(new TextBlock { Text = "Shared blueprint libraries", FontSize = 12, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
         header.Children.Add(titleStack);
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        // Import / Export, with the one-line "how it works" hint right beneath them (smaller).
         var importBtn = ActionButton("Import"); importBtn.Click += (_, _) => Import();
+        importBtn.ToolTip = "Load a teammate's .nexuslib file to add them to your network";
         var exportBtn = ActionButton("Export"); exportBtn.Click += (_, _) => Export();
-        actions.Children.Add(importBtn);
-        actions.Children.Add(exportBtn);
+        exportBtn.ToolTip = "Save your owned blueprints to a .nexuslib file to share — as your RSI handle or a nickname";
+        var buttonRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttonRow.Children.Add(importBtn);
+        buttonRow.Children.Add(exportBtn);
+
+        var actions = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        actions.Children.Add(buttonRow);
+        actions.Children.Add(new TextBlock
+        {
+            Text = "Trade .nexuslib files with friends to see who owns which blueprints — export yours, import theirs. Nothing leaves your PC.",
+            FontSize = 10, Foreground = Br("FgDimBrush"), TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 340, TextAlignment = TextAlignment.Right, HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 5, 2, 0),
+        });
         Grid.SetColumn(actions, 1);
         header.Children.Add(actions);
         Grid.SetRow(header, 0); root.Children.Add(header);
@@ -148,6 +161,7 @@ public sealed class NetworkPage : UserControl
             Background = active ? Br("AccentBrush") : Br("Bg2NavBrush"),
             BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = tb,
         };
+        if (isNew) border.ToolTip = "Create a group like Friends or your org";
         border.MouseLeftButtonUp += (_, _) =>
         {
             if (isNew) { CreateGroupPrompt(); return; }
@@ -190,7 +204,7 @@ public sealed class NetworkPage : UserControl
             members = members.Where(m => ids.Contains(m.Id)).ToList();
         }
         if (members.Count == 0)
-            return Placeholder("No one shared yet. Import a teammate's .nexuslib file, or Export yours to share.");
+            return Placeholder("No one shared yet. Click Export to share your library, or Import a teammate's .nexuslib file — they'll show up here.");
 
         var groupNames = _store.GetGroups().ToDictionary(g => g.Id, g => g.Name);
         var list = new StackPanel();
@@ -217,6 +231,7 @@ public sealed class NetworkPage : UserControl
 
         var btns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         var groupsBtn = ActionButton("Groups…");
+        groupsBtn.ToolTip = "Add this member to a group, or create one";
         groupsBtn.Click += (_, _) => EditMemberGroups(m);
         var remove = ActionButton("Remove");
         remove.Click += (_, _) => RemoveMember(m);
@@ -634,10 +649,17 @@ public sealed class NetworkPage : UserControl
             KnownBlueprints = known,
         };
         var res = _files.Import(file, _store, opts);
-        Logger.Info($"[NET] import done: +{res.NewMembers} new, {res.UpdatedMembers} updated, {res.BlueprintsMatched} matched, {res.BlueprintsUnrecognized} unrecognized");
+
+        // If the file was your own (matched by GUID or RSI handle), pull its owned blueprints into
+        // your own Blueprint Library too — importing your own export syncs your collection.
+        var selfMarked = res.SelfBlueprints.Count > 0 ? _settings.SetBlueprintsOwned(res.SelfBlueprints) : 0;
+        if (selfMarked > 0) App.GameLog?.NotifyBulkOwnershipChanged();
+
+        Logger.Info($"[NET] import done: +{res.NewMembers} new, {res.UpdatedMembers} updated, {res.BlueprintsMatched} matched, {res.BlueprintsUnrecognized} unrecognized, self-owned +{selfMarked}");
 
         var msg = $"Added {res.NewMembers} and updated {res.UpdatedMembers} member(s).";
-        if (res.SkippedSelf > 0) msg += "\nSkipped your own entry.";
+        if (res.SkippedSelf > 0) msg += "\nThat file was you — not added as a member.";
+        if (selfMarked > 0) msg += $"\nMarked {selfMarked} blueprint(s) Owned in your library from it.";
         if (!string.IsNullOrEmpty(res.GroupName)) msg += $"\nFiled under \"{res.GroupName}\".";
         if (res.BlueprintsUnrecognized > 0) msg += $"\n{res.BlueprintsUnrecognized} blueprint name(s) weren't recognised (kept as-is).";
         MessageBox.Show(msg, "Import complete", MessageBoxButton.OK, MessageBoxImage.Information);

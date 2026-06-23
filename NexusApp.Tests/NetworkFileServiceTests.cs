@@ -117,6 +117,18 @@ public class NetworkFileServiceTests : IDisposable
     }
 
     [Fact]
+    public void Import_Self_CollectsTheirBlueprintsToMarkOwned()
+    {
+        using var store = Store();
+        var r = _svc.Import(Library("me", "PlayerName", "PlayerName", T1, "A", "B"), store, new ImportOptions { SelfId = "me" });
+        Assert.Equal(1, r.SkippedSelf);
+        Assert.Equal(0, store.MemberCount);
+        Assert.Equal(2, r.SelfBlueprints.Count);
+        Assert.Contains("A", r.SelfBlueprints);
+        Assert.Contains("B", r.SelfBlueprints);
+    }
+
+    [Fact]
     public void Import_Roster_CreatesGroup_AndAssignsMembers()
     {
         using var store = Store();
