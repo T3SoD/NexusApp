@@ -6,7 +6,7 @@
 
 **An offline, EAC-safe companion app for Star Citizen — built for the mine · refine · craft loop.**
 
-Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own. It can even read your game log to auto-collect blueprints the moment you unlock them in-game (Beta) — all from an overlay that floats over your game, **fully offline**.
+Nexus decodes RS (Radioactive Signal) scan values into the resource and node count they represent, tracks refinery jobs, and is a fast, searchable reference for resources, crafting blueprints, and the blueprints you own. It can even read your game log to auto-collect blueprints the moment you unlock them in-game (Beta) — all from an overlay that floats over your game, **fully offline**. And with the **Blueprint Network**, you can pool your owned-blueprint library with friends or your org — offline, by trading files — so your whole group can see who owns what.
 
 > **Disclaimer:** Nexus is an **unofficial, fan-made tool** — **NOT** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
 
@@ -42,6 +42,10 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 - **Shopping list** — add resources or blueprint ingredients and have them highlighted in scan results and history.
 - **Persistent work orders** — refinery timers survive app restarts.
 - Fully **offline** — no account, no internet connection required. Settings and work orders are stored locally on your PC.
+
+## Blueprint Network — share your library, see who owns what
+
+Most companion tools stop at *your* data. **Blueprint Network** is what sets Nexus apart: an **offline** way to pool blueprint libraries with your friends or your org. Export your owned blueprints to a small file, send it however you like (Discord, a shared drive), and import theirs — then see your whole group's coverage at a glance: what everyone owns, the gaps nobody has yet, and the blueprints only a single person holds. Filter the view to any one person to see exactly what they own or are missing, group people into Friends/org lists, and let a coordinator merge everyone into a single roster the group imports once. No server, no account — you move the files yourself, and nothing leaves your PC unless you choose to share it.
 
 ## Screenshots
 

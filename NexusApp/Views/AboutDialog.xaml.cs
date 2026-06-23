@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.5.0  —  Jun 22, 2026",
+        [
+            "New — Blueprint Network: share which blueprints you own with friends or your org by trading offline library files, and see who in your group owns what — per-blueprint coverage, gaps nobody has yet, and the blueprints only one person holds. Group people into Friends/org lists, filter the view to any single person, and (for a whole org) let a coordinator merge everyone into one roster the group imports just once. Fully offline — you exchange the files yourself; nothing syncs, no account, no servers.",
+            "Blueprint Network — when you export your library, Nexus shows exactly what the file shares (your owned blueprints, and your RSI handle or a nickname) before you save it; your RSI handle is read from Game.log read-only, and you can use a nickname instead.",
+            "Blueprint Network — manage your groups from the scope bar, including deleting groups you no longer need (the people you've imported are kept).",
+        ]),
         ("App  5.4.6  —  Jun 22, 2026",
         [
             "Minor backend changes",
