@@ -12,6 +12,10 @@ namespace NexusApp.Views;
 /// content (e.g. an ownership coverage cell), an optional expand panel (e.g. the owner list), and
 /// the filter chips. Built for the Blueprint Network's Blueprints tab; intended to also back the
 /// Blueprint Library once that page is migrated onto it.
+///
+/// Rows are rendered in batches as the user scrolls so a full ~600-blueprint catalog doesn't freeze
+/// the UI building every row up front, and theme brushes/fonts are cached per view rather than
+/// re-resolved thousands of times.
 /// </summary>
 public sealed class BlueprintListView : UserControl
 {
@@ -31,9 +35,16 @@ public sealed class BlueprintListView : UserControl
 
     private readonly StackPanel _filterBar = new() { Orientation = Orientation.Horizontal };
     private readonly StackPanel _list = new();
+    private readonly ScrollViewer _scroll;
 
-    private static Brush Br(string key) => (Brush)Application.Current.FindResource(key);
-    private static FontFamily Head => (FontFamily)Application.Current.FindResource("HeadFont");
+    private List<object> _entries = new();   // string = category header, Blueprint = a row
+    private int _rendered;
+    private const int Batch = 60;
+
+    private readonly Dictionary<string, Brush> _brushCache = new();
+    private Brush Br(string key) => _brushCache.TryGetValue(key, out var b) ? b : (_brushCache[key] = (Brush)Application.Current.FindResource(key));
+    private FontFamily? _head;
+    private FontFamily Head => _head ??= (FontFamily)Application.Current.FindResource("HeadFont");
 
     public BlueprintListView(IReadOnlyList<Blueprint> all, Func<Blueprint, UIElement> trailing,
         Func<Blueprint, UIElement?>? expand, IReadOnlyList<FilterChip> filters)
@@ -63,8 +74,10 @@ public sealed class BlueprintListView : UserControl
         Grid.SetRow(_filterBar, 1); root.Children.Add(_filterBar);
         BuildFilters();
 
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _list };
-        Grid.SetRow(scroll, 2); root.Children.Add(scroll);
+        _scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _list };
+        _scroll.ScrollChanged += (_, _) => MaybeLoadMore();   // fires on scroll AND on extent change as batches add
+        _scroll.SizeChanged += (_, _) => MaybeLoadMore();     // a taller viewport (resize/maximize) may need more rows
+        Grid.SetRow(_scroll, 2); root.Children.Add(_scroll);
 
         Content = root;
         Render();
@@ -96,19 +109,47 @@ public sealed class BlueprintListView : UserControl
     private void Render()
     {
         _list.Children.Clear();
+        _entries = BuildEntries();
+        _rendered = 0;
+        if (_entries.Count == 0)
+        {
+            _list.Children.Add(new TextBlock { Text = "No blueprints match.", Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 20, 0, 0), FontSize = 13 });
+            return;
+        }
+        RenderMore();
+        _scroll.ScrollToTop();
+    }
+
+    // Flatten the filtered, category-grouped catalog into an ordered list of headers + rows; the
+    // actual visuals are built lazily a batch at a time in RenderMore.
+    private List<object> BuildEntries()
+    {
+        var entries = new List<object>();
         var items = _all.Where(b => _activeFilter(b) && Matches(b));
-        var any = false;
         foreach (var group in items.GroupBy(b => string.IsNullOrEmpty(b.Category) ? "Other" : b.Category).OrderBy(g => g.Key))
         {
-            _list.Children.Add(Header(group.Key));
-            foreach (var b in group.OrderBy(x => x.Name))
-            {
-                _list.Children.Add(RowFor(b));
-                any = true;
-            }
+            entries.Add(group.Key);
+            foreach (var b in group.OrderBy(x => x.Name)) entries.Add(b);
         }
-        if (!any)
-            _list.Children.Add(new TextBlock { Text = "No blueprints match.", Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 20, 0, 0), FontSize = 13 });
+        return entries;
+    }
+
+    private void RenderMore()
+    {
+        var end = Math.Min(_rendered + Batch, _entries.Count);
+        for (; _rendered < end; _rendered++)
+        {
+            var e = _entries[_rendered];
+            _list.Children.Add(e is string cat ? Header(cat) : RowFor((Blueprint)e));
+        }
+    }
+
+    // Load the next batch when scrolled near the bottom — or when the content doesn't yet fill the
+    // viewport (so a tall window never strands the unrendered tail).
+    private void MaybeLoadMore()
+    {
+        if (_rendered < _entries.Count && _scroll.VerticalOffset >= _scroll.ScrollableHeight - 400)
+            RenderMore();
     }
 
     private bool Matches(Blueprint b)
