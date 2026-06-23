@@ -14,6 +14,7 @@ public enum TutorialTarget
     ScanToggle,
     OverlayTabs,
     ReferenceTools,  // the left nav rail (Blueprints / Codex / Refinery)
+    BlueprintNetwork,
 }
 
 /// <summary>
@@ -43,6 +44,8 @@ public sealed class TourController
             "SCAN, ORDERS, and SHOPPING — your live results, refinery jobs, and shopping cart, all without leaving the game."),
         new(TutorialTarget.ReferenceTools, "Your reference tools",
             "Three tools live in the nav: the Blueprint Library for recipes, the Mining Codex reference table, and the Refinery Tracker for your refines."),
+        new(TutorialTarget.BlueprintNetwork, "Blueprint Network",
+            "Share your blueprint library with friends and your org — export yours, import theirs, and see who owns what together. Fully offline."),
         new(TutorialTarget.None, "You're set",
             "That's the tour. Want to set up auto-scan now? Have Star Citizen open with an RS value on screen. You can replay this anytime from Help."),
     ];

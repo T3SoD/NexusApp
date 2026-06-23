@@ -155,6 +155,23 @@ public class HelpDialog : Window
                 "Highlights update automatically when you add or remove items from the list.",
             ]),
 
+        new("share", "Blueprint Network",
+            "Share which blueprints you own with friends or your org, and see who in your group has what.",
+            [new("Export", "your library"), new("Import", "a teammate's"), new("Groups…", "organize")],
+            [
+                "Navigate to BLUEPRINT NETWORK from the left sidebar.",
+                "Click Export to save your owned blueprints to a .nexuslib file — share it as your RSI handle or a nickname.",
+                "Send that file to friends however you like (Discord, a shared drive); they Import it to see your library.",
+                "Click Import to load a teammate's .nexuslib file — each person becomes a member of your network.",
+                "Re-importing someone's newer file updates them in place — no duplicates.",
+                "A coordinator can import everyone, then Export one combined roster the whole group imports just once.",
+                "Members tab — everyone you've imported; use Groups… to add a member to a group, or + New group to create one (Friends, your org, …).",
+                "Overview tab — your group's coverage: percent owned, blueprints nobody has yet (farm targets), and ones only a single person holds.",
+                "Blueprints tab — every blueprint with how many of you own it; filter to Nobody owns / Single owner / I'm missing, and expand a row to see exactly who has it.",
+                "The group switcher scopes coverage to a group or to everyone; you're always counted in coverage.",
+                "Fully offline — you trade files by hand and your data stays on your PC. Nexus never uploads anything.",
+            ]),
+
         new("≡", "Settings",
             "The cog button in the top-right of the main window opens Settings — your theme, the Game.log blueprint watcher, and a reset for saved data all live here.",
             [new("Settings", "cog, top-right")],
@@ -177,6 +194,38 @@ public class HelpDialog : Window
     ];
 
     private static Brush R(string key) => (Brush)Application.Current.FindResource(key);
+
+    // The 3-node "share" glyph, matching the Blueprint Network nav icon. Topics whose Icon is the
+    // sentinel "share" render this vector instead of a text glyph.
+    private static Viewbox ShareIcon(double size, Brush stroke)
+    {
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        void AddLine(double x1, double y1, double x2, double y2) =>
+            canvas.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Stroke = stroke, StrokeThickness = 1.7,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            });
+        void AddNode(double left, double top)
+        {
+            var e = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Stroke = stroke, StrokeThickness = 1.7, Fill = Brushes.Transparent };
+            Canvas.SetLeft(e, left); Canvas.SetTop(e, top);
+            canvas.Children.Add(e);
+        }
+        AddLine(8.2, 10.9, 15.8, 7.1);
+        AddLine(8.2, 13.1, 15.8, 16.9);
+        AddNode(3.5, 9.5); AddNode(15.5, 3.5); AddNode(15.5, 15.5);
+        return new Viewbox { Width = size, Height = size, Child = canvas };
+    }
+
+    // Recolor a topic-row icon — a text glyph (Foreground) or the share vector (each shape's Stroke).
+    private static void RecolorIcon(UIElement icon, Brush brush)
+    {
+        if (icon is TextBlock tb) { tb.Foreground = brush; return; }
+        if (icon is Border b && b.Child is Viewbox vb && vb.Child is Canvas c)
+            foreach (var child in c.Children)
+                if (child is System.Windows.Shapes.Shape shape) shape.Stroke = brush;
+    }
 
     private readonly TextBox _search = new();
     private readonly TextBlock _searchHint = new() { Text = "Search topics…", IsHitTestVisible = false };
@@ -220,7 +269,7 @@ public class HelpDialog : Window
         Content = outer;
 
         BuildTopicRows();
-        SelectTopic(Topics[0]);
+        SelectTopic(Topics.OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase).First());
     }
 
     private UIElement BuildLeftPane()
@@ -293,15 +342,25 @@ public class HelpDialog : Window
 
     private void BuildTopicRows()
     {
-        foreach (var topic in Topics)
+        foreach (var topic in Topics.OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase))
         {
             var bar = new Border { Width = 3, CornerRadius = new CornerRadius(2), Background = Brushes.Transparent };
-            var icon = new TextBlock
+            UIElement icon;
+            if (topic.Icon == "share")
             {
-                Text = topic.Icon, FontSize = 12, MinWidth = 18,
-                Foreground = R("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
-                TextAlignment = TextAlignment.Center,
-            };
+                var sv = ShareIcon(15, R("FgDimBrush"));
+                sv.HorizontalAlignment = HorizontalAlignment.Center;
+                icon = new Border { MinWidth = 18, VerticalAlignment = VerticalAlignment.Center, Child = sv };
+            }
+            else
+            {
+                icon = new TextBlock
+                {
+                    Text = topic.Icon, FontSize = 12, MinWidth = 18,
+                    Foreground = R("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+                    TextAlignment = TextAlignment.Center,
+                };
+            }
             var label = new TextBlock
             {
                 Text = topic.Title, FontSize = 12.5, Margin = new Thickness(8, 0, 0, 0),
@@ -370,7 +429,7 @@ public class HelpDialog : Window
             row.Background = sel ? R("Bg2NavBrush") : Brushes.Transparent;
             var inner = (Grid)row.Child;
             ((Border)inner.Children[0]).Background = sel ? R("AccentBrush") : Brushes.Transparent;          // accent bar
-            ((TextBlock)inner.Children[1]).Foreground = sel ? R("AccentBrush") : R("FgDimBrush");           // icon
+            RecolorIcon(inner.Children[1], sel ? R("AccentBrush") : R("FgDimBrush"));                       // icon (text glyph or share vector)
             ((TextBlock)inner.Children[2]).Foreground = sel ? R("AccentBrush") : R("FgBrush");              // label
             ((TextBlock)inner.Children[2]).FontWeight = sel ? FontWeights.SemiBold : FontWeights.Normal;
         }
@@ -383,12 +442,22 @@ public class HelpDialog : Window
 
         // Header: icon + title
         var header = new StackPanel { Orientation = Orientation.Horizontal };
-        header.Children.Add(new TextBlock
+        if (topic.Icon == "share")
         {
-            Text = topic.Icon, FontSize = 18, FontWeight = FontWeights.Bold,
-            Foreground = R("AccentBrush"), VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0),
-        });
+            var sv = ShareIcon(20, R("AccentBrush"));
+            sv.VerticalAlignment = VerticalAlignment.Center;
+            sv.Margin = new Thickness(0, 0, 10, 0);
+            header.Children.Add(sv);
+        }
+        else
+        {
+            header.Children.Add(new TextBlock
+            {
+                Text = topic.Icon, FontSize = 18, FontWeight = FontWeights.Bold,
+                Foreground = R("AccentBrush"), VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+            });
+        }
         header.Children.Add(new TextBlock
         {
             Text = topic.Title, FontSize = 18, FontWeight = FontWeights.Bold,

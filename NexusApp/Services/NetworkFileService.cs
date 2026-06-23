@@ -137,7 +137,12 @@ public sealed class NetworkFileService
         {
             if (inc == null || string.IsNullOrWhiteSpace(inc.Id)) continue;
 
-            if (IsSelf(inc, options)) { result.SkippedSelf++; continue; }
+            if (IsSelf(inc, options))
+            {
+                result.SkippedSelf++;
+                if (inc.OwnedBlueprints != null) result.SelfBlueprints.AddRange(inc.OwnedBlueprints);
+                continue;
+            }
 
             var match = store.GetMember(inc.Id);
             if (match == null
@@ -267,6 +272,9 @@ public sealed class ImportResult
     public int BlueprintsMatched { get; set; }
     public int BlueprintsUnrecognized { get; set; }
     public string? GroupName { get; set; }
+    /// <summary>Owned blueprints from your own entry in the file (matched as self) — the caller marks
+    /// these Owned in your local library so importing your own export syncs your collection.</summary>
+    public List<string> SelfBlueprints { get; } = new();
     public int TotalApplied => NewMembers + UpdatedMembers;
 }
 

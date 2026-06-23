@@ -62,6 +62,39 @@ public class SettingsDialog : Window
 
         panel.Children.Add(Divider());
 
+        // ── Blueprint Network ───────────────────────────────────────────────────
+        panel.Children.Add(SectionHeader("BLUEPRINT NETWORK"));
+        panel.Children.Add(SectionBlurb(
+            "When you export a library to share, Nexus pre-fills your RSI handle — read from Star " +
+            "Citizen's Game.log (read-only). Detect it here, or just use a nickname at export instead."));
+        var detectHandleBtn = new Button
+        {
+            Content = "Detect my RSI handle",
+            Style = (Style)Application.Current.FindResource("NexusButton"),
+            Padding = new Thickness(16, 8, 16, 8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        var handleLabel = new TextBlock
+        {
+            Text = string.IsNullOrEmpty(App.Settings.Current.DetectedRsiHandle)
+                ? "Handle: not detected yet."
+                : $"Handle: {App.Settings.Current.DetectedRsiHandle}",
+            FontSize = 12, Margin = new Thickness(0, 8, 0, 0),
+            Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+        };
+        detectHandleBtn.Click += (s, e) =>
+        {
+            App.GameLog?.DetectHandleFromCurrentFile();
+            var h = App.Settings.Current.DetectedRsiHandle;
+            handleLabel.Text = string.IsNullOrEmpty(h)
+                ? "Handle: not found — open Star Citizen (it writes Game.log at login), then try again."
+                : $"Handle: {h}";
+        };
+        panel.Children.Add(detectHandleBtn);
+        panel.Children.Add(handleLabel);
+
+        panel.Children.Add(Divider());
+
         // ── Diagnostics ─────────────────────────────────────────────────────────
         panel.Children.Add(SectionHeader("DIAGNOSTICS"));
         panel.Children.Add(SectionBlurb(
@@ -83,8 +116,9 @@ public class SettingsDialog : Window
         // ── Data ──────────────────────────────────────────────────────────────
         panel.Children.Add(SectionHeader("DATA"));
         panel.Children.Add(SectionBlurb(
-            "Clear everything you've saved in Nexus — owned blueprints, shopping cart, " +
-            "work orders and pinned resources. Your theme and the mining reference data are not affected."));
+            "Clear everything you've saved in Nexus — owned blueprints, Blueprint Network members and " +
+            "groups, your detected RSI handle, shopping cart, work orders and pinned resources. Your " +
+            "theme and the mining reference data are not affected."));
 
         var danger = new SolidColorBrush(Color.FromRgb(0xE5, 0x53, 0x53));
         var clearBtn = new Border
@@ -152,6 +186,8 @@ public class SettingsDialog : Window
             this,
             "This permanently deletes all of your saved data:\n\n" +
             "    •  Owned blueprints\n" +
+            "    •  Blueprint Network members and groups\n" +
+            "    •  Your detected RSI handle\n" +
             "    •  Shopping cart\n" +
             "    •  Work orders\n" +
             "    •  Pinned resources\n\n" +
@@ -166,6 +202,8 @@ public class SettingsDialog : Window
         App.Data.ClearAllPins();
         App.Settings.ClearOwnedBlueprints();
         App.Settings.ClearPinnedResources();
+        App.Network.ClearAll();
+        App.Settings.ClearLocalNetworkIdentity();
 
         var restart = MessageBox.Show(
             this,

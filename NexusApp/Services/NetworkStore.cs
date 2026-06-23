@@ -354,6 +354,20 @@ public sealed class NetworkStore : IDisposable
         return list;
     }
 
+    /// <summary>Wipe the entire network store — all members, their ownership, and all groups.</summary>
+    public void ClearAll()
+    {
+        using var tx = _conn.BeginTransaction();
+        foreach (var sql in new[] { "DELETE FROM member_blueprints;", "DELETE FROM group_members;", "DELETE FROM members;", "DELETE FROM network_groups;" })
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
     private void Exec(string sql)
     {
         using var cmd = _conn.CreateCommand();

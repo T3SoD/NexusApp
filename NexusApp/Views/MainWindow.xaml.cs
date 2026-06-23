@@ -87,6 +87,7 @@ public partial class MainWindow : Window
         TutorialTarget.ScanToggle     => PrepareOverlayForTutorial()?.ScanToggleTarget,
         TutorialTarget.OverlayTabs    => PrepareOverlayForTutorial()?.TabStripTarget,
         TutorialTarget.ReferenceTools => NavBlue,
+        TutorialTarget.BlueprintNetwork => Anchor("network", NavNetwork),
         _                             => null,
     };
 

@@ -206,4 +206,15 @@ public class SettingsService
         Current.DetectedRsiHandle = handle;
         Save();
     }
+
+    /// <summary>Reset the local Blueprint Network identity (GUID + label + detected RSI handle) — used
+    /// by "Clear saved data". A fresh GUID is generated on the next launch.</summary>
+    public void ClearLocalNetworkIdentity()
+    {
+        Current.LocalNetworkId = "";
+        Current.LocalDisplayName = "";
+        Current.LocalIdentityKind = NetworkIdentityKind.Handle;
+        Current.DetectedRsiHandle = "";
+        Save();
+    }
 }
