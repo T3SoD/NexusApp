@@ -155,6 +155,8 @@ public sealed class NetworkPage : UserControl
         foreach (var g in _store.GetGroups())
             _groupBar.Children.Add(GroupChip($"{g.Name} · {_store.GetGroupMemberIds(g.Id).Count}", g.Id));
         _groupBar.Children.Add(GroupChip("+ New group", "__new__", isNew: true));
+        if (_store.GetGroups().Count > 0)
+            _groupBar.Children.Add(GroupChip("Manage groups", "__manage__"));
     }
 
     private UIElement GroupChip(string label, string? groupId, bool isNew = false)
@@ -163,7 +165,7 @@ public sealed class NetworkPage : UserControl
         var tb = new TextBlock
         {
             Text = label, FontFamily = Head, FontSize = 11, FontWeight = FontWeights.Bold,
-            Foreground = active ? Br("BgBrush") : (isNew ? Br("AccentBrush") : Br("FgDimBrush")),
+            Foreground = active ? Br("BgBrush") : (isNew || groupId == "__manage__" ? Br("AccentBrush") : Br("FgDimBrush")),
         };
         var border = new Border
         {
@@ -172,9 +174,11 @@ public sealed class NetworkPage : UserControl
             BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = tb,
         };
         if (isNew) border.ToolTip = "Create a group like Friends or your org";
+        else if (groupId == "__manage__") border.ToolTip = "Delete groups";
         border.MouseLeftButtonUp += (_, _) =>
         {
             if (isNew) { CreateGroupPrompt(); return; }
+            if (groupId == "__manage__") { ManageGroupsPrompt(); return; }
             _groupFilter = groupId;
             _personFilter = null;   // selecting a group/All clears the person focus
             InteractionLog.Nav("Blueprint Network: group filter");
@@ -248,6 +252,72 @@ public sealed class NetworkPage : UserControl
         RenderGroups();
         RenderPersonPicker();
         RenderContent();
+    }
+
+    private void ManageGroupsPrompt()
+    {
+        var win = new Window
+        {
+            Title = "Manage groups", Width = 360, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this),
+            Background = Br("BgBrush"), Foreground = Br("FgBrush"), ResizeMode = ResizeMode.NoResize,
+        };
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(SectionLabel("Your groups:"));
+
+        var listPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(listPanel);
+
+        void RenderList()
+        {
+            listPanel.Children.Clear();
+            var groups = _store.GetGroups();
+            if (groups.Count == 0)
+            {
+                listPanel.Children.Add(new TextBlock { Text = "No groups left.", Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) });
+                return;
+            }
+            foreach (var g in groups)
+            {
+                var grid = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var count = _store.GetGroupMemberIds(g.Id).Count;
+                var label = new TextBlock
+                {
+                    Text = $"{g.Name} · {count} member{(count == 1 ? "" : "s")}",
+                    Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+                };
+                Grid.SetColumn(label, 0); grid.Children.Add(label);
+
+                var del = ActionButton("Delete");
+                var gid = g.Id;
+                var gname = g.Name;
+                del.Click += (_, _) =>
+                {
+                    var confirm = MessageBox.Show(win,
+                        $"Delete group \"{gname}\"?\n\nMembers stay in your network; only the group is removed.",
+                        "Delete group", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                    if (confirm != MessageBoxResult.OK) return;
+                    _store.DeleteGroup(gid);
+                    if (_groupFilter == gid) _groupFilter = null;
+                    InteractionLog.Nav("Blueprint Network: group deleted");
+                    RenderList();
+                };
+                Grid.SetColumn(del, 1); grid.Children.Add(del);
+                listPanel.Children.Add(grid);
+            }
+        }
+        RenderList();
+
+        var close = ActionButton("Close");
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
+        btnRow.Children.Add(close);
+        panel.Children.Add(btnRow);
+        win.Content = panel;
+        close.Click += (_, _) => win.DialogResult = true;
+        win.ShowDialog();
+        Refresh();   // rebuild chips + active tab after any deletions
     }
 
     private void CreateGroupPrompt()
