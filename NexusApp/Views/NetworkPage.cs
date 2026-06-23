@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
@@ -22,9 +23,11 @@ public sealed class NetworkPage : UserControl
 
     private string _tab = "overview";    // overview | blueprints | members
     private string? _groupFilter;        // null = All, else a group id
+    private string? _personFilter;       // null = none, else a member id (overrides _groupFilter, excludes self)
 
     private readonly StackPanel _subTabBar = new() { Orientation = Orientation.Horizontal };
     private readonly WrapPanel _groupBar = new();
+    private readonly Border _personPickerHost = new();   // sits at the right of the scope bar
     private readonly Border _host = new();   // hosts the active sub-tab content
 
     private readonly Dictionary<string, Brush> _brushCache = new();
@@ -45,6 +48,7 @@ public sealed class NetworkPage : UserControl
     public void Refresh()
     {
         RenderGroups();
+        RenderPersonPicker();
         RenderContent();
     }
 
@@ -93,13 +97,19 @@ public sealed class NetworkPage : UserControl
         Grid.SetRow(_subTabBar, 1); root.Children.Add(_subTabBar);
         RebuildSubTabs();
 
-        _groupBar.Margin = new Thickness(0, 0, 0, 12);
-        Grid.SetRow(_groupBar, 2); root.Children.Add(_groupBar);
+        var scopeRow = new DockPanel { Margin = new Thickness(0, 0, 0, 12), LastChildFill = true };
+        _personPickerHost.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(_personPickerHost, Dock.Right);
+        scopeRow.Children.Add(_personPickerHost);   // right
+        _groupBar.Margin = new Thickness(0);
+        scopeRow.Children.Add(_groupBar);           // fills the rest (left)
+        Grid.SetRow(scopeRow, 2); root.Children.Add(scopeRow);
 
         Grid.SetRow(_host, 3); root.Children.Add(_host);
 
         Content = root;
         RenderGroups();
+        RenderPersonPicker();
         RenderContent();
     }
 
@@ -166,11 +176,78 @@ public sealed class NetworkPage : UserControl
         {
             if (isNew) { CreateGroupPrompt(); return; }
             _groupFilter = groupId;
+            _personFilter = null;   // selecting a group/All clears the person focus
             InteractionLog.Nav("Blueprint Network: group filter");
             RenderGroups();
+            RenderPersonPicker();
             RenderContent();
         };
         return border;
+    }
+
+    // ── person picker ─────────────────────────────────────────────────────────────
+
+    private void RenderPersonPicker()
+    {
+        if (_store.MemberCount == 0)   // nothing to filter to
+        {
+            _personPickerHost.Child = null;
+            _personPickerHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _personPickerHost.Visibility = Visibility.Visible;
+
+        var label = _personFilter == null ? "All" : PersonName(_personFilter);
+        var tb = new TextBlock
+        {
+            Text = $"Person: {label}  ▾", FontFamily = Head, FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = _personFilter == null ? Br("FgDimBrush") : Br("AccentBrush"),
+        };
+        var btn = new Border
+        {
+            Padding = new Thickness(11, 6, 11, 6), CornerRadius = new CornerRadius(13),
+            Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand, Child = tb,
+        };
+        btn.ToolTip = "Show one person's blueprints (you are excluded)";
+        btn.MouseLeftButtonUp += (_, _) => ShowPersonMenu(btn);
+        _personPickerHost.Child = btn;
+    }
+
+    private void ShowPersonMenu(UIElement anchor)
+    {
+        var list = new StackPanel();
+        var popup = new Popup
+        {
+            PlacementTarget = anchor, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true,
+        };
+        void AddRow(string text, string? id)
+        {
+            var rtb = new TextBlock { Text = text, FontSize = 12, Foreground = Br("FgBrush"), Margin = new Thickness(12, 7, 16, 7) };
+            var row = new Border { Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = rtb };
+            row.MouseLeftButtonUp += (_, _) => { popup.IsOpen = false; SetPersonFilter(id); };
+            list.Children.Add(row);
+        }
+        AddRow("All", null);
+        foreach (var m in _store.GetMembers()) AddRow(m.DisplayName, m.Id);
+
+        popup.Child = new Border
+        {
+            Background = Br("BgBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8), Child = new ScrollViewer { MaxHeight = 280, Content = list },
+        };
+        popup.IsOpen = true;
+    }
+
+    private void SetPersonFilter(string? id)
+    {
+        _personFilter = string.IsNullOrEmpty(id) ? null : id;
+        InteractionLog.Nav(_personFilter == null
+            ? "Blueprint Network: person filter cleared"
+            : "Blueprint Network: person filter");
+        RenderGroups();
+        RenderPersonPicker();
+        RenderContent();
     }
 
     private void CreateGroupPrompt()
@@ -186,6 +263,8 @@ public sealed class NetworkPage : UserControl
 
     private void RenderContent()
     {
+        if (_personFilter != null && _store.GetMember(_personFilter) == null)
+            _personFilter = null;   // focused member was removed or absent after a re-import
         _host.Child = _tab switch
         {
             "members"    => BuildMembersView(),
@@ -197,12 +276,12 @@ public sealed class NetworkPage : UserControl
 
     private UIElement BuildMembersView()
     {
-        var members = _store.GetMembers();
-        if (_groupFilter != null)
-        {
-            var ids = new HashSet<string>(_store.GetGroupMemberIds(_groupFilter));
-            members = members.Where(m => ids.Contains(m.Id)).ToList();
-        }
+        var groupOrAll = _groupFilter != null
+            ? _store.GetGroupMemberIds(_groupFilter)
+            : _store.GetMembers().Select(m => m.Id).ToList();
+        var scope = NetworkScope.Resolve(_personFilter, groupOrAll);
+        var scopeSet = new HashSet<string>(scope.ScopeIds);
+        var members = _store.GetMembers().Where(m => scopeSet.Contains(m.Id)).ToList();
         if (members.Count == 0)
             return Placeholder("No one shared yet. Click Export to share your library, or Import a teammate's .nexuslib file — they'll show up here.");
 
@@ -315,15 +394,19 @@ public sealed class NetworkPage : UserControl
     {
         var catalog = App.Data.GetAllBlueprints();
 
-        // Member scope: the selected group, or everyone. Self is always counted on top.
-        var scopeIds = _groupFilter != null
+        // Member scope: a focused person, the selected group, or everyone. The local user is counted
+        // on top unless a single person is in focus (see NetworkScope).
+        var groupOrAll = _groupFilter != null
             ? _store.GetGroupMemberIds(_groupFilter)
             : _store.GetMembers().Select(m => m.Id).ToList();
-        var total = scopeIds.Count + 1;
+        var scope = NetworkScope.Resolve(_personFilter, groupOrAll);
+        var scopeIds = scope.ScopeIds;
+        var total = scope.CoverageDenominator;
         var counts = _store.OwnerCounts(scopeIds);
 
         int Owned(string name) =>
-            (counts.TryGetValue(name, out var c) ? c : 0) + (_settings.IsBlueprintOwned(name) ? 1 : 0);
+            (counts.TryGetValue(name, out var c) ? c : 0)
+            + (scope.IncludeSelf && _settings.IsBlueprintOwned(name) ? 1 : 0);
 
         // Surface blueprints owned by members (or you) that aren't in the local seed under an
         // "Unrecognized" group — they'd otherwise be invisible, since this list is built from the catalog.
@@ -332,25 +415,43 @@ public sealed class NetworkPage : UserControl
         foreach (var n in UnrecognizedNames(counts.Keys, catalogNames))
             all.Add(new Blueprint { Name = n, Category = "Unrecognized" });
 
-        var filters = new List<BlueprintListView.FilterChip>
+        List<BlueprintListView.FilterChip> filters;
+        Func<Blueprint, UIElement> cell;
+        if (scope.FocusPersonId != null)
         {
-            new() { Label = "All",          Match = _ => true },
-            new() { Label = "Nobody owns",  Match = b => Owned(b.Name) == 0 },
-            new() { Label = "Single owner", Match = b => Owned(b.Name) == 1 },
-            new() { Label = "I'm missing",  Match = b => !_settings.IsBlueprintOwned(b.Name) },
-        };
+            filters = new List<BlueprintListView.FilterChip>
+            {
+                new() { Label = "All",     Match = _ => true },
+                new() { Label = "Owns",    Match = b => Owned(b.Name) >= 1 },
+                new() { Label = "Missing", Match = b => Owned(b.Name) == 0 },
+            };
+            cell = b => PersonOwnCell(Owned(b.Name) >= 1);
+        }
+        else
+        {
+            filters = new List<BlueprintListView.FilterChip>
+            {
+                new() { Label = "All",          Match = _ => true },
+                new() { Label = "Nobody owns",  Match = b => Owned(b.Name) == 0 },
+                new() { Label = "Single owner", Match = b => Owned(b.Name) == 1 },
+                new() { Label = "I'm missing",  Match = b => !_settings.IsBlueprintOwned(b.Name) },
+            };
+            cell = b => CoverageCell(Owned(b.Name), total);
+        }
 
         var listView = new BlueprintListView(
             all,
-            b => CoverageCell(Owned(b.Name), total),
+            cell,
             b => OwnersPanel(b.Name, scopeIds),
             filters);
 
         // Make the "+ you" in every coverage denominator explicit (the group chip counts members only).
         var note = new TextBlock
         {
-            Text = $"Coverage across you + {scopeIds.Count} member{(scopeIds.Count == 1 ? "" : "s")}"
-                 + (_groupFilter != null ? " in this group." : "."),
+            Text = scope.FocusPersonId != null
+                ? $"Showing {PersonName(scope.FocusPersonId)}'s blueprints."
+                : $"Coverage across you + {scopeIds.Count} member{(scopeIds.Count == 1 ? "" : "s")}"
+                  + (_groupFilter != null ? " in this group." : "."),
             Foreground = Br("FgDimBrush"), FontSize = 11, Margin = new Thickness(2, 0, 0, 8),
         };
         var dock = new DockPanel();
@@ -368,6 +469,13 @@ public sealed class NetworkPage : UserControl
         foreach (var n in _settings.Current.OwnedBlueprints) if (!catalogNames.Contains(n)) set.Add(n);
         return set.ToList();
     }
+
+    private UIElement PersonOwnCell(bool owns) => new TextBlock
+    {
+        Text = owns ? "owned" : "missing",
+        Foreground = owns ? Br("AccentBrush") : Br("FgDimBrush"),
+        FontSize = 11.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center,
+    };
 
     private UIElement CoverageCell(int owned, int total)
     {
@@ -441,12 +549,15 @@ public sealed class NetworkPage : UserControl
     private UIElement BuildOverviewView()
     {
         var all = App.Data.GetAllBlueprints();
-        var scopeIds = _groupFilter != null
+        var groupOrAll = _groupFilter != null
             ? _store.GetGroupMemberIds(_groupFilter)
             : _store.GetMembers().Select(m => m.Id).ToList();
+        var scope = NetworkScope.Resolve(_personFilter, groupOrAll);
+        var scopeIds = scope.ScopeIds;
         var scopeSet = new HashSet<string>(scopeIds);
         var counts = _store.OwnerCounts(scopeIds);
-        int Owned(string n) => (counts.TryGetValue(n, out var c) ? c : 0) + (_settings.IsBlueprintOwned(n) ? 1 : 0);
+        int Owned(string n) => (counts.TryGetValue(n, out var c) ? c : 0)
+            + (scope.IncludeSelf && _settings.IsBlueprintOwned(n) ? 1 : 0);
 
         int total = all.Count, covered = 0, nobody = 0, single = 0;
         var singleBps = new List<string>();
@@ -468,14 +579,13 @@ public sealed class NetworkPage : UserControl
         // Per-member coverage cards (self + members in scope), most owned first.
         body.Children.Add(SectionHeader("Members"));
         var ownedCounts = _store.MemberOwnedCounts();
-        var people = new List<(string name, int count, bool self)>
-        {
-            (string.IsNullOrEmpty(_settings.Current.LocalDisplayName) ? "You" : $"{_settings.Current.LocalDisplayName} (you)",
-                _settings.OwnedBlueprintCount, true),
-        };
+        var people = new List<(string name, int count, bool self)>();
+        if (scope.IncludeSelf)
+            people.Add((string.IsNullOrEmpty(_settings.Current.LocalDisplayName) ? "You" : $"{_settings.Current.LocalDisplayName} (you)",
+                _settings.OwnedBlueprintCount, true));
         foreach (var m in _store.GetMembers())
         {
-            if (_groupFilter != null && !scopeSet.Contains(m.Id)) continue;
+            if (!scopeSet.Contains(m.Id)) continue;
             people.Add((m.DisplayName, ownedCounts.TryGetValue(m.Id, out var c) ? c : 0, false));
         }
         var cards = new WrapPanel();
@@ -483,25 +593,38 @@ public sealed class NetworkPage : UserControl
             cards.Children.Add(MemberCard(person.name, person.count, total, person.self));
         body.Children.Add(cards);
 
-        // Watch list: gaps + single-owner risk.
-        body.Children.Add(SectionHeader("Watch list"));
-        body.Children.Add(WatchSummary(nobody, single));
-        if (singleBps.Count > 0)
+        if (scope.FocusPersonId != null)
         {
-            var nameMap = _store.GetMembers().ToDictionary(m => m.Id, m => m.DisplayName);
-            string OwnerOf(string bp)
+            // One-person scope: the single-owner callout is meaningless; show their gap instead.
+            body.Children.Add(SectionHeader("Missing"));
+            body.Children.Add(new TextBlock
             {
-                if (_settings.IsBlueprintOwned(bp)) return "you";
-                var id = _store.OwnerIdsOf(bp).FirstOrDefault(scopeSet.Contains);
-                return id != null && nameMap.TryGetValue(id, out var nm) ? nm : "?";
-            }
-            foreach (var bp in singleBps) body.Children.Add(SingleOwnerRow(bp, OwnerOf(bp)));
-            if (single > singleBps.Count)
-                body.Children.Add(new TextBlock
+                Text = $"{PersonName(scope.FocusPersonId)} is missing {nobody} of {total} blueprint{(total == 1 ? "" : "s")}.",
+                Foreground = Br("FgDimBrush"), FontSize = 12.5, Margin = new Thickness(4, 4, 0, 0), TextWrapping = TextWrapping.Wrap,
+            });
+        }
+        else
+        {
+            // Watch list: gaps + single-owner risk.
+            body.Children.Add(SectionHeader("Watch list"));
+            body.Children.Add(WatchSummary(nobody, single));
+            if (singleBps.Count > 0)
+            {
+                var nameMap = _store.GetMembers().ToDictionary(m => m.Id, m => m.DisplayName);
+                string OwnerOf(string bp)
                 {
-                    Text = $"+{single - singleBps.Count} more single-owner blueprints", Foreground = Br("FgDimBrush"),
-                    FontSize = 11.5, Margin = new Thickness(4, 6, 0, 0),
-                });
+                    if (_settings.IsBlueprintOwned(bp)) return "you";
+                    var id = _store.OwnerIdsOf(bp).FirstOrDefault(scopeSet.Contains);
+                    return id != null && nameMap.TryGetValue(id, out var nm) ? nm : "?";
+                }
+                foreach (var bp in singleBps) body.Children.Add(SingleOwnerRow(bp, OwnerOf(bp)));
+                if (single > singleBps.Count)
+                    body.Children.Add(new TextBlock
+                    {
+                        Text = $"+{single - singleBps.Count} more single-owner blueprints", Foreground = Br("FgDimBrush"),
+                        FontSize = 11.5, Margin = new Thickness(4, 6, 0, 0),
+                    });
+            }
         }
 
         var catalogNames = new HashSet<string>(all.Select(b => b.Name), StringComparer.OrdinalIgnoreCase);
@@ -839,6 +962,8 @@ public sealed class NetworkPage : UserControl
         BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
         Cursor = Cursors.Hand, FontWeight = FontWeights.SemiBold, FontSize = 12,
     };
+
+    private string PersonName(string id) => _store.GetMember(id)?.DisplayName ?? "this member";
 
     private TextBlock SectionLabel(string text) => new()
     {
