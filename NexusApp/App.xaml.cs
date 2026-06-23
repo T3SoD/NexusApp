@@ -61,6 +61,9 @@ public partial class App : Application
         // keep their settings, work orders and history. Runs before anything reads.
         SettingsService.MigrateLegacyAppData();
         Settings = new SettingsService();
+        // Establish the local Blueprint Network identity from first launch (not lazily at first
+        // export), so the import self-skip can always recognise "you" and never double-count.
+        Settings.EnsureLocalNetworkId();
 
         if (!Settings.Current.FirstRunComplete)
         {

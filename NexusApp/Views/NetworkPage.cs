@@ -27,8 +27,11 @@ public sealed class NetworkPage : UserControl
     private readonly WrapPanel _groupBar = new();
     private readonly Border _host = new();   // hosts the active sub-tab content
 
-    private static Brush Br(string key) => (Brush)Application.Current.FindResource(key);
-    private static FontFamily Head => (FontFamily)Application.Current.FindResource("HeadFont");
+    private readonly Dictionary<string, Brush> _brushCache = new();
+    private Brush Br(string key) => _brushCache.TryGetValue(key, out var b) ? b : (_brushCache[key] = (Brush)Application.Current.FindResource(key));
+    private FontFamily? _head, _mono;
+    private FontFamily Head => _head ??= (FontFamily)Application.Current.FindResource("HeadFont");
+    private FontFamily Mono => _mono ??= (FontFamily)Application.Current.FindResource("MonoFont");
 
     public NetworkPage(NetworkStore store, SettingsService settings)
     {
@@ -212,11 +215,14 @@ public sealed class NetworkPage : UserControl
         info.Children.Add(new TextBlock { Text = sub, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
         Grid.SetColumn(info, 0); grid.Children.Add(info);
 
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var groupsBtn = ActionButton("Groups…");
+        groupsBtn.Click += (_, _) => EditMemberGroups(m);
         var remove = ActionButton("Remove");
-        remove.VerticalAlignment = VerticalAlignment.Center;
-        remove.Margin = new Thickness(0, 0, 10, 0);
         remove.Click += (_, _) => RemoveMember(m);
-        Grid.SetColumn(remove, 1); grid.Children.Add(remove);
+        btns.Children.Add(groupsBtn);
+        btns.Children.Add(remove);
+        Grid.SetColumn(btns, 1); grid.Children.Add(btns);
 
         return new Border
         {
@@ -234,11 +240,65 @@ public sealed class NetworkPage : UserControl
         Refresh();
     }
 
+    private void EditMemberGroups(NetworkMember m)
+    {
+        var win = new Window
+        {
+            Title = $"Groups — {m.DisplayName}", Width = 340, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this),
+            Background = Br("BgBrush"), Foreground = Br("FgBrush"), ResizeMode = ResizeMode.NoResize,
+        };
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(SectionLabel("Member of:"));
+
+        var inGroups = new HashSet<string>(_store.GetMemberGroupIds(m.Id));
+        var checks = new List<(string id, CheckBox cb)>();
+        foreach (var g in _store.GetGroups())
+        {
+            var cb = new CheckBox { Content = g.Name, IsChecked = inGroups.Contains(g.Id), Foreground = Br("FgBrush"), Margin = new Thickness(0, 6, 0, 0) };
+            checks.Add((g.Id, cb));
+            panel.Children.Add(cb);
+        }
+        if (checks.Count == 0)
+            panel.Children.Add(new TextBlock { Text = "No groups yet — create one below.", Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) });
+
+        panel.Children.Add(SectionLabel("New group (optional):"));
+        var newBox = new TextBox { Padding = new Thickness(6, 4, 6, 4) };
+        panel.Children.Add(newBox);
+
+        var ok = ActionButton("Save");
+        var cancel = ActionButton("Cancel");
+        var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
+        row.Children.Add(cancel);
+        row.Children.Add(ok);
+        panel.Children.Add(row);
+        win.Content = panel;
+
+        ok.Click += (_, _) =>
+        {
+            foreach (var (id, cb) in checks)
+            {
+                if (cb.IsChecked == true) _store.AddToGroup(id, m.Id);
+                else _store.RemoveFromGroup(id, m.Id);
+            }
+            var newName = newBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(newName))
+            {
+                var g = _store.CreateGroup(newName);
+                _store.AddToGroup(g.Id, m.Id);
+            }
+            Logger.Info("[NET] member group membership updated");
+            win.DialogResult = true;
+        };
+        cancel.Click += (_, _) => win.DialogResult = false;
+        if (win.ShowDialog() == true) Refresh();
+    }
+
     // ── blueprints (coverage) ────────────────────────────────────────────────────
 
     private UIElement BuildBlueprintsView()
     {
-        var all = App.Data.GetAllBlueprints();
+        var catalog = App.Data.GetAllBlueprints();
 
         // Member scope: the selected group, or everyone. Self is always counted on top.
         var scopeIds = _groupFilter != null
@@ -250,6 +310,13 @@ public sealed class NetworkPage : UserControl
         int Owned(string name) =>
             (counts.TryGetValue(name, out var c) ? c : 0) + (_settings.IsBlueprintOwned(name) ? 1 : 0);
 
+        // Surface blueprints owned by members (or you) that aren't in the local seed under an
+        // "Unrecognized" group — they'd otherwise be invisible, since this list is built from the catalog.
+        var catalogNames = new HashSet<string>(catalog.Select(b => b.Name), StringComparer.OrdinalIgnoreCase);
+        var all = catalog.ToList();
+        foreach (var n in UnrecognizedNames(counts.Keys, catalogNames))
+            all.Add(new Blueprint { Name = n, Category = "Unrecognized" });
+
         var filters = new List<BlueprintListView.FilterChip>
         {
             new() { Label = "All",          Match = _ => true },
@@ -258,11 +325,33 @@ public sealed class NetworkPage : UserControl
             new() { Label = "I'm missing",  Match = b => !_settings.IsBlueprintOwned(b.Name) },
         };
 
-        return new BlueprintListView(
+        var listView = new BlueprintListView(
             all,
             b => CoverageCell(Owned(b.Name), total),
             b => OwnersPanel(b.Name, scopeIds),
             filters);
+
+        // Make the "+ you" in every coverage denominator explicit (the group chip counts members only).
+        var note = new TextBlock
+        {
+            Text = $"Coverage across you + {scopeIds.Count} member{(scopeIds.Count == 1 ? "" : "s")}"
+                 + (_groupFilter != null ? " in this group." : "."),
+            Foreground = Br("FgDimBrush"), FontSize = 11, Margin = new Thickness(2, 0, 0, 8),
+        };
+        var dock = new DockPanel();
+        DockPanel.SetDock(note, Dock.Top);
+        dock.Children.Add(note);
+        dock.Children.Add(listView);
+        return dock;
+    }
+
+    // Distinct blueprint names owned by members or by you that aren't in the local seed catalog.
+    private List<string> UnrecognizedNames(IEnumerable<string> memberOwnedNames, HashSet<string> catalogNames)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in memberOwnedNames) if (!catalogNames.Contains(n)) set.Add(n);
+        foreach (var n in _settings.Current.OwnedBlueprints) if (!catalogNames.Contains(n)) set.Add(n);
+        return set.ToList();
     }
 
     private UIElement CoverageCell(int owned, int total)
@@ -287,7 +376,7 @@ public sealed class NetworkPage : UserControl
         row.Children.Add(new TextBlock
         {
             Text = $"{owned} / {total}", FontSize = 12, MinWidth = 54, TextAlignment = TextAlignment.Right,
-            FontFamily = (FontFamily)Application.Current.FindResource("MonoFont"),
+            FontFamily = Mono,
             Foreground = owned == 0 ? Redish() : owned == 1 ? Amber() : Br("AccentBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -325,8 +414,12 @@ public sealed class NetworkPage : UserControl
         return wrap;
     }
 
-    private static Brush Amber() => new SolidColorBrush(Color.FromRgb(0xE8, 0xA2, 0x3A));
-    private static Brush Redish() => new SolidColorBrush(Color.FromRgb(0xE0, 0x6A, 0x55));
+    // Frozen + cached so the coverage list doesn't allocate a brush per row.
+    private static readonly SolidColorBrush _amber = Frozen(0xE8, 0xA2, 0x3A);
+    private static readonly SolidColorBrush _red = Frozen(0xE0, 0x6A, 0x55);
+    private static SolidColorBrush Frozen(byte r, byte g, byte b) { var br = new SolidColorBrush(Color.FromRgb(r, g, b)); br.Freeze(); return br; }
+    private static Brush Amber() => _amber;
+    private static Brush Redish() => _red;
 
     // ── overview (dashboard) ─────────────────────────────────────────────────────
 
@@ -395,6 +488,15 @@ public sealed class NetworkPage : UserControl
                     FontSize = 11.5, Margin = new Thickness(4, 6, 0, 0),
                 });
         }
+
+        var catalogNames = new HashSet<string>(all.Select(b => b.Name), StringComparer.OrdinalIgnoreCase);
+        var unrecognized = UnrecognizedNames(counts.Keys, catalogNames);
+        if (unrecognized.Count > 0)
+            body.Children.Add(new TextBlock
+            {
+                Text = $"{unrecognized.Count} blueprint(s) members own aren't in your seed — see the Unrecognized group in the Blueprints tab.",
+                Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(0, 10, 0, 0), TextWrapping = TextWrapping.Wrap,
+            });
 
         return new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body };
     }

@@ -216,7 +216,9 @@ public sealed class NetworkFileService
 
     private static bool IsSelf(NetworkFileMember inc, ImportOptions o) =>
         (!string.IsNullOrWhiteSpace(o.SelfId) && string.Equals(inc.Id, o.SelfId, StringComparison.OrdinalIgnoreCase))
-        || (!string.IsNullOrWhiteSpace(o.SelfHandle) && string.Equals(inc.RsiHandle, o.SelfHandle, StringComparison.OrdinalIgnoreCase));
+        || (!string.IsNullOrWhiteSpace(o.SelfHandle)
+            && string.Equals(inc.IdentityKind, NetworkIdentityKind.Handle, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(inc.RsiHandle, o.SelfHandle, StringComparison.OrdinalIgnoreCase));
 
     private static NetworkMember MakeMember(string id, NetworkFileMember inc, DateTime updatedUtc) => new()
     {

@@ -78,7 +78,7 @@ CREATE TABLE member_blueprints (
   PRIMARY KEY (member_id, blueprint_name)
 );
 CREATE INDEX ix_mb_blueprint ON member_blueprints(blueprint_name);  -- "who owns X" + counts
-CREATE TABLE groups (
+CREATE TABLE network_groups (   -- "groups" is near-reserved in SQLite, so the table is network_groups
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   created_utc TEXT NOT NULL
@@ -159,7 +159,7 @@ Service: `NetworkFileService` (new) — `ExportSelf`, `ExportRoster`, `ImportFil
 3. Else → new member. If the display name collides with an existing *different* id, the import
    dialog asks: *"New person, or merge into [existing]?"* — never a silent duplicate.
 
-Newer wins: if the incoming `updatedAtUtc` is newer, replace that member's owned set; otherwise keep.
+Newer wins: if the incoming `updatedAtUtc` is **strictly** newer, replace that member's owned set; otherwise keep the existing one (equal timestamps keep what's stored).
 
 **Unrecognized blueprints:** a member may own a blueprint name not in the local seed (cross-patch
 drift). These are **stored as-is** and still count toward that member; in the UI they group under
@@ -205,13 +205,12 @@ Indexed `member_blueprints(blueprint_name)` keeps this fast at scale.
 ## 11. Logging (App Log Monitor)
 
 New `[NET]` tag into `nexus.log` (per the standing "log every feature" rule):
-- `[NET] import started: kind=roster, file=<name>`
 - `[NET] import done: +X new, Y updated, Z matched, W unrecognized`
+- `[NET] import error: <reason>` for bad/corrupt/incompatible files
 - `[NET] export: kind=library, identity=handle|nickname, members=N`
-- `[NET] member removed (count now N)` / `member added` / `updated` — **counts only, no names/handles**
-- `[NET] group created: <name>` / `group assignment changed`
-- `[NET] local handle detected from Game.log` — **never the handle value**
-- `[NET] error: <reason>` for bad/corrupt/incompatible files
+- `[NET] member removed (count now N)` — **counts only, never names/handles** (no filenames either)
+- `[NET] group created` / `[NET] member group membership updated` — **no group or member names**
+- `[NET] local RSI handle detected from Game.log` — **never the handle value**
 
 Plus `[UI]` entries (via `InteractionLog`) for Network nav, sub-tab switches, group switch, filter
 chips, Import/Export clicks — following the existing `[TAG] message @ Window/Region` format.
