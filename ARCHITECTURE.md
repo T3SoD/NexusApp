@@ -66,6 +66,10 @@ Stateless-ish helpers that the view model orchestrates:
 - **ThemeService** — switches between the luxury and classic themes.
 - **GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
   RsiHandleParser** — the read-only `Game.log` subsystem (see below).
+- **ComponentStringReference / GlobalIniReader** — translate mod-renamed
+  blueprint names back to their official names by joining the user's read-only
+  `global.ini` to the bundled `components.ini` reference; used by the `Game.log`
+  import path.
 - **Network (NetworkFileService / NetworkStore / NetworkScope)** — the offline
   Blueprint Network file-exchange subsystem (see below).
 - **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** —
@@ -81,7 +85,9 @@ Plain data types: `Blueprint`, `Resource`, `WorkOrder`, `ShoppingItem`,
 
 - **Reference data** ships as `Data/seed_data.json`, embedded into the assembly
   as a resource at build time. It is the single source of mining and blueprint
-  data; there is no over-the-air update path.
+  data; there is no over-the-air update path. A second embedded reference,
+  `Data/components.ini`, maps internal component keys to their official names and
+  is refreshed per game patch at build time.
 - **User data** (settings, work orders, owned-blueprint library) is stored under
   the per-user app-data folder via SQLite and JSON.
 - **Blueprint Network** uses a separate local `network.db` and exchanges
@@ -103,8 +109,11 @@ Plain data types: `Blueprint`, `Resource`, `WorkOrder`, `ShoppingItem`,
 ### Session Tracking (Beta, opt-in)
 `GameLogWatcher` tails the game's plain-text `Game.log` read-only;
 `GameLogBlueprintImporter` recognizes "Received Blueprint" notifications and
-marks those blueprints as owned. `GameLogSession` is an app-lifetime hub that
-ties the watcher, importer, and per-session tally together.
+marks those blueprints as owned. Blueprint names that a localization mod renamed
+are translated back to their official names using the user's read-only
+`global.ini` (auto-detected next to `Game.log`, or set explicitly), joined to the
+bundled `components.ini`. `GameLogSession` is an app-lifetime hub that ties the
+watcher, importer, and per-session tally together.
 
 ### Blueprint Network (offline sharing)
 A user exports their owned-blueprint library to a `.nexuslib` file and shares it
