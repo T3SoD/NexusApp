@@ -46,7 +46,9 @@ in the first place:
   injects code, DLLs, or hooks into the game process.
 - **No game files modified.** Reference data is bundled with the app. The
   optional Session Tracking feature *reads* the game's plain-text `Game.log`
-  (and its rotated backups) read-only, opened shared so it never locks them. The
+  (and its rotated backups) read-only, opened shared so it never locks them, and
+  may also read the game's `global.ini` localization file (read-only) to
+  translate mod-renamed blueprint names back to their official names. The
   Blueprint Network feature additionally reads your RSI handle from that log
   (read-only) to pre-fill an export; you can use a nickname instead.
 - **Your data stays local.** Settings, work orders, and your blueprint library
