@@ -75,7 +75,7 @@ jobs:
       # Manual runs: just hand back the built files for local testing.
       - name: Upload build artifacts (manual runs)
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nexus-${{ steps.ver.outputs.version }}
           path: artifacts/*
