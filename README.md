@@ -27,7 +27,7 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 | Page | What it does |
 |------|--------------|
 | **RS Signal Decoder** | Manually enter or **auto-scan** an RS value to identify the resource and node count. |
-| **Blueprint Library** | Search ship / weapon / armor blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
+| **Blueprint Library** | Search ship / weapon / armor / ammo blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
 | **Blueprint Network** | Share which blueprints you own with friends or your org by trading library files, and see who in your group owns what — coverage, gaps to farm, and single-owner risk. Fully offline: you exchange files, nothing syncs. |
 | **Mining Codex** | Full reference table of all mineable resources, filterable by system (Stanton / Pyro / Nyx) and method (Ship / ROC / FPS). |
 | **Refinery Tracker** | Track active refinery jobs with live countdown timers and status indicators. |
@@ -38,7 +38,7 @@ The result: there's nothing for Easy Anti-Cheat to flag.
 - **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
 - **Blueprint ownership tracking:** mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
 - **Session Tracking (Beta):** opt in and Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or import everything you've already unlocked from past logs. It is read-only and never writes to or modifies any game file.
-- **Blueprint Network:** share your owned-blueprint library with friends or your org by exchanging files, and see who owns what: per-blueprint coverage, gaps nobody has yet, and blueprints only one person holds. Organize people into groups, and let a coordinator merge everyone into a single roster. You move the files yourself, and nothing syncs.
+- **Blueprint Network:** pool your owned-blueprint library with friends or your org by trading files to see group coverage, gaps, and single-owner risk. Full details in the Blueprint Network section below.
 - **Shopping list:** add resources or blueprint ingredients and have them highlighted in scan results and history.
 - **Persistent work orders:** refinery timers survive app restarts.
 - Fully **offline:** no account or internet connection required. Settings and work orders are stored locally on your PC.
@@ -50,7 +50,7 @@ Most companion tools only track *your* data. **Blueprint Network** adds an offli
 ## Screenshots
 
 ### Auto-scan overlay
-The floating overlay sits over Star Citizen and reads the RS value straight off your screen, decoding the resource and node count in real time. Here it's identified an **RS 10,800** signal as **Bexalite**, with live scan history below.
+The floating overlay sits over Star Citizen and reads the RS value straight off your screen, decoding the resource and node count in real time. Here it's identified an **RS 11,700** signal as **Torite** (RS 3,900 x3 nodes), with live scan history below.
 
 [![Nexus auto-scan overlay floating over Star Citizen gameplay](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
@@ -60,7 +60,7 @@ Search any ship, weapon, or armor blueprint to see exactly what it takes to craf
 [![Nexus Blueprint Library showing the ADP-mk4 Arms Woodland armor recipe, bill of materials, and unlock missions](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
 
 ### Blueprint Network
-Pool your owned-blueprint library with friends or your org by trading files, then see the whole group's coverage at a glance: how many blueprints are owned between you, the gaps nobody has yet, and the ones only a single person holds (at risk if they stop playing).
+Group coverage view: blueprints owned across the group, the gaps nobody owns yet, and single-owner blueprints flagged as at-risk.
 
 [![Nexus Blueprint Network showing group blueprint coverage, per-member ownership, and single-owner blueprints](docs/screenshots/blueprint-network.png)](docs/screenshots/blueprint-network.png)
 
@@ -155,6 +155,8 @@ NexusApp/
 Nexus is built by one person for the mining community, and hearing from people who use it is the best part. If you enjoy the app, please reach out and say so.
 
 Got a bug, a feature idea, or want to share how Nexus is working for you? **Message T3SoD on Discord** or **[open an issue on GitHub](https://github.com/T3SoD/NexusApp/issues)**. All feedback is welcome and helps shape where Nexus goes next.
+
+When reporting a bug, you can attach a diagnostic snapshot: open **Settings** (the cog) → **Diagnostics** → **Open App Log Monitor**, then **Save snapshot** to bundle your app version, OS, and recent log into a single file.
 
 ## License
 
