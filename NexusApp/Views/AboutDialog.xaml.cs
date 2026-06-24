@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.5.1  —  Jun 23, 2026",
+        [
+            "Improved — Session Tracking now recognizes blueprints even when a localization mod has renamed them in-game. Point Nexus at your global.ini (it auto-detects one sitting next to your Game.log) and renamed names are translated back to their official ones during import, so those blueprints still get marked as owned. Read-only; Nexus never changes the file.",
+        ]),
         ("App  5.5.0  —  Jun 22, 2026",
         [
             "New — Blueprint Network: share which blueprints you own with friends or your org by trading offline library files, and see who in your group owns what — per-blueprint coverage, gaps nobody has yet, and the blueprints only one person holds. Group people into Friends/org lists, filter the view to any single person, and (for a whole org) let a coordinator merge everyone into one roster the group imports just once. Fully offline — you exchange the files yourself; nothing syncs, no account, no servers.",
