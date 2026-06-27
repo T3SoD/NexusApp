@@ -44,15 +44,18 @@ public static class HaulLogParser
 
     // Cheap pre-filter so the tracker can skip the bulk of lines before running regex.
     public static bool LooksHaulRelevant(string raw) =>
-        raw.Contains("HaulCargo") || raw.Contains("CargoHauling") ||
+        raw.Contains("HaulCargo") || raw.Contains("Hauling") ||
         raw.Contains("SCU of") || raw.Contains("Contract Accepted") ||
         raw.Contains("ObjectiveUpserted") || raw.Contains("EndMission");
 
     public static MarkerInfo? ParseMarker(string raw)
     {
-        if (!raw.Contains("HaulCargo") && !raw.Contains("CargoHauling")) return null;
         var m = Marker.Match(raw);
         if (!m.Success) return null;
+        // Haul families: HaulCargo_* (Stanton), *CargoHauling* (RedWind), *_Hauling (CFP / Citizens For
+        // Prosperity). All contain "HaulCargo" or "Hauling". Missions that also use pickup/dropoff markers
+        // but are NOT hauls (RecoverCargo, Hockrow facility delve, Shubin mining) contain neither.
+        if (!IsHaulContract(m.Groups["contract"].Value)) return null;
         var role = m.Groups["role"].Value == "pickup" ? HaulRole.Pickup : HaulRole.Dropoff;
         return new MarkerInfo(
             m.Groups["mid"].Value, m.Groups["gen"].Value, m.Groups["contract"].Value, role,
@@ -111,11 +114,16 @@ public static class HaulLogParser
 
     public static string CompanyDisplay(string generator)
     {
-        var name = generator.Replace("_Hauling", "").Replace("Hauling", "").Replace('_', ' ').Trim();
+        var name = generator.Replace("_Hauling", "").Replace("Hauling", "")
+                            .Replace("_Generator", "").Replace('_', ' ').Trim();
         // Split runs like "RedWind" -> "Red Wind".
         name = Regex.Replace(name, "(?<=[a-z])(?=[A-Z])", " ");
         return string.IsNullOrWhiteSpace(name) ? generator : name;
     }
+
+    private static bool IsHaulContract(string contract) =>
+        contract.Contains("HaulCargo", StringComparison.OrdinalIgnoreCase) ||
+        contract.Contains("Hauling", StringComparison.OrdinalIgnoreCase);
 
     private static double D(string s) => double.Parse(s, CultureInfo.InvariantCulture);
 }
