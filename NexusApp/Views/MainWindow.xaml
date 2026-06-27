@@ -217,6 +217,43 @@
                                 </StackPanel>
                             </RadioButton.Content>
                         </RadioButton>
+
+                        <RadioButton x:Name="NavHauling" Tag="hauling" Style="{StaticResource NavButton}"
+                                     Click="Nav_Click" MinHeight="52">
+                            <RadioButton.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Cargo crate glyph (vector, recolors with selection) -->
+                                    <Grid Width="26" Margin="0,0,4,0">
+                                        <Viewbox Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Line X1="4" Y1="7" X2="20" Y2="7" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="4" Y1="19" X2="20" Y2="19" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="4" Y1="7" X2="4" Y2="19" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="20" Y1="7" X2="20" Y2="19" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="4" Y1="11" X2="20" Y2="11" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                                <Line X1="12" Y1="11" X2="12" Y2="19" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="CARGO" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock Text="HAULING" FontSize="11" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </RadioButton.Content>
+                        </RadioButton>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -226,6 +263,9 @@
 
                 <!-- ── BLUEPRINT NETWORK PAGE (built in code — Views/NetworkPage.cs) ── -->
                 <Grid x:Name="PageNetwork" Visibility="Collapsed"/>
+
+                <!-- ── CARGO HAULING PAGE (built in code - Views/HaulingPage.cs) ── -->
+                <Grid x:Name="PageHauling" Visibility="Collapsed"/>
 
                 <!-- ── RS SIGNAL DECODER PAGE (C1 dashboard) ── -->
                 <Grid x:Name="PageScan" Visibility="Visible">
