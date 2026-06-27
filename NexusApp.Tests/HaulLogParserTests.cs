@@ -39,6 +39,33 @@ public class HaulLogParserTests
     }
 
     [Fact]
+    public void ParseMarker_CfpHaulingFamily_IsDetected()
+    {
+        // "Need a Hauler" (CFP RegionLink): contract ends in "_Hauling", no "HaulCargo"/"CargoHauling".
+        var m = HaulLogParser.ParseMarker(HaulLogParserFixtures.CfpMarkerPickup);
+        Assert.NotNull(m);
+        Assert.Equal("CitizensForProsperity_Generator", m!.Generator);
+        Assert.Equal(HaulRole.Pickup, m.Role);
+        Assert.Equal("CFP_Pyro_RegionA_Stage1_RegionLink_ToRegionD_Hauling", m.Contract);
+    }
+
+    [Fact]
+    public void LooksHaulRelevant_CfpHaulingMarker_IsTrue() =>
+        Assert.True(HaulLogParser.LooksHaulRelevant(HaulLogParserFixtures.CfpMarkerPickup));
+
+    [Theory]
+    [InlineData("CFP_Pyro_VeryEasy_RecoverCargo_2")]
+    [InlineData("Hockrow_FacilityDelve_P2M1-Stanton4")]
+    [InlineData("Shubin_RG_Discovery_ShipMining_Nyx_Gold")]
+    public void ParseMarker_NonHaulPickupDropoffContracts_ReturnNull(string contract)
+    {
+        // These families use pickup_/dropoff_ markers too, but are not cargo hauls - must be excluded.
+        var line = HaulLogParserFixtures.CfpMarkerPickup.Replace(
+            "CFP_Pyro_RegionA_Stage1_RegionLink_ToRegionD_Hauling", contract);
+        Assert.Null(HaulLogParser.ParseMarker(line));
+    }
+
+    [Fact]
     public void ParseDeliver_ExtractsCommodityScuDestination()
     {
         var d = HaulLogParser.ParseDeliver(HaulLogParserFixtures.DeliverLine);
@@ -99,6 +126,7 @@ public class HaulLogParserTests
     [Theory]
     [InlineData("RedWind_Hauling", "Red Wind")]
     [InlineData("Covalex_Hauling", "Covalex")]
+    [InlineData("CitizensForProsperity_Generator", "Citizens For Prosperity")]
     public void CompanyDisplay_KnownGenerators(string generator, string expected) =>
         Assert.Equal(expected, HaulLogParser.CompanyDisplay(generator));
 }

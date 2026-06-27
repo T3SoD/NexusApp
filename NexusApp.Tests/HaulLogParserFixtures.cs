@@ -45,6 +45,16 @@ public static class HaulLogParserFixtures
         "MissionId[6ea3467c-83c8-4b41-b25c-ead2c558cc54] Player[REDACTED] PlayerId[REDACTED] " +
         "CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]";
 
+    // CFP / Citizens For Prosperity "Need a Hauler" RegionLink haul: a different family whose contract
+    // ends in "_Hauling" (no "HaulCargo"/"CargoHauling"). Structurally a normal haul (pickup/dropoff markers).
+    public const string CfpMarkerPickup =
+        "<2026-06-27T21:49:56.557Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: " +
+        "missionId [6b4e3396-1506-4051-b348-79c4eabae9d9], generator name [CitizensForProsperity_Generator], " +
+        "contract [CFP_Pyro_RegionA_Stage1_RegionLink_ToRegionD_Hauling], " +
+        "contractDefinitionId[adb9586c-4c26-465f-a6a2-bc97af16eedb], " +
+        "objectiveId [pickup_0540719d-0ef2-4e2b-87d5-41ae5cffe412_0], markerEntityId [3322], zoneHostId [524846443194], " +
+        "position [x: 383115.366423, y: -245829.717381, z: -272467.223889] [Team_MissionFeatures][Missions]";
+
     public const string EndAbandon =
         "<2026-06-27T13:30:27.252Z> [Notice] <EndMission> Ending mission for player. " +
         "MissionId[e179ea2b-3099-48a3-b0ef-6795bfb5337b] Player[REDACTED] PlayerId[REDACTED] " +
