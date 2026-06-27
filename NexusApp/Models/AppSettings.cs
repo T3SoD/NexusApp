@@ -36,6 +36,10 @@ public class AppSettings
     public string LocalDisplayName { get; set; } = "";        // the label other users see
     public string LocalIdentityKind { get; set; } = "handle"; // "handle" | "nickname"
     public string DetectedRsiHandle { get; set; } = "";       // auto-detected from Game.log (export default)
+
+    // Server/shard display: rolling current + last 3 shards (most recent first), persisted so the
+    // RECENT list survives app/SC relaunches. Populated from Game.log <Join PU> lines.
+    public List<ShardSession> RecentShards { get; set; } = [];
 }
 
 public class ScanRegion
