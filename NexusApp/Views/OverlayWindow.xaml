@@ -167,12 +167,16 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
+                    <!-- SERVER / SHARD: current + recent shards (built in code-behind from App.Shards) -->
+                    <StackPanel x:Name="ShardPanel" Grid.Row="0" Margin="10,10,10,0"/>
+
                     <!-- Track Session / Auto-Track Blueprints switches (built in code-behind) + status -->
-                    <StackPanel Grid.Row="0" Margin="10,10,10,2">
+                    <StackPanel Grid.Row="1" Margin="10,10,10,2">
                         <WrapPanel x:Name="StatsControlBar"/>
                         <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
                                    Foreground="{DynamicResource FgDimBrush}" Margin="1,4,0,0"
@@ -180,7 +184,7 @@
                     </StackPanel>
 
                     <!-- Session counts: blueprints collected this session -->
-                    <Border Grid.Row="1" Margin="10,7,10,0" CornerRadius="11"
+                    <Border Grid.Row="2" Margin="10,7,10,0" CornerRadius="11"
                             Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
                             BorderThickness="1" Padding="13,2,13,6">
                         <StackPanel>
@@ -191,11 +195,11 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Grid.Row="2" Text="BLUEPRINTS COLLECTED THIS SESSION" FontSize="9" FontWeight="Bold"
+                    <TextBlock Grid.Row="3" Text="BLUEPRINTS COLLECTED THIS SESSION" FontSize="9" FontWeight="Bold"
                                Foreground="{DynamicResource AccentBrush}" Margin="12,12,10,4"/>
 
                     <!-- Marked feed (newest first) -->
-                    <Grid Grid.Row="3">
+                    <Grid Grid.Row="4">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,0">
                             <StackPanel x:Name="StatsFeedItems"/>
                         </ScrollViewer>
@@ -207,7 +211,7 @@
                     </Grid>
 
                     <!-- Footer: reach the advanced monitor + reset the session tally -->
-                    <Grid Grid.Row="4" Margin="12,4,10,8">
+                    <Grid Grid.Row="5" Margin="12,4,10,8">
                         <TextBlock Text="Open advanced monitor…" FontSize="9"
                                    Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
                                    Background="Transparent" Padding="2,3"
