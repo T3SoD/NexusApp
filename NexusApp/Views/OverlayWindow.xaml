@@ -112,6 +112,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
                     <Button x:Name="TabStatsBtn" Content="STATS"
@@ -145,7 +146,15 @@
                     <Border x:Name="TabShoppingIndicator" Height="2" Width="54"
                             CornerRadius="1" Background="Transparent"/>
                 </StackPanel>
-                <Border Grid.ColumnSpan="4" VerticalAlignment="Bottom" Height="1"
+                <StackPanel Grid.Column="4">
+                    <Button x:Name="TabHaulingBtn" Content="HAULING"
+                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                            Background="Transparent" BorderThickness="0"
+                            Click="TabHauling_Click" Padding="0,6" Margin="0"/>
+                    <Border x:Name="TabHaulingIndicator" Height="2" Width="34"
+                            CornerRadius="1" Background="Transparent"/>
+                </StackPanel>
+                <Border Grid.ColumnSpan="5" VerticalAlignment="Bottom" Height="1"
                         Background="{DynamicResource NavBorderBrush}"/>
             </Grid>
 
@@ -361,6 +370,13 @@
                 <Grid x:Name="ShoppingTabContent" Visibility="Collapsed">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
                         <StackPanel x:Name="ShoppingPanelItems"/>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- HAULING tab: active hauls + consolidation glance (from App.Hauls) -->
+                <Grid x:Name="HaulingTabContent" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,8">
+                        <StackPanel x:Name="HaulingList"/>
                     </ScrollViewer>
                 </Grid>
             </Grid>
