@@ -83,6 +83,10 @@ public partial class OverlayWindow : Window
         // the HAULING tab is the one on screen (mirrors how OnGameLogMarked guards the STATS tab).
         App.Hauls.Changed += OnHaulsChanged;
 
+        // Server / Shard section (top of the STATS tab): refresh when the shard history changes,
+        // but only while the STATS tab is on screen (same guard pattern as OnHaulsChanged).
+        App.Shards.Changed += OnShardsChanged;
+
         BuildStatsControls();
         BuildScanControls();
 
@@ -598,6 +602,7 @@ public partial class OverlayWindow : Window
         App.GameLog.StatusChanged -= OnGameLogStatus;
         App.GameLog.SessionReset -= OnSessionReset;
         App.Hauls.Changed -= OnHaulsChanged;
+        App.Shards.Changed -= OnShardsChanged;
         base.OnClosed(e);
     }
 
@@ -605,6 +610,13 @@ public partial class OverlayWindow : Window
     private void OnHaulsChanged()
     {
         if (_activeTab == "hauling") RebuildHaulingPanel();
+    }
+
+    // Refresh the Server / Shard section when the shard history changes, but only while the STATS
+    // tab is on screen (mirrors OnHaulsChanged's tab guard).
+    private void OnShardsChanged()
+    {
+        if (_activeTab == "stats") RebuildShardPanel();
     }
 
     // Reflects watcher / auto-mark state onto the two switches.
@@ -617,6 +629,9 @@ public partial class OverlayWindow : Window
 
     private void RebuildStatsPanel()
     {
+        // Server / Shard section sits at the top of the STATS tab; refresh it whenever the tab is built.
+        RebuildShardPanel();
+
         SyncStatsControls();
 
         // Count list: blueprints collected this session (header is static "THIS SESSION" from XAML).
@@ -690,6 +705,91 @@ public partial class OverlayWindow : Window
             BorderBrush = (Brush)FindResource("NavBorderBrush"),
             BorderThickness = new Thickness(0, 0, 0, last ? 0 : 1),
         });
+    }
+
+    // ── Server / Shard section (top of the STATS tab) ───────────────────────────
+    // Current shard card (region + instance, then the raw shard id) plus up to 3 recent shards
+    // from App.Shards. Built in code with the same FindResource / Border-card / TextBlock idiom
+    // the STATS and HAULING glance panels use. Renders only shard metadata, never the player.
+    private void RebuildShardPanel()
+    {
+        ShardPanel.Children.Clear();
+
+        var accent   = (Brush)FindResource("AccentBrush");
+        var fg       = (Brush)FindResource("FgBrush");
+        var dim      = (Brush)FindResource("FgDimBrush");
+        var cardBg   = (Brush)FindResource("Bg2NavBrush");
+        var navB     = (Brush)FindResource("NavBorderBrush");
+        var headFont = (FontFamily)FindResource("HeadFont");
+        var monoFont = (FontFamily)FindResource("MonoFont");
+
+        // Section header (accent, like "BLUEPRINTS COLLECTED THIS SESSION").
+        ShardPanel.Children.Add(new TextBlock
+        {
+            Text = "SERVER / SHARD", FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = accent, Margin = new Thickness(2, 0, 0, 4),
+        });
+
+        var current = App.Shards.Current;
+        if (current == null)
+        {
+            ShardPanel.Children.Add(new TextBlock
+            {
+                Text = "Not connected to a shard yet.", FontSize = 11, Foreground = dim,
+                Margin = new Thickness(2, 2, 0, 0),
+            });
+            return;
+        }
+
+        // Current shard card: big region + instance line, small raw shard id line.
+        var cardStack = new StackPanel();
+        cardStack.Children.Add(new TextBlock
+        {
+            Text = $"{current.Region}  -  Shard {current.Instance}",
+            FontFamily = headFont, FontSize = 13, Foreground = fg,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        cardStack.Children.Add(new TextBlock
+        {
+            Text = current.ShardId, FontFamily = monoFont, FontSize = 10, Foreground = dim,
+            Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        ShardPanel.Children.Add(new Border
+        {
+            Child = cardStack,
+            Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(11), Padding = new Thickness(13, 9, 13, 9),
+        });
+
+        // RECENT subheader + up to 3 prior shards (App.Shards.Recent already excludes Current).
+        var recent = App.Shards.Recent;
+        if (recent.Count > 0)
+        {
+            ShardPanel.Children.Add(new TextBlock
+            {
+                Text = "RECENT", FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = dim, Margin = new Thickness(2, 10, 0, 4),
+            });
+            foreach (var s in recent)
+                ShardPanel.Children.Add(new TextBlock
+                {
+                    Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}",
+                    FontFamily = monoFont, FontSize = 10, Foreground = dim,
+                    Margin = new Thickness(8, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+        }
+    }
+
+    // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
+    // Recomputed on each panel rebuild (tab show / shard change), not on a live ticking timer.
+    private static string Ago(DateTime utcWhen)
+    {
+        var span = DateTime.UtcNow - utcWhen;
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalHours   < 1) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalDays    < 1) return $"{(int)span.TotalHours}h ago";
+        return $"{(int)span.TotalDays}d ago";
     }
 
     // ── HAULING tab (Cargo Hauling glance) ──────────────────────────────────────
