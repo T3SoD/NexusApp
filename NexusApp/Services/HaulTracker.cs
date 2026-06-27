@@ -13,6 +13,7 @@ public sealed class HaulTracker : IDisposable
     private readonly GameLogWatcher _watcher = new();
     private readonly Dictionary<string, Haul> _byId = new();
     private readonly List<Haul> _order = new();   // insertion order for display
+    private string _currentShardId = "";          // last shard seen, to clear hauls on a shard change
 
     public HaulTracker()
     {
@@ -43,7 +44,28 @@ public sealed class HaulTracker : IDisposable
     public event Action? Changed;
     public event Action<Haul>? HaulEnded;
 
-    public void Reset()
+    public void Reset() => ClearInternal();   // new SC session (Game.log reset)
+
+    /// <summary>User-requested clear of all hauls, active and finished (the Clear-all button).</summary>
+    public void ClearAll()
+    {
+        if (_order.Count == 0) return;
+        Logger.Info("[HAUL] cleared all hauls");
+        ClearInternal();
+    }
+
+    /// <summary>Delete one haul by mission id (the per-mission x button).</summary>
+    public void Remove(string missionId)
+    {
+        if (_byId.Remove(missionId, out var h))
+        {
+            _order.Remove(h);
+            Logger.Info($"[HAUL] removed haul {h.Company}");
+            Changed?.Invoke();
+        }
+    }
+
+    private void ClearInternal()
     {
         _byId.Clear();
         _order.Clear();
@@ -95,6 +117,20 @@ public sealed class HaulTracker : IDisposable
     public void Ingest(GameLogEntry e)
     {
         var raw = e.Raw;
+
+        // Missions are shard-specific: changing shard/server abandons your contracts in-game, so a new
+        // shard clears all hauls (active and finished). Reuses the shard parser to read the join line.
+        if (raw.Contains("<Join PU>"))
+        {
+            var shardId = ShardLogParser.ParseJoin(raw)?.ShardId;
+            if (shardId is not null && shardId != _currentShardId)
+            {
+                _currentShardId = shardId;
+                if (_order.Count > 0) { Logger.Info("[HAUL] shard changed - cleared hauls"); ClearInternal(); }
+            }
+            return;
+        }
+
         if (!HaulLogParser.LooksHaulRelevant(raw)) return;
 
         var marker = HaulLogParser.ParseMarker(raw);
