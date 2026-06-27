@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.5.2  -  Jun 27, 2026",
+        [
+            "Fixed the scan region on multi-monitor setups. You can now draw the scan box and read the RS value on any monitor, including a second monitor running at a different display scale from your main one (it previously only worked on your primary monitor). After updating, draw your scan region once.",
+            "Fixed \"Set scan region\" stacking dimming layers and darkening the screen when clicked repeatedly. A second click now closes the draw prompt instead.",
+            "Fixed the App Log Monitor getting stuck on a single line. It records a full running history again, so the diagnostic snapshots you send when reporting a bug are complete.",
+        ]),
         ("App  5.5.1  —  Jun 23, 2026",
         [
             "Improved — Session Tracking now recognizes blueprints even when a localization mod has renamed them in-game. Point Nexus at your global.ini (it auto-detects one sitting next to your Game.log) and renamed names are translated back to their official ones during import, so those blueprints still get marked as owned. Read-only; Nexus never changes the file.",
