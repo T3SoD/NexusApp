@@ -38,6 +38,11 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   </ItemGroup>
 
+  <!-- Let the test project reach internal seams (e.g. Logger.WriteTo). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="NexusApp.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Remove="Data\seed_data.json" />
     <EmbeddedResource Include="Data\seed_data.json" />
