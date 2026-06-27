@@ -14,6 +14,7 @@ public partial class OverlayWindow : Window
     private bool _boxVisible = false;
     private string _activeTab = "scan";
     private WorkOrderFlyoutWindow? _woFlyout;
+    private RegionSelectorWindow? _regionSelector;   // single live draw-region overlay (issue #8)
 
     public event Action<NexusApp.Models.ScanRegion>? ScanRegionSelected;
     public event Action<bool>? BoxVisibilityToggled;
@@ -127,8 +128,15 @@ public partial class OverlayWindow : Window
     private void SetRegion_Click(object sender, MouseButtonEventArgs e)
     {
         InteractionLog.Click("Set scan region", (System.Windows.DependencyObject)sender);
+
+        // Toggle: a second click while the draw overlay is up closes it instead of stacking
+        // another full-screen tint, which would progressively black out the screen (issue #8).
+        if (_regionSelector != null) { _regionSelector.Close(); return; }
+
         var selector = new RegionSelectorWindow();
+        _regionSelector = selector;
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
+        selector.Closed += (_, _) => { if (ReferenceEquals(_regionSelector, selector)) _regionSelector = null; };
         selector.Show();
     }
 
