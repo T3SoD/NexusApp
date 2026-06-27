@@ -740,36 +740,43 @@ public partial class OverlayWindow : Window
             Foreground = accent, Margin = new Thickness(2, 0, 0, 4),
         });
 
+        // CURRENT: the shard the player is on right now, or a "not on a shard" line after they leave
+        // (App.Shards.Current goes null once the log shows they left, until the next join).
         var current = App.Shards.Current;
-        if (current == null)
+        if (current != null)
         {
             ShardPanel.Children.Add(new TextBlock
             {
-                Text = "Not connected to a shard yet.", FontSize = 11, Foreground = dim,
+                Text = "CURRENT", FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = dim, Margin = new Thickness(2, 2, 0, 3),
+            });
+            var cardStack = new StackPanel();
+            cardStack.Children.Add(new TextBlock
+            {
+                Text = $"{current.Region}  -  Shard {current.Instance}",
+                FontFamily = headFont, FontSize = 13, Foreground = fg,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            cardStack.Children.Add(new TextBlock
+            {
+                Text = current.ShardId, FontFamily = monoFont, FontSize = 10, Foreground = dim,
+                Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            ShardPanel.Children.Add(new Border
+            {
+                Child = cardStack,
+                Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(11), Padding = new Thickness(13, 9, 13, 9),
+            });
+        }
+        else
+        {
+            ShardPanel.Children.Add(new TextBlock
+            {
+                Text = "Not on a shard.", FontSize = 11, Foreground = dim,
                 Margin = new Thickness(2, 2, 0, 0),
             });
-            return;
         }
-
-        // Current shard card: big region + instance line, small raw shard id line.
-        var cardStack = new StackPanel();
-        cardStack.Children.Add(new TextBlock
-        {
-            Text = $"{current.Region}  -  Shard {current.Instance}",
-            FontFamily = headFont, FontSize = 13, Foreground = fg,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        cardStack.Children.Add(new TextBlock
-        {
-            Text = current.ShardId, FontFamily = monoFont, FontSize = 10, Foreground = dim,
-            Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        ShardPanel.Children.Add(new Border
-        {
-            Child = cardStack,
-            Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(11), Padding = new Thickness(13, 9, 13, 9),
-        });
 
         // RECENT subheader + up to 3 prior shards (App.Shards.Recent already excludes Current).
         var recent = App.Shards.Recent;

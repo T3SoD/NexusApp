@@ -9,6 +9,8 @@ public class ShardTrackerTests
     private static GameLogEntry E(string raw) => new() { Raw = raw, Category = LogCategory.Other };
     private static string Join(string shard, string ip = "10.0.0.1") =>
         $"<2026-06-27T13:14:51.882Z> [Notice] <Join PU> address[{ip}] port[64318] shard[{shard}] locationId[1] [x]";
+    private static string Leave() =>
+        "<2026-06-27T14:30:51.596Z> [Notice] <CDisciplineServiceExternal::EndSession> Ending session [AntiCheat][EAC]";
 
     [Fact]
     public void FirstJoin_SetsCurrent_RecentEmpty()
@@ -65,11 +67,57 @@ public class ShardTrackerTests
     }
 
     [Fact]
-    public void Load_RestoresPersistedHistory()
+    public void Load_PersistedHistoryIsRecent_NotCurrentUntilJoin()
     {
         var persisted = new List<ShardSession> { new() { ShardId = "pub_euw1b_1_99", Instance = "99" } };
         var t = new ShardTracker(() => persisted, _ => { });
-        Assert.Equal("pub_euw1b_1_99", t.Current!.ShardId);
+        Assert.Null(t.Current);                          // not on a shard until a join is seen
+        Assert.Equal("pub_euw1b_1_99", t.Recent[0].ShardId);
+    }
+
+    [Fact]
+    public void Leave_ClearsCurrent_AndMovesItToRecent()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        t.Ingest(E(Leave()));
+        Assert.Null(t.Current);                                       // no longer on a shard
+        Assert.False(t.OnShard);
+        Assert.Equal("pub_use1b_12030094_140", t.Recent[0].ShardId);  // the one just left is now recent
+    }
+
+    [Fact]
+    public void JoinNewShardAfterLeave_SetsCurrent()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        t.Ingest(E(Leave()));
+        t.Ingest(E(Join("pub_use1b_12030094_150")));
+        Assert.Equal("pub_use1b_12030094_150", t.Current!.ShardId);
+        Assert.Equal("pub_use1b_12030094_140", t.Recent[0].ShardId);
+    }
+
+    [Fact]
+    public void RejoinSameShardAfterLeave_RestoresCurrent_NoDuplicate()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        t.Ingest(E(Leave()));
+        Assert.Null(t.Current);
+        t.Ingest(E(Join("pub_use1b_12030094_140")));   // back on the same shard
+        Assert.Equal("pub_use1b_12030094_140", t.Current!.ShardId);
+        Assert.Single(t.All);                          // not duplicated
+    }
+
+    [Fact]
+    public void Leave_WhenAlreadyOff_DoesNothing()
+    {
+        int changed = 0;
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Changed += () => changed++;
+        t.Ingest(E(Leave()));          // never joined; already off
+        Assert.Equal(0, changed);
+        Assert.Null(t.Current);
     }
 
     [Fact]
