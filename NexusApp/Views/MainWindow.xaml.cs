@@ -101,7 +101,7 @@ public partial class MainWindow : Window
     {
         var selector = new RegionSelectorWindow();
         selector.RegionSelected += ApplyScanRegion;
-        selector.Show();
+        selector.ShowOnMonitorOf(this);   // draw surface opens on this window's monitor (issue #6)
     }
 
     /// <summary>Ensures the overlay is open, visible, and on the SCAN tab for the tour.</summary>
@@ -2092,6 +2092,12 @@ public partial class MainWindow : Window
 
     private void ApplyScanRegion(NexusApp.Models.ScanRegion r)
     {
+        // Diagnostic for multi-monitor capture (issue #6): logs the stored region and the system
+        // DPI. On a monitor whose scale differs from the primary, these coords won't line up with
+        // the BitBlt screen-grab, which pins detection to the primary monitor.
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
+        Logger.Info($"[SCAN] scan region set ({r.X},{r.Y}) {r.Width}x{r.Height}; main-window monitor DPI {dpi.DpiScaleX:0.##}x");
+
         App.Settings.Current.ScanRegion = r;
         App.Settings.Save();
         _vm.SetScanRegion(r);
@@ -2113,7 +2119,7 @@ public partial class MainWindow : Window
             _scanIndicator = new ScanIndicatorWindow();
             if (_boxVisible) { Logger.Info("[WIN] scan-indicator shown"); _scanIndicator.Show(); }
         }
-        _scanIndicator.SetRegion(r, System.Windows.Media.VisualTreeHelper.GetDpi(this));
+        _scanIndicator.SetRegion(r);   // indicator positions itself in physical pixels (issue #6)
     }
 
     // Main-window focus changes round out the tab-out picture: if a user is pulled from the game
