@@ -19,6 +19,9 @@
     <Version>5.5.1</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\nexus.ico</ApplicationIcon>
+    <!-- Per-Monitor-DPI-Aware V2 (issue #6): makes PointToScreen + GDI capture use true
+         per-monitor physical pixels so scan capture works on a different-DPI monitor. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
 <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- App is English-only: drop the .NET framework's other-language satellite

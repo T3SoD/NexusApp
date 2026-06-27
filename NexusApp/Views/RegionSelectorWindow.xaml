@@ -5,7 +5,7 @@
         WindowStyle="None" AllowsTransparency="True"
         Background="#88000000"
         Topmost="True" ShowInTaskbar="False"
-        WindowState="Maximized"
+        WindowStartupLocation="Manual"
         Cursor="Cross">
 
     <Grid>

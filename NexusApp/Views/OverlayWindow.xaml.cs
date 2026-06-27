@@ -137,7 +137,9 @@ public partial class OverlayWindow : Window
         _regionSelector = selector;
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
         selector.Closed += (_, _) => { if (ReferenceEquals(_regionSelector, selector)) _regionSelector = null; };
-        selector.Show();
+        // Open the draw surface on the monitor this overlay sits on (the user drags it onto the
+        // game's monitor), not always the primary — issue #6.
+        selector.ShowOnMonitorOf(this);
     }
 
     // ── SCAN tab controls (toggle switches matching the STATS tab) ──────────────

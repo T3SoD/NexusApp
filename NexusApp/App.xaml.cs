@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -18,6 +19,26 @@ public partial class App : Application
 
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
+
+    // Reports the process's live DPI-awareness so nexus.log can confirm the shipped exe is actually
+    // Per-Monitor V2 (issue #6) — DPI awareness is an embedded runtime property the CI compile can't verify.
+    [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
+    [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr a, IntPtr b);
+    private static readonly IntPtr DPI_PMV2   = (IntPtr)(-4);
+    private static readonly IntPtr DPI_PM     = (IntPtr)(-3);
+    private static readonly IntPtr DPI_SYSTEM = (IntPtr)(-2);
+    private static string DpiAwarenessLabel()
+    {
+        try
+        {
+            var ctx = GetThreadDpiAwarenessContext();
+            if (AreDpiAwarenessContextsEqual(ctx, DPI_PMV2))   return "Per-Monitor V2";
+            if (AreDpiAwarenessContextsEqual(ctx, DPI_PM))     return "Per-Monitor";
+            if (AreDpiAwarenessContextsEqual(ctx, DPI_SYSTEM)) return "System";
+            return "Unaware/Unknown";
+        }
+        catch { return "unknown"; }
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,6 +69,7 @@ public partial class App : Application
 
         Logger.Info($"Nexus {AppInfo.Version} starting");
         Logger.Info($"Distribution: {AppInfo.Distribution}");
+        Logger.Info($"[WIN] process DPI awareness: {DpiAwarenessLabel()}");
         RegisterInteractionLogging();
         _foreground = new ForegroundMonitor();
         _foreground.Start();

@@ -99,6 +99,18 @@ public class SettingsService
             settings.SettingsSchemaVersion = 4;
             migrated = true;
         }
+        if (settings.SettingsSchemaVersion < 5)
+        {
+            // PerMonitorV2 (issue #6): a ScanRegion saved under the old System-DPI-aware process
+            // encodes VIRTUALIZED coords. Negative X/Y means it was drawn on a left/up secondary
+            // monitor and no longer maps to the right physical pixels under PMv2, so drop it and let
+            // the user redraw once (the magenta full-screen fallback covers the gap). Primary-monitor
+            // regions (X>=0 && Y>=0) were already true-physical, so they are kept untouched.
+            if (settings.ScanRegion is { } sr && (sr.X < 0 || sr.Y < 0))
+                settings.ScanRegion = null;
+            settings.SettingsSchemaVersion = 5;
+            migrated = true;
+        }
         if (migrated) Save(settings);
 
         return settings;
