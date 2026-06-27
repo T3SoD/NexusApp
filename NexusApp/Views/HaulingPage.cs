@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
 using NexusApp.Services;
@@ -15,6 +16,7 @@ namespace NexusApp.Views;
 public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
+    private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
 
     private readonly Dictionary<string, Brush> _brushCache = new();
     private Brush Br(string key) => _brushCache.TryGetValue(key, out var b) ? b : (_brushCache[key] = (Brush)Application.Current.FindResource(key));
@@ -35,6 +37,10 @@ public sealed class HaulingPage : UserControl
     {
         _body.Children.Clear();
 
+        // Clear-all lives in the header (built once); only show it when there's something to clear.
+        if (_clearBtn is not null)
+            _clearBtn.Visibility = App.Hauls.AllHauls.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
         if (App.Hauls.AllHauls.Count == 0)
         {
             _body.Children.Add(Placeholder("No active hauls. Accept a hauling contract in-game."));
@@ -54,10 +60,21 @@ public sealed class HaulingPage : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // header
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // content
 
-        var titleStack = new StackPanel();
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         titleStack.Children.Add(new TextBlock { Text = "CARGO HAULING", FontFamily = Head, FontSize = 21, Foreground = Br("FgBrush") });
         titleStack.Children.Add(new TextBlock { Text = "Hauling contracts read from your game log", FontSize = 12, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
-        Grid.SetRow(titleStack, 0); root.Children.Add(titleStack);
+        Grid.SetColumn(titleStack, 0); header.Children.Add(titleStack);
+
+        _clearBtn = ActionButton("Clear all");
+        _clearBtn.VerticalAlignment = VerticalAlignment.Center;
+        _clearBtn.Click += (_, _) => App.Hauls.ClearAll();   // Changed -> Refresh() rebuilds the list
+        Grid.SetColumn(_clearBtn, 1); header.Children.Add(_clearBtn);
+
+        Grid.SetRow(header, 0); root.Children.Add(header);
 
         var scroller = new ScrollViewer
         {
@@ -112,7 +129,14 @@ public sealed class HaulingPage : UserControl
         foreach (var leg in h.Legs)
             inner.Children.Add(LegRow(leg));
 
-        return Card(inner);
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(inner, 0); grid.Children.Add(inner);
+        var del = DeleteButton(h.MissionId);
+        Grid.SetColumn(del, 1); grid.Children.Add(del);
+
+        return Card(grid);
     }
 
     private UIElement LegRow(HaulLeg leg)
@@ -207,6 +231,7 @@ public sealed class HaulingPage : UserControl
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var info = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         info.Children.Add(new TextBlock { Text = CompanyOf(h), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
@@ -222,12 +247,38 @@ public sealed class HaulingPage : UserControl
         };
         Grid.SetColumn(outcome, 1); grid.Children.Add(outcome);
 
+        var del = DeleteButton(h.MissionId);
+        del.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(del, 2); grid.Children.Add(del);
+
         return Card(grid);
     }
 
     // -- helpers -------------------------------------------------------------------
 
     private static string CompanyOf(Haul h) => string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company;
+
+    // Small bordered action button, mirroring NetworkPage.ActionButton.
+    private Button ActionButton(string text) => new()
+    {
+        Content = text, Padding = new Thickness(12, 6, 12, 6),
+        Background = Br("Bg2NavBrush"), Foreground = Br("AccentBrush"),
+        BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+        Cursor = Cursors.Hand, FontWeight = FontWeights.SemiBold, FontSize = 12,
+    };
+
+    // Flat "x" affordance that deletes a single haul. A plain character, not an icon/emoji.
+    private Button DeleteButton(string missionId)
+    {
+        var btn = new Button
+        {
+            Content = "x", FontFamily = Mono, FontSize = 14, FontWeight = FontWeights.Bold,
+            Foreground = Br("FgDimBrush"), Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 2, 8, 2), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Top,
+        };
+        btn.Click += (_, _) => App.Hauls.Remove(missionId);   // Changed -> Refresh() rebuilds the list
+        return btn;
+    }
 
     private UIElement Card(UIElement child) => new Border
     {
