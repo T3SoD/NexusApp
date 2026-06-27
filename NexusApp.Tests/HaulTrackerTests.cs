@@ -139,4 +139,47 @@ public class HaulTrackerTests
                                            "dropoff_6e9335e8-f62e-4eca-8fc5-a42ab1c3ab7d_0")));
         Assert.Empty(t.BuildConsolidation().Dropoffs);
     }
+
+    private static string Join(string shard) =>
+        $"<2026-06-27T13:14:51.882Z> [Notice] <Join PU> address[10.0.0.1] port[64318] shard[{shard}] locationId[1] [x]";
+
+    [Fact]
+    public void ShardChange_ClearsAllHauls()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(Join("pub_use1b_12030094_140")));   // initial shard
+        t.Ingest(E(MarkerPickup));                      // a haul on shard 140
+        t.Ingest(E(Join("pub_use1b_12030094_150")));    // hop to a new shard -> stale hauls clear
+        Assert.Empty(t.AllHauls);
+    }
+
+    [Fact]
+    public void SameShardRejoin_DoesNotClear()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        t.Ingest(E(MarkerPickup));
+        t.Ingest(E(Join("pub_use1b_12030094_140")));    // reconnect to the same shard -> keep hauls
+        Assert.Single(t.AllHauls);
+    }
+
+    [Fact]
+    public void ClearAll_RemovesEverything()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(MarkerPickup));
+        t.ClearAll();
+        Assert.Empty(t.AllHauls);
+    }
+
+    [Fact]
+    public void Remove_DeletesOnlyThatMission()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(MarkerPickup));                            // mission a6c598e0...
+        t.Ingest(E(HaulLogParserFixtures.CfpMarkerPickup));   // mission 6b4e3396...
+        t.Remove(Mid);                                        // remove a6c598e0...
+        var h = Assert.Single(t.AllHauls);
+        Assert.Equal("6b4e3396-1506-4051-b348-79c4eabae9d9", h.MissionId);
+    }
 }
