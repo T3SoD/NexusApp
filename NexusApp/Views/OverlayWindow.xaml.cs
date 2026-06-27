@@ -87,6 +87,8 @@ public partial class OverlayWindow : Window
         // but only while the STATS tab is on screen (same guard pattern as OnHaulsChanged).
         App.Shards.Changed += OnShardsChanged;
 
+        UpdateHaulingTabLabel();   // initial overlay tab count (updates as hauls stream in)
+
         BuildStatsControls();
         BuildScanControls();
 
@@ -609,7 +611,15 @@ public partial class OverlayWindow : Window
     // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.
     private void OnHaulsChanged()
     {
+        UpdateHaulingTabLabel();                 // keep the tab count fresh even off the HAULING tab
         if (_activeTab == "hauling") RebuildHaulingPanel();
+    }
+
+    // Shows the active-haul count on the overlay tab button: "HAULING" or "HAULING (N)".
+    private void UpdateHaulingTabLabel()
+    {
+        var n = App.Hauls.ActiveHauls.Count;
+        TabHaulingBtn.Content = n > 0 ? $"HAULING ({n})" : "HAULING";
     }
 
     // Refresh the Server / Shard section when the shard history changes, but only while the STATS
