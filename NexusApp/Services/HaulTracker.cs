@@ -116,7 +116,12 @@ public sealed class HaulTracker : IDisposable
         if (completed is not null && _byId.TryGetValue(completed.MissionId, out var ch))
         {
             var leg = ch.LegByObjective(completed.ObjectiveId);
-            if (leg is not null) { leg.Completed = true; Changed?.Invoke(); }
+            if (leg is not null)
+            {
+                leg.Completed = true;
+                Logger.Info($"[HAUL] leg complete: {ch.Company} {leg.Role} {leg.Commodity}");
+                Changed?.Invoke();
+            }
             return;
         }
 
