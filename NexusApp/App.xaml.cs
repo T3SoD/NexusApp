@@ -20,6 +20,9 @@ public partial class App : Application
     // BETA: cargo-hauling tracker (own Game.log watcher, decoupled from blueprint session).
     public static HaulTracker Hauls { get; private set; } = null!;
 
+    // Server/shard tracker (own Game.log watcher, always on; rolling history persisted to settings).
+    public static ShardTracker Shards { get; private set; } = null!;
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -158,6 +161,14 @@ public partial class App : Application
         Hauls = new HaulTracker { PreferredPath = Settings.Current.GameLogPath };
         Hauls.HaulEnded += h => Views.ToastWindow.Show($"Haul {h.Outcome}: {h.Company}");
         Hauls.Start(Hauls.StartPath(), fromBeginning: true);
+
+        // Server/shard tracker. Own watcher (always on); persists the rolling list to settings so the
+        // RECENT shards survive relaunches. Replays the current Game.log for this session's joins.
+        Shards = new ShardTracker(
+            () => Settings.Current.RecentShards,
+            list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); })
+        { PreferredPath = Settings.Current.GameLogPath };
+        Shards.Start(Shards.StartPath(), fromBeginning: true);
     }
 
     // Builds the user's customDisplay -> official localization map from their global.ini, so the
@@ -204,6 +215,7 @@ public partial class App : Application
     {
         _foreground?.Dispose();
         Hauls?.Dispose();
+        Shards?.Dispose();
         GameLog?.Dispose();
         Network?.Dispose();
         Data?.Dispose();
