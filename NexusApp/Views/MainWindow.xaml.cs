@@ -130,12 +130,14 @@ public partial class MainWindow : Window
         PageReference.Visibility  = page == "reference"  ? Visibility.Visible : Visibility.Collapsed;
         PageWorkOrders.Visibility = page == "workorders" ? Visibility.Visible : Visibility.Collapsed;
         PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
+        PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
 
         NavScan.IsChecked    = page == "scan";
         NavBlue.IsChecked    = page == "blueprints";
         NavRef.IsChecked     = page == "reference";
         NavWork.IsChecked    = page == "workorders";
         NavNetwork.IsChecked = page == "network";
+        NavHauling.IsChecked = page == "hauling";
 
         Title = page switch
         {
@@ -144,6 +146,7 @@ public partial class MainWindow : Window
             "reference"  => "Nexus — Mining Codex",
             "workorders" => "Nexus — Refinery Tracker",
             "network"    => "Nexus — Blueprint Network",
+            "hauling"    => "Nexus - Cargo Hauling",
             _            => "Nexus",
         };
 
@@ -151,6 +154,7 @@ public partial class MainWindow : Window
         if (page == "reference") { BuildFilterPills(); BuildReferenceTree(); }
         if (page == "workorders") RebuildWorkOrderList();
         if (page == "network") InitNetworkPage();
+        if (page == "hauling") InitHaulingPage();
     }
 
     private void InitNetworkPage()
@@ -161,6 +165,17 @@ public partial class MainWindow : Window
             PageNetwork.Children.Add(_networkPage);
         }
         _networkPage.Refresh();
+    }
+
+    private HaulingPage? _haulingPage;
+    private void InitHaulingPage()
+    {
+        if (_haulingPage == null)
+        {
+            _haulingPage = new HaulingPage();
+            PageHauling.Children.Add(_haulingPage);
+        }
+        _haulingPage.Refresh();
     }
 
     // ── RS Scan ──────────────────────────────────────────────────────────────
