@@ -27,26 +27,44 @@ public static class Logger
 
     private static void Write(string level, string message, Exception? ex)
     {
-        try
-        {
-            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {message}";
-            if (ex != null) line += Environment.NewLine + ex;
+        // WriteTo does the real work; Write owns the "logging must never throw" guarantee.
+        try { WriteTo(_path, level, message, ex, DateTime.UtcNow); }
+        catch { /* logging must never throw */ }
+    }
 
-            lock (_lock)
+    // Testable core. <paramref name="nowUtc"/> drives BOTH the rotation age check and the
+    // post-rotation creation-time stamp, so tests can force the 72h path deterministically.
+    // Production callers pass DateTime.UtcNow (see Write).
+    internal static void WriteTo(string path, string level, string message, Exception? ex, DateTime nowUtc)
+    {
+        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {message}";
+        if (ex != null) line += Environment.NewLine + ex;
+
+        lock (_lock)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            // Rotation: start fresh when the log is older than 72h (footprint control), or at the
+            // ~5 MB runaway cap.
+            bool rotated = false;
+            if (File.Exists(path))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                // Rotation: start fresh when the log is older than 72h (footprint control), or at the
-                // ~5 MB runaway cap. Delete (not truncate) so the recreated file's creation time
-                // restarts the 72h window cleanly, including across app restarts.
-                if (File.Exists(_path))
+                var fi = new FileInfo(path);
+                if (nowUtc - fi.CreationTimeUtc > MaxAge || fi.Length > MaxBytes)
                 {
-                    var fi = new FileInfo(_path);
-                    if (DateTime.UtcNow - fi.CreationTimeUtc > MaxAge || fi.Length > MaxBytes)
-                        File.Delete(_path);
+                    File.Delete(path);
+                    rotated = true;
                 }
-                File.AppendAllText(_path, line + Environment.NewLine);
+            }
+            File.AppendAllText(path, line + Environment.NewLine);
+            // NTFS file-system tunneling re-applies a deleted file's ORIGINAL creation time when a
+            // same-named file is recreated in the same folder within ~15s. Without overriding it, the
+            // 72h age check stays permanently true after the first rotation — deleting and rewriting a
+            // single line on every call, which pins the log to one ever-overwritten line. Stamp the
+            // real creation time so rotation genuinely restarts the window (across app restarts too).
+            if (rotated)
+            {
+                try { File.SetCreationTimeUtc(path, nowUtc); } catch { /* best-effort */ }
             }
         }
-        catch { /* logging must never throw */ }
     }
 }
