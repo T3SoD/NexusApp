@@ -22,8 +22,15 @@ public sealed class ShardTracker : IDisposable
         // intentionally NOT subscribing LogReset: shard history persists across SC sessions.
     }
 
-    public ShardSession? Current => _history.Count > 0 ? _history[0] : null;
-    public IReadOnlyList<ShardSession> Recent => _history.Skip(1).Take(3).ToList();
+    private bool _onShard;   // true while in the PU: set by a <Join PU>, cleared by the EAC EndSession
+
+    /// <summary>True while currently in the PU (between a join and the next leave/EndSession).</summary>
+    public bool OnShard => _onShard;
+    /// <summary>The shard the player is on right now, or null after they have left (until the next join).</summary>
+    public ShardSession? Current => _onShard && _history.Count > 0 ? _history[0] : null;
+    /// <summary>Recent shards: when on a shard, the 3 before it; when off, the last 3 (the shard just
+    /// left now sits here).</summary>
+    public IReadOnlyList<ShardSession> Recent => (_onShard ? _history.Skip(1) : _history).Take(3).ToList();
     public IReadOnlyList<ShardSession> All => _history;
 
     public event Action? Changed;
@@ -44,12 +51,30 @@ public sealed class ShardTracker : IDisposable
 
     public void Ingest(GameLogEntry e)
     {
-        if (!e.Raw.Contains("<Join PU>")) return;
-        var s = ShardLogParser.ParseJoin(e.Raw);
+        var raw = e.Raw;
+
+        // Left the PU (to menu / quit / disconnect): EAC ends the session. Clear "current" - the last
+        // shard stays in history and slides into RECENT - until the next join.
+        if (raw.Contains("CDisciplineServiceExternal::EndSession"))
+        {
+            if (_onShard) { _onShard = false; Logger.Info("[SHARD] left the shard"); Changed?.Invoke(); }
+            return;
+        }
+
+        if (!raw.Contains("<Join PU>")) return;
+        var s = ShardLogParser.ParseJoin(raw);
         if (s is null) return;
-        if (_history.Count > 0 && _history[0].ShardId == s.ShardId) return;   // dedupe consecutive re-joins
+
+        // Re-joined the SAME shard (e.g. after a brief disconnect): just mark us back on it.
+        if (_history.Count > 0 && _history[0].ShardId == s.ShardId)
+        {
+            if (!_onShard) { _onShard = true; Changed?.Invoke(); }
+            return;
+        }
+
         _history.Insert(0, s);
         while (_history.Count > MaxKeep) _history.RemoveAt(_history.Count - 1);
+        _onShard = true;
         _save(_history);
         Logger.Info($"[SHARD] joined {s.Region} shard {s.Instance} ({s.ShardId})");
         Changed?.Invoke();
