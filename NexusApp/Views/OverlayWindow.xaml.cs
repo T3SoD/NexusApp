@@ -78,6 +78,11 @@ public partial class OverlayWindow : Window
         App.GameLog.StateChanged += SyncStatsControls;
         App.GameLog.StatusChanged += OnGameLogStatus;
         App.GameLog.SessionReset += OnSessionReset;
+
+        // Cargo Hauling glance tab: refresh the list when the tracker changes, but only while
+        // the HAULING tab is the one on screen (mirrors how OnGameLogMarked guards the STATS tab).
+        App.Hauls.Changed += OnHaulsChanged;
+
         BuildStatsControls();
         BuildScanControls();
 
@@ -386,6 +391,7 @@ public partial class OverlayWindow : Window
     private void TabScan_Click(object sender, RoutedEventArgs e) => SwitchTab("scan");
     private void TabOrders_Click(object sender, RoutedEventArgs e) => SwitchTab("orders");
     private void TabShopping_Click(object sender, RoutedEventArgs e) => SwitchTab("shopping");
+    private void TabHauling_Click(object sender, RoutedEventArgs e) => SwitchTab("hauling");
 
     private void SwitchTab(string tab)
     {
@@ -394,6 +400,7 @@ public partial class OverlayWindow : Window
         ScanTabContent.Visibility     = tab == "scan"     ? Visibility.Visible : Visibility.Collapsed;
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
+        HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
 
         var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
         var none   = Brushes.Transparent;
@@ -401,6 +408,7 @@ public partial class OverlayWindow : Window
         TabScanIndicator.Background     = tab == "scan"     ? accent : none;
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
+        TabHaulingIndicator.Background  = tab == "hauling"  ? accent : none;
 
         // RECENT scans belong to the SCAN tab only — hide the strip on every other tab.
         SetHistoryStripVisible(tab == "scan");
@@ -408,6 +416,7 @@ public partial class OverlayWindow : Window
         if (tab == "stats") RebuildStatsPanel();
         if (tab == "scan") SyncScanControls();
         if (tab == "shopping") RebuildShoppingPanel();
+        if (tab == "hauling") RebuildHaulingPanel();
 
         if (tab == "orders")
         {
@@ -588,7 +597,14 @@ public partial class OverlayWindow : Window
         App.GameLog.StateChanged -= SyncStatsControls;
         App.GameLog.StatusChanged -= OnGameLogStatus;
         App.GameLog.SessionReset -= OnSessionReset;
+        App.Hauls.Changed -= OnHaulsChanged;
         base.OnClosed(e);
+    }
+
+    // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.
+    private void OnHaulsChanged()
+    {
+        if (_activeTab == "hauling") RebuildHaulingPanel();
     }
 
     // Reflects watcher / auto-mark state onto the two switches.
@@ -674,6 +690,93 @@ public partial class OverlayWindow : Window
             BorderBrush = (Brush)FindResource("NavBorderBrush"),
             BorderThickness = new Thickness(0, 0, 0, last ? 0 : 1),
         });
+    }
+
+    // ── HAULING tab (Cargo Hauling glance) ──────────────────────────────────────
+    // Compact mirror of the main-window HaulingPage: a count header, one block per active
+    // haul (Company - Topology + its incomplete legs), then a where-to-drop consolidation
+    // summary. Built in code from App.Hauls with the same TextBlock/FindResource idiom the
+    // STATS tab uses; no live SCU progress exists (legs are binary done / not-done).
+    private void RebuildHaulingPanel()
+    {
+        HaulingList.Children.Clear();
+
+        var accent = (Brush)FindResource("AccentBrush");
+        var fg     = (Brush)FindResource("FgBrush");
+        var dim    = (Brush)FindResource("FgDimBrush");
+        var border = (Brush)FindResource("NavBorderBrush");
+
+        var active = App.Hauls.ActiveHauls;
+
+        // Count header: how many hauls are open right now.
+        HaulingList.Children.Add(new TextBlock
+        {
+            Text = $"Active hauls: {active.Count}", FontSize = 12, FontWeight = FontWeights.Bold,
+            Foreground = accent, Margin = new Thickness(2, 2, 0, 6),
+        });
+
+        if (active.Count == 0)
+        {
+            HaulingList.Children.Add(new TextBlock
+            {
+                Text = "No active hauls.", FontSize = 11, Foreground = dim,
+                Margin = new Thickness(2, 2, 0, 0),
+            });
+            return;
+        }
+
+        // One block per active haul: "Company - Topology" then each incomplete leg.
+        foreach (var h in active)
+        {
+            var company = string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company;
+            HaulingList.Children.Add(new TextBlock
+            {
+                Text = $"{company} - {h.Topology}", FontSize = 11, FontWeight = FontWeights.Bold,
+                Foreground = fg, Margin = new Thickness(2, 8, 0, 2),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+
+            foreach (var leg in h.Legs)
+            {
+                if (leg.Completed) continue;
+
+                var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
+                // Dropoff legs carry their own destination; a pickup leg borrows the haul's
+                // best-effort PickupName (the dropoff's own location lives on the sibling leg).
+                var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
+
+                var segs = new System.Collections.Generic.List<string>();
+                if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
+                if (!string.IsNullOrWhiteSpace(leg.Commodity)) segs.Add(leg.Commodity);
+                if (!string.IsNullOrWhiteSpace(location)) segs.Add($"@ {location}");
+                var desc = string.Join(" ", segs);
+
+                HaulingList.Children.Add(new TextBlock
+                {
+                    Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}",
+                    FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+        }
+
+        // Compact consolidation glance: where to drop and how much, across all active hauls.
+        var con = App.Hauls.BuildConsolidation();
+        if (con.Dropoffs.Count > 0)
+        {
+            HaulingList.Children.Add(new Border { Height = 1, Background = border, Margin = new Thickness(0, 10, 0, 6) });
+            HaulingList.Children.Add(new TextBlock
+            {
+                Text = "CONSOLIDATION", FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = dim, Margin = new Thickness(2, 0, 0, 4),
+            });
+            foreach (var stop in con.Dropoffs)
+                HaulingList.Children.Add(new TextBlock
+                {
+                    Text = $"Drop at {stop.Location}: {stop.TotalScu} SCU", FontSize = 11,
+                    Foreground = fg, Margin = new Thickness(8, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+                });
+        }
     }
 
     private System.Windows.Threading.DispatcherTimer? _ordersTicker;
