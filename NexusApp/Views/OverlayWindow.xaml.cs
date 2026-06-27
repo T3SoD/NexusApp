@@ -805,15 +805,42 @@ public partial class OverlayWindow : Window
         var fg     = (Brush)FindResource("FgBrush");
         var dim    = (Brush)FindResource("FgDimBrush");
         var border = (Brush)FindResource("NavBorderBrush");
+        var cardBg = (Brush)FindResource("Bg2NavBrush");
+        var mono   = (FontFamily)FindResource("MonoFont");
 
         var active = App.Hauls.ActiveHauls;
 
-        // Count header: how many hauls are open right now.
-        HaulingList.Children.Add(new TextBlock
+        // Count header + a compact "Clear all" affordance. The count sits in column 0; the button
+        // (shown only when there's something to clear) is right-aligned in column 1. Click clears
+        // every haul; the resulting Changed -> OnHaulsChanged path rebuilds this panel.
+        var headerGrid = new Grid { Margin = new Thickness(2, 2, 0, 6) };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var countBlock = new TextBlock
         {
             Text = $"Active hauls: {active.Count}", FontSize = 12, FontWeight = FontWeights.Bold,
-            Foreground = accent, Margin = new Thickness(2, 2, 0, 6),
-        });
+            Foreground = accent, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(countBlock, 0);
+        headerGrid.Children.Add(countBlock);
+
+        if (App.Hauls.AllHauls.Count > 0)
+        {
+            var clearBtn = new Button
+            {
+                Content = "Clear all", FontSize = 10, FontWeight = FontWeights.Bold,
+                Background = cardBg, Foreground = accent,
+                BorderBrush = border, BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 2, 8, 2), Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            clearBtn.Click += (_, __) => App.Hauls.ClearAll();   // Changed -> OnHaulsChanged rebuilds
+            Grid.SetColumn(clearBtn, 1);
+            headerGrid.Children.Add(clearBtn);
+        }
+
+        HaulingList.Children.Add(headerGrid);
 
         if (active.Count == 0)
         {
@@ -828,13 +855,37 @@ public partial class OverlayWindow : Window
         // One block per active haul: "Company - Topology" then each incomplete leg.
         foreach (var h in active)
         {
+            var missionId = h.MissionId;   // capture this haul's id for its own delete handler
             var company = string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company;
-            HaulingList.Children.Add(new TextBlock
+
+            // Title row: "Company - Topology" (ellipsis-trimmed) in column 0, a flat "x" delete
+            // affordance right-aligned in column 1. Click removes just this haul; Changed ->
+            // OnHaulsChanged rebuilds the panel.
+            var titleGrid = new Grid { Margin = new Thickness(2, 8, 0, 2) };
+            titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titleBlock = new TextBlock
             {
                 Text = $"{company} - {h.Topology}", FontSize = 11, FontWeight = FontWeights.Bold,
-                Foreground = fg, Margin = new Thickness(2, 8, 0, 2),
+                Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-            });
+            };
+            Grid.SetColumn(titleBlock, 0);
+            titleGrid.Children.Add(titleBlock);
+
+            var deleteBtn = new Button
+            {
+                Content = "x", FontFamily = mono, FontSize = 13, FontWeight = FontWeights.Bold,
+                Foreground = dim, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+                Padding = new Thickness(6, 0, 6, 0), Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            deleteBtn.Click += (_, __) => App.Hauls.Remove(missionId);   // Changed -> OnHaulsChanged rebuilds
+            Grid.SetColumn(deleteBtn, 1);
+            titleGrid.Children.Add(deleteBtn);
+
+            HaulingList.Children.Add(titleGrid);
 
             foreach (var leg in h.Legs)
             {
