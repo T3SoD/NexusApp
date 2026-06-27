@@ -17,6 +17,9 @@ public partial class App : Application
     /// <summary>Blueprint Network store (network.db) — imported members, their owned blueprints, and groups.</summary>
     public static NetworkStore Network { get; private set; } = null!;
 
+    // BETA: cargo-hauling tracker (own Game.log watcher, decoupled from blueprint session).
+    public static HaulTracker Hauls { get; private set; } = null!;
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -148,6 +151,13 @@ public partial class App : Application
             if (!string.IsNullOrEmpty(GameLog.Path)) Settings.Current.GameLogPath = GameLog.Path;
             Settings.Save();
         };
+
+        // BETA Game.log cargo-hauling tracker. Own watcher (decoupled from the blueprint
+        // session so haul tracking runs regardless of the blueprint toggle). Replays the
+        // current Game.log from the top so a mid-session restart rebuilds active hauls.
+        Hauls = new HaulTracker { PreferredPath = Settings.Current.GameLogPath };
+        Hauls.HaulEnded += h => Views.ToastWindow.Show($"Haul {h.Outcome}: {h.Company}");
+        Hauls.Start(Hauls.StartPath(), fromBeginning: true);
     }
 
     // Builds the user's customDisplay -> official localization map from their global.ini, so the
@@ -193,6 +203,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _foreground?.Dispose();
+        Hauls?.Dispose();
         GameLog?.Dispose();
         Network?.Dispose();
         Data?.Dispose();
