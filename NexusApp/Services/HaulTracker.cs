@@ -50,6 +50,48 @@ public sealed class HaulTracker : IDisposable
         Changed?.Invoke();
     }
 
+    // Groups incomplete legs of all active hauls by location: where to load (Pickups) and
+    // where to drop (Dropoffs). Pickup commodity/SCU is borrowed from the sibling dropoff
+    // that shares the same CargoKey (same physical cargo, different direction).
+    public Consolidation BuildConsolidation()
+    {
+        var con = new Consolidation();
+        var pickups = new Dictionary<string, ConsolidationStop>();
+        var dropoffs = new Dictionary<string, ConsolidationStop>();
+
+        foreach (var h in _order)
+        {
+            if (!h.IsActive) continue;
+
+            foreach (var leg in h.Legs)
+            {
+                if (leg.Completed) continue;
+
+                if (leg.Role == HaulRole.Dropoff && leg.TargetScu > 0)
+                    AddItem(dropoffs, leg.Destination, leg.Commodity, leg.TargetScu, h.MissionId);
+
+                if (leg.Role == HaulRole.Pickup)
+                {
+                    // Borrow commodity/SCU from the sibling dropoff that shares this CargoKey.
+                    var sib = h.Legs.Find(l => l.Role == HaulRole.Dropoff && l.CargoKey == leg.CargoKey);
+                    var name = string.IsNullOrWhiteSpace(h.PickupName) ? "Pickup (TBD)" : h.PickupName;
+                    AddItem(pickups, name, sib?.Commodity ?? "", sib?.TargetScu ?? 0, h.MissionId);
+                }
+            }
+        }
+
+        con.Pickups.AddRange(pickups.Values);
+        con.Dropoffs.AddRange(dropoffs.Values);
+        return con;
+
+        static void AddItem(Dictionary<string, ConsolidationStop> map, string loc, string commodity, int scu, string mid)
+        {
+            if (string.IsNullOrWhiteSpace(loc)) return;
+            if (!map.TryGetValue(loc, out var stop)) { stop = new ConsolidationStop { Location = loc }; map[loc] = stop; }
+            stop.Items.Add((commodity, scu, mid));
+        }
+    }
+
     public void Ingest(GameLogEntry e)
     {
         var raw = e.Raw;

@@ -100,4 +100,43 @@ public class HaulTrackerTests
         t.Ingest(E(MarkerPickup));
         Assert.True(fired >= 1);
     }
+
+    [Fact]
+    public void Consolidation_GroupsActiveDropoffsByDestination()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(MarkerDropoff));
+        t.Ingest(E(DeliverLine));   // Carbon 158 -> Jackson's Swap
+        var con = t.BuildConsolidation();
+        var stop = Assert.Single(con.Dropoffs);
+        Assert.Equal("Jackson's Swap", stop.Location);
+        Assert.Equal(158, stop.TotalScu);
+        Assert.Equal("Carbon", stop.Items[0].Commodity);
+    }
+
+    [Fact]
+    public void Consolidation_PickupBorrowsCommodityFromSiblingDropoff()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(MarkerPickup));    // pickup, CargoKey 6e9335e8-..._0
+        t.Ingest(E(MarkerDropoff));   // dropoff, same CargoKey
+        t.Ingest(E(DeliverLine));     // commodity/SCU land on the dropoff leg
+        t.Ingest(E(HaulLogParserFixtures.AcceptRouteLine)); // route -> pickup name "Ruin Station"
+        var con = t.BuildConsolidation();
+        var pickup = Assert.Single(con.Pickups);
+        Assert.Equal("Ruin Station", pickup.Location);
+        Assert.Equal(158, pickup.TotalScu);   // borrowed from the sibling dropoff
+    }
+
+    [Fact]
+    public void Consolidation_ExcludesCompletedLegs()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(MarkerDropoff));
+        t.Ingest(E(DeliverLine));
+        // complete the dropoff
+        t.Ingest(E(PickupCompleted.Replace("pickup_6e9335e8-f62e-4eca-8fc5-a42ab1c3ab7d_0",
+                                           "dropoff_6e9335e8-f62e-4eca-8fc5-a42ab1c3ab7d_0")));
+        Assert.Empty(t.BuildConsolidation().Dropoffs);
+    }
 }
