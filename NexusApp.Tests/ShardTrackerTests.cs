@@ -10,15 +10,6 @@ public class ShardTrackerTests
     private static string Join(string shard, string ip = "10.0.0.1") =>
         $"<2026-06-27T13:14:51.882Z> [Notice] <Join PU> address[{ip}] port[64318] shard[{shard}] locationId[1] [x]";
 
-    private static ShardTracker Make(out List<ShardSession> saved, params ShardSession[] persisted)
-    {
-        var store = persisted.ToList();
-        var captured = store;
-        var t = new ShardTracker(() => captured, list => { captured = list.ToList(); });
-        saved = captured;   // note: reassigned on save; tests re-read via tracker.All
-        return t;
-    }
-
     [Fact]
     public void FirstJoin_SetsCurrent_RecentEmpty()
     {
