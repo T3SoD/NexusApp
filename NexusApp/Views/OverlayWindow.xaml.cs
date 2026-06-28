@@ -145,7 +145,7 @@ public partial class OverlayWindow : Window
 
     private void SetRegion_Click(object sender, MouseButtonEventArgs e)
     {
-        InteractionLog.Click("Set scan region", (System.Windows.DependencyObject)sender);
+        InteractionLog.Click("Set RS detection region", (System.Windows.DependencyObject)sender);
 
         // Toggle: a second click while the draw overlay is up closes it instead of stacking
         // another full-screen tint, which would progressively black out the screen (issue #8).
@@ -164,7 +164,7 @@ public partial class OverlayWindow : Window
     // guard); MainWindow handles saving + positioning the yellow indicator on RegionSelected.
     private void SetContractRegion_Click(object sender, MouseButtonEventArgs e)
     {
-        InteractionLog.Click("Set contract region", (System.Windows.DependencyObject)sender);
+        InteractionLog.Click("Set contract detection region", (System.Windows.DependencyObject)sender);
 
         // Toggle: a second click closes the live draw overlay instead of stacking another tint (issue #8).
         if (_contractRegionSelector != null) { _contractRegionSelector.Close(); return; }
@@ -188,13 +188,13 @@ public partial class OverlayWindow : Window
         _scanSwTrack = NewSwitchTrack();
         _scanSwKnob  = NewSwitchKnob();
         _scanSwTrack.Child = _scanSwKnob;
-        _scanSwitchPair = SwitchPair(_scanSwTrack, "Auto-scan", ToggleScanSwitch, SyncScanControls);
+        _scanSwitchPair = SwitchPair(_scanSwTrack, "Auto-scan RS", ToggleScanSwitch, SyncScanControls);
         ScanControlBar.Children.Add(_scanSwitchPair);
 
         _boxSwTrack = NewSwitchTrack();
         _boxSwKnob  = NewSwitchKnob();
         _boxSwTrack.Child = _boxSwKnob;
-        _boxSwitchPair = SwitchPair(_boxSwTrack, "Scan box", ToggleBoxSwitch, SyncScanControls);
+        _boxSwitchPair = SwitchPair(_boxSwTrack, "Show/Hide RS detection box", ToggleBoxSwitch, SyncScanControls);
         ScanControlBar.Children.Add(_boxSwitchPair);
 
         SyncScanControls();
@@ -240,7 +240,7 @@ public partial class OverlayWindow : Window
         _haulBoxSwTrack = NewSwitchTrack();
         _haulBoxSwKnob  = NewSwitchKnob();
         _haulBoxSwTrack.Child = _haulBoxSwKnob;
-        _haulBoxSwitchPair = SwitchPair(_haulBoxSwTrack, "Contract box", ToggleContractBoxSwitch, SyncHaulingControls);
+        _haulBoxSwitchPair = SwitchPair(_haulBoxSwTrack, "Show/Hide contract detection box", ToggleContractBoxSwitch, SyncHaulingControls);
         HaulingControlBar.Children.Add(_haulBoxSwitchPair);
 
         SyncHaulingControls();
@@ -281,19 +281,19 @@ public partial class OverlayWindow : Window
         HubScanBar.Children.Clear();
 
         _hubScanSwTrack = NewSwitchTrack(); _hubScanSwKnob = NewSwitchKnob(); _hubScanSwTrack.Child = _hubScanSwKnob;
-        HubScanBar.Children.Add(SwitchPair(_hubScanSwTrack, "Auto-scan", ToggleScanSwitch, SyncScanControls));
+        HubScanBar.Children.Add(SwitchPair(_hubScanSwTrack, "Auto-scan RS", ToggleScanSwitch, SyncScanControls));
 
         _hubBoxSwTrack = NewSwitchTrack(); _hubBoxSwKnob = NewSwitchKnob(); _hubBoxSwTrack.Child = _hubBoxSwKnob;
-        HubScanBar.Children.Add(SwitchPair(_hubBoxSwTrack, "Scan box", ToggleBoxSwitch, SyncScanControls));
+        HubScanBar.Children.Add(SwitchPair(_hubBoxSwTrack, "Show/Hide RS detection box", ToggleBoxSwitch, SyncScanControls));
 
         _hubHaulScanSwTrack = NewSwitchTrack(); _hubHaulScanSwKnob = NewSwitchKnob(); _hubHaulScanSwTrack.Child = _hubHaulScanSwKnob;
         HubScanBar.Children.Add(SwitchPair(_hubHaulScanSwTrack, "Auto-scan contracts", ToggleContractScanSwitch, SyncHaulingControls));
 
         _hubContractBoxSwTrack = NewSwitchTrack(); _hubContractBoxSwKnob = NewSwitchKnob(); _hubContractBoxSwTrack.Child = _hubContractBoxSwKnob;
-        HubScanBar.Children.Add(SwitchPair(_hubContractBoxSwTrack, "Contract box", ToggleContractBoxSwitch, SyncHaulingControls));
+        HubScanBar.Children.Add(SwitchPair(_hubContractBoxSwTrack, "Show/Hide contract detection box", ToggleContractBoxSwitch, SyncHaulingControls));
 
-        HubScanBar.Children.Add(HubRegionLink("⊕  Set scan region", SetRegion_Click));
-        HubScanBar.Children.Add(HubRegionLink("⊕  Set contract region", SetContractRegion_Click));
+        HubScanBar.Children.Add(HubRegionLink("⊕  Set RS detection region", SetRegion_Click));
+        HubScanBar.Children.Add(HubRegionLink("⊕  Set contract detection region", SetContractRegion_Click));
 
         SyncScanControls();
         SyncHaulingControls();
