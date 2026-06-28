@@ -13,6 +13,15 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  5.6.0  -  Jun 27, 2026",
+        [
+            "New: Cargo Hauling. Nexus reads the hauling contracts you accept from Star Citizen's Game.log and tracks them in a new Hauling tab (main window and overlay), with a consolidation view of what to load and drop at each stop across all your active hauls. Fully automatic, no manual entry.",
+            "New: Contract details by screen scan. Point Nexus at the in-game Contracts panel and it reads each contract's reward, contractor, and cargo and shows them on the matching haul. Hauling uses its own yellow scan box, separate from the magenta mining (RS) box, so the two never interfere.",
+            "New: Server and shard tracking on the overlay Hub. See your current shard and the recent ones you were on; your hauls clear automatically when you change or leave a shard.",
+            "Improved: the overlay's STATS tab is now the Hub, and gathers every auto-scan control in one place. Scan toggles are clearly labelled for mining (RS) versus contracts.",
+            "Improved: auto-scans pause while both Nexus and Star Citizen are in the background, and resume when you switch back, so Nexus isn't scanning other apps.",
+            "Improved: Settings now lets you set your Game.log and global.ini file locations, and notes which features need them.",
+        ]),
         ("App  5.5.2  -  Jun 27, 2026",
         [
             "Fixed the scan region on multi-monitor setups. You can now draw the scan box and read the RS value on any monitor, including a second monitor running at a different display scale from your main one (it previously only worked on your primary monitor). After updating, draw your scan region once.",
