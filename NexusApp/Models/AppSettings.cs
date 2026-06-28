@@ -40,6 +40,11 @@ public class AppSettings
     // Server/shard display: rolling current + last 3 shards (most recent first), persisted so the
     // RECENT list survives app/SC relaunches. Populated from Game.log <Join PU> lines.
     public List<ShardSession> RecentShards { get; set; } = [];
+
+    // Cargo contract OCR: screen region the ContractScanner reads and whether it starts automatically.
+    // ContractRegion mirrors ScanRegion (same pixel-coordinate struct); null = not yet set by user.
+    public ScanRegion? ContractRegion { get; set; }
+    public bool AutoScanContracts { get; set; }
 }
 
 public class ScanRegion
