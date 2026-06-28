@@ -942,7 +942,9 @@ public partial class OverlayWindow : Window
         foreach (var h in active)
         {
             var missionId = h.MissionId;   // capture this haul's id for its own delete handler
-            var company = string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company;
+            var company = string.IsNullOrWhiteSpace(h.ContractedBy)
+                ? (string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company)
+                : h.ContractedBy;
 
             // Title row: "Company - Topology" (ellipsis-trimmed) in column 0, a flat "x" delete
             // affordance right-aligned in column 1. Click removes just this haul; Changed ->
@@ -973,27 +975,58 @@ public partial class OverlayWindow : Window
 
             HaulingList.Children.Add(titleGrid);
 
-            foreach (var leg in h.Legs)
-            {
-                if (leg.Completed) continue;
-
-                var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
-                // Dropoff legs carry their own destination; a pickup leg borrows the haul's
-                // best-effort PickupName (the dropoff's own location lives on the sibling leg).
-                var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
-
-                var segs = new System.Collections.Generic.List<string>();
-                if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
-                if (!string.IsNullOrWhiteSpace(leg.Commodity)) segs.Add(leg.Commodity);
-                if (!string.IsNullOrWhiteSpace(location)) segs.Add($"@ {location}");
-                var desc = string.Join(" ", segs);
-
+            if (h.Reward > 0)
                 HaulingList.Children.Add(new TextBlock
                 {
-                    Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}",
-                    FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
-                    TextWrapping = TextWrapping.Wrap,
+                    Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = accent,
+                    Margin = new Thickness(8, 2, 0, 0),
                 });
+
+            if (h.ContractObjectives.Count > 0)
+            {
+                foreach (var o in h.ContractObjectives)
+                {
+                    var objSb = new System.Text.StringBuilder();
+                    if (o.Scu > 0) objSb.Append($"{o.Scu} SCU");
+                    if (!string.IsNullOrWhiteSpace(o.Commodity))
+                    {
+                        if (objSb.Length > 0) objSb.Append(' ');
+                        objSb.Append(o.Commodity);
+                    }
+                    if (!string.IsNullOrWhiteSpace(o.Pickup)) objSb.Append($": {o.Pickup}");
+                    if (!string.IsNullOrWhiteSpace(o.Dropoff)) objSb.Append($" -> {o.Dropoff}");
+                    HaulingList.Children.Add(new TextBlock
+                    {
+                        Text = objSb.ToString(), FontFamily = mono, FontSize = 11,
+                        Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
+                        TextWrapping = TextWrapping.Wrap,
+                    });
+                }
+            }
+            else
+            {
+                foreach (var leg in h.Legs)
+                {
+                    if (leg.Completed) continue;
+
+                    var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
+                    // Dropoff legs carry their own destination; a pickup leg borrows the haul's
+                    // best-effort PickupName (the dropoff's own location lives on the sibling leg).
+                    var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
+
+                    var segs = new System.Collections.Generic.List<string>();
+                    if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
+                    if (!string.IsNullOrWhiteSpace(leg.Commodity)) segs.Add(leg.Commodity);
+                    if (!string.IsNullOrWhiteSpace(location)) segs.Add($"@ {location}");
+                    var desc = string.Join(" ", segs);
+
+                    HaulingList.Children.Add(new TextBlock
+                    {
+                        Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}",
+                        FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
+                        TextWrapping = TextWrapping.Wrap,
+                    });
+                }
             }
         }
 
