@@ -89,6 +89,20 @@ public sealed class HaulTracker : IDisposable
         {
             if (!h.IsActive) continue;
 
+            // Prefer OCR-sourced objectives (what the cards render): they carry per-leg commodity/SCU and
+            // the fine-grained pickup/dropoff. The log legs often lack a Deliver line (empty commodity /
+            // 0 SCU) or give only a coarse system destination, which produced "Cargo / 0" pickups and
+            // system-level ("Stanton System") dropoffs in the table.
+            if (h.ContractObjectives.Count > 0)
+            {
+                foreach (var o in h.ContractObjectives)
+                {
+                    if (!string.IsNullOrWhiteSpace(o.Pickup))  AddItem(pickups,  o.Pickup,  o.Commodity, o.Scu, h.MissionId);
+                    if (!string.IsNullOrWhiteSpace(o.Dropoff)) AddItem(dropoffs, o.Dropoff, o.Commodity, o.Scu, h.MissionId);
+                }
+                continue;
+            }
+
             foreach (var leg in h.Legs)
             {
                 if (leg.Completed) continue;

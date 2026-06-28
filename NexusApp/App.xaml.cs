@@ -35,6 +35,18 @@ public partial class App : Application
     public static bool IsForegroundRelevant => _foreground?.IsRelevantForeground ?? true;
     public static event System.Action<bool>? ForegroundRelevanceChanged;
 
+    // Single source of truth for the yellow contract-detection box visibility, so the main Cargo Hauling
+    // page, the overlay HAULING tab, and the MainWindow indicator all agree. Writers call
+    // SetContractBoxVisible; readers subscribe to ContractBoxVisibilityChanged + re-sync their toggle.
+    public static bool ContractBoxVisible { get; private set; }
+    public static event System.Action<bool>? ContractBoxVisibilityChanged;
+    public static void SetContractBoxVisible(bool on)
+    {
+        if (ContractBoxVisible == on) return;
+        ContractBoxVisible = on;
+        ContractBoxVisibilityChanged?.Invoke(on);
+    }
+
     // Reports the process's live DPI-awareness so nexus.log can confirm the shipped exe is actually
     // Per-Monitor V2 (issue #6) — DPI awareness is an embedded runtime property the CI compile can't verify.
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();

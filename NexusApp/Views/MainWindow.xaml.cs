@@ -30,15 +30,11 @@ public partial class MainWindow : Window
         GameVersionText.Text = $"SC PU {GameData.Version}";
         UpdateShardChip();
         if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(UpdateShardChip);
-        UpdateSessionFooter();
         UpdateSessionChip();
         UpdateBlueprintChip();
         if (App.GameLog != null)
-        {
-            App.GameLog.Marked       += _ => Dispatcher.Invoke(UpdateSessionFooter);
-            App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionFooter(); UpdateSessionChip(); UpdateBlueprintChip(); });
-            App.GameLog.SessionReset += () => Dispatcher.Invoke(UpdateSessionFooter);
-        }
+            App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionChip(); UpdateBlueprintChip(); });
+        App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -183,6 +179,33 @@ public partial class MainWindow : Window
         if (page == "hauling") InitHaulingPage();
         if (page == "settings") InitSettingsPage();
         UpdateNavBadges();
+
+        AnimatePageIn(page switch
+        {
+            "command"    => PageCommand,
+            "scan"       => PageScan,
+            "blueprints" => PageBlueprints,
+            "reference"  => PageReference,
+            "workorders" => PageWorkOrders,
+            "network"    => PageNetwork,
+            "hauling"    => PageHauling,
+            "settings"   => PageSettings,
+            _            => (FrameworkElement?)null,
+        });
+    }
+
+    // Brief holographic page-in (fade + rise) played whenever a tab becomes active, extending the
+    // RS-decoder/reticle motion language to every page.
+    private static void AnimatePageIn(FrameworkElement? page)
+    {
+        if (page == null) return;
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var slide = new System.Windows.Media.TranslateTransform(0, 12);
+        page.RenderTransform = slide;
+        page.BeginAnimation(UIElement.OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
+        slide.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
     }
 
     private SettingsPage? _settingsPage;
@@ -217,17 +240,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            ShardChipText.Text = "no shard";
+            ShardChipText.Text = "not detected";
             ShardDot.Fill = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         }
-    }
-
-    // Live SESSION footer in the rail (blueprint count + tracking state).
-    private void UpdateSessionFooter()
-    {
-        if (App.GameLog == null) return;
-        SessionBpCount.Text = App.GameLog.Count.ToString();
-        SessionStateText.Text = App.GameLog.IsRunning ? "TRACKING" : "IDLE";
     }
 
     // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms
@@ -2201,17 +2216,9 @@ public partial class MainWindow : Window
             else         _scanIndicator.Hide();
         };
         _overlay.ContractRegionSelected += ApplyContractRegion;
-        _overlay.ContractBoxVisibilityToggled += visible =>
-        {
-            _contractBoxVisible = visible;
-            EnsureContractIndicator();
-            if (_contractIndicator != null)
-            {
-                Logger.Info($"[WIN] contract-indicator {(visible ? "shown" : "hidden")}");
-                if (visible) _contractIndicator.Show();
-                else         _contractIndicator.Hide();
-            }
-        };
+        // Route the overlay toggle through the single source; ApplyContractBoxVisible (subscribed to
+        // App.ContractBoxVisibilityChanged) does the actual show/hide so every surface stays in sync.
+        _overlay.ContractBoxVisibilityToggled += App.SetContractBoxVisible;
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
         _overlay.OpenMonitorRequested += ShowLogMonitor;
@@ -2283,6 +2290,18 @@ public partial class MainWindow : Window
 
     /// <summary>Flash the yellow contract box green to confirm an OCR scan paired with a haul (no-op if hidden).</summary>
     public void FlashContractIndicator() => _contractIndicator?.FlashGreen();
+
+    // Shows/hides the yellow contract indicator. Subscribed to App.ContractBoxVisibilityChanged so it
+    // runs no matter which surface flipped the box (overlay, Cargo Hauling page).
+    private void ApplyContractBoxVisible(bool visible)
+    {
+        _contractBoxVisible = visible;
+        EnsureContractIndicator();
+        if (_contractIndicator == null) return;
+        Logger.Info($"[WIN] contract-indicator {(visible ? "shown" : "hidden")}");
+        if (visible) _contractIndicator.Show();
+        else         _contractIndicator.Hide();
+    }
 
     /// <summary>Pause/resume the RS auto-scan when neither Nexus nor Star Citizen is the foreground window.</summary>
     public void SetScanForegroundActive(bool relevant)

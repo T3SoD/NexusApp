@@ -40,9 +40,14 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                 <Image x:Name="NavIcon" Source="/Assets/nexus_icon.png" Width="28" Height="28"
                        Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                <TextBlock Text="NEXUS" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
+                <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
                            Foreground="{StaticResource FgBrush}" Margin="0,1,10,0"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center">
+                    <Run Text="NE"/><Run Text="X" Foreground="{StaticResource AccentBrush}"/><Run Text="US"/>
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="9" ShadowDepth="0" Opacity="0.3"/>
+                    </TextBlock.Effect>
+                </TextBlock>
                 <!-- SHARD telemetry chip (live from App.Shards) -->
                 <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
@@ -167,29 +172,6 @@
                     BorderBrush="{DynamicResource NavBorderBrush}"
                     BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <!-- Session footer (pinned to the rail bottom) -->
-                    <Border DockPanel.Dock="Bottom" Margin="12,8,12,12" Padding="12,10,12,11"
-                            Background="{StaticResource NavBgBrush}" BorderBrush="{StaticResource NavBorderBrush}"
-                            BorderThickness="1" CornerRadius="4">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="SESSION" FontSize="9" FontWeight="Bold"
-                                           Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
-                                <Border HorizontalAlignment="Right" Background="{StaticResource AccentFaintBrush}"
-                                        BorderBrush="{StaticResource AccentStrongBrush}" BorderThickness="1"
-                                        CornerRadius="4" Padding="6,1">
-                                    <TextBlock x:Name="SessionStateText" Text="IDLE" FontSize="8" FontWeight="Bold"
-                                               Foreground="{StaticResource AccentBrush}"/>
-                                </Border>
-                            </Grid>
-                            <Grid Margin="0,8,0,0">
-                                <TextBlock Text="Blueprints" FontSize="12" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="SessionBpCount" Text="0" HorizontalAlignment="Right"
-                                           FontFamily="{StaticResource MonoFont}" FontSize="17"
-                                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
                     <!-- Nav area (fills remaining space, top-aligned) -->
                     <StackPanel>
                         <!-- COMMAND (rail starts here; the NEXUS brand lives in the top bar) -->

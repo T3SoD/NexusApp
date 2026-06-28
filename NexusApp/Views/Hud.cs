@@ -237,6 +237,10 @@ public static class Hud
         }
         public Action<bool>? OnToggled;
 
+        /// <summary>Set the visual state WITHOUT firing OnToggled - for re-syncing a mirrored toggle
+        /// from shared state, so it never re-triggers the underlying start/stop action.</summary>
+        public void SetOnSilently(bool on) { _isOn = on; Apply(); }
+
         public ToggleSwitch(bool isOn = false)
         {
             _isOn = isOn;
