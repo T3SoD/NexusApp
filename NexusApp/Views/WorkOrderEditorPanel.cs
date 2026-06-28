@@ -93,17 +93,8 @@ public class WorkOrderEditorPanel : UserControl
         StartTicker();
     }
 
-    private Border BuildSummaryCard()
+    private UIElement BuildSummaryCard()
     {
-        var card = new Border
-        {
-            Background = (Brush)Application.Current.FindResource("AccentDimBrush"),
-            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3A, 0x33, 0x1F)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(16, 12, 16, 12),
-            Margin = new Thickness(0, 4, 0, 14),
-        };
         var inner = new StackPanel();
         inner.Children.Add(new TextBlock
         {
@@ -122,7 +113,7 @@ public class WorkOrderEditorPanel : UserControl
             });
             sp.Children.Add(new TextBlock
             {
-                Text = string.IsNullOrWhiteSpace(v) ? "\u2014" : v, FontSize = 14,
+                Text = string.IsNullOrWhiteSpace(v) ? "-" : v, FontSize = 14,
                 FontFamily = (FontFamily)Application.Current.FindResource("HeadFont"),
                 Foreground = valColor ?? (Brush)Application.Current.FindResource("FgBrush"),
                 Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
@@ -130,12 +121,18 @@ public class WorkOrderEditorPanel : UserControl
             row.Children.Add(sp);
         }
         Cell("Status", _order.StatusLabel, BrushFromHex(_order.StatusColorHex));
-        Cell("Time", _order.HasActiveTimer ? _order.TimerRemainingShort : "\u2014");
+        Cell("Time", _order.HasActiveTimer ? _order.TimerRemainingShort : "-");
         Cell("Refinery", _order.Refinery);
         Cell("Location", _order.Location);
         inner.Children.Add(row);
-        card.Child = inner;
-        return card;
+
+        // Chamfered HUD summary panel (faint amber fill + corner brackets).
+        var panel = Hud.Panel(inner, chamfer: 12, brackets: true,
+            bg: (Brush)Application.Current.FindResource("AccentDimBrush"),
+            border: (Brush)Application.Current.FindResource("AccentStrongBrush"),
+            padding: new Thickness(16, 13, 16, 14));
+        panel.Margin = new Thickness(0, 4, 0, 14);
+        return panel;
     }
 
     private void BuildUI()
@@ -146,7 +143,7 @@ public class WorkOrderEditorPanel : UserControl
                       : !string.IsNullOrWhiteSpace(_order.Resources) ? _order.Resources : "New Order";
         stack.Children.Add(new TextBlock
         {
-            Text = "Work Order \u2014 " + titleText,
+            Text = "Work Order - " + titleText,
             FontFamily = (FontFamily)Application.Current.FindResource("HeadFont"),
             FontSize = 20, Foreground = (Brush)Application.Current.FindResource("FgBrush"),
             Margin = new Thickness(0, 0, 0, 4), TextTrimming = TextTrimming.CharacterEllipsis,
@@ -223,19 +220,22 @@ public class WorkOrderEditorPanel : UserControl
         var countdownSection = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         countdownSection.Children.Add(_timerCountdown);
 
+        var accentColor = Hud.Col("AccentBrush");
         var progressTrack = new Grid { Height = 6, Margin = new Thickness(0, 4, 0, 8) };
         progressTrack.Children.Add(new Border
         {
-            Background = (Brush)Application.Current.FindResource("Bg3Brush"),
+            Background = new SolidColorBrush(Color.FromArgb(0x1C, accentColor.R, accentColor.G, accentColor.B)),
             CornerRadius = new CornerRadius(3),
         });
         progressTrack.Children.Add(new Border
         {
-            Background = (Brush)Application.Current.FindResource("AccentBrush"),
+            // MOBIGLAS state bar: amber gradient + glow, width driven by _progressScale.
+            Background = new LinearGradientBrush(Color.FromArgb(0xCC, accentColor.R, accentColor.G, accentColor.B), accentColor, 0),
             CornerRadius = new CornerRadius(3),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             RenderTransform = _progressScale,
             RenderTransformOrigin = new Point(0, 0.5),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = accentColor, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 },
         });
         countdownSection.Children.Add(progressTrack);
         stack.Children.Add(countdownSection);
