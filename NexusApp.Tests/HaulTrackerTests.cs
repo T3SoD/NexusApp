@@ -143,6 +143,20 @@ public class HaulTrackerTests
     private static string Join(string shard) =>
         $"<2026-06-27T13:14:51.882Z> [Notice] <Join PU> address[10.0.0.1] port[64318] shard[{shard}] locationId[1] [x]";
 
+    // EAC ends the session when the player leaves the PU (menu / quit / disconnect).
+    private const string EndSession =
+        "<2026-06-27T14:30:51.596Z> [Notice] <CDisciplineServiceExternal::EndSession> Ending session [AntiCheat][EAC]";
+
+    [Fact]
+    public void ShardExit_ClearsAllHauls()
+    {
+        var t = new HaulTracker();
+        t.Ingest(E(Join("pub_use1b_12030094_140")));   // on a shard
+        t.Ingest(E(MarkerPickup));                      // with a haul
+        t.Ingest(E(EndSession));                        // leave the shard/server -> contracts abandoned
+        Assert.Empty(t.AllHauls);
+    }
+
     [Fact]
     public void ShardChange_ClearsAllHauls()
     {
