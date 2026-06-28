@@ -82,13 +82,51 @@ public sealed class AppLogMonitorWindow : Window
 
         Content = root;
 
+        // Populate the whole backlog in ONE pass and jump straight to the latest line, instead of
+        // streaming every historical line through the live watcher (which made the view scroll through
+        // the entire log and froze interaction on open). After the preload, tail only NEW appended
+        // lines so live auto-scroll keeps working one line at a time.
+        LoadExistingLog();
+
         _watcher.LineAppended  += OnLine;
         _watcher.StatusChanged += s => _status.Text = s;
-        _watcher.LogReset      += () => { _all.Clear(); _list.Items.Clear(); };   // 1 MB rotation truncates the log
+        _watcher.LogReset      += () => { _all.Clear(); _list.Items.Clear(); };   // log rotation truncates the file
         Closed += (_, _) => _watcher.Dispose();
 
-        // Load the existing log from the top, then keep tailing — the bug has usually already happened.
-        _watcher.Start(Logger.LogPath, fromBeginning: true);
+        _watcher.Start(Logger.LogPath, fromBeginning: false);   // backlog already shown; tail appends only
+    }
+
+    // One-shot bulk read of the existing log: fill the list without per-line scrolling, then land at
+    // the end. Read shared (FileShare.ReadWrite) so the Logger can keep writing while we read.
+    private void LoadExistingLog()
+    {
+        try
+        {
+            if (!File.Exists(Logger.LogPath)) return;
+            var lines = new List<string>();
+            using (var fs = new FileStream(Logger.LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs))
+            {
+                string? line;
+                while ((line = sr.ReadLine()) != null)
+                    if (line.Length > 0) lines.Add(line);
+            }
+            if (lines.Count > MaxEntries) lines.RemoveRange(0, lines.Count - MaxEntries);
+            _all.AddRange(lines);
+            foreach (var l in _all) if (Passes(l)) AddRow(l);
+            JumpToEnd();
+        }
+        catch (Exception ex) { _status.Text = $"Could not read log: {ex.Message}"; }
+    }
+
+    // Scroll to the last row once, deferred until the ListBox has laid out so it lands on the true end.
+    private void JumpToEnd()
+    {
+        if (_list.Items.Count == 0) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_list.Items.Count > 0) _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void OnLine(GameLogEntry e)
