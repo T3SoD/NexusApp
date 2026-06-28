@@ -109,7 +109,7 @@ public sealed class HaulingPage : UserControl
         var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
         titleRow.Children.Add(new TextBlock
         {
-            Text = CompanyOf(h), FontFamily = Head, FontSize = 14, FontWeight = FontWeights.SemiBold,
+            Text = Contractor(h), FontFamily = Head, FontSize = 14, FontWeight = FontWeights.SemiBold,
             Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
         });
         titleRow.Children.Add(new TextBlock
@@ -126,8 +126,19 @@ public sealed class HaulingPage : UserControl
                 Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
             });
 
-        foreach (var leg in h.Legs)
-            inner.Children.Add(LegRow(leg));
+        if (h.Reward > 0)
+            inner.Children.Add(new TextBlock
+            {
+                Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = Br("AccentBrush"),
+                Margin = new Thickness(0, 3, 0, 0),
+            });
+
+        if (h.ContractObjectives.Count > 0)
+            foreach (var o in h.ContractObjectives)
+                inner.Children.Add(OcrObjectiveRow(o));
+        else
+            foreach (var leg in h.Legs)
+                inner.Children.Add(LegRow(leg));
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -159,6 +170,28 @@ public sealed class HaulingPage : UserControl
             Margin = new Thickness(2, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
         };
     }
+
+    // Builds the display string for one OCR-sourced ContractObjective, omitting empty segments.
+    private static string OcrObjectiveText(ContractObjective o)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (o.Scu > 0) sb.Append($"{o.Scu} SCU");
+        if (!string.IsNullOrWhiteSpace(o.Commodity))
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(o.Commodity);
+        }
+        if (!string.IsNullOrWhiteSpace(o.Pickup)) sb.Append($": {o.Pickup}");
+        if (!string.IsNullOrWhiteSpace(o.Dropoff)) sb.Append($" -> {o.Dropoff}");
+        return sb.ToString();
+    }
+
+    private UIElement OcrObjectiveRow(ContractObjective o) => new TextBlock
+    {
+        Text = OcrObjectiveText(o), FontFamily = Mono, FontSize = 12,
+        Foreground = Br("FgBrush"),
+        Margin = new Thickness(2, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
+    };
 
     // -- consolidation -------------------------------------------------------------
 
@@ -234,9 +267,11 @@ public sealed class HaulingPage : UserControl
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var info = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        info.Children.Add(new TextBlock { Text = CompanyOf(h), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
+        info.Children.Add(new TextBlock { Text = Contractor(h), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
         var sub = string.IsNullOrWhiteSpace(h.RouteTitle) ? h.Topology : $"{h.Topology}  ·  {h.RouteTitle}";
         info.Children.Add(new TextBlock { Text = sub, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
+        if (h.Reward > 0)
+            info.Children.Add(new TextBlock { Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = Br("AccentBrush"), Margin = new Thickness(0, 2, 0, 0) });
         Grid.SetColumn(info, 0); grid.Children.Add(info);
 
         var outcome = new TextBlock
@@ -257,6 +292,8 @@ public sealed class HaulingPage : UserControl
     // -- helpers -------------------------------------------------------------------
 
     private static string CompanyOf(Haul h) => string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company;
+    // Prefer OCR-sourced ContractedBy over the generator-derived company name when present.
+    private static string Contractor(Haul h) => string.IsNullOrWhiteSpace(h.ContractedBy) ? CompanyOf(h) : h.ContractedBy;
 
     // Small bordered action button, mirroring NetworkPage.ActionButton.
     private Button ActionButton(string text) => new()
