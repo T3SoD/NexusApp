@@ -975,7 +975,8 @@ public partial class MainWindow : Window
     private string _bpSub = "";          // real subcategory or armor piece ("" = none)
     private string _bpFam = "";          // variant family
     private List<NexusApp.Models.Blueprint> _bpSearchResults = new();
-    private Border? _selectedBpRow;
+    private FrameworkElement? _selectedBpRow;
+    private Action? _deselectBpRow;   // resets the currently-selected blueprint row's chamfer visuals
     private enum BpOwnFilter { All, Owned, NotOwned }
     private BpOwnFilter _bpOwnFilter = BpOwnFilter.All;
     private string? _detailBpName;                 // blueprint currently shown in the detail panel
@@ -1205,6 +1206,7 @@ public partial class MainWindow : Window
     {
         BlueprintNavPanel.Children.Clear();
         BlueprintCrumbHost.Content = null;
+        _deselectBpRow = null;
         _selectedBpRow = null;
         _bpRowOwned.Clear();
         if (_allBlueprints == null) return;
@@ -1441,16 +1443,17 @@ public partial class MainWindow : Window
         return host;
     }
 
-    private Border BlueprintRow(NexusApp.Models.Blueprint bp, bool showCategory)
+    private FrameworkElement BlueprintRow(NexusApp.Models.Blueprint bp, bool showCategory)
     {
-        var fg    = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dim   = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var hover = (System.Windows.Media.Brush)FindResource("HighlightBrush");
-        var trans = System.Windows.Media.Brushes.Transparent;
+        var fg        = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim       = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var hover     = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        var accent    = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var accentDim = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
+        var trans     = System.Windows.Media.Brushes.Transparent;
 
         bool owned0 = App.Settings.IsBlueprintOwned(bp.Name);
 
-        var card = new Border { Background = trans, BorderBrush = trans, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 7, 10, 7), Margin = new Thickness(0, 0, 0, 2), Cursor = System.Windows.Input.Cursors.Hand };
         var rowGrid = new Grid();
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // ownership accent strip
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name
@@ -1476,7 +1479,11 @@ public partial class MainWindow : Window
         marker.Children.Add(pill);
         Grid.SetColumn(marker, 2); rowGrid.Children.Add(marker);
 
-        card.Child = rowGrid;
+        // Chamfered HUD row; transparent at rest so the leaf list stays clean, chamfer shows on hover/select.
+        var host = Hud.CardFrame(rowGrid, out var frame, out _, chamfer: 7, padding: new Thickness(10, 7, 11, 7));
+        frame.Fill = trans; frame.Stroke = trans;
+        host.Margin = new Thickness(0, 0, 0, 3);
+        host.Cursor = System.Windows.Input.Cursors.Hand;
 
         // in-place refresh of this row's ownership visuals (called by OnOwnershipChanged)
         _bpRowOwned[bp.Name] = owned =>
@@ -1486,27 +1493,27 @@ public partial class MainWindow : Window
             tick.Visibility = owned && pill.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         };
 
-        card.MouseEnter += (s, _) =>
+        host.MouseEnter += (s, _) =>
         {
-            if (card != _selectedBpRow) card.Background = hover;
+            if (!ReferenceEquals(host, _selectedBpRow)) frame.Fill = hover;
             pill.Visibility = Visibility.Visible;
             tick.Visibility = Visibility.Collapsed;
         };
-        card.MouseLeave += (s, _) =>
+        host.MouseLeave += (s, _) =>
         {
-            if (card != _selectedBpRow) card.Background = trans;
+            if (!ReferenceEquals(host, _selectedBpRow)) frame.Fill = trans;
             pill.Visibility = Visibility.Collapsed;
             tick.Visibility = App.Settings.IsBlueprintOwned(bp.Name) ? Visibility.Visible : Visibility.Collapsed;
         };
-        card.MouseLeftButtonDown += (s, _) =>
+        host.MouseLeftButtonDown += (s, _) =>
         {
-            if (_selectedBpRow != null) { _selectedBpRow.Background = trans; _selectedBpRow.BorderBrush = trans; }
-            _selectedBpRow = card;
-            card.Background = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
-            card.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
+            _deselectBpRow?.Invoke();
+            frame.Fill = accentDim; frame.Stroke = accent;
+            _deselectBpRow = () => { frame.Fill = trans; frame.Stroke = trans; };
+            _selectedBpRow = host;
             ShowBlueprintDetail(bp);
         };
-        return card;
+        return host;
     }
 
     // ── Ownership labeled toggle (nav rows) ─────────────────────────────────────
@@ -1849,18 +1856,13 @@ public partial class MainWindow : Window
 
         var heroRoot = new Grid();
         heroRoot.Children.Add(heroContent);
-        // drafting corner ticks — pulled into the card's corner gutter so they sit
-        // clear of the eyebrow text rather than on top of it
-        heroRoot.Children.Add(new Border { Width = 11, Height = 11, BorderBrush = heroAccent, BorderThickness = new Thickness(2, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(-13, -11, 0, 0) });
-        heroRoot.Children.Add(new Border { Width = 11, Height = 11, BorderBrush = heroAccent, BorderThickness = new Thickness(0, 2, 2, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, -11, -13, 0) });
 
-        var heroCard = new Border
-        {
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 16, 18, 16), Margin = new Thickness(0, 0, 0, 8),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
-            Child = heroRoot,
-        };
+        // Chamfered HUD hero panel with amber corner brackets (replaces the rounded drafting card).
+        var heroCard = Hud.Panel(heroRoot, chamfer: 14, brackets: true,
+            bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            padding: new Thickness(20, 16, 18, 16));
+        heroCard.Margin = new Thickness(0, 0, 0, 8);
         BlueprintDetailPanel.Children.Add(heroCard);
 
         // ── two-column split: ingredients (left) | unlock + locations (right) ──

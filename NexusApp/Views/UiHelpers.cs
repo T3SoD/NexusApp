@@ -45,13 +45,15 @@ public static class UiHelpers
     public static Brush ModifierBrush(int mod) =>
         mod > 0 ? BrushFromHex("#22C55E") : mod < 0 ? BrushFromHex("#EF4444") : BrushFromHex("#8B949E");
 
+    // MOBIGLAS HUD accent tones (same blue/cyan/green/gold the dashboards' Hud.StateBar + status chips
+    // use) so the category counts/bars read as on-theme HUD readouts instead of saturated candy colors.
     public static Brush CategoryBrush(string cat) => cat switch
     {
-        "Weapons"         => BrushFromHex("#EF6B52"),
-        "Armor"           => BrushFromHex("#5BA0EB"),
-        "Ammo"            => BrushFromHex("#D4AA5A"),
-        "Ship Components" => BrushFromHex("#78C8A0"),
-        _                 => BrushFromHex("#8C887F"),
+        "Armor"           => BrushFromHex("#5FA8FF"),  // HUD blue
+        "Weapons"         => BrushFromHex("#FF9D4D"),  // HUD warm amber
+        "Ship Components" => BrushFromHex("#7FE9E0"),  // HUD cyan
+        "Ammo"            => BrushFromHex("#F2C14E"),  // HUD gold
+        _                 => BrushFromHex("#8C887F"),  // muted grey
     };
 
     public static Brush AccentBrush() => (Brush)System.Windows.Application.Current.FindResource("AccentBrush");
