@@ -377,9 +377,25 @@
                     </ScrollViewer>
                 </Grid>
 
-                <!-- HAULING tab: active hauls + consolidation glance (from App.Hauls) -->
+                <!-- HAULING tab: contract scan controls (fixed) + active hauls + consolidation glance (App.Hauls) -->
                 <Grid x:Name="HaulingTabContent" Visibility="Collapsed">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Contract scan controls: Auto-scan contracts / Contract box toggle switches (built in
+                         code-behind to match the SCAN tab) + a Set contract region link. Fixed area, OUTSIDE
+                         HaulingList (which RebuildHaulingPanel clears). -->
+                    <StackPanel Grid.Row="0" Margin="10,10,10,2">
+                        <WrapPanel x:Name="HaulingControlBar"/>
+                        <TextBlock x:Name="SetContractRegionBtn" Text="⊕  Set contract region" FontSize="11"
+                                   Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
+                                   Background="Transparent" Padding="2,3,2,2"
+                                   HorizontalAlignment="Left" MouseLeftButtonUp="SetContractRegion_Click"/>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="10,8">
                         <StackPanel x:Name="HaulingList"/>
                     </ScrollViewer>
                 </Grid>

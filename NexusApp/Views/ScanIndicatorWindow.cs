@@ -14,8 +14,11 @@ public class ScanIndicatorWindow : Window
     private const int WS_EX_TOOLWINDOW  = 0x00000080;
     private const int WS_EX_NOACTIVATE  = 0x08000000;
 
-    private static readonly SolidColorBrush MagentaBrush = new(Color.FromArgb(255, 255, 0, 255));
     private static readonly SolidColorBrush GreenBrush   = new(Color.FromArgb(255, 0, 210, 120));
+
+    // Border color is per-instance: the RS scan indicator stays magenta (parameterless ctor),
+    // while the cargo-contract indicator passes its own yellow color. Two indicators never alias.
+    private readonly SolidColorBrush _borderBrush;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int idx);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd, int idx, int val);
@@ -28,8 +31,13 @@ public class ScanIndicatorWindow : Window
 
     private readonly System.Windows.Controls.Border _border;
 
-    public ScanIndicatorWindow()
+    // Parameterless ctor keeps the original magenta border (RS scan region); magenta call sites use it.
+    public ScanIndicatorWindow() : this(Color.FromArgb(255, 255, 0, 255)) { }
+
+    public ScanIndicatorWindow(Color borderColor)
     {
+        _borderBrush = new SolidColorBrush(borderColor);
+
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -41,7 +49,7 @@ public class ScanIndicatorWindow : Window
 
         _border = new System.Windows.Controls.Border
         {
-            BorderBrush = MagentaBrush,
+            BorderBrush = _borderBrush,
             BorderThickness = new Thickness(3),
             Background = Brushes.Transparent,
             CornerRadius = new CornerRadius(2),
@@ -54,7 +62,7 @@ public class ScanIndicatorWindow : Window
         if (!IsVisible) return;
         _border.BorderBrush = GreenBrush;
         var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
-        t.Tick += (_, _) => { t.Stop(); _border.BorderBrush = MagentaBrush; };
+        t.Tick += (_, _) => { t.Stop(); _border.BorderBrush = _borderBrush; };
         t.Start();
     }
 

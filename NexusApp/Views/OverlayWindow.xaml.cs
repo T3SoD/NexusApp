@@ -15,9 +15,14 @@ public partial class OverlayWindow : Window
     private string _activeTab = "scan";
     private WorkOrderFlyoutWindow? _woFlyout;
     private RegionSelectorWindow? _regionSelector;   // single live draw-region overlay (issue #8)
+    private RegionSelectorWindow? _contractRegionSelector;   // independent draw overlay for the contract region
+    private bool _contractBoxVisible;
 
     public event Action<NexusApp.Models.ScanRegion>? ScanRegionSelected;
     public event Action<bool>? BoxVisibilityToggled;
+    // Independent cargo-contract region/box events (mirror the RS pair above; MainWindow owns the yellow indicator).
+    public event Action<NexusApp.Models.ScanRegion>? ContractRegionSelected;
+    public event Action<bool>? ContractBoxVisibilityToggled;
     public event Action? Hidden;
     public event Action? Shown;
     /// <summary>STATS tab asked to open the advanced Game.log monitor window.</summary>
@@ -91,6 +96,7 @@ public partial class OverlayWindow : Window
 
         BuildStatsControls();
         BuildScanControls();
+        BuildHaulingControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
 
@@ -153,6 +159,22 @@ public partial class OverlayWindow : Window
         selector.ShowOnMonitorOf(this);
     }
 
+    // Draw the cargo-contract scan region. Independent of the RS region above (its own single-instance
+    // guard); MainWindow handles saving + positioning the yellow indicator on RegionSelected.
+    private void SetContractRegion_Click(object sender, MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("Set contract region", (System.Windows.DependencyObject)sender);
+
+        // Toggle: a second click closes the live draw overlay instead of stacking another tint (issue #8).
+        if (_contractRegionSelector != null) { _contractRegionSelector.Close(); return; }
+
+        var selector = new RegionSelectorWindow();
+        _contractRegionSelector = selector;
+        selector.RegionSelected += r => ContractRegionSelected?.Invoke(r);
+        selector.Closed += (_, _) => { if (ReferenceEquals(_contractRegionSelector, selector)) _contractRegionSelector = null; };
+        selector.ShowOnMonitorOf(this);
+    }
+
     // ── SCAN tab controls (toggle switches matching the STATS tab) ──────────────
     private Border? _scanSwTrack, _scanSwKnob, _boxSwTrack, _boxSwKnob;
     private FrameworkElement? _scanSwitchPair, _boxSwitchPair;
@@ -194,6 +216,53 @@ public partial class OverlayWindow : Window
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.IsScanActive ? "◎  Scanning…" : "◎  Scan off";
         OverlayScanStatus.Foreground = (Brush)FindResource("FgDimBrush");
+    }
+
+    // ── HAULING tab controls (Auto-scan contracts / Contract box, mirror the SCAN tab) ──────────
+    // Independent of the RS scan switches above: these drive the isolated ContractScan path and the
+    // yellow contract indicator, never the OcrService / magenta _scanIndicator.
+    private Border? _haulScanSwTrack, _haulScanSwKnob, _haulBoxSwTrack, _haulBoxSwKnob;
+    private FrameworkElement? _haulScanSwitchPair, _haulBoxSwitchPair;
+
+    private void BuildHaulingControls()
+    {
+        HaulingControlBar.Children.Clear();
+
+        _haulScanSwTrack = NewSwitchTrack();
+        _haulScanSwKnob  = NewSwitchKnob();
+        _haulScanSwTrack.Child = _haulScanSwKnob;
+        _haulScanSwitchPair = SwitchPair(_haulScanSwTrack, "Auto-scan contracts", ToggleContractScanSwitch, SyncHaulingControls);
+        HaulingControlBar.Children.Add(_haulScanSwitchPair);
+
+        _haulBoxSwTrack = NewSwitchTrack();
+        _haulBoxSwKnob  = NewSwitchKnob();
+        _haulBoxSwTrack.Child = _haulBoxSwKnob;
+        _haulBoxSwitchPair = SwitchPair(_haulBoxSwTrack, "Contract box", ToggleContractBoxSwitch, SyncHaulingControls);
+        HaulingControlBar.Children.Add(_haulBoxSwitchPair);
+
+        SyncHaulingControls();
+    }
+
+    // Auto-scan contracts is opt-in; flipping it starts/stops the contract scanner, then persists the choice.
+    private void ToggleContractScanSwitch()
+    {
+        if (App.ContractScan.IsRunning) App.ContractScan.Stop();
+        else App.ContractScan.Start();
+        App.Settings.Current.AutoScanContracts = App.ContractScan.IsRunning;
+        App.Settings.Save();
+    }
+
+    private void ToggleContractBoxSwitch()
+    {
+        _contractBoxVisible = !_contractBoxVisible;
+        ContractBoxVisibilityToggled?.Invoke(_contractBoxVisible);
+    }
+
+    // Reflects contract-scanner-running / contract-box-visible state onto the two HAULING switches.
+    private void SyncHaulingControls()
+    {
+        SetSwitch(_haulScanSwTrack, _haulScanSwKnob, App.ContractScan.IsRunning);
+        SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
     }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

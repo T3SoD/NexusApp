@@ -14,6 +14,8 @@ public partial class MainWindow : Window
     private OverlayWindow? _overlay;
     private ScanIndicatorWindow? _scanIndicator;
     private bool _boxVisible = false;
+    private ScanIndicatorWindow? _contractIndicator;   // separate yellow indicator for the cargo-contract region
+    private bool _contractBoxVisible;
 
     private bool _suppressAutocomplete;
 
@@ -36,7 +38,7 @@ public partial class MainWindow : Window
 
         RestoreWindowPosition();
         SetActivePage("scan");
-        Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanIndicator?.Close(); };
+        Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
 
         BuildHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
@@ -2080,6 +2082,18 @@ public partial class MainWindow : Window
             if (visible) _scanIndicator.Show();
             else         _scanIndicator.Hide();
         };
+        _overlay.ContractRegionSelected += ApplyContractRegion;
+        _overlay.ContractBoxVisibilityToggled += visible =>
+        {
+            _contractBoxVisible = visible;
+            EnsureContractIndicator();
+            if (_contractIndicator != null)
+            {
+                Logger.Info($"[WIN] contract-indicator {(visible ? "shown" : "hidden")}");
+                if (visible) _contractIndicator.Show();
+                else         _contractIndicator.Hide();
+            }
+        };
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
         _overlay.OpenMonitorRequested += ShowLogMonitor;
@@ -2135,6 +2149,28 @@ public partial class MainWindow : Window
             if (_boxVisible) { Logger.Info("[WIN] scan-indicator shown"); _scanIndicator.Show(); }
         }
         _scanIndicator.SetRegion(r);   // indicator positions itself in physical pixels (issue #6)
+    }
+
+    // ── Cargo-contract region (independent of the RS region above) ───────────────
+    // The contract path uses its OWN settings key, OCR service, and a SEPARATE yellow
+    // ScanIndicatorWindow — it never touches _scanIndicator / OcrService / the RS region.
+    private void ApplyContractRegion(NexusApp.Models.ScanRegion r)
+    {
+        App.Settings.Current.ContractRegion = r;
+        App.Settings.Save();
+        App.ContractOcr.SetRegion(r.X, r.Y, r.Width, r.Height);
+        EnsureContractIndicator();
+        _contractIndicator!.SetRegion(r);   // positions itself in physical pixels (issue #6)
+    }
+
+    // Creates the yellow cargo-contract indicator on first use; a distinct ScanIndicatorWindow
+    // instance from the magenta _scanIndicator. Restores any saved region and shows it if toggled on.
+    private void EnsureContractIndicator()
+    {
+        if (_contractIndicator != null) return;
+        _contractIndicator = new ScanIndicatorWindow(System.Windows.Media.Color.FromArgb(255, 255, 209, 0));   // clear gold/yellow
+        if (App.Settings.Current.ContractRegion is { } saved) _contractIndicator.SetRegion(saved);
+        if (_contractBoxVisible) { Logger.Info("[WIN] contract-indicator shown"); _contractIndicator.Show(); }
     }
 
     // Main-window focus changes round out the tab-out picture: if a user is pulled from the game
