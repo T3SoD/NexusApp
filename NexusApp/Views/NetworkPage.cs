@@ -788,9 +788,10 @@ public sealed class NetworkPage : UserControl
     // fraction, with the big cyan percentage in the center.
     private UIElement CoverageDonut(int pct, int covered, int total)
     {
-        const double size = 168, r = 73, cx = 84, cy = 84, stroke = 11;
+        const double size = 168, r = 73, stroke = 11;
         var host = new Grid { Width = size, Height = size, Margin = new Thickness(0, 4, 0, 0) };
 
+        // faint full track
         host.Children.Add(new Ellipse
         {
             Width = 2 * r, Height = 2 * r, Stroke = Br("CyanDimBrush"), StrokeThickness = stroke, Opacity = 0.3,
@@ -798,47 +799,54 @@ public sealed class NetworkPage : UserControl
         });
 
         var frac = Math.Clamp(total > 0 ? (double)covered / total : 0, 0, 1);
-        if (frac >= 0.9995)
+
+        // Coverage arc as a dashed ring: one dash = the full circumference (in stroke-thickness units),
+        // so StrokeDashOffset = dashLen*(1-frac) reveals exactly the covered fraction. Rotated -90 so it
+        // starts at 12 o'clock. The offset animates from dashLen (empty) to its target on load = the arc
+        // "draws in" like the mock.
+        double dashLen = (2 * Math.PI * r) / stroke;
+        var arc = new Ellipse
         {
-            host.Children.Add(new Ellipse
-            {
-                Width = 2 * r, Height = 2 * r, Stroke = Br("CyanBrush"), StrokeThickness = stroke,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 9, ShadowDepth = 0, Opacity = 0.6 },
-            });
-        }
-        else if (frac > 0)
-        {
-            Point P(double deg) { var a = deg * Math.PI / 180.0; return new Point(cx + r * Math.Cos(a), cy + r * Math.Sin(a)); }
-            var fig = new PathFigure { StartPoint = P(-90), IsClosed = false };
-            fig.Segments.Add(new ArcSegment
-            {
-                Point = P(-90 + 360 * frac), Size = new Size(r, r),
-                SweepDirection = SweepDirection.Clockwise, IsLargeArc = 360 * frac > 180,
-            });
-            var geo = new PathGeometry();
-            geo.Figures.Add(fig);
-            geo.Freeze();
-            host.Children.Add(new ShapePath
-            {
-                Data = geo, Stroke = Br("CyanBrush"), StrokeThickness = stroke,
-                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
-                Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 9, ShadowDepth = 0, Opacity = 0.6 },
-            });
-        }
+            Width = 2 * r, Height = 2 * r, Stroke = Br("CyanBrush"), StrokeThickness = stroke,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            StrokeDashCap = PenLineCap.Round,
+            StrokeDashArray = new DoubleCollection { dashLen },
+            StrokeDashOffset = dashLen,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = new RotateTransform(-90),
+            Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 9, ShadowDepth = 0, Opacity = 0.6 },
+        };
+        host.Children.Add(arc);
 
         var center = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        center.Children.Add(new TextBlock
+        var pctTb = new TextBlock
         {
-            Text = $"{pct}%", FontFamily = Display, FontSize = 38, FontWeight = FontWeights.Bold,
+            Text = "0%", FontFamily = Display, FontSize = 38, FontWeight = FontWeights.Bold,
             Foreground = Br("CyanBrush"), HorizontalAlignment = HorizontalAlignment.Center,
-        });
+        };
+        center.Children.Add(pctTb);
         center.Children.Add(new TextBlock
         {
             Text = "covered", FontFamily = Mono, FontSize = 10.5, Foreground = Br("FgDimBrush"),
             HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 0),
         });
         host.Children.Add(center);
+
+        // Draw the arc in + count the percentage up once, when the donut is first laid out.
+        host.Loaded += (_, __) =>
+        {
+            var draw = new System.Windows.Media.Animation.DoubleAnimation(dashLen, dashLen * (1 - frac), TimeSpan.FromSeconds(0.9))
+            {
+                EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
+            };
+            arc.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, draw);
+
+            if (pct <= 0) { pctTb.Text = "0%"; return; }
+            int cur = 0;
+            var counter = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Math.Max(12, 900.0 / pct)) };
+            counter.Tick += (s, e) => { cur++; pctTb.Text = cur + "%"; if (cur >= pct) counter.Stop(); };
+            counter.Start();
+        };
         return host;
     }
 
