@@ -82,6 +82,7 @@ public partial class App : Application
         Logger.Info($"[WIN] process DPI awareness: {DpiAwarenessLabel()}");
         RegisterInteractionLogging();
         _foreground = new ForegroundMonitor();
+        _foreground.RelevanceChanged += OnForegroundRelevanceChanged;
         _foreground.Start();
 
         // Pick the palette BEFORE the main window is created. StartupUri builds
@@ -181,6 +182,13 @@ public partial class App : Application
         // ContractScanner runs on a System.Timers.Timer thread; ApplyContractDetails raises Changed which
         // the overlay handles by touching WPF, so marshal onto the UI thread.
         ContractScan.ContractScanned += d => Current.Dispatcher.Invoke(() => Hauls.ApplyContractDetails(d));
+        // When an OCR scan first pairs with a log-detected haul, confirm it: a toast + a green flash of
+        // the yellow contract box (mirrors the RS scan-success flash).
+        Hauls.ContractPaired += h => Current.Dispatcher.Invoke(() =>
+        {
+            Views.ToastWindow.Show($"Contract paired: {(string.IsNullOrWhiteSpace(h.ContractedBy) ? h.Company : h.ContractedBy)}");
+            (Current.MainWindow as Views.MainWindow)?.FlashContractIndicator();
+        });
         if (Settings.Current.AutoScanContracts) ContractScan.Start();
     }
 
@@ -222,6 +230,22 @@ public partial class App : Application
                 if (s is RadioButton rb)
                     InteractionLog.Nav((rb.Tag as string) ?? rb.Content?.ToString(), rb);
             }));
+    }
+
+    // Pause RS + contract OCR auto-scans while neither Nexus nor Star Citizen is in front (saves CPU and
+    // avoids scanning whatever app the user tabbed to); resume them when one returns to the foreground.
+    private static void OnForegroundRelevanceChanged(bool relevant)
+    {
+        Logger.Info($"[FG] auto-scans {(relevant ? "resumed" : "paused")} (Nexus/Star Citizen {(relevant ? "in front" : "in background")})");
+
+        (Current.MainWindow as Views.MainWindow)?.SetScanForegroundActive(relevant);   // RS scanner
+
+        // Contract scanner: the persisted toggle is the user's intent; the gate only suspends/restores it.
+        if (ContractScan is not null)
+        {
+            if (relevant) { if (Settings.Current.AutoScanContracts && !ContractScan.IsRunning) ContractScan.Start(); }
+            else if (ContractScan.IsRunning) ContractScan.Stop();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

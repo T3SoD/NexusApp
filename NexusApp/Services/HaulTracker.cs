@@ -14,7 +14,7 @@ public sealed class HaulTracker : IDisposable
     private readonly Dictionary<string, Haul> _byId = new();
     private readonly List<Haul> _order = new();   // insertion order for display
     private string _currentShardId = "";          // last shard seen, to clear hauls on a shard change
-    private readonly Dictionary<string, ContractDetails> _pendingContracts = new();   // by normalized title
+    private readonly Dictionary<string, ContractDetails> _pendingByOrg = new();   // OCR contractor org -> detail, applied when its haul appears
 
     public HaulTracker()
     {
@@ -44,6 +44,8 @@ public sealed class HaulTracker : IDisposable
 
     public event Action? Changed;
     public event Action<Haul>? HaulEnded;
+    /// <summary>Raised the first time a haul gets OCR contract detail attached (for a toast / indicator).</summary>
+    public event Action<Haul>? ContractPaired;
 
     public void Reset() => ClearInternal();   // new SC session (Game.log reset)
 
@@ -70,7 +72,7 @@ public sealed class HaulTracker : IDisposable
     {
         _byId.Clear();
         _order.Clear();
-        _pendingContracts.Clear();
+        _pendingByOrg.Clear();
         Changed?.Invoke();
     }
 
@@ -207,6 +209,7 @@ public sealed class HaulTracker : IDisposable
                 LegIndex = m.LegIndex, X = m.X, Y = m.Y, Z = m.Z,
             });
         if (!existed) Logger.Info($"[HAUL] mission accepted: {h.Company} {h.Topology}");
+        TryApplyPending(h);   // the haul's company is now known; apply any contract scanned before it appeared
         Changed?.Invoke();
     }
 
@@ -237,29 +240,96 @@ public sealed class HaulTracker : IDisposable
         return left.Trim();
     }
 
-    /// <summary>Attach OCR'd contract detail to the active haul whose title matches; stash if none yet.</summary>
+    /// <summary>Attach OCR'd contract detail to the matching active haul. Matching the OCR title to the
+    /// log title is hopeless (the panel's OCR reading order scrambles it), so we join on the contractor:
+    /// the OCR org ("Ling Family Hauling") contains the log company ("Ling Family"). When several active
+    /// hauls share a contractor (e.g. two Red Wind hauls), disambiguate by cargo - the log gives each
+    /// haul its commodity/SCU. If cargo still can't tell them apart, skip rather than mis-tag.</summary>
     public void ApplyContractDetails(ContractDetails d)
     {
-        var key = ContractParser.NormalizeTitle(d.Title);
-        var h = _order.Find(x => x.IsActive && ContractParser.NormalizeTitle(x.RouteTitle) == key && key.Length > 0);
-        if (h is null) { _pendingContracts[key] = d; return; }
-        Enrich(h, d);
-        Logger.Info($"[CONTRACT] enriched {h.Company} reward {d.Reward}");
+        var org = ContractParser.NormalizeTitle(d.ContractedBy);
+        if (org.Length == 0) return;   // no contractor -> no reliable join key
+
+        var candidates = _order.FindAll(h => h.IsActive && h.Company.Length > 0
+                                             && org.Contains(ContractParser.NormalizeTitle(h.Company)));
+        if (candidates.Count == 0) { _pendingByOrg[org] = d; return; }   // haul not accepted yet; applied later
+
+        var target = candidates.Count == 1 ? candidates[0] : DisambiguateByCargo(candidates, d);
+        if (target is null) return;   // ambiguous and cargo can't separate them -> skip
+
+        ApplyAndNotify(target, d);
         Changed?.Invoke();
     }
 
-    private static void Enrich(Haul h, ContractDetails d)
+    // Several active hauls share a contractor (e.g. three Red Wind hauls). Place the scanned contract:
+    //   1) on the haul whose LOG legs carry this commodity (strongest, when the log knows it);
+    //   2) else on a haul ALREADY paired with this same cargo, so re-scans update it instead of duplicating;
+    //   3) else - the log can't tell these hauls apart (no commodity on their legs) - on the first not-yet-
+    //      paired one. They are interchangeable in the log, so each scanned contract still lands accurately.
+    private static Haul? DisambiguateByCargo(List<Haul> candidates, ContractDetails d)
     {
-        h.Reward = d.Reward;
-        h.ContractedBy = d.ContractedBy;
-        h.ContractObjectives = d.Objectives;
+        if (d.Objectives.Count == 0) return null;   // nothing to place these indistinguishable hauls by
+
+        var byCommodity = candidates.FindAll(h => d.Objectives.TrueForAll(o => HasDropoff(h, o, matchScu: false)));
+        if (byCommodity.Count == 1) return byCommodity[0];
+        if (byCommodity.Count > 1)
+        {
+            var byScu = byCommodity.FindAll(h => d.Objectives.TrueForAll(o => HasDropoff(h, o, matchScu: true)));
+            if (byScu.Count == 1) return byScu[0];
+        }
+
+        var already = candidates.Find(h => SameCargo(h.ContractObjectives, d.Objectives));
+        if (already is not null) return already;
+
+        return candidates.Find(h => h.ContractObjectives.Count == 0);
     }
 
+    private static bool HasDropoff(Haul h, ContractObjective o, bool matchScu)
+    {
+        var commodity = ContractParser.NormalizeTitle(o.Commodity);
+        if (commodity.Length == 0) return false;
+        return h.Legs.Exists(l => l.Role == HaulRole.Dropoff
+            && ContractParser.NormalizeTitle(l.Commodity) == commodity
+            && (!matchScu || o.Scu == 0 || l.TargetScu == 0 || l.TargetScu == o.Scu));
+    }
+
+    // Two OCR objective sets describe the same cargo when they list the same commodities.
+    private static bool SameCargo(List<ContractObjective> have, List<ContractObjective> scanned)
+    {
+        if (have.Count == 0 || have.Count != scanned.Count) return false;
+        return scanned.TrueForAll(o => have.Exists(x =>
+            ContractParser.NormalizeTitle(x.Commodity) == ContractParser.NormalizeTitle(o.Commodity)));
+    }
+
+    // Enrich, and raise ContractPaired exactly once per haul (on the transition to having detail), so the
+    // continuous scanner's repeated re-enriches don't spam the toast/indicator.
+    private void ApplyAndNotify(Haul h, ContractDetails d)
+    {
+        bool wasEnriched = h.Reward > 0 || h.ContractObjectives.Count > 0;
+        Enrich(h, d);
+        if (!wasEnriched && (h.Reward > 0 || h.ContractObjectives.Count > 0))
+        {
+            Logger.Info($"[CONTRACT] paired {h.Company} reward {h.Reward}");
+            ContractPaired?.Invoke(h);
+        }
+    }
+
+    // Defensive: never clobber a known value with an empty/zero one from a noisier later scan.
+    private static void Enrich(Haul h, ContractDetails d)
+    {
+        if (d.Reward > 0) h.Reward = d.Reward;
+        if (!string.IsNullOrWhiteSpace(d.ContractedBy)) h.ContractedBy = d.ContractedBy;
+        if (d.Objectives.Count > 0) h.ContractObjectives = d.Objectives;
+    }
+
+    // When a haul first appears (its company becomes known), apply any contract scanned before it existed.
     private void TryApplyPending(Haul h)
     {
-        if (_pendingContracts.Count == 0 || string.IsNullOrEmpty(h.RouteTitle)) return;
-        var key = ContractParser.NormalizeTitle(h.RouteTitle);
-        if (_pendingContracts.TryGetValue(key, out var d)) { Enrich(h, d); _pendingContracts.Remove(key); }
+        if (_pendingByOrg.Count == 0 || h.Company.Length == 0) return;
+        var comp = ContractParser.NormalizeTitle(h.Company);
+        string? hit = null;
+        foreach (var k in _pendingByOrg.Keys) if (k.Contains(comp)) { hit = k; break; }
+        if (hit != null) { ApplyAndNotify(h, _pendingByOrg[hit]); _pendingByOrg.Remove(hit); }
     }
 
     public void Dispose() => _watcher.Dispose();

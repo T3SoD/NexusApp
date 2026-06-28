@@ -13,6 +13,7 @@ public sealed class ContractScanner : IDisposable
     private bool _running;
     private bool _busy;
     private string _lastKey = "";
+    private string _lastDiag = "";   // dedup for the per-stage scan breadcrumb
 
     public event Action<ContractDetails>? ContractScanned;
 
@@ -51,6 +52,12 @@ public sealed class ContractScanner : IDisposable
         {
             var text = await _ocr.ScanRegionTextAsync();
             var d = text is null ? null : ContractParser.Parse(text);
+
+            // Per-stage diagnostic (deduped) so a blank Hauling card can be traced to the failing
+            // step: no region, empty capture, text-but-not-a-contract, or parsed OK. Contract panels
+            // carry no player identity, and the snippet is truncated, so this is PII-safe to log.
+            LogScanDiagnostic(text, d);
+
             if (d != null)
             {
                 var key = ContractParser.NormalizeTitle(d.Title);
@@ -73,6 +80,31 @@ public sealed class ContractScanner : IDisposable
                 _timer.Start();
             }
         }
+    }
+
+    // Emits one [CONTRACT] breadcrumb per distinct scan outcome, so the App Log Monitor shows exactly
+    // which step is failing when the Hauling card stays bare. Deduped so a static panel doesn't spam.
+    private void LogScanDiagnostic(string? text, ContractDetails? d)
+    {
+        string state, detail;
+        if (!_ocr.IsAvailable)                    { state = "unavail";  detail = "ocr-unavailable"; }
+        else if (!_ocr.HasRegion)                 { state = "noregion"; detail = "no region set (draw the yellow contract box)"; }
+        else if (string.IsNullOrWhiteSpace(text)) { state = "notext";   detail = "region set but capture/OCR returned no text"; }
+        else if (d is null)                       { state = "noanchor"; detail = $"text but no contract anchor: {Snippet(text)}"; }
+        else { state  = "parsed:" + ContractParser.NormalizeTitle(d.ContractedBy);
+               detail = $"parsed contractor '{d.ContractedBy}' reward {d.Reward} objectives {d.Objectives.Count}"; }
+
+        // Dedup on the COARSE state (not the noisy per-frame text) so a stable panel logs one line per
+        // state change, not one per tick - otherwise OCR jitter floods nexus.log past its rotation cap.
+        if (state == _lastDiag) return;
+        _lastDiag = state;
+        Logger.Info($"[CONTRACT] scan: {detail}");
+    }
+
+    private static string Snippet(string s)
+    {
+        var oneLine = s.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return oneLine.Length > 100 ? oneLine[..100] : oneLine;
     }
 
     public void Dispose()

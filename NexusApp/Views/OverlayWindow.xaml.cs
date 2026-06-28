@@ -97,6 +97,7 @@ public partial class OverlayWindow : Window
         BuildStatsControls();
         BuildScanControls();
         BuildHaulingControls();
+        BuildHubScanControls();
 
         WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
 
@@ -213,6 +214,8 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_scanSwTrack, _scanSwKnob, _vm.IsScanActive);
         SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
+        SetSwitch(_hubScanSwTrack, _hubScanSwKnob, _vm.IsScanActive);   // Hub mirror
+        SetSwitch(_hubBoxSwTrack, _hubBoxSwKnob, _boxVisible);
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.IsScanActive ? "◎  Scanning…" : "◎  Scan off";
         OverlayScanStatus.Foreground = (Brush)FindResource("FgDimBrush");
@@ -263,6 +266,49 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_haulScanSwTrack, _haulScanSwKnob, App.ContractScan.IsRunning);
         SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
+        SetSwitch(_hubHaulScanSwTrack, _hubHaulScanSwKnob, App.ContractScan.IsRunning);   // Hub mirror
+        SetSwitch(_hubContractBoxSwTrack, _hubContractBoxSwKnob, _contractBoxVisible);
+    }
+
+    // ── HUB tab: a mirror of every auto-scan control (RS + contract), built from the same toggle actions
+    // and synced by the same SyncScanControls / SyncHaulingControls, so it stays in lockstep with the
+    // SCAN and HAULING tabs. Separate Border instances because a control can have only one visual parent.
+    private Border? _hubScanSwTrack, _hubScanSwKnob, _hubBoxSwTrack, _hubBoxSwKnob;
+    private Border? _hubHaulScanSwTrack, _hubHaulScanSwKnob, _hubContractBoxSwTrack, _hubContractBoxSwKnob;
+
+    private void BuildHubScanControls()
+    {
+        HubScanBar.Children.Clear();
+
+        _hubScanSwTrack = NewSwitchTrack(); _hubScanSwKnob = NewSwitchKnob(); _hubScanSwTrack.Child = _hubScanSwKnob;
+        HubScanBar.Children.Add(SwitchPair(_hubScanSwTrack, "Auto-scan", ToggleScanSwitch, SyncScanControls));
+
+        _hubBoxSwTrack = NewSwitchTrack(); _hubBoxSwKnob = NewSwitchKnob(); _hubBoxSwTrack.Child = _hubBoxSwKnob;
+        HubScanBar.Children.Add(SwitchPair(_hubBoxSwTrack, "Scan box", ToggleBoxSwitch, SyncScanControls));
+
+        _hubHaulScanSwTrack = NewSwitchTrack(); _hubHaulScanSwKnob = NewSwitchKnob(); _hubHaulScanSwTrack.Child = _hubHaulScanSwKnob;
+        HubScanBar.Children.Add(SwitchPair(_hubHaulScanSwTrack, "Auto-scan contracts", ToggleContractScanSwitch, SyncHaulingControls));
+
+        _hubContractBoxSwTrack = NewSwitchTrack(); _hubContractBoxSwKnob = NewSwitchKnob(); _hubContractBoxSwTrack.Child = _hubContractBoxSwKnob;
+        HubScanBar.Children.Add(SwitchPair(_hubContractBoxSwTrack, "Contract box", ToggleContractBoxSwitch, SyncHaulingControls));
+
+        HubScanBar.Children.Add(HubRegionLink("⊕  Set scan region", SetRegion_Click));
+        HubScanBar.Children.Add(HubRegionLink("⊕  Set contract region", SetContractRegion_Click));
+
+        SyncScanControls();
+        SyncHaulingControls();
+    }
+
+    private FrameworkElement HubRegionLink(string text, System.Windows.Input.MouseButtonEventHandler onClick)
+    {
+        var t = new TextBlock
+        {
+            Text = text, FontSize = 11, Foreground = (Brush)FindResource("AccentBrush"),
+            Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 14, 4),
+        };
+        t.MouseLeftButtonUp += onClick;
+        return t;
     }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -894,6 +940,13 @@ public partial class OverlayWindow : Window
         var cardBg = (Brush)FindResource("Bg2NavBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
 
+        // Indented mono detail line used for the haul route / collect / deliver rows.
+        TextBlock Row(string text, Brush brush, double indent) => new()
+        {
+            Text = text, FontFamily = mono, FontSize = 11, Foreground = brush,
+            Margin = new Thickness(indent, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+        };
+
         var active = App.Hauls.ActiveHauls;
 
         // Count header + a compact "Clear all" affordance. The count sits in column 0; the button
@@ -953,14 +1006,23 @@ public partial class OverlayWindow : Window
             titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var titleBlock = new TextBlock
+            // Faction (line 1). A small accent dot marks hauls whose detail was paired from a contract scan.
+            var enriched = h.ContractObjectives.Count > 0 || h.Reward > 0;
+            var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            if (enriched)
+                titleStack.Children.Add(new System.Windows.Shapes.Ellipse
+                {
+                    Width = 7, Height = 7, Fill = accent, Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Details paired from a contract scan",
+                });
+            titleStack.Children.Add(new TextBlock
             {
-                Text = $"{company} - {h.Topology}", FontSize = 11, FontWeight = FontWeights.Bold,
-                Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            };
-            Grid.SetColumn(titleBlock, 0);
-            titleGrid.Children.Add(titleBlock);
+                Text = company, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = fg,
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            Grid.SetColumn(titleStack, 0);
+            titleGrid.Children.Add(titleStack);
 
             var deleteBtn = new Button
             {
@@ -984,23 +1046,15 @@ public partial class OverlayWindow : Window
 
             if (h.ContractObjectives.Count > 0)
             {
+                // Per objective: route (Collect location -> Deliver location), then the Collect/Deliver cargo lines.
                 foreach (var o in h.ContractObjectives)
                 {
-                    var objSb = new System.Text.StringBuilder();
-                    if (o.Scu > 0) objSb.Append($"{o.Scu} SCU");
-                    if (!string.IsNullOrWhiteSpace(o.Commodity))
-                    {
-                        if (objSb.Length > 0) objSb.Append(' ');
-                        objSb.Append(o.Commodity);
-                    }
-                    if (!string.IsNullOrWhiteSpace(o.Pickup)) objSb.Append($": {o.Pickup}");
-                    if (!string.IsNullOrWhiteSpace(o.Dropoff)) objSb.Append($" -> {o.Dropoff}");
-                    HaulingList.Children.Add(new TextBlock
-                    {
-                        Text = objSb.ToString(), FontFamily = mono, FontSize = 11,
-                        Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
-                        TextWrapping = TextWrapping.Wrap,
-                    });
+                    var pickup  = string.IsNullOrWhiteSpace(o.Pickup)  ? "?" : o.Pickup;
+                    var dropoff = string.IsNullOrWhiteSpace(o.Dropoff) ? "?" : o.Dropoff;
+                    var cargo   = ((o.Scu > 0 ? $"{o.Scu} SCU " : "") + o.Commodity).Trim();
+                    HaulingList.Children.Add(Row($"{pickup} -> {dropoff}", fg, 8));
+                    HaulingList.Children.Add(Row($"Collect: {cargo}", dim, 16));
+                    HaulingList.Children.Add(Row($"Deliver: {cargo}", dim, 16));
                 }
             }
             else

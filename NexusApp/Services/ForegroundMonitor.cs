@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -36,6 +37,19 @@ public sealed class ForegroundMonitor : IDisposable
     private IntPtr _hook;
     private int _lastPid = -1;
 
+    // The "in use" set: scanning only makes sense when Nexus itself or Star Citizen is in front. The own
+    // process name is resolved at runtime so it holds for both the portable and installer builds (NexusApp).
+    private static readonly HashSet<string> RelevantProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Process.GetCurrentProcess().ProcessName, "StarCitizen",
+    };
+    private bool _relevant = true;   // assume in front at launch
+
+    /// <summary>True while the foreground window belongs to Nexus or Star Citizen.</summary>
+    public bool IsRelevantForeground => _relevant;
+    /// <summary>Raised only when foreground relevance flips, so OCR auto-scans can pause/resume.</summary>
+    public event Action<bool>? RelevanceChanged;
+
     public ForegroundMonitor() => _proc = OnForegroundChanged;
 
     public void Start()
@@ -62,6 +76,9 @@ public sealed class ForegroundMonitor : IDisposable
             try { name = Process.GetProcessById((int)pid).ProcessName; }
             catch { name = $"pid {pid}"; }                  // process gone / access denied — name only, no title
             Logger.Info($"[FG] foreground -> {name}");
+
+            bool relevant = RelevantProcesses.Contains(name);
+            if (relevant != _relevant) { _relevant = relevant; RelevanceChanged?.Invoke(relevant); }
         }
         catch { /* diagnostics must never throw */ }
     }
