@@ -438,12 +438,16 @@ public partial class MainWindow : Window
         BuildReferenceTree();
     }
 
-    private Border? _selectedRefCard;
+    private FrameworkElement? _selectedRefCard;
+    private Action? _deselectRefCard;   // resets the currently-selected resource card's chamfer visuals
+    private readonly Dictionary<string, Action> _refSelectByName = new(StringComparer.OrdinalIgnoreCase);   // select a resource card by name
 
     private void BuildReferenceTree()
     {
         ReferenceList.Children.Clear();
+        _deselectRefCard = null;
         _selectedRefCard = null;
+        _refSelectByName.Clear();
         var filter = _vm.RefFilter.ToLower();
 
         var bpMatches = string.IsNullOrWhiteSpace(filter)
@@ -474,34 +478,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        foreach (var r in filtered)
-            ReferenceList.Children.Add(BuildResourceCard(r));
-
-        if (ReferenceList.Children[0] is Border first)
+        Action? selectFirst = null;
+        for (int i = 0; i < filtered.Count; i++)
         {
-            _selectedRefCard = first;
-            first.Background  = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
-            first.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
+            var card = BuildResourceCard(filtered[i], out var select);
+            ReferenceList.Children.Add(card);
+            _refSelectByName[filtered[i].Name] = select;
+            if (i == 0) selectFirst = select;
         }
-        ShowResourceDetail(filtered[0]);
+        selectFirst?.Invoke();   // auto-select the first card (shows its detail)
     }
 
-    private Border BuildResourceCard(Resource r)
+    private FrameworkElement BuildResourceCard(Resource r, out Action select)
     {
-        var rb = RarityBrush(r.Rarity);
-        var cardBrush   = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
-        var borderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
+        var rb          = RarityBrush(r.Rarity);   // semantic rarity color (kept)
+        var bg2         = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        var navBorder   = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
         var accentDim   = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
         var accentBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var highlight   = (System.Windows.Media.Brush)FindResource("HighlightBrush");
-        var headFont    = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var headFont    = (System.Windows.Media.FontFamily)FindResource("HeadFont");
 
-        var card = new Border
-        {
-            Margin = new Thickness(0, 0, 8, 6), Padding = new Thickness(12, 9, 12, 9), CornerRadius = new CornerRadius(8),
-            Background = cardBrush, BorderBrush = borderBrush, BorderThickness = new Thickness(1),
-            Cursor = System.Windows.Input.Cursors.Hand, Tag = r,
-        };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -510,20 +507,27 @@ public partial class MainWindow : Window
         Grid.SetColumn(gem, 0); grid.Children.Add(gem);
         var name = new TextBlock { Text = r.Name, FontSize = 13, Foreground = rb, FontFamily = headFont, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
         Grid.SetColumn(name, 1); grid.Children.Add(name);
-        var rs = new TextBlock { Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "—", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        var rs = new TextBlock { Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(rs, 2); grid.Children.Add(rs);
-        card.Child = grid;
 
-        card.MouseEnter += (s, e) => { if (!ReferenceEquals(card, _selectedRefCard)) card.Background = highlight; };
-        card.MouseLeave += (s, e) => { if (!ReferenceEquals(card, _selectedRefCard)) card.Background = cardBrush; };
-        card.MouseLeftButtonDown += (s, e) =>
+        var host = Hud.CardFrame(grid, out var frame, out _, chamfer: 8, padding: new Thickness(12, 9, 12, 9));
+        host.Margin = new Thickness(0, 0, 8, 6);
+        host.Cursor = System.Windows.Input.Cursors.Hand;
+        host.Tag = r;
+
+        select = () =>
         {
-            if (_selectedRefCard != null) { _selectedRefCard.Background = cardBrush; _selectedRefCard.BorderBrush = borderBrush; }
-            _selectedRefCard = card;
-            card.Background = accentDim; card.BorderBrush = accentBrush;
+            _deselectRefCard?.Invoke();
+            frame.Fill = accentDim; frame.Stroke = accentBrush;
+            _deselectRefCard = () => { frame.Fill = bg2; frame.Stroke = navBorder; };
+            _selectedRefCard = host;
             ShowResourceDetail(r);
         };
-        return card;
+        var sel = select;
+        host.MouseEnter += (s, e) => { if (!ReferenceEquals(host, _selectedRefCard)) frame.Fill = highlight; };
+        host.MouseLeave += (s, e) => { if (!ReferenceEquals(host, _selectedRefCard)) frame.Fill = bg2; };
+        host.MouseLeftButtonDown += (s, e) => sel();
+        return host;
     }
 
     private TextBlock RefSectionLabel(string text) => new TextBlock
@@ -587,12 +591,6 @@ public partial class MainWindow : Window
         var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
 
         // hero header
-        var hero = new Border
-        {
-            CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 14, 18, 14), Margin = new Thickness(0, 0, 0, 12),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
-        };
         var hg = new Grid();
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -605,9 +603,15 @@ public partial class MainWindow : Window
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
-        rsStack.Children.Add(new TextBlock { Text = r.Method == "ship" ? $"{r.BaseRs:N0}" : "—", FontSize = 32, FontFamily = headFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
+        rsStack.Children.Add(new TextBlock { Text = r.Method == "ship" ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = headFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
         Grid.SetColumn(rsStack, 1); hg.Children.Add(rsStack);
-        hero.Child = hg;
+
+        // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).
+        var hero = Hud.Panel(hg, chamfer: 13, brackets: true,
+            bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            padding: new Thickness(20, 14, 18, 14));
+        hero.Margin = new Thickness(0, 0, 0, 12);
         ReferenceDetailPanel.Children.Add(hero);
 
         // refinery yields — best first, top 5 + show all
@@ -721,7 +725,7 @@ public partial class MainWindow : Window
 
         var sig = new TextBlock
         {
-            Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "—", FontSize = 12,
+            Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12,
             Foreground = r.Method == "ship" ? TierBrush(r.Tier) : (System.Windows.Media.Brush)FindResource("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -1115,21 +1119,14 @@ public partial class MainWindow : Window
         SetActivePage("reference");            // rebuilds filter pills + reference list
         foreach (var child in ReferenceList.Children)
         {
-            if (child is Border b && b.Tag is Resource cr && cr.Name == res.Name)
+            if (child is FrameworkElement fe && fe.Tag is Resource cr && cr.Name == res.Name)
             {
-                if (_selectedRefCard != null)
-                {
-                    _selectedRefCard.Background  = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
-                    _selectedRefCard.BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
-                }
-                _selectedRefCard = b;
-                b.Background  = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
-                b.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
-                b.BringIntoView();
+                fe.BringIntoView();
                 break;
             }
         }
-        ShowResourceDetail(res);
+        if (_refSelectByName.TryGetValue(res.Name, out var sel)) sel();   // selects the card + shows its detail
+        else ShowResourceDetail(res);
     }
 
     private void GoRoot()
