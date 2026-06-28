@@ -671,7 +671,6 @@ public sealed class NetworkPage : UserControl
             + (scope.IncludeSelf && _settings.IsBlueprintOwned(n) ? 1 : 0);
 
         int total = all.Count, covered = 0, nobody = 0, single = 0;
-        var singleBps = new List<string>();
         foreach (var b in all)
         {
             var o = Owned(b.Name);
@@ -679,7 +678,7 @@ public sealed class NetworkPage : UserControl
             else
             {
                 covered++;
-                if (o == 1) { single++; if (singleBps.Count < 30) singleBps.Add(b.Name); }
+                if (o == 1) single++;
             }
         }
         var pct = total > 0 ? (int)Math.Round(100.0 * covered / total) : 0;
@@ -737,27 +736,10 @@ public sealed class NetworkPage : UserControl
         }
         else
         {
-            // Watch list: gaps + single-owner risk, in an amber-bordered panel.
+            // Watch list: the two risk summary rows in an amber-bordered panel (matches the mock).
             var watchInner = new StackPanel();
             watchInner.Children.Add(PanelHeader("Watch list", null, Br("WarnBrush")));
             watchInner.Children.Add(WatchSummary(nobody, single));
-            if (singleBps.Count > 0)
-            {
-                var nameMap = _store.GetMembers().ToDictionary(m => m.Id, m => m.DisplayName);
-                string OwnerOf(string bp)
-                {
-                    if (_settings.IsBlueprintOwned(bp)) return "you";
-                    var id = _store.OwnerIdsOf(bp).FirstOrDefault(scopeSet.Contains);
-                    return id != null && nameMap.TryGetValue(id, out var nm) ? nm : "?";
-                }
-                foreach (var bp in singleBps) watchInner.Children.Add(SingleOwnerRow(bp, OwnerOf(bp)));
-                if (single > singleBps.Count)
-                    watchInner.Children.Add(new TextBlock
-                    {
-                        Text = $"+{single - singleBps.Count} more single-owner blueprints", Foreground = Br("FgDimBrush"),
-                        FontSize = 11.5, Margin = new Thickness(0, 6, 0, 0),
-                    });
-            }
             sidebar.Children.Add(Hud.Panel(watchInner, border: Br("WarnBrush")));
         }
 
@@ -929,20 +911,6 @@ public sealed class NetworkPage : UserControl
         Stroke = stroke, StrokeThickness = 1.7, Fill = Brushes.Transparent,
         Stretch = Stretch.Uniform, Width = 18, Height = 18, StrokeLineJoin = PenLineJoin.Round,
     };
-
-    private UIElement SingleOwnerRow(string bp, string owner)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.Children.Add(new TextBlock { Text = bp, Foreground = Br("FgBrush"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 8, 6) });
-        var who = new TextBlock { Text = $"only {owner}", Foreground = Amber(), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 2, 0) };
-        Grid.SetColumn(who, 1); grid.Children.Add(who);
-        return new Border
-        {
-            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0), Child = grid,
-        };
-    }
 
     // ── import ────────────────────────────────────────────────────────────────
 

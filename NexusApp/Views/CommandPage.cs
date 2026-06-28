@@ -43,17 +43,9 @@ public sealed class CommandPage : UserControl
         _root.Children.Add(Panels());
     }
 
-    // ── header: glow-dash eyebrow + title + subtitle + primary action ──
+    // ── header: glow-dash eyebrow + title + subtitle ──
     private UIElement HeaderRow()
-    {
-        var btn = new Button
-        {
-            Content = "+ New work order", Style = (Style)Application.Current.FindResource("AccentButton"),
-            Padding = new Thickness(16, 9, 16, 9), Height = 38,
-        };
-        btn.Click += (_, _) => _navigate("workorders");
-        return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", btn);
-    }
+        => Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.");
 
     // ── 4 KPI cards: Last scan (hero, reticle) · Refinery queue · Cargo · Session ──
     private UIElement KpiRow()
@@ -65,8 +57,15 @@ public sealed class CommandPage : UserControl
         int scu = hauls.Sum(h => h.Legs.Sum(l => l.TargetScu));
         int session = App.GameLog.Count;
 
+        // Network coverage: share of the blueprint catalog owned by you or any network member.
+        var catalog = App.Data.GetAllBlueprints();
+        int bpTotal = catalog.Count;
+        var ownerCounts = App.Network.OwnerCounts();
+        int covered = catalog.Count(b => (ownerCounts.TryGetValue(b.Name, out var c) && c > 0) || App.Settings.IsBlueprintOwned(b.Name));
+        int covPct = bpTotal > 0 ? (int)System.Math.Round(100.0 * covered / bpTotal) : 0;
+
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 16), Height = 132 };
-        for (int i = 0; i < 4; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int i = 0; i < 5; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
 
         var cards = new UIElement[]
         {
@@ -74,6 +73,7 @@ public sealed class CommandPage : UserControl
             Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString(), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush"),
             Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush"),
             Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString(), "", "Auto-tracked from Game.log", false, "CyanBrush"),
+            Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush"),
         };
         for (int i = 0; i < cards.Length; i++)
         {
@@ -174,6 +174,7 @@ public sealed class CommandPage : UserControl
     private UIElement IconRefinery() => Icon("M2,15 L2,6 L7,9 L7,6 L12,9 L12,15 Z");
     private UIElement IconCargo() => Icon("M2,5 L14,5 L14,14 L2,14 Z M2,8 L14,8");
     private UIElement IconBlueprint() => Icon("M2,2 L14,2 L14,14 L2,14 Z M8,2 L8,14 M2,8 L14,8");
+    private UIElement IconNetwork() => Icon("M4,5 L12,5 M4,5 L8,13 M12,5 L8,13");
 
     // ── refinery queue table (left) + active hauls / network risk (right, stacked) ──
     private UIElement Panels()

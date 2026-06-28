@@ -96,6 +96,12 @@ public partial class OverlayWindow : Window
         // Re-sync the HUB scan LEDs so they flip to/from the yellow paused state as that happens.
         App.ForegroundRelevanceChanged += OnForegroundRelevanceChanged;
 
+        // Contract scan/box are shared state: re-sync the contract toggle + box switch/LED whenever the
+        // main Cargo Hauling page (or anything else) flips them, so the two surfaces never drift.
+        App.ContractScan.RunningChanged += SyncContractFromShared;
+        App.ContractBoxVisibilityChanged += OnContractBoxShared;
+        _contractBoxVisible = App.ContractBoxVisible;   // seed from shared state so the switch isn't stale on first open
+
         UpdateHaulingTabLabel();   // initial overlay tab count (updates as hauls stream in)
 
         BuildStatsControls();
@@ -774,6 +780,8 @@ public partial class OverlayWindow : Window
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
+        App.ContractScan.RunningChanged -= SyncContractFromShared;
+        App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         base.OnClosed(e);
     }
 
@@ -802,6 +810,12 @@ public partial class OverlayWindow : Window
     // the auto-scan indicators move between green (on) and yellow (paused).
     private void OnForegroundRelevanceChanged(bool relevant)
         => Dispatcher.Invoke(() => { SyncScanControls(); SyncHaulingControls(); });
+
+    // The contract scanner started/stopped, or the contract box was toggled, on another surface: pull the
+    // shared App state into the overlay's local box flag and re-sync the contract toggle + box switch/LED.
+    private void SyncContractFromShared()
+        => Dispatcher.Invoke(() => { _contractBoxVisible = App.ContractBoxVisible; SyncHaulingControls(); });
+    private void OnContractBoxShared(bool on) => SyncContractFromShared();
 
     // Session Tracking + Auto-Track are always on, so there are no switches to reflect; just refresh
     // the tracking pill + status line when the watcher state changes.
@@ -1098,15 +1112,15 @@ public partial class OverlayWindow : Window
 
             if (h.ContractObjectives.Count > 0)
             {
-                // Per objective: route (Collect location -> Deliver location), then the Collect/Deliver cargo lines.
+                // Per objective: the cargo (SCU + commodity) as the primary line, then a dim from -> to
+                // route subline. Collect and Deliver carry the same cargo, so showing it once is enough.
                 foreach (var o in h.ContractObjectives)
                 {
                     var pickup  = string.IsNullOrWhiteSpace(o.Pickup)  ? "?" : o.Pickup;
                     var dropoff = string.IsNullOrWhiteSpace(o.Dropoff) ? "?" : o.Dropoff;
                     var cargo   = ((o.Scu > 0 ? $"{o.Scu} SCU " : "") + o.Commodity).Trim();
-                    HaulingList.Children.Add(Row($"{pickup} -> {dropoff}", fg, 8));
-                    HaulingList.Children.Add(Row($"Collect: {cargo}", dim, 16));
-                    HaulingList.Children.Add(Row($"Deliver: {cargo}", dim, 16));
+                    HaulingList.Children.Add(Row(cargo.Length == 0 ? "(cargo unknown)" : cargo, fg, 8));
+                    HaulingList.Children.Add(Row($"{pickup} -> {dropoff}", dim, 16));
                 }
             }
             else

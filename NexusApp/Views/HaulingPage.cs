@@ -19,6 +19,7 @@ public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
+    private Hud.ToggleSwitch? _autoScanToggle, _showBoxToggle;   // re-synced from shared contract state
 
     // Chip palette shared with the rest of the HUD (matches Hud.StateBar / Hud.StatusChip tints).
     private static readonly Color _amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
@@ -38,6 +39,11 @@ public sealed class HaulingPage : UserControl
         Refresh();
         InteractionLog.Nav("Cargo Hauling");
         App.Hauls.Changed += () => Dispatcher.Invoke(Refresh);
+        // Keep the header toggles in lockstep with the overlay / shared state (the contract scanner and
+        // the contract box can be flipped from the overlay or by foreground-gating). SetOnSilently
+        // updates the visual without re-firing OnToggled, so re-syncing never re-starts/stops anything.
+        App.ContractScan.RunningChanged += () => Dispatcher.Invoke(() => _autoScanToggle?.SetOnSilently(App.Settings.Current.AutoScanContracts));
+        App.ContractBoxVisibilityChanged += on => Dispatcher.Invoke(() => _showBoxToggle?.SetOnSilently(on));
     }
 
     /// <summary>Rebuild every section from the current App.Hauls state.</summary>
@@ -72,7 +78,7 @@ public sealed class HaulingPage : UserControl
 
         // Auto-scan contracts drives the app-global ContractScanner and persists the choice, exactly
         // like the overlay's "Auto-scan contracts" switch (App.ContractScan / Settings.AutoScanContracts).
-        var autoScan = new Hud.ToggleSwitch(App.ContractScan.IsRunning);
+        var autoScan = new Hud.ToggleSwitch(App.Settings.Current.AutoScanContracts);   // reflects intent (stays on while foreground-paused)
         autoScan.OnToggled = on =>
         {
             if (on && !App.ContractScan.IsRunning) App.ContractScan.Start();
@@ -81,15 +87,18 @@ public sealed class HaulingPage : UserControl
             App.Settings.Save();
             InteractionLog.Toggle($"Auto-scan contracts {(on ? "on" : "off")}", this);
         };
+        _autoScanToggle = autoScan;
         actions.Children.Add(LabeledToggle("Auto-scan contracts", autoScan));
 
-        // Show contract box reveals the yellow contract-detection indicator via the main window.
-        var showBox = new Hud.ToggleSwitch(false);
+        // Show contract box reveals the yellow contract-detection indicator. Routes through the single
+        // source (App.SetContractBoxVisible) so it actually shows/hides the box AND syncs the overlay.
+        var showBox = new Hud.ToggleSwitch(App.ContractBoxVisible);
         showBox.OnToggled = on =>
         {
-            if (on) (Application.Current.MainWindow as MainWindow)?.FlashContractIndicator();
+            App.SetContractBoxVisible(on);
             InteractionLog.Toggle($"Show contract box {(on ? "on" : "off")}", this);
         };
+        _showBoxToggle = showBox;
         actions.Children.Add(LabeledToggle("Show contract box", showBox));
 
         _clearBtn = ActionButton("Clear all");

@@ -17,6 +17,9 @@ public sealed class ContractScanner : IDisposable
 
     public event Action<ContractDetails>? ContractScanned;
 
+    /// <summary>Raised when the scanner starts or stops, so every surface's toggle can re-sync.</summary>
+    public event Action? RunningChanged;
+
     public bool IsRunning => _running;
 
     public ContractScanner(ContractOcrService ocr)
@@ -33,15 +36,18 @@ public sealed class ContractScanner : IDisposable
         _timer.Elapsed += OnTick;
         _timer.AutoReset = false;
         _timer.Start();
+        RunningChanged?.Invoke();
     }
 
     public void Stop()
     {
+        bool was = _running;
         if (_running) Logger.Info("[CONTRACT] contract scanner stopped");
         _running = false;
         _timer?.Stop();
         _timer?.Dispose();
         _timer = null;
+        if (was) RunningChanged?.Invoke();
     }
 
     private async void OnTick(object? sender, ElapsedEventArgs e)
