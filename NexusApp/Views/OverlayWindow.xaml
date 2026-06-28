@@ -115,7 +115,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <Button x:Name="TabStatsBtn" Content="STATS"
+                    <Button x:Name="TabStatsBtn" Content="HUB"
                             Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
                             Background="Transparent" BorderThickness="0"
                             Click="TabStats_Click" Padding="0,6" Margin="0"/>
