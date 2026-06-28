@@ -102,6 +102,30 @@ public static class Hud
         BorderBrush = brush, BorderThickness = t,
     };
 
+    // ── Interactive chamfered card ────────────────────────────────────────
+    // Like Panel, but built for clickable list rows: the chamfer Path is returned via `frame` so the
+    // caller can recolor Fill/Stroke for hover/select, and a bracket layer is returned via `brackets`
+    // (collapsed by default) to reveal on select. Geometry recomputes on resize.
+    public static Grid CardFrame(UIElement content, out Path frame, out Grid brackets,
+                                 double chamfer = 10, Thickness? padding = null)
+    {
+        frame = new Path { Fill = Br("Bg2NavBrush"), Stroke = Br("NavBorderBrush"), StrokeThickness = 1, SnapsToDevicePixels = true };
+        var host = new Grid();
+        host.Children.Add(frame);
+        host.Children.Add(new ContentControl
+        {
+            Content = content, Margin = padding ?? new Thickness(13, 10, 12, 10), Focusable = false,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        });
+        brackets = BracketLayer(12, Br("AccentStrongBrush"));
+        brackets.Visibility = Visibility.Collapsed;
+        host.Children.Add(brackets);
+        var f = frame;
+        host.SizeChanged += (_, _) => f.Data = ChamferGeometry(host.ActualWidth, host.ActualHeight, chamfer);
+        return host;
+    }
+
     // ── Reticle: a 4-corner amber target frame (brighter/larger brackets) over a Grid ──
     public static void AttachReticle(Grid host, double size = 20)
         => host.Children.Add(BracketLayer(size, Br("AccentBrush"), 2, 5));

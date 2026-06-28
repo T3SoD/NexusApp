@@ -168,7 +168,7 @@ public partial class MainWindow : Window
             "scan"       => "Nexus — RS Signal Decoder",
             "blueprints" => "Nexus — Blueprint Library",
             "reference"  => "Nexus — Mining Codex",
-            "workorders" => "Nexus — Refinery Tracker",
+            "workorders" => "Nexus - Refinery Tracker",
             "network"    => "Nexus — Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
             "settings"   => "Nexus - Settings",
@@ -749,14 +749,16 @@ public partial class MainWindow : Window
 
     // ── Work Orders ──────────────────────────────────────────────────────────
 
-    private Border? _selectedOrderRow;
+    private FrameworkElement? _selectedOrderRow;
+    private Action? _deselectOrder;   // resets the currently-selected work-order card's chamfer visuals
     private WorkOrderEditorPanel? _currentEditor;
     private System.Windows.Threading.DispatcherTimer? _listTicker;
     private readonly Dictionary<string, TextBlock?> _rowLiveRefs = new();
 
     private void NewWorkOrder_Click(object sender, RoutedEventArgs e)
     {
-        if (_selectedOrderRow != null) _selectedOrderRow.Background = System.Windows.Media.Brushes.Transparent;
+        _deselectOrder?.Invoke();
+        _deselectOrder = null;
         _selectedOrderRow = null;
         ShowWorkOrderEditor(new WorkOrder());
     }
@@ -784,7 +786,8 @@ public partial class MainWindow : Window
         WorkOrderEditor.Content = null;
         WoSaveBtn.IsEnabled   = false;
         WoDeleteBtn.IsEnabled = false;
-        if (_selectedOrderRow != null) _selectedOrderRow.Background = System.Windows.Media.Brushes.Transparent;
+        _deselectOrder?.Invoke();
+        _deselectOrder = null;
         _selectedOrderRow = null;
     }
 
@@ -792,6 +795,7 @@ public partial class MainWindow : Window
     {
         _rowLiveRefs.Clear();
         WorkOrderListPanel.Children.Clear();
+        _deselectOrder = null;
         _selectedOrderRow = null;
         foreach (var wo in _vm.WorkOrders)
             WorkOrderListPanel.Children.Add(BuildWorkOrderRow(wo));
@@ -827,41 +831,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private Border BuildWorkOrderRow(WorkOrder wo)
+    private FrameworkElement BuildWorkOrderRow(WorkOrder wo)
     {
-        var cardBrush   = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
-        var borderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
-        var accentBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
-        var accentDim   = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
-        var highlight   = (System.Windows.Media.Brush)FindResource("HighlightBrush");
-        var fgBrush     = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dimBrush    = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var chipBg      = (System.Windows.Media.Brush)FindResource("Bg3Brush");
-        var headFont    = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+        var bg2       = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        var navBorder = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
+        var accent    = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var accentDim = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
+        var highlight = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        var fgBrush   = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dimBrush  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var headFont  = (System.Windows.Media.FontFamily)FindResource("HeadFont");
 
-        var outer = new Border
-        {
-            Background = cardBrush,
-            BorderBrush = borderBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Margin = new Thickness(8, 8, 8, 0),
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
+        var stack = new StackPanel();
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.Children.Add(new Border
-        {
-            Background = BrushFromHex(wo.StatusColorHex),
-            CornerRadius = new CornerRadius(8, 0, 0, 8),
-        });
-
-        var stack = new StackPanel { Margin = new Thickness(13, 10, 10, 10) };
-        Grid.SetColumn(stack, 1);
-
-        // top row: name | status chip | delete
+        // top row: name | MOBIGLAS status chip | delete
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -875,17 +858,9 @@ public partial class MainWindow : Window
             TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
         });
 
-        var chip = new Border
-        {
-            Background = chipBg, CornerRadius = new CornerRadius(9),
-            Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(8, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = wo.StatusLabel.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = BrushFromHex(wo.StatusColorHex),
-            },
-        };
+        var chip = Hud.StatusChip(wo.Status);
+        chip.VerticalAlignment = VerticalAlignment.Center;
+        chip.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(chip, 1);
         top.Children.Add(chip);
 
@@ -897,19 +872,6 @@ public partial class MainWindow : Window
         };
         deleteBtn.MouseEnter += (s, _) => deleteTb.Foreground = BrushFromHex("#EF4444");
         deleteBtn.MouseLeave += (s, _) => deleteTb.Foreground = dimBrush;
-        deleteBtn.MouseLeftButtonDown += (s, e) =>
-        {
-            e.Handled = true;
-            _vm.DeleteWorkOrderCommand.Execute(wo.Id);
-            if (ReferenceEquals(outer, _selectedOrderRow))
-            {
-                _selectedOrderRow = null;
-                _currentEditor = null;
-                WorkOrderEditor.Content = null;
-                WoSaveBtn.IsEnabled   = false;
-                WoDeleteBtn.IsEnabled = false;
-            }
-        };
         Grid.SetColumn(deleteBtn, 2);
         top.Children.Add(deleteBtn);
 
@@ -931,20 +893,29 @@ public partial class MainWindow : Window
             });
         }
 
+        // Timer bar: MOBIGLAS gradient fill + glow, animated smoothly to completion.
         if (wo.HasActiveTimer)
         {
             var remaining = wo.TimerEnd!.Value - DateTime.UtcNow;
+            var sc = BrushFromHex(wo.StatusColorHex).Color;
+            var barGrid = new Grid { Height = 5, Margin = new Thickness(0, 9, 0, 0) };
+            barGrid.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(2.5),
+                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1C, sc.R, sc.G, sc.B)),
+            });
             var scale = new System.Windows.Media.ScaleTransform(wo.TimerFraction, 1);
-            var barContainer = new Grid { Height = 3, Margin = new Thickness(0, 8, 0, 0) };
-            barContainer.Children.Add(new Border { Background = chipBg, CornerRadius = new CornerRadius(2) });
             var fillBorder = new Border
             {
-                Background = BrushFromHex(wo.StatusColorHex), CornerRadius = new CornerRadius(2),
+                CornerRadius = new CornerRadius(2.5),
+                Background = new System.Windows.Media.LinearGradientBrush(
+                    System.Windows.Media.Color.FromArgb(0xCC, sc.R, sc.G, sc.B), sc, 0),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 RenderTransform = scale, RenderTransformOrigin = new System.Windows.Point(0, 0.5),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = sc, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 },
             };
-            barContainer.Children.Add(fillBorder);
-            stack.Children.Add(barContainer);
+            barGrid.Children.Add(fillBorder);
+            stack.Children.Add(barGrid);
             if (remaining > TimeSpan.Zero)
             {
                 var anim = new System.Windows.Media.Animation.DoubleAnimation
@@ -958,25 +929,40 @@ public partial class MainWindow : Window
 
         _rowLiveRefs[wo.Id] = subtitleTb;
 
-        grid.Children.Add(stack);
-        outer.Child = grid;
+        // Chamfered HUD card; recolor the frame + reveal corner brackets on hover/select.
+        var host = Hud.CardFrame(stack, out var frame, out var brackets, chamfer: 10, padding: new Thickness(13, 11, 12, 11));
+        host.Margin = new Thickness(8, 8, 8, 0);
+        host.Cursor = System.Windows.Input.Cursors.Hand;
 
-        outer.MouseEnter += (s, e) => { if (!ReferenceEquals(outer, _selectedOrderRow)) outer.Background = highlight; };
-        outer.MouseLeave += (s, e) => { if (!ReferenceEquals(outer, _selectedOrderRow)) outer.Background = cardBrush; };
-        outer.MouseLeftButtonDown += (s, e) =>
+        void Select()
         {
-            if (_selectedOrderRow != null)
+            _deselectOrder?.Invoke();
+            frame.Fill = accentDim; frame.Stroke = accent; brackets.Visibility = Visibility.Visible;
+            _deselectOrder = () => { frame.Fill = bg2; frame.Stroke = navBorder; brackets.Visibility = Visibility.Collapsed; };
+            _selectedOrderRow = host;
+        }
+
+        host.MouseEnter += (s, e) => { if (!ReferenceEquals(host, _selectedOrderRow)) frame.Fill = highlight; };
+        host.MouseLeave += (s, e) => { if (!ReferenceEquals(host, _selectedOrderRow)) frame.Fill = bg2; };
+        host.MouseLeftButtonDown += (s, e) => { Select(); ShowWorkOrderEditor(wo); };
+
+        deleteBtn.MouseLeftButtonDown += (s, e) =>
+        {
+            e.Handled = true;
+            // Capture selection BEFORE Execute: deleting raises CollectionChanged -> RebuildWorkOrderList,
+            // which nulls _selectedOrderRow synchronously, so the check must happen first.
+            bool wasSelected = ReferenceEquals(host, _selectedOrderRow);
+            _vm.DeleteWorkOrderCommand.Execute(wo.Id);
+            if (wasSelected)
             {
-                _selectedOrderRow.Background  = cardBrush;
-                _selectedOrderRow.BorderBrush = borderBrush;
+                _currentEditor = null;
+                WorkOrderEditor.Content = null;
+                WoSaveBtn.IsEnabled   = false;
+                WoDeleteBtn.IsEnabled = false;
             }
-            _selectedOrderRow = outer;
-            outer.Background  = accentDim;
-            outer.BorderBrush = accentBrush;
-            ShowWorkOrderEditor(wo);
         };
 
-        return outer;
+        return host;
     }
 
     // ── Blueprints ───────────────────────────────────────────────────────────
