@@ -25,6 +25,8 @@ public sealed class ContractOcrService : IDisposable
     private int  _x, _y, _w, _h;
     private bool _hasRegion;
 
+    public bool HasRegion => _hasRegion;
+
     public void SetRegion(int x, int y, int w, int h)
     {
         _x = x; _y = y; _w = w; _h = h;

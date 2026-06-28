@@ -202,23 +202,35 @@ public partial class MainViewModel : ObservableObject
 
     public void SetScanRegion(ScanRegion r) => _scanner.SetScanRegion(r.X, r.Y, r.Width, r.Height);
 
+    // Scanning can be suspended for more than one reason at once: the overlay being hidden, and the app
+    // and game both being in the background. The user's intent is remembered so scanning resumes only
+    // when EVERY reason has cleared - one reason lifting must not override another that still holds.
     private bool _pausedByHide;
+    private bool _pausedByBackground;
+    private bool _scanIntent;   // the user had scanning on when it was paused
 
-    public void PauseScanner()
+    public void PauseScanner()        => Pause(ref _pausedByHide);
+    public void ResumeScanner()       => Resume(ref _pausedByHide);
+    public void PauseForBackground()  => Pause(ref _pausedByBackground);
+    public void ResumeForBackground() => Resume(ref _pausedByBackground);
+
+    private void Pause(ref bool reason)
     {
-        if (!IsScanActive) return;
-        _scanner.Stop();
-        IsScanActive = false;
-        ScanStatusText = "● idle";
-        _pausedByHide = true;
+        if (IsScanActive)
+        {
+            _scanIntent = true;
+            _scanner.Stop();
+            IsScanActive = false;
+            ScanStatusText = "● paused";
+        }
+        reason = true;
     }
 
-    public void ResumeScanner()
+    private void Resume(ref bool reason)
     {
-        if (!_pausedByHide) return;
-        _pausedByHide = false;
-        _scanner.Start();
-        IsScanActive = true;
+        reason = false;
+        if (_pausedByHide || _pausedByBackground) return;   // another reason still holds it paused
+        if (_scanIntent) { _scanIntent = false; _scanner.Start(); IsScanActive = true; }
     }
 
     public void StopScanner() => _scanner.Dispose();

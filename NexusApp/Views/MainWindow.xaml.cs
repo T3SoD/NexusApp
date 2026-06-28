@@ -2163,6 +2163,16 @@ public partial class MainWindow : Window
         _contractIndicator!.SetRegion(r);   // positions itself in physical pixels (issue #6)
     }
 
+    /// <summary>Flash the yellow contract box green to confirm an OCR scan paired with a haul (no-op if hidden).</summary>
+    public void FlashContractIndicator() => _contractIndicator?.FlashGreen();
+
+    /// <summary>Pause/resume the RS auto-scan when neither Nexus nor Star Citizen is the foreground window.</summary>
+    public void SetScanForegroundActive(bool relevant)
+    {
+        if (relevant) _vm.ResumeForBackground();
+        else          _vm.PauseForBackground();
+    }
+
     // Creates the yellow cargo-contract indicator on first use; a distinct ScanIndicatorWindow
     // instance from the magenta _scanIndicator. Restores any saved region and shows it if toggled on.
     private void EnsureContractIndicator()

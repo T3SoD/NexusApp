@@ -181,6 +181,10 @@
                         <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
                                    Foreground="{DynamicResource FgDimBrush}" Margin="1,4,0,0"
                                    TextTrimming="CharacterEllipsis"/>
+                        <!-- Every auto-scan control mirrored here for one-stop access (also live on SCAN/HAULING). -->
+                        <TextBlock Text="SCAN CONTROLS" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource FgDimBrush}" Margin="1,9,0,3"/>
+                        <WrapPanel x:Name="HubScanBar"/>
                     </StackPanel>
 
                     <!-- Session counts: blueprints collected this session -->
