@@ -14,6 +14,7 @@ public sealed class HaulTracker : IDisposable
     private readonly Dictionary<string, Haul> _byId = new();
     private readonly List<Haul> _order = new();   // insertion order for display
     private string _currentShardId = "";          // last shard seen, to clear hauls on a shard change
+    private readonly Dictionary<string, ContractDetails> _pendingContracts = new();   // by normalized title
 
     public HaulTracker()
     {
@@ -69,6 +70,7 @@ public sealed class HaulTracker : IDisposable
     {
         _byId.Clear();
         _order.Clear();
+        _pendingContracts.Clear();
         Changed?.Invoke();
     }
 
@@ -143,6 +145,7 @@ public sealed class HaulTracker : IDisposable
         if (accept is not null && _byId.TryGetValue(accept.MissionId, out var ah))
         {
             ah.RouteTitle = accept.Title;
+            TryApplyPending(ah);
             ah.PickupName = DerivePickup(accept.Title);
             Changed?.Invoke();
             return;
@@ -222,6 +225,31 @@ public sealed class HaulTracker : IDisposable
         var bar = left.LastIndexOf('|');
         if (bar >= 0) left = left[(bar + 1)..];
         return left.Trim();
+    }
+
+    /// <summary>Attach OCR'd contract detail to the active haul whose title matches; stash if none yet.</summary>
+    public void ApplyContractDetails(ContractDetails d)
+    {
+        var key = ContractParser.NormalizeTitle(d.Title);
+        var h = _order.Find(x => x.IsActive && ContractParser.NormalizeTitle(x.RouteTitle) == key && key.Length > 0);
+        if (h is null) { _pendingContracts[key] = d; return; }
+        Enrich(h, d);
+        Logger.Info($"[CONTRACT] enriched {h.Company} reward {d.Reward}");
+        Changed?.Invoke();
+    }
+
+    private static void Enrich(Haul h, ContractDetails d)
+    {
+        h.Reward = d.Reward;
+        h.ContractedBy = d.ContractedBy;
+        h.ContractObjectives = d.Objectives;
+    }
+
+    private void TryApplyPending(Haul h)
+    {
+        if (_pendingContracts.Count == 0 || string.IsNullOrEmpty(h.RouteTitle)) return;
+        var key = ContractParser.NormalizeTitle(h.RouteTitle);
+        if (_pendingContracts.TryGetValue(key, out var d)) { Enrich(h, d); _pendingContracts.Remove(key); }
     }
 
     public void Dispose() => _watcher.Dispose();
