@@ -50,6 +50,23 @@ public class SettingsDialog : Window
         panel.Children.Add(SectionBlurb(
             "Track your session from Star Citizen's Game.log: auto-collect blueprints you receive " +
             "(they're marked Owned in your library), or import the ones you already own from past logs."));
+
+        panel.Children.Add(BuildPathField(
+            "Game.log path",
+            App.Settings.Current.GameLogPath,
+            "Game log (*.log)|*.log|All files (*.*)|*.*", "Game.log",
+            "Required for: Session Tracking / Auto-Track Blueprints, Cargo Hauling, and Server / Shard " +
+            "tracking. Auto-detected for default installs; set it here only if Nexus can't find it.",
+            ApplyGameLogPath));
+
+        panel.Children.Add(BuildPathField(
+            "global.ini path (optional)",
+            App.Settings.Current.GlobalIniPath,
+            "Localization (*.ini)|*.ini|All files (*.*)|*.*", "global.ini",
+            "Used to translate blueprint names renamed by a community localization mod (custom component " +
+            "strings). Leave blank to auto-detect next to the Game.log.",
+            ApplyGlobalIniPath));
+
         var openLogBtn = new Button
         {
             Content = "Open Game.log Monitor",
@@ -178,6 +195,84 @@ public class SettingsDialog : Window
         Height = 1, Margin = new Thickness(0, 18, 0, 16),
         Background = (Brush)Application.Current.FindResource("NavBorderBrush"),
     };
+
+    // A labelled file-path row: label, [text box][Browse…], and a dim note saying which features need it.
+    // The path is committed (applied + saved) when the box loses focus or a file is picked.
+    private static FrameworkElement BuildPathField(
+        string label, string initial, string filter, string defaultName, string requirement, Action<string> apply)
+    {
+        var box = new TextBox
+        {
+            Text = initial ?? "",
+            Padding = new Thickness(6, 5, 6, 5), VerticalContentAlignment = VerticalAlignment.Center,
+            Background = (Brush)Application.Current.FindResource("Bg2NavBrush"),
+            Foreground = (Brush)Application.Current.FindResource("FgBrush"),
+            BorderBrush = (Brush)Application.Current.FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1),
+        };
+        box.LostFocus += (_, _) => apply(box.Text.Trim());
+
+        var browse = new Button
+        {
+            Content = "Browse…", Style = (Style)Application.Current.FindResource("NexusButton"),
+            Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(8, 0, 0, 0),
+        };
+        browse.Click += (_, _) =>
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = filter, FileName = defaultName };
+            if (dlg.ShowDialog() == true) { box.Text = dlg.FileName; apply(box.Text.Trim()); }
+        };
+
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(box, 0); row.Children.Add(box);
+        Grid.SetColumn(browse, 1); row.Children.Add(browse);
+
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        stack.Children.Add(new TextBlock
+        {
+            Text = label, FontSize = 11, FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.FindResource("FgBrush"), Margin = new Thickness(0, 0, 0, 4),
+        });
+        stack.Children.Add(row);
+        stack.Children.Add(new TextBlock
+        {
+            Text = requirement, FontSize = 10, TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"), Margin = new Thickness(0, 4, 0, 0),
+        });
+        return stack;
+    }
+
+    // Persist the Game.log path and re-point every Game.log-driven watcher so it takes effect immediately.
+    // Blank means "auto-detect". The actual path is not logged (it can contain a Windows username).
+    private static void ApplyGameLogPath(string path)
+    {
+        if (App.Settings.Current.GameLogPath == path) return;
+        App.Settings.Current.GameLogPath = path;
+        App.Settings.Save();
+
+        App.GameLog.PreferredPath = path;
+        App.Hauls.PreferredPath = path;
+        App.Shards.PreferredPath = path;
+
+        var effective = string.IsNullOrWhiteSpace(path) ? GameLogWatcher.FindGameLog() : path;
+        App.Hauls.Start(effective, fromBeginning: true);
+        App.Shards.Start(effective, fromBeginning: true);
+        if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);   // Start preserves AutoMark
+
+        Logger.Info("[UI] Game.log path updated in Settings");
+    }
+
+    // Persist the optional global.ini path. The localization map is rebuilt fresh on the next import, so no
+    // restart is needed. The actual path is not logged (it can contain a Windows username).
+    private static void ApplyGlobalIniPath(string path)
+    {
+        if (App.Settings.Current.GlobalIniPath == path) return;
+        App.Settings.Current.GlobalIniPath = path;
+        App.Settings.Save();
+        Logger.Info("[UI] global.ini path updated in Settings");
+    }
 
     // ── Saved data ────────────────────────────────────────────────────────────
     private void ClearSavedData()
