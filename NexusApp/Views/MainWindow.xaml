@@ -643,11 +643,14 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Page header: teal eyebrow + display title -->
-                    <StackPanel Grid.Row="0" Margin="20,16,20,6">
-                        <TextBlock Text="CRAFTING" Style="{StaticResource Eyebrow}"/>
-                        <TextBlock Text="Blueprint Library" Style="{StaticResource PageTitle}"/>
-                    </StackPanel>
+                    <!-- Page header: teal eyebrow + display title + ambient schematic glyph -->
+                    <Grid Grid.Row="0" Margin="20,16,20,6">
+                        <StackPanel>
+                            <TextBlock Text="CRAFTING" Style="{StaticResource Eyebrow}"/>
+                            <TextBlock Text="Blueprint Library" Style="{StaticResource PageTitle}"/>
+                        </StackPanel>
+                        <ContentControl x:Name="BlueprintGlyphHost" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Grid>
 
                     <!-- Search bar with autocomplete -->
                     <Grid Grid.Row="1" Margin="20,6,20,8">
@@ -783,6 +786,7 @@
                             <TextBlock Text="Mining Codex" Style="{StaticResource PageTitle}"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                            <ContentControl x:Name="ReferenceGlyphHost" VerticalAlignment="Center" Margin="0,0,14,0" IsHitTestVisible="False"/>
                             <Button x:Name="KeyButton" Content="Key  ▾" Style="{StaticResource NexusButton}"
                                     Height="28" Padding="12,0" FontSize="11" FontWeight="Bold"
                                     Foreground="{StaticResource GoldBrush}" BorderBrush="{StaticResource GoldBrush}"
@@ -899,66 +903,34 @@
                     </Grid>
                 </Grid>
 
-                <!-- ── REFINERY TRACKER PAGE ── -->
+                <!-- ── REFINERY TRACKER PAGE (card gallery; add/edit via popup) ── -->
                 <Grid x:Name="PageWorkOrders" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Toolbar -->
-                    <Border Grid.Row="0"
-                            Background="{DynamicResource Bg2NavBrush}"
-                            BorderBrush="{DynamicResource NavBorderBrush}"
-                            BorderThickness="0,0,0,1">
-                        <Grid Margin="12,8">
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="MINING" Style="{StaticResource Eyebrow}"/>
-                                <TextBlock Text="Refinery" FontFamily="{StaticResource DisplayFont}"
-                                           FontSize="17" FontWeight="Bold"
-                                           Foreground="{StaticResource FgBrush}"/>
-                            </StackPanel>
-                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                <Button x:Name="WoNewBtn" Content="+ New"
-                                        Style="{StaticResource NexusButton}"
-                                        Height="32" Padding="12,0" Margin="0,0,6,0"
-                                        Click="NewWorkOrder_Click"/>
-                                <Button x:Name="WoSaveBtn" Content="Save"
-                                        Style="{StaticResource AccentButton}"
-                                        Height="32" Padding="16,0" Margin="0,0,6,0"
-                                        IsEnabled="False"
-                                        Click="WoSave_Click"/>
-                                <Button x:Name="WoDeleteBtn" Content="Delete"
-                                        Style="{StaticResource NexusButton}"
-                                        Height="32" Padding="12,0"
-                                        IsEnabled="False"
-                                        Click="WoDelete_Click"/>
-                            </StackPanel>
-
-                            <!-- MOBIGLAS corner brackets (decorative, non-interactive) -->
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False" HorizontalAlignment="Left"  VerticalAlignment="Top"    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,1.5,0,0"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top"    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,1.5,1.5,0"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False" HorizontalAlignment="Left"  VerticalAlignment="Bottom" BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,0,0,1.5"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Bottom" BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,0,1.5,1.5"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- Content -->
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="260"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Grid Grid.Column="0" Background="{DynamicResource Bg2NavBrush}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel x:Name="WorkOrderListPanel"/>
-                            </ScrollViewer>
-                        </Grid>
-
-                        <ScrollViewer Grid.Column="1" x:Name="WorkOrderEditor"
-                                      VerticalScrollBarVisibility="Auto" Margin="16"/>
+                    <!-- Header: eyebrow + title + subtitle, ambient scan glyph + Add button -->
+                    <Grid Grid.Row="0" Margin="20,16,20,8">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="CRAFTING" Style="{StaticResource Eyebrow}"/>
+                            <TextBlock Text="Refinery" Style="{StaticResource PageTitle}"/>
+                            <TextBlock Text="Work orders and refining timers across Stanton and Pyro."
+                                       FontFamily="{StaticResource UiFont}" FontSize="12.5"
+                                       Foreground="{StaticResource FgDimBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                            <ContentControl x:Name="WorkOrderGlyphHost" VerticalAlignment="Center" Margin="0,0,14,0" IsHitTestVisible="False"/>
+                            <Button x:Name="WoNewBtn" Content="+ Add work order"
+                                    Style="{StaticResource AccentButton}"
+                                    Height="34" Padding="16,0" Click="NewWorkOrder_Click"/>
+                        </StackPanel>
                     </Grid>
+
+                    <!-- Gallery: 2-up self-contained work-order cards (built in code) -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="13,4,13,16">
+                        <StackPanel x:Name="WorkOrderGallery"/>
+                    </ScrollViewer>
                 </Grid>
 
 

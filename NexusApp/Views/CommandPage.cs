@@ -43,9 +43,13 @@ public sealed class CommandPage : UserControl
         _root.Children.Add(Panels());
     }
 
-    // ── header: glow-dash eyebrow + title + subtitle ──
+    // ── header: glow-dash eyebrow + title + subtitle, with an ambient radar sweep accent ──
     private UIElement HeaderRow()
-        => Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.");
+    {
+        var radar = Hud.AmbientGlyph(Hud.Ambient.RadarSweep, 46);
+        radar.VerticalAlignment = VerticalAlignment.Center;
+        return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", radar);
+    }
 
     // ── 4 KPI cards: Last scan (hero, reticle) · Refinery queue · Cargo · Session ──
     private UIElement KpiRow()

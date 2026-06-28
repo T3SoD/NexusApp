@@ -46,6 +46,7 @@ public sealed class GameLogSession : IDisposable
         _watcher.LineAppended  += Ingest;
         _watcher.StatusChanged += s => StatusChanged?.Invoke(s);
         _watcher.LogReset      += Reset;   // a new SC session starts a fresh tally
+        _watcher.SessionLiveChanged += OnSessionLiveChanged;
     }
 
     /// <summary>The user's saved Game.log path (injected from settings); honored over the install
@@ -90,6 +91,8 @@ public sealed class GameLogSession : IDisposable
     public int Count => _marks.Count;
 
     public bool IsRunning => _watcher.IsRunning;
+    /// <summary>Star Citizen appears to be running (Game.log is fresh). False once the game closes / shuts down.</summary>
+    public bool IsSessionLive => _watcher.IsSessionLive;
     public bool AutoMark { get; private set; }
     public string Path => _watcher.Path;
     public static string DefaultPath => GameLogWatcher.DefaultLivePath;
@@ -98,6 +101,8 @@ public sealed class GameLogSession : IDisposable
     public event Action<BlueprintMark>? Marked;
     /// <summary>Running / Auto-mark changed — bound UIs resync their Start-Stop + toggle.</summary>
     public event Action? StateChanged;
+    /// <summary>SC running-state changed (Game.log went live or stale); bound session/blueprint pills flip on/off.</summary>
+    public event Action<bool>? SessionLiveChanged;
     /// <summary>Raw tailed line, for the standalone window's raw-log view.</summary>
     public event Action<GameLogEntry>? LineAppended;
     public event Action<string>? StatusChanged;
@@ -179,6 +184,14 @@ public sealed class GameLogSession : IDisposable
         _lastHandle = handle;
         Logger.Info("[NET] local RSI handle detected from Game.log");
         HandleDetected?.Invoke(handle);
+    }
+
+    // The game opened or closed (Game.log went fresh or stale). Re-raise it for pill listeners, and refresh
+    // the generic StateChanged so the running / auto-mark bound UIs (session + blueprint pills) recompute.
+    private void OnSessionLiveChanged(bool live)
+    {
+        SessionLiveChanged?.Invoke(live);
+        StateChanged?.Invoke();
     }
 
     public void Dispose() => _watcher.Dispose();

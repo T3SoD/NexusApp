@@ -15,7 +15,7 @@ namespace NexusApp.Views;
 /// chips, gradient state progress bars, toggle switches, and the page header.
 /// Code-behind pages build their UI by composing these helpers.
 /// </summary>
-public static class Hud
+public static partial class Hud
 {
     public static Brush Br(string k) => (Brush)Application.Current.FindResource(k);
     public static FontFamily Font(string k) => (FontFamily)Application.Current.FindResource(k);
@@ -83,7 +83,7 @@ public static class Hud
     // top-left + bottom-right corners, so by default brackets sit only on the two SQUARE
     // corners (top-right + bottom-left) where they read cleanly. Pass squareOnly:false for
     // a full four-corner frame on a non-chamfered surface.
-    public static Grid BracketLayer(double size, Brush brush, double thick = 1.5, double inset = 7, bool squareOnly = true)
+    public static Grid BracketLayer(double size, Brush brush, double thick = 1.5, double inset = 2, bool squareOnly = true)
     {
         var layer = new Grid { IsHitTestVisible = false, Margin = new Thickness(inset) };
         layer.Children.Add(Bracket(size, thick, brush, HorizontalAlignment.Right, VerticalAlignment.Top, new Thickness(0, thick, thick, 0)));
@@ -114,11 +114,11 @@ public static class Hud
         host.Children.Add(frame);
         host.Children.Add(new ContentControl
         {
-            Content = content, Margin = padding ?? new Thickness(13, 10, 12, 10), Focusable = false,
+            Content = content, Margin = padding ?? new Thickness(13, 12, 12, 12), Focusable = false,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Stretch,
         });
-        brackets = BracketLayer(12, Br("AccentStrongBrush"));
+        brackets = BracketLayer(10, Br("AccentStrongBrush"));
         brackets.Visibility = Visibility.Collapsed;
         host.Children.Add(brackets);
         var f = frame;
@@ -127,8 +127,28 @@ public static class Hud
     }
 
     // ── Reticle: a 4-corner amber target frame (brighter/larger brackets) over a Grid ──
-    public static void AttachReticle(Grid host, double size = 20)
-        => host.Children.Add(BracketLayer(size, Br("AccentBrush"), 2, 5));
+    public static void AttachReticle(Grid host, double size = 14)
+        => host.Children.Add(BracketLayer(size, Br("AccentBrush"), 2, 2));
+
+    // ── Status LED "alive" pulse: a slow looping opacity breathe while on, static (full) while off ──
+    // Used by the GAME SESSION / BLUEPRINTS pills so a green (live) LED gently flashes; off LEDs stay solid.
+    public static void PulseDot(UIElement dot, bool on)
+    {
+        if (on)
+        {
+            var anim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromSeconds(1.1)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+            };
+            dot.BeginAnimation(UIElement.OpacityProperty, anim);
+        }
+        else
+        {
+            dot.BeginAnimation(UIElement.OpacityProperty, null);
+            dot.Opacity = 1.0;
+        }
+    }
 
     // ── Status chip: tinted bg + colored border + glowing leading dot + mono label ──
     public static Border StatusChip(WorkOrderStatus status)
