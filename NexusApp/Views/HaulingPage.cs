@@ -19,7 +19,6 @@ public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
-    private Hud.ToggleSwitch? _autoScanToggle, _showBoxToggle;   // re-synced from shared contract state
 
     // Chip palette shared with the rest of the HUD (matches Hud.StateBar / Hud.StatusChip tints).
     private static readonly Color _amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
@@ -39,11 +38,6 @@ public sealed class HaulingPage : UserControl
         Refresh();
         InteractionLog.Nav("Cargo Hauling");
         App.Hauls.Changed += () => Dispatcher.Invoke(Refresh);
-        // Keep the header toggles in lockstep with the overlay / shared state (the contract scanner and
-        // the contract box can be flipped from the overlay or by foreground-gating). SetOnSilently
-        // updates the visual without re-firing OnToggled, so re-syncing never re-starts/stops anything.
-        App.ContractScan.RunningChanged += () => Dispatcher.Invoke(() => _autoScanToggle?.SetOnSilently(App.Settings.Current.AutoScanContracts));
-        App.ContractBoxVisibilityChanged += on => Dispatcher.Invoke(() => _showBoxToggle?.SetOnSilently(on));
     }
 
     /// <summary>Rebuild every section from the current App.Hauls state.</summary>
@@ -73,37 +67,13 @@ public sealed class HaulingPage : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // header
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // content
 
-        // Header action slot: the two contract toggles (mirroring the overlay's HAULING tab) + Clear all.
+        // Header action slot: Clear all. The Auto-scan / Show-contract-box toggles now live only in
+        // the overlay's HAULING tab (single control surface), so this page no longer mirrors them.
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-
-        // Auto-scan contracts drives the app-global ContractScanner and persists the choice, exactly
-        // like the overlay's "Auto-scan contracts" switch (App.ContractScan / Settings.AutoScanContracts).
-        var autoScan = new Hud.ToggleSwitch(App.Settings.Current.AutoScanContracts);   // reflects intent (stays on while foreground-paused)
-        autoScan.OnToggled = on =>
-        {
-            if (on && !App.ContractScan.IsRunning) App.ContractScan.Start();
-            else if (!on && App.ContractScan.IsRunning) App.ContractScan.Stop();
-            App.Settings.Current.AutoScanContracts = App.ContractScan.IsRunning;
-            App.Settings.Save();
-            InteractionLog.Toggle($"Auto-scan contracts {(on ? "on" : "off")}", this);
-        };
-        _autoScanToggle = autoScan;
-        actions.Children.Add(LabeledToggle("Auto-scan contracts", autoScan));
-
-        // Show contract box reveals the yellow contract-detection indicator. Routes through the single
-        // source (App.SetContractBoxVisible) so it actually shows/hides the box AND syncs the overlay.
-        var showBox = new Hud.ToggleSwitch(App.ContractBoxVisible);
-        showBox.OnToggled = on =>
-        {
-            App.SetContractBoxVisible(on);
-            InteractionLog.Toggle($"Show contract box {(on ? "on" : "off")}", this);
-        };
-        _showBoxToggle = showBox;
-        actions.Children.Add(LabeledToggle("Show contract box", showBox));
 
         _clearBtn = ActionButton("Clear all");
         _clearBtn.VerticalAlignment = VerticalAlignment.Center;
-        _clearBtn.Margin = new Thickness(16, 0, 0, 0);
+        _clearBtn.Margin = new Thickness(0, 0, 0, 0);
         _clearBtn.Click += (_, _) => App.Hauls.ClearAll();   // Changed -> Refresh() rebuilds the list
         actions.Children.Add(_clearBtn);
 
@@ -119,20 +89,6 @@ public sealed class HaulingPage : UserControl
         Grid.SetRow(scroller, 1); root.Children.Add(scroller);
 
         Content = root;
-    }
-
-    // A Hud toggle paired with its caption (switch on the left, label on the right, like the mock).
-    private FrameworkElement LabeledToggle(string label, Hud.ToggleSwitch sw)
-    {
-        var p = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) };
-        sw.VerticalAlignment = VerticalAlignment.Center;
-        p.Children.Add(sw);
-        p.Children.Add(new TextBlock
-        {
-            Text = label, FontFamily = Head, FontSize = 11.5, FontWeight = FontWeights.SemiBold,
-            Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-        });
-        return p;
     }
 
     // -- active hauls --------------------------------------------------------------
@@ -534,12 +490,17 @@ public sealed class HaulingPage : UserControl
     // Empty state rendered as a centered chamfered HUD panel rather than bare text.
     private UIElement Placeholder(string text)
     {
-        var tb = new TextBlock
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        var glyph = Hud.AmbientGlyph(Hud.Ambient.RoutePing, 104);
+        glyph.HorizontalAlignment = HorizontalAlignment.Center;
+        glyph.Margin = new Thickness(0, 0, 0, 18);
+        stack.Children.Add(glyph);
+        stack.Children.Add(new TextBlock
         {
             Text = text, Foreground = Br("FgDimBrush"), FontSize = 13, TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center,
-        };
-        var panel = Hud.Panel(tb, brackets: true, padding: new Thickness(28));
+        });
+        var panel = Hud.Panel(stack, brackets: true, padding: new Thickness(28));
         panel.Margin = new Thickness(0, 8, 0, 0);
         return panel;
     }

@@ -50,6 +50,12 @@ public partial class MainWindow : Window
 
         KeyPopup.Closed += (_, __) => _keyPopupClosedAt = DateTime.UtcNow;
 
+        // Ambient HUD glyphs: each always-populated tab carries its own signature looping animation, in the
+        // spirit of the RS Decoder reticle. RS Decoder keeps its reticle and Network keeps its coverage donut.
+        ReferenceGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Orbit, 36);
+        BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Schematic, 46);
+        WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.ScanLine, 38);
+
         RestoreWindowPosition();
         SetActivePage("command");
         Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanChipTimer?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
@@ -245,33 +251,35 @@ public partial class MainWindow : Window
         }
     }
 
-    // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms
-    // it's monitoring the Game.log (green) or still waiting for one to appear (red). Game.log tracking
-    // is file-based and not foreground-gated, so this chip never shows the paused (yellow) state.
+    // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms a
+    // live game session (green, monitoring) vs Star Citizen being closed / shut down (red, offline). "Live"
+    // is read from Game.log freshness, so the chip flips off shortly after the player exits the game.
     private void UpdateSessionChip()
     {
         if (App.GameLog == null || SessionChipText == null) return;
-        bool running = App.GameLog.IsRunning;
-        SessionChipText.Text = running ? "monitoring" : "no log";
-        var c = running
+        bool live = App.GameLog.IsSessionLive;
+        SessionChipText.Text = live ? "monitoring" : "offline";
+        var c = live
             ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
             : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
         SessionDot.Fill = new System.Windows.Media.SolidColorBrush(c);
         SessionChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+        Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
     }
 
     // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
-    // auto-collection is active (green) while the Game.log is being monitored, else off (red).
+    // auto-collection is active (green) while a game session is live, else off (red, SC closed).
     private void UpdateBlueprintChip()
     {
         if (App.GameLog == null || BlueprintChipText == null) return;
-        bool tracking = App.GameLog.IsRunning && App.GameLog.AutoMark;
+        bool tracking = App.GameLog.IsSessionLive && App.GameLog.AutoMark;
         BlueprintChipText.Text = tracking ? "tracking" : "off";
         var c = tracking
             ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
             : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
         BlueprintDot.Fill = new System.Windows.Media.SolidColorBrush(c);
         BlueprintChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+        Hud.PulseDot(BlueprintDot, tracking);   // the green LED gently flashes while tracking
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
@@ -768,58 +776,36 @@ public partial class MainWindow : Window
 
     // ── Work Orders ──────────────────────────────────────────────────────────
 
-    private FrameworkElement? _selectedOrderRow;
-    private Action? _deselectOrder;   // resets the currently-selected work-order card's chamfer visuals
-    private WorkOrderEditorPanel? _currentEditor;
     private System.Windows.Threading.DispatcherTimer? _listTicker;
     private readonly Dictionary<string, TextBlock?> _rowLiveRefs = new();
 
-    private void NewWorkOrder_Click(object sender, RoutedEventArgs e)
-    {
-        _deselectOrder?.Invoke();
-        _deselectOrder = null;
-        _selectedOrderRow = null;
-        ShowWorkOrderEditor(new WorkOrder());
-    }
+    private void NewWorkOrder_Click(object sender, RoutedEventArgs e) => OpenWorkOrderEditor(new WorkOrder());
 
-    private void ShowWorkOrderEditor(WorkOrder wo)
-    {
-        _currentEditor = new WorkOrderEditorPanel(wo, _vm);
-        WorkOrderEditor.Content = _currentEditor;
-        WoSaveBtn.IsEnabled   = true;
-        WoDeleteBtn.IsEnabled = !_currentEditor.IsNewOrder;
-    }
-
-    private void WoSave_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentEditor == null) return;
-        _currentEditor.Save();
-        WoDeleteBtn.IsEnabled = true;
-    }
-
-    private void WoDelete_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentEditor == null) return;
-        _currentEditor.Delete();
-        _currentEditor = null;
-        WorkOrderEditor.Content = null;
-        WoSaveBtn.IsEnabled   = false;
-        WoDeleteBtn.IsEnabled = false;
-        _deselectOrder?.Invoke();
-        _deselectOrder = null;
-        _selectedOrderRow = null;
-    }
+    // Add/edit now happens in a modal popup (the page is a card gallery). The editor's Save/Delete run the
+    // VM commands, which raise CollectionChanged -> RebuildWorkOrderList, so the gallery refreshes itself.
+    private void OpenWorkOrderEditor(WorkOrder wo)
+        => new WorkOrderEditorDialog(wo, _vm, this).ShowDialog();
 
     private void RebuildWorkOrderList()
     {
         _rowLiveRefs.Clear();
-        WorkOrderListPanel.Children.Clear();
-        _deselectOrder = null;
-        _selectedOrderRow = null;
-        foreach (var wo in _vm.WorkOrders)
-            WorkOrderListPanel.Children.Add(BuildWorkOrderRow(wo));
+        WorkOrderGallery.Children.Clear();
 
-        var hasTimers = _vm.WorkOrders.Any(w => w.HasActiveTimer);
+        var orders = _vm.WorkOrders;
+        if (orders.Count == 0)
+        {
+            WorkOrderGallery.Children.Add(EmptyWorkOrders());
+        }
+        else
+        {
+            var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+            foreach (var wo in orders)
+                grid.Children.Add(BuildWorkOrderCard(wo));
+            grid.Children.Add(AddWorkOrderTile());
+            WorkOrderGallery.Children.Add(grid);
+        }
+
+        var hasTimers = orders.Any(w => w.HasActiveTimer);
         if (hasTimers && _listTicker == null)
         {
             _listTicker = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -838,10 +824,10 @@ public partial class MainWindow : Window
         bool anyActive = false;
         foreach (var wo in _vm.WorkOrders)
         {
-            if (!_rowLiveRefs.TryGetValue(wo.Id, out var subtitle)) continue;
+            if (!_rowLiveRefs.TryGetValue(wo.Id, out var timer)) continue;
             if (!wo.HasActiveTimer) continue;
             anyActive = true;
-            if (subtitle != null) subtitle.Text = wo.SubtitleText;
+            if (timer != null) timer.Text = string.IsNullOrEmpty(wo.TimerRemainingShort) ? "-" : wo.TimerRemainingShort;
         }
         if (!anyActive)
         {
@@ -850,138 +836,195 @@ public partial class MainWindow : Window
         }
     }
 
-    private FrameworkElement BuildWorkOrderRow(WorkOrder wo)
+    // One self-contained work-order card (the mock's .wo): name + 3 meta fields + status chip, with an
+    // always-present progress bar and a big timer on the footer row. Clicking the card opens the popup editor.
+    private FrameworkElement BuildWorkOrderCard(WorkOrder wo)
     {
-        var bg2       = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
-        var navBorder = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
-        var accent    = (System.Windows.Media.Brush)FindResource("AccentBrush");
-        var accentDim = (System.Windows.Media.Brush)FindResource("AccentDimBrush");
-        var highlight = (System.Windows.Media.Brush)FindResource("HighlightBrush");
-        var fgBrush   = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dimBrush  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var headFont  = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+        var bg2      = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        var highlight= (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        var accent   = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var fgBrush  = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dimBrush = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+        var dispFont = (System.Windows.Media.FontFamily)FindResource("DisplayFont");
+        var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
 
-        var stack = new StackPanel();
+        var inner = new StackPanel();
 
-        // top row: name | MOBIGLAS status chip | delete
+        // top row: name + meta (left) | status chip + delete (right)
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        top.Children.Add(new TextBlock
+        var left = new StackPanel();
+        left.Children.Add(new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(wo.Label) ? wo.Resources : wo.Label,
-            FontFamily = headFont, FontSize = 14, Foreground = fgBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+            Text = string.IsNullOrWhiteSpace(wo.Label) ? (string.IsNullOrWhiteSpace(wo.Resources) ? "Work order" : wo.Resources) : wo.Label,
+            FontFamily = dispFont, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = fgBrush,
+            TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 0, 6),
         });
+        var meta = new WrapPanel { Orientation = Orientation.Horizontal };
+        void MetaField(string label, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            var tb = new TextBlock { Margin = new Thickness(0, 0, 14, 2), FontFamily = headFont, FontSize = 11, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, MaxWidth = 220 };
+            tb.Inlines.Add(new System.Windows.Documents.Run(label + " ") { Foreground = dimBrush });
+            tb.Inlines.Add(new System.Windows.Documents.Run(value) { Foreground = fgBrush, FontWeight = FontWeights.SemiBold });
+            meta.Children.Add(tb);
+        }
+        MetaField("Resources", wo.Resources);
+        MetaField("Mined at", wo.Location);
+        MetaField("Refinery", wo.Refinery);
+        left.Children.Add(meta);
+        Grid.SetColumn(left, 0); top.Children.Add(left);
 
+        var rightTop = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         var chip = Hud.StatusChip(wo.Status);
         chip.VerticalAlignment = VerticalAlignment.Center;
-        chip.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(chip, 1);
-        top.Children.Add(chip);
-
-        var deleteTb = new TextBlock { Text = "✕", FontSize = 11, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Center };
-        var deleteBtn = new Border
-        {
-            Child = deleteTb, Padding = new Thickness(8, 0, 0, 0),
-            Cursor = System.Windows.Input.Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Delete",
-        };
+        rightTop.Children.Add(chip);
+        var deleteTb = new TextBlock { Text = "x", FontFamily = monoFont, FontSize = 13, FontWeight = FontWeights.Bold, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Center };
+        var deleteBtn = new Border { Child = deleteTb, Padding = new Thickness(10, 0, 2, 0), Cursor = System.Windows.Input.Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Delete" };
         deleteBtn.MouseEnter += (s, _) => deleteTb.Foreground = BrushFromHex("#EF4444");
         deleteBtn.MouseLeave += (s, _) => deleteTb.Foreground = dimBrush;
-        Grid.SetColumn(deleteBtn, 2);
-        top.Children.Add(deleteBtn);
+        rightTop.Children.Add(deleteBtn);
+        Grid.SetColumn(rightTop, 1); top.Children.Add(rightTop);
+        inner.Children.Add(top);
 
-        stack.Children.Add(top);
+        // footer row: always-on progress bar (flex) + big timer text
+        var footer = new Grid { Margin = new Thickness(0, 14, 0, 0) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var subtitleTb = new TextBlock
-        {
-            Text = wo.SubtitleText, FontSize = 11, Margin = new Thickness(0, 5, 0, 0),
-            Foreground = BrushFromHex(wo.SubtitleForeground),
-        };
-        stack.Children.Add(subtitleTb);
+        var bar = BuildWorkOrderBar(wo);
+        ((FrameworkElement)bar).VerticalAlignment = VerticalAlignment.Center;   // every BuildWorkOrderBar path returns a Grid
+        Grid.SetColumn(bar, 0); footer.Children.Add(bar);
 
-        if (!string.IsNullOrWhiteSpace(wo.Resources) && !string.IsNullOrWhiteSpace(wo.Label))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = wo.Resources, FontSize = 11, Margin = new Thickness(0, 2, 0, 0),
-                Foreground = dimBrush, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
-            });
-        }
+        string timerText; System.Windows.Media.Brush timerBrush;
+        if (wo.Status == WorkOrderStatus.ReadyToCollect) { timerText = "ready"; timerBrush = BrushFromHex("#66E6A6"); }
+        else if (wo.Status == WorkOrderStatus.Complete)  { timerText = "done";  timerBrush = dimBrush; }
+        else if (wo.HasActiveTimer && !string.IsNullOrEmpty(wo.TimerRemainingShort)) { timerText = wo.TimerRemainingShort; timerBrush = accent; }
+        else { timerText = "-"; timerBrush = dimBrush; }
+        var timerTb = new TextBlock { Text = timerText, FontFamily = dispFont, FontSize = 18, FontWeight = FontWeights.Bold, Foreground = timerBrush, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(timerTb, 1); footer.Children.Add(timerTb);
+        inner.Children.Add(footer);
 
-        // Timer bar: MOBIGLAS gradient fill + glow, animated smoothly to completion.
-        if (wo.HasActiveTimer)
-        {
-            var remaining = wo.TimerEnd!.Value - DateTime.UtcNow;
-            var sc = BrushFromHex(wo.StatusColorHex).Color;
-            var barGrid = new Grid { Height = 5, Margin = new Thickness(0, 9, 0, 0) };
-            barGrid.Children.Add(new Border
-            {
-                CornerRadius = new CornerRadius(2.5),
-                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1C, sc.R, sc.G, sc.B)),
-            });
-            var scale = new System.Windows.Media.ScaleTransform(wo.TimerFraction, 1);
-            var fillBorder = new Border
-            {
-                CornerRadius = new CornerRadius(2.5),
-                Background = new System.Windows.Media.LinearGradientBrush(
-                    System.Windows.Media.Color.FromArgb(0xCC, sc.R, sc.G, sc.B), sc, 0),
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                RenderTransform = scale, RenderTransformOrigin = new System.Windows.Point(0, 0.5),
-                Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = sc, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 },
-            };
-            barGrid.Children.Add(fillBorder);
-            stack.Children.Add(barGrid);
-            if (remaining > TimeSpan.Zero)
-            {
-                var anim = new System.Windows.Media.Animation.DoubleAnimation
-                {
-                    From = wo.TimerFraction, To = 1.0, Duration = remaining,
-                    FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd,
-                };
-                scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, anim);
-            }
-        }
+        _rowLiveRefs[wo.Id] = timerTb;
 
-        _rowLiveRefs[wo.Id] = subtitleTb;
-
-        // Chamfered HUD card; recolor the frame + reveal corner brackets on hover/select.
-        var host = Hud.CardFrame(stack, out var frame, out var brackets, chamfer: 10, padding: new Thickness(13, 11, 12, 11));
-        host.Margin = new Thickness(8, 8, 8, 0);
+        // Chamfered card with persistent corner brackets (the mock shows them always); hover highlight; click -> editor.
+        var host = Hud.CardFrame(inner, out var frame, out var brackets, chamfer: 12, padding: new Thickness(15, 13, 14, 14));
+        brackets.Visibility = Visibility.Visible;
+        host.Margin = new Thickness(7, 7, 7, 7);
         host.Cursor = System.Windows.Input.Cursors.Hand;
 
-        void Select()
-        {
-            _deselectOrder?.Invoke();
-            frame.Fill = accentDim; frame.Stroke = accent; brackets.Visibility = Visibility.Visible;
-            _deselectOrder = () => { frame.Fill = bg2; frame.Stroke = navBorder; brackets.Visibility = Visibility.Collapsed; };
-            _selectedOrderRow = host;
-        }
+        if (wo.Status == WorkOrderStatus.ReadyToCollect)
+            frame.Stroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x59, 0x66, 0xE6, 0xA6));   // green-tinted border
+        if (wo.Status == WorkOrderStatus.Complete)
+            host.Opacity = 0.72;
 
-        host.MouseEnter += (s, e) => { if (!ReferenceEquals(host, _selectedOrderRow)) frame.Fill = highlight; };
-        host.MouseLeave += (s, e) => { if (!ReferenceEquals(host, _selectedOrderRow)) frame.Fill = bg2; };
-        host.MouseLeftButtonDown += (s, e) => { Select(); ShowWorkOrderEditor(wo); };
+        host.MouseEnter += (s, e) => { if (wo.Status != WorkOrderStatus.Complete) frame.Fill = highlight; };
+        host.MouseLeave += (s, e) => frame.Fill = bg2;
+        host.MouseLeftButtonDown += (s, e) => OpenWorkOrderEditor(wo);
 
         deleteBtn.MouseLeftButtonDown += (s, e) =>
         {
             e.Handled = true;
-            // Capture selection BEFORE Execute: deleting raises CollectionChanged -> RebuildWorkOrderList,
-            // which nulls _selectedOrderRow synchronously, so the check must happen first.
-            bool wasSelected = ReferenceEquals(host, _selectedOrderRow);
-            _vm.DeleteWorkOrderCommand.Execute(wo.Id);
-            if (wasSelected)
-            {
-                _currentEditor = null;
-                WorkOrderEditor.Content = null;
-                WoSaveBtn.IsEnabled   = false;
-                WoDeleteBtn.IsEnabled = false;
-            }
+            _vm.DeleteWorkOrderCommand.Execute(wo.Id);   // CollectionChanged -> RebuildWorkOrderList
         };
 
         return host;
+    }
+
+    // Always-present progress bar: an animated gradient fill for an active timer, else a static status bar
+    // (green 100% ready, flat gray 100% complete, faint otherwise) matching the mock's per-state treatments.
+    private UIElement BuildWorkOrderBar(WorkOrder wo)
+    {
+        if (wo.HasActiveTimer)
+        {
+            var sc = BrushFromHex(wo.StatusColorHex).Color;
+            var grid = new Grid { Height = 6 };
+            grid.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1C, sc.R, sc.G, sc.B)) });
+            var scale = new System.Windows.Media.ScaleTransform(System.Math.Clamp(wo.TimerFraction, 0, 1), 1);
+            var fill = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Background = new System.Windows.Media.LinearGradientBrush(System.Windows.Media.Color.FromArgb(0xCC, sc.R, sc.G, sc.B), sc, 0),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                RenderTransform = scale, RenderTransformOrigin = new System.Windows.Point(0, 0.5),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = sc, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 },
+            };
+            grid.Children.Add(fill);
+            var remaining = wo.TimerEnd!.Value - DateTime.UtcNow;
+            if (remaining > TimeSpan.Zero)
+                scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(System.Math.Clamp(wo.TimerFraction, 0, 1), 1.0, remaining) { FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd });
+            return grid;
+        }
+
+        return wo.Status switch
+        {
+            WorkOrderStatus.ReadyToCollect => Hud.StateBar(1, Hud.BarState.Green, 6),
+            WorkOrderStatus.Complete       => CompleteBar(),
+            WorkOrderStatus.Mining         => Hud.StateBar(System.Math.Clamp(wo.TimerFraction, 0, 1), Hud.BarState.Blue, 6),
+            _                              => Hud.StateBar(System.Math.Clamp(wo.TimerFraction, 0, 1), Hud.BarState.Amber, 6),
+        };
+    }
+
+    // Completed order: a flat gray 100% bar with no glow (the mock dims completed cards).
+    private UIElement CompleteBar()
+    {
+        var gray = System.Windows.Media.Color.FromRgb(0x7F, 0x8C, 0x8D);
+        var g = new Grid { Height = 6 };
+        g.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1C, gray.R, gray.G, gray.B)) });
+        g.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = new System.Windows.Media.SolidColorBrush(gray), HorizontalAlignment = HorizontalAlignment.Stretch });
+        return g;
+    }
+
+    // The mock's dashed "+ Add work order" tile, as the last cell of the gallery (and the empty state).
+    private FrameworkElement AddWorkOrderTile()
+    {
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var navBorder = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+
+        var plus = new TextBlock { Text = "+", FontFamily = (System.Windows.Media.FontFamily)FindResource("DisplayFont"), FontSize = 26, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Center };
+        var label = new TextBlock { Text = "ADD WORK ORDER", FontFamily = (System.Windows.Media.FontFamily)FindResource("HeadFont"), FontSize = 11, FontWeight = FontWeights.Bold, Foreground = dim, Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(plus); stack.Children.Add(label);
+
+        var dash = new System.Windows.Shapes.Rectangle
+        {
+            Stroke = navBorder, StrokeThickness = 1.2,
+            StrokeDashArray = new System.Windows.Media.DoubleCollection { 4, 3 }, RadiusX = 3, RadiusY = 3,
+        };
+        var grid = new Grid { MinHeight = 118, Margin = new Thickness(7, 7, 7, 7), Cursor = System.Windows.Input.Cursors.Hand, Background = System.Windows.Media.Brushes.Transparent };
+        grid.Children.Add(dash);
+        grid.Children.Add(stack);
+        grid.MouseEnter += (s, e) => { plus.Foreground = accent; dash.Stroke = accent; };
+        grid.MouseLeave += (s, e) => { plus.Foreground = dim; dash.Stroke = navBorder; };
+        grid.MouseLeftButtonDown += (s, e) => OpenWorkOrderEditor(new WorkOrder());
+        return grid;
+    }
+
+    // Empty state: the ambient scan glyph + a hint + a single add tile.
+    private FrameworkElement EmptyWorkOrders()
+    {
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 40, 0, 0) };
+        var glyph = Hud.AmbientGlyph(Hud.Ambient.ScanLine, 96);
+        glyph.HorizontalAlignment = HorizontalAlignment.Center;
+        glyph.Margin = new Thickness(0, 0, 0, 18);
+        stack.Children.Add(glyph);
+        stack.Children.Add(new TextBlock
+        {
+            Text = "No work orders yet. Add one to track refine timers.",
+            Foreground = dim, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 0, 0, 16),
+        });
+        var tile = AddWorkOrderTile();
+        tile.Width = 260;
+        tile.HorizontalAlignment = HorizontalAlignment.Center;
+        stack.Children.Add(tile);
+        return stack;
     }
 
     // ── Blueprints ───────────────────────────────────────────────────────────

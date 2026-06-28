@@ -663,25 +663,29 @@ public partial class OverlayWindow : Window
     {
         if (StatsStatus == null) return;
         var running = App.GameLog.IsRunning;
+        bool live = App.GameLog.IsSessionLive;   // Game.log is fresh = Star Citizen is open
 
-        // Tracking pill: green = monitoring, red = no log found yet (tracking is always on).
+        // Tracking pill: green = monitoring a live game session, red = SC closed / shut down (tracking is always on).
         if (SessionPillDot != null && SessionPillText != null)
         {
-            SetLed(SessionPillDot, running);
-            SessionPillText.Text = running ? "MONITORING" : "NO LOG";
-            SessionPillText.Foreground = new SolidColorBrush(running ? LedOn : LedOff);
+            SetLed(SessionPillDot, live);
+            SessionPillText.Text = live ? "MONITORING" : "OFFLINE";
+            SessionPillText.Foreground = new SolidColorBrush(live ? LedOn : LedOff);
+            Hud.PulseDot(SessionPillDot, live);   // the green LED gently flashes while a session is live
         }
 
-        // Blueprint-tracking pill: green = auto-collecting blueprints (always on while monitoring), red off.
+        // Blueprint-tracking pill: green = auto-collecting blueprints (always on while a session is live), red off.
         if (BlueprintPillDot != null && BlueprintPillText != null)
         {
-            bool tracking = running && App.GameLog.AutoMark;
+            bool tracking = live && App.GameLog.AutoMark;
             SetLed(BlueprintPillDot, tracking);
             BlueprintPillText.Text = tracking ? "TRACKING" : "OFF";
             BlueprintPillText.Foreground = new SolidColorBrush(tracking ? LedOn : LedOff);
+            Hud.PulseDot(BlueprintPillDot, tracking);   // the green LED gently flashes while tracking
         }
 
         if (!running) { StatsStatus.Text = "Session tracking on, waiting for Game.log"; return; }
+        if (!live) { StatsStatus.Text = "Star Citizen not running. Tracking resumes on launch."; return; }
         var s = string.IsNullOrEmpty(_lastWatcherStatus) ? "Watching" : _lastWatcherStatus;
         if (!string.IsNullOrEmpty(_lastCollected)) s += $"  ·  last: {_lastCollected}";
         StatsStatus.Text = s;

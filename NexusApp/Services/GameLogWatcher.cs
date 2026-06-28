@@ -28,6 +28,9 @@ public sealed class GameLogWatcher : IDisposable
 {
     public const string DefaultLivePath = @"C:\Program Files\Roberts Space Industries\StarCitizen\LIVE\Game.log";
     private const int MaxBytesPerTick = 1_000_000;   // cap a single read so a huge backlog can't freeze the UI
+    // Star Citizen writes Game.log continuously while running; once it closes or shuts down the file stops
+    // growing. If the log hasn't been touched in this many seconds we treat the game session as ended.
+    private const int SessionStaleSeconds = 60;
 
     private readonly System.Windows.Threading.DispatcherTimer _timer;
     private readonly StringBuilder _partial = new();   // carries a trailing partial line between polls
@@ -39,7 +42,12 @@ public sealed class GameLogWatcher : IDisposable
     public event Action<string>? StatusChanged;
     /// <summary>The log file was truncated/recreated — Star Citizen started a new session.</summary>
     public event Action? LogReset;
+    /// <summary>Star Citizen's running state changed: true when Game.log is being actively written (the
+    /// game is open), false once it goes stale (the game closed / shut down).</summary>
+    public event Action<bool>? SessionLiveChanged;
     public bool IsRunning { get; private set; }
+    /// <summary>True while Game.log is fresh (the game is open); false once it goes stale.</summary>
+    public bool IsSessionLive { get; private set; }
     public string Path => _path;
 
     // Best-effort search for an existing Game.log across common RSI install locations and
@@ -108,11 +116,26 @@ public sealed class GameLogWatcher : IDisposable
         _timer.Stop();
         if (IsRunning) StatusChanged?.Invoke("Stopped");
         IsRunning = false;
+        if (IsSessionLive) { IsSessionLive = false; SessionLiveChanged?.Invoke(false); }
+    }
+
+    // Game-running heartbeat: SC writes Game.log constantly while open, so a fresh last-write time means
+    // the game is live and a stale one means it has closed / shut down. Evaluated every tick so the session
+    // pills can flip off shortly after the player exits, without reading any extra game files.
+    private void UpdateSessionLive()
+    {
+        bool live;
+        try { live = File.Exists(_path) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(_path)).TotalSeconds < SessionStaleSeconds; }
+        catch { live = false; }
+        if (live == IsSessionLive) return;
+        IsSessionLive = live;
+        SessionLiveChanged?.Invoke(live);
     }
 
     private void Poll()
     {
         if (string.IsNullOrEmpty(_path)) return;
+        UpdateSessionLive();   // re-evaluate game-is-running from log freshness every tick (even with no new bytes)
         try
         {
             if (!File.Exists(_path)) return;
