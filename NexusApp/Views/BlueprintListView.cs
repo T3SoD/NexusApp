@@ -45,6 +45,9 @@ public sealed class BlueprintListView : UserControl
     private Brush Br(string key) => _brushCache.TryGetValue(key, out var b) ? b : (_brushCache[key] = (Brush)Application.Current.FindResource(key));
     private FontFamily? _head;
     private FontFamily Head => _head ??= (FontFamily)Application.Current.FindResource("HeadFont");
+    private FontFamily? _ui;
+    private FontFamily Ui => _ui ??= (FontFamily)Application.Current.FindResource("UiFont");
+    private Style St(string key) => (Style)Application.Current.FindResource(key);
 
     public BlueprintListView(IReadOnlyList<Blueprint> all, Func<Blueprint, UIElement> trailing,
         Func<Blueprint, UIElement?>? expand, IReadOnlyList<FilterChip> filters)
@@ -62,15 +65,15 @@ public sealed class BlueprintListView : UserControl
 
         var search = new TextBox
         {
-            Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 0, 10),
-            Background = Br("Bg2NavBrush"), Foreground = Br("FgBrush"),
-            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-            CaretBrush = Br("AccentBrush"), ToolTip = "Search blueprints…",
+            Style = St("NexusTextBox"),
+            Tag = "Search blueprints by name, category or type",
+            Margin = new Thickness(0, 0, 0, 12),
+            ToolTip = "Search blueprints",
         };
         search.TextChanged += (_, _) => { _search = search.Text ?? ""; Render(); };
         Grid.SetRow(search, 0); root.Children.Add(search);
 
-        _filterBar.Margin = new Thickness(0, 0, 0, 10);
+        _filterBar.Margin = new Thickness(0, 0, 0, 12);
         Grid.SetRow(_filterBar, 1); root.Children.Add(_filterBar);
         BuildFilters();
 
@@ -91,14 +94,15 @@ public sealed class BlueprintListView : UserControl
             var active = _activeFilter == f.Match;
             var tb = new TextBlock
             {
-                Text = f.Label, FontFamily = Head, FontSize = 11, FontWeight = FontWeights.Bold,
-                Foreground = active ? Br("BgBrush") : Br("FgDimBrush"),
+                Text = f.Label, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Foreground = active ? Br("OnAccentBrush") : Br("FgDimBrush"),
             };
             var chip = new Border
             {
-                Padding = new Thickness(11, 6, 11, 6), Margin = new Thickness(0, 0, 7, 0), CornerRadius = new CornerRadius(13),
+                Padding = new Thickness(13, 6, 13, 6), Margin = new Thickness(0, 0, 8, 0), CornerRadius = new CornerRadius(4),
                 Background = active ? Br("AccentBrush") : Br("Bg2NavBrush"),
-                BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = tb,
+                BorderBrush = active ? Br("AccentBrush") : Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+                Cursor = Cursors.Hand, Child = tb,
             };
             var match = f.Match;
             chip.MouseLeftButtonUp += (_, _) => { _activeFilter = match; BuildFilters(); Render(); };
@@ -113,7 +117,7 @@ public sealed class BlueprintListView : UserControl
         _rendered = 0;
         if (_entries.Count == 0)
         {
-            _list.Children.Add(new TextBlock { Text = "No blueprints match.", Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 20, 0, 0), FontSize = 13 });
+            _list.Children.Add(new TextBlock { Text = "No blueprints match.", FontFamily = Ui, Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 24, 0, 0), FontSize = 13 });
             return;
         }
         RenderMore();
@@ -144,7 +148,7 @@ public sealed class BlueprintListView : UserControl
         }
     }
 
-    // Load the next batch when scrolled near the bottom — or when the content doesn't yet fill the
+    // Load the next batch when scrolled near the bottom, or when the content doesn't yet fill the
     // viewport (so a tall window never strands the unrendered tail).
     private void MaybeLoadMore()
     {
@@ -162,10 +166,11 @@ public sealed class BlueprintListView : UserControl
     private static bool Has(string? hay, string needle) =>
         !string.IsNullOrEmpty(hay) && hay.Contains(needle, StringComparison.OrdinalIgnoreCase);
 
+    // Command-center section divider for each category (small dim uppercase SectionLabel).
     private UIElement Header(string text) => new TextBlock
     {
-        Text = text.ToUpperInvariant(), FontFamily = Head, FontSize = 11, FontWeight = FontWeights.Bold,
-        Foreground = Br("AccentBrush"), Margin = new Thickness(4, 11, 0, 6),
+        Style = St("SectionLabel"),
+        Text = text.ToUpperInvariant(), Margin = new Thickness(4, 16, 0, 7),
     };
 
     private UIElement RowFor(Blueprint b)
@@ -177,13 +182,13 @@ public sealed class BlueprintListView : UserControl
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // trailing
 
-        var strip = new Border { Width = 3, Background = Br("AccentBrush"), CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 10, 0) };
+        var strip = new Border { Width = 3, Background = Br("AccentBrush"), CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 7, 11, 7) };
         Grid.SetColumn(strip, 0); top.Children.Add(strip);
 
-        var info = new StackPanel { Margin = new Thickness(0, 8, 0, 8), VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock { Text = b.Name, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
+        var info = new StackPanel { Margin = new Thickness(0, 9, 0, 9), VerticalAlignment = VerticalAlignment.Center };
+        info.Children.Add(new TextBlock { Text = b.Name, FontFamily = Ui, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
         if (!string.IsNullOrEmpty(b.SubCategory))
-            info.Children.Add(new TextBlock { Text = b.SubCategory, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 1, 0, 0) });
+            info.Children.Add(new TextBlock { Text = b.SubCategory, FontFamily = Ui, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
         Grid.SetColumn(info, 1); top.Children.Add(info);
 
         var trail = new ContentControl { Content = _trailing(b), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 10, 0) };
@@ -206,8 +211,10 @@ public sealed class BlueprintListView : UserControl
                         if (content == null) return;
                         panel = new Border
                         {
-                            Child = content, BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
-                            Padding = new Thickness(13, 10, 13, 12),
+                            Child = content, Background = Br("BgBrush"),
+                            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
+                            CornerRadius = new CornerRadius(0, 0, 4, 4),
+                            Padding = new Thickness(14, 11, 14, 13),
                         };
                         stack.Children.Add(panel);
                     }
@@ -225,7 +232,7 @@ public sealed class BlueprintListView : UserControl
         return new Border
         {
             Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 6), Child = stack,
+            CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(4, 0, 0, 0), Child = stack,
         };
     }
 }

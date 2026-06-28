@@ -1,34 +1,51 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ══ LUXURY (v5) palette — near-black neutral + warm gold ══ -->
-    <Color x:Key="BgColor">#FF0E0E13</Color>
-    <Color x:Key="Bg2Color">#FF17161E</Color>
-    <Color x:Key="Bg3Color">#FF1C1A23</Color>
-    <Color x:Key="BorderColor">#FF2A2833</Color>
-    <Color x:Key="NavBorderColor">#FF201E27</Color>
-    <Color x:Key="FgColor">#FFECE7DD</Color>
-    <Color x:Key="FgDimColor">#FF8C887F</Color>
-    <Color x:Key="AccentColor">#FFC9A24B</Color>
-    <Color x:Key="AccentDimColor">#FF211D14</Color>
-    <Color x:Key="GoldColor">#FFD9B25C</Color>
-    <Color x:Key="NavBgColor">#FF0B0B10</Color>
-    <Color x:Key="PageBgColor">#FF100F15</Color>
-    <Color x:Key="Bg2NavColor">#FF1A1921</Color>
-    <Color x:Key="HighlightColor">#FF232029</Color>
+    <!-- ══ MOBIGLAS palette: diegetic holographic HUD ══
+         Void-black base, warm amber primary, ice-cyan live-readout secondary.
+         Same keys as before, new values, so every DynamicResource consumer recolours
+         automatically. AccentColor is now amber (#FFB23E); cyan keys (added below) drive
+         live data readouts. Hairlines are faint cyan; warnings/highlights stay amber. -->
 
-    <!-- accent-derived (alpha variants) -->
-    <Color x:Key="AccentClearColor">#00C9A24B</Color>
-    <Color x:Key="AccentFaintColor">#1AC9A24B</Color>
-    <Color x:Key="AccentTintColor">#26C9A24B</Color>
-    <Color x:Key="AccentSoftColor">#55C9A24B</Color>
-    <Color x:Key="AccentGlowColor">#66C9A24B</Color>
-    <Color x:Key="AccentStrongColor">#99C9A24B</Color>
-    <Color x:Key="AccentHoverColor">#FFD9B25C</Color>
-    <Color x:Key="AccentPressColor">#FFA8842F</Color>
-    <Color x:Key="OnAccentColor">#FF14120C</Color>
+    <!-- structural surfaces -->
+    <Color x:Key="BgColor">#FF05070A</Color>          <!-- void -->
+    <Color x:Key="Bg2Color">#FF080C12</Color>         <!-- void-2 -->
+    <Color x:Key="Bg3Color">#FF0E141C</Color>         <!-- raised panel -->
+    <Color x:Key="BorderColor">#337FE9E0</Color>      <!-- cyan hairline (line-strong) -->
+    <Color x:Key="NavBorderColor">#1A7FE9E0</Color>   <!-- cyan hairline (line) -->
+    <Color x:Key="FgColor">#FFEAF1F6</Color>          <!-- text -->
+    <Color x:Key="FgDimColor">#FF8693A0</Color>       <!-- dim -->
+    <Color x:Key="AccentColor">#FFFFB23E</Color>      <!-- amber primary -->
+    <Color x:Key="AccentDimColor">#29FFB23E</Color>   <!-- amber-dim .16 -->
+    <Color x:Key="GoldColor">#FFFFD089</Color>        <!-- amber-bright (warm highlight) -->
+    <Color x:Key="NavBgColor">#FF06090E</Color>       <!-- rail -->
+    <Color x:Key="PageBgColor">#FF070A10</Color>      <!-- content area -->
+    <Color x:Key="Bg2NavColor">#FF0C1219</Color>      <!-- card surface (panel approx) -->
+    <Color x:Key="HighlightColor">#1FFFB23E</Color>   <!-- hover tint (faint amber) -->
+
+    <!-- accent-derived (alpha variants of amber #FFB23E) -->
+    <Color x:Key="AccentClearColor">#00FFB23E</Color>
+    <Color x:Key="AccentFaintColor">#1FFFB23E</Color>
+    <Color x:Key="AccentTintColor">#29FFB23E</Color>
+    <Color x:Key="AccentSoftColor">#55FFB23E</Color>
+    <Color x:Key="AccentGlowColor">#66FFB23E</Color>
+    <Color x:Key="AccentStrongColor">#6BFFB23E</Color>  <!-- amber-line .42 -->
+    <Color x:Key="AccentHoverColor">#FFFFC766</Color>
+    <Color x:Key="AccentPressColor">#FFE0922A</Color>
+    <Color x:Key="OnAccentColor">#FF05070A</Color>     <!-- void text on amber -->
+
+    <!-- ice-cyan secondary (live readouts, lock-on, data ticks) -->
+    <Color x:Key="CyanColor">#FF7FE9E0</Color>
+    <Color x:Key="CyanDimColor">#247FE9E0</Color>
+    <Color x:Key="CyanLineColor">#1A7FE9E0</Color>
+    <Color x:Key="CyanGlowColor">#447FE9E0</Color>
+
+    <!-- semantic (status, used by pages) -->
+    <Color x:Key="DangerColor">#FFFF6B6B</Color>
+    <Color x:Key="OkColor">#FF66E6A6</Color>
+    <Color x:Key="WarnColor">#FFFFB23E</Color>
 
     <!-- overlay panel gradient -->
-    <Color x:Key="OverlayBgTopColor">#F215141C</Color>
-    <Color x:Key="OverlayBgBotColor">#F20C0C11</Color>
+    <Color x:Key="OverlayBgTopColor">#F20C1219</Color>
+    <Color x:Key="OverlayBgBotColor">#F205070A</Color>
 </ResourceDictionary>

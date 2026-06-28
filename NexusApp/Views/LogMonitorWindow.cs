@@ -232,41 +232,10 @@ public sealed class LogMonitorWindow : Window
         var path = _pathBox.Text.Trim();
         PersistGlobalIniPath();   // honor the optional localization override; blank = auto-detect
         _importBtn.IsEnabled = false;
-        _status.Text = "Scanning logs…";
-        GameLogBlueprintImporter.HistoryScan scan;
-        string? buildLine;
-        try
-        {
-            scan = await Task.Run(() => App.GameLog.ScanHistory(path, n => Dispatcher.Invoke(() => _status.Text = $"Scanning… {n} file(s)")));
-            buildLine = await Task.Run(() => UnrecognizedBlueprintReport.TryReadBuildLine(path));
-        }
-        catch (Exception ex) { _status.Text = $"Scan failed: {ex.Message}"; _importBtn.IsEnabled = true; return; }
+        // Shared with the Blueprint Library's Import button so both surfaces behave identically.
+        var result = await BlueprintImportFlow.RunAsync(this, path, s => _status.Text = s);
         _importBtn.IsEnabled = true;
-
-        if (scan.Matched.Count == 0 && scan.Unmatched.Count == 0)
-        {
-            _status.Text = $"No blueprint receipts found ({scan.FilesScanned} file(s) scanned).";
-            return;
-        }
-
-        // Report (for the dialog's Copy / Export) of the names we couldn't map, plus context
-        // that helps the maintainer fix it. No PII — versions + build line + raw names only.
-        var report = UnrecognizedBlueprintReport.Build(
-            AppInfo.Version, App.Data.MiningDataVersion, buildLine,
-            scan.FilesScanned, scan.Matched.Count, scan.UnmatchedLines, scan.StarStringsDetected, DateTime.Now);
-
-        var dlg = new ImportResultDialog(scan.Matched, scan.Unmatched, scan.FilesScanned, report) { Owner = this };
-        if (dlg.ShowDialog() != true)
-        {
-            _status.Text = scan.Matched.Count == 0 ? "Nothing to import." : "Import cancelled.";
-            return;
-        }
-
-        // Import is a bulk action — it marks ownership but is deliberately NOT part of the
-        // live "this session" tally (auto-marks only), so it doesn't touch the session feed.
-        int added = App.Settings.SetBlueprintsOwned(scan.Matched);
-        App.GameLog.NotifyBulkOwnershipChanged();
-        _status.Text = $"Imported {added} newly marked owned ({scan.Matched.Count} found, {scan.Matched.Count - added} were already owned).";
+        _status.Text = result.Status;
     }
 
     private bool PassesFilter(GameLogEntry e)

@@ -27,18 +27,36 @@ public partial class MainWindow : Window
         ApplyThemedAssets();
         ThemeService.ThemeChanged += ApplyThemedAssets;
         AppVersionText.Text = $"App v{AppInfo.Version}";
-        GameVersionText.Text = $"Star Citizen PU v{GameData.Version}";
+        GameVersionText.Text = $"SC PU {GameData.Version}";
+        UpdateShardChip();
+        if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(UpdateShardChip);
+        UpdateSessionFooter();
+        UpdateSessionChip();
+        UpdateBlueprintChip();
+        if (App.GameLog != null)
+        {
+            App.GameLog.Marked       += _ => Dispatcher.Invoke(UpdateSessionFooter);
+            App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionFooter(); UpdateSessionChip(); UpdateBlueprintChip(); });
+            App.GameLog.SessionReset += () => Dispatcher.Invoke(UpdateSessionFooter);
+        }
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
         _vm.OcrPhaseReceived    += p => _overlay?.ReceiveScanPhase(p);
         _vm.OcrProgressReceived += c => _overlay?.ReceiveScanProgress(c);
 
+        _scanChipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _scanChipTimer.Tick += (_, __) => UpdateScanChip();
+        _scanChipTimer.Start();
+        UpdateScanChip();
+        // Flip the SCAN chip to/from the paused (yellow) state the instant foreground relevance changes.
+        App.ForegroundRelevanceChanged += _ => Dispatcher.Invoke(UpdateScanChip);
+
         KeyPopup.Closed += (_, __) => _keyPopupClosedAt = DateTime.UtcNow;
 
         RestoreWindowPosition();
-        SetActivePage("scan");
-        Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
+        SetActivePage("command");
+        Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanChipTimer?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
 
         BuildHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
@@ -127,13 +145,16 @@ public partial class MainWindow : Window
 
     private void SetActivePage(string page)
     {
+        PageCommand.Visibility    = page == "command"    ? Visibility.Visible : Visibility.Collapsed;
         PageScan.Visibility       = page == "scan"       ? Visibility.Visible : Visibility.Collapsed;
         PageBlueprints.Visibility = page == "blueprints" ? Visibility.Visible : Visibility.Collapsed;
         PageReference.Visibility  = page == "reference"  ? Visibility.Visible : Visibility.Collapsed;
         PageWorkOrders.Visibility = page == "workorders" ? Visibility.Visible : Visibility.Collapsed;
         PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
+        PageSettings.Visibility   = page == "settings"   ? Visibility.Visible : Visibility.Collapsed;
 
+        NavCommand.IsChecked = page == "command";
         NavScan.IsChecked    = page == "scan";
         NavBlue.IsChecked    = page == "blueprints";
         NavRef.IsChecked     = page == "reference";
@@ -143,20 +164,129 @@ public partial class MainWindow : Window
 
         Title = page switch
         {
+            "command"    => "Nexus - Operations",
             "scan"       => "Nexus — RS Signal Decoder",
             "blueprints" => "Nexus — Blueprint Library",
             "reference"  => "Nexus — Mining Codex",
             "workorders" => "Nexus — Refinery Tracker",
             "network"    => "Nexus — Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
+            "settings"   => "Nexus - Settings",
             _            => "Nexus",
         };
 
         if (page == "blueprints") InitBlueprintBrowse();
         if (page == "reference") { BuildFilterPills(); BuildReferenceTree(); }
         if (page == "workorders") RebuildWorkOrderList();
+        if (page == "command") InitCommandPage();
         if (page == "network") InitNetworkPage();
         if (page == "hauling") InitHaulingPage();
+        if (page == "settings") InitSettingsPage();
+        UpdateNavBadges();
+    }
+
+    private SettingsPage? _settingsPage;
+    private void InitSettingsPage()
+    {
+        if (_settingsPage == null)
+        {
+            _settingsPage = new SettingsPage(ShowLogMonitor, ShowAppLogMonitor);
+            PageSettings.Children.Add(_settingsPage);
+        }
+    }
+
+    private CommandPage? _commandPage;
+    private void InitCommandPage()
+    {
+        if (_commandPage == null)
+        {
+            _commandPage = new CommandPage(SetActivePage, _vm);   // dashboard drills via SetActivePage; reads last scan from _vm
+            PageCommand.Children.Add(_commandPage);
+        }
+        _commandPage.Refresh();
+    }
+
+    // Live SHARD telemetry chip in the header status strip (updates on shard join/leave).
+    private void UpdateShardChip()
+    {
+        var s = App.Shards?.Current;
+        if (s != null)
+        {
+            ShardChipText.Text = string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}";
+            ShardDot.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(62, 214, 139));
+        }
+        else
+        {
+            ShardChipText.Text = "no shard";
+            ShardDot.Fill = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        }
+    }
+
+    // Live SESSION footer in the rail (blueprint count + tracking state).
+    private void UpdateSessionFooter()
+    {
+        if (App.GameLog == null) return;
+        SessionBpCount.Text = App.GameLog.Count.ToString();
+        SessionStateText.Text = App.GameLog.IsRunning ? "TRACKING" : "IDLE";
+    }
+
+    // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms
+    // it's monitoring the Game.log (green) or still waiting for one to appear (red). Game.log tracking
+    // is file-based and not foreground-gated, so this chip never shows the paused (yellow) state.
+    private void UpdateSessionChip()
+    {
+        if (App.GameLog == null || SessionChipText == null) return;
+        bool running = App.GameLog.IsRunning;
+        SessionChipText.Text = running ? "monitoring" : "no log";
+        var c = running
+            ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
+            : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
+        SessionDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+        SessionChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+    }
+
+    // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
+    // auto-collection is active (green) while the Game.log is being monitored, else off (red).
+    private void UpdateBlueprintChip()
+    {
+        if (App.GameLog == null || BlueprintChipText == null) return;
+        bool tracking = App.GameLog.IsRunning && App.GameLog.AutoMark;
+        BlueprintChipText.Text = tracking ? "tracking" : "off";
+        var c = tracking
+            ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
+            : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
+        BlueprintDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+        BlueprintChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
+    // SCAN telemetry chip (auto-scan on/off), refreshed on a light timer.
+    private void UpdateScanChip()
+    {
+        switch (_vm.RsScanState)
+        {
+            case ScanIndicator.On:
+                ScanChipText.Text = "Auto · on";
+                ScanChipText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B));
+                break;
+            case ScanIndicator.Paused:
+                ScanChipText.Text = "paused";
+                ScanChipText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEA, 0xB3, 0x08));
+                break;
+            default:
+                ScanChipText.Text = "off";
+                ScanChipText.Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+                break;
+        }
+    }
+
+    // Active-count badges on the Refinery + Cargo Hauling rail items.
+    private void UpdateNavBadges()
+    {
+        int orders = App.Data.GetWorkOrders().FindAll(o => o.Status != WorkOrderStatus.Complete).Count;
+        int hauls = App.Hauls.ActiveHauls.Count;
+        NavWorkBadge.Text = orders > 0 ? orders.ToString() : "";
+        NavHaulingBadge.Text = hauls > 0 ? hauls.ToString() : "";
     }
 
     private void InitNetworkPage()
@@ -288,7 +418,6 @@ public partial class MainWindow : Window
 
     private void ApplyThemedAssets()
     {
-        NavLogo.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(ThemeService.LogoUri));
         NavIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(ThemeService.IconUri));
     }
 
@@ -2219,7 +2348,7 @@ public partial class MainWindow : Window
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
-        => new SettingsDialog(ShowLogMonitor, ShowAppLogMonitor) { Owner = this }.ShowDialog();
+        => SetActivePage("settings");
 
     private LogMonitorWindow? _logMonitor;
 
@@ -2267,6 +2396,29 @@ public partial class MainWindow : Window
         // blueprint's detail is open (_detailBpName != null) it has no manifest count, and rebuilding
         // would replace the detail the user is reading.
         if (_detailBpName == null) ShowBlueprintLanding();
+    }
+
+    // Blueprint Library → "Import owned from logs…": scans the configured Game.log + its logbackups
+    // for blueprints already received and marks them owned. Shares the advanced monitor's exact flow
+    // (BlueprintImportFlow), so both surfaces preview, confirm and report identically. (Beta)
+    private async void BlueprintImportFromLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var path = App.GameLog.StartPath();
+        var prev = BpImportBtn.Content;
+        BpImportBtn.IsEnabled = false;
+        BpImportBtn.Content = "Scanning…";
+        var result = await BlueprintImportFlow.RunAsync(this, path);
+        BpImportBtn.Content = prev;
+        BpImportBtn.IsEnabled = true;
+
+        if (result.FilesScanned == 0)
+        {
+            MessageBox.Show(this,
+                "Couldn't find a Star Citizen Game.log to scan. Set its location in Settings, then try again.",
+                "Import owned blueprints", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (result.Applied) RefreshBlueprintOwnership();   // reflect the new ownership in the count + nav
     }
 
     // ── Easter egg (app version badge) ───────────────────────────────────────

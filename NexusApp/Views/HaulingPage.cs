@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
@@ -9,20 +10,27 @@ using NexusApp.Services;
 namespace NexusApp.Views;
 
 /// <summary>
-/// The Cargo Hauling page (code-built, like NetworkPage). Reads App.Hauls and renders three
-/// sections: active hauls (per-leg load/drop rows), a load/drop consolidation view, and finished
-/// hauls with their outcome. Rebuilds itself whenever the tracker raises Changed.
+/// The Cargo Hauling page (code-built, like NetworkPage), rebuilt onto the shared MOBIGLAS
+/// Hud primitives. Reads App.Hauls and renders three sections: a two-up grid of active-haul
+/// cards (per-leg load/drop rows), a load/drop consolidation TABLE, and a finished-hauls panel
+/// with outcome chips. Rebuilds itself whenever the tracker raises Changed.
 /// </summary>
 public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
 
+    // Chip palette shared with the rest of the HUD (matches Hud.StateBar / Hud.StatusChip tints).
+    private static readonly Color _amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
+    private static readonly Color _green = Color.FromRgb(0x66, 0xE6, 0xA6);
+    private Color Cyan => Hud.Col("CyanBrush");
+
     private readonly Dictionary<string, Brush> _brushCache = new();
     private Brush Br(string key) => _brushCache.TryGetValue(key, out var b) ? b : (_brushCache[key] = (Brush)Application.Current.FindResource(key));
-    private FontFamily? _head, _mono;
+    private FontFamily? _head, _mono, _disp;
     private FontFamily Head => _head ??= (FontFamily)Application.Current.FindResource("HeadFont");
     private FontFamily Mono => _mono ??= (FontFamily)Application.Current.FindResource("MonoFont");
+    private FontFamily Disp => _disp ??= (FontFamily)Application.Current.FindResource("DisplayFont");
 
     public HaulingPage()
     {
@@ -48,8 +56,7 @@ public sealed class HaulingPage : UserControl
         }
 
         RenderActive();
-        RenderConsolidation();
-        RenderFinished();
+        RenderBottom();
     }
 
     // -- layout --------------------------------------------------------------------
@@ -60,31 +67,63 @@ public sealed class HaulingPage : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // header
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // content
 
-        var header = new Grid();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // Header action slot: the two contract toggles (mirroring the overlay's HAULING tab) + Clear all.
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
-        var titleStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        titleStack.Children.Add(new TextBlock { Text = "CARGO HAULING", FontFamily = Head, FontSize = 21, Foreground = Br("FgBrush") });
-        titleStack.Children.Add(new TextBlock { Text = "Hauling contracts read from your game log", FontSize = 12, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
-        Grid.SetColumn(titleStack, 0); header.Children.Add(titleStack);
+        // Auto-scan contracts drives the app-global ContractScanner and persists the choice, exactly
+        // like the overlay's "Auto-scan contracts" switch (App.ContractScan / Settings.AutoScanContracts).
+        var autoScan = new Hud.ToggleSwitch(App.ContractScan.IsRunning);
+        autoScan.OnToggled = on =>
+        {
+            if (on && !App.ContractScan.IsRunning) App.ContractScan.Start();
+            else if (!on && App.ContractScan.IsRunning) App.ContractScan.Stop();
+            App.Settings.Current.AutoScanContracts = App.ContractScan.IsRunning;
+            App.Settings.Save();
+            InteractionLog.Toggle($"Auto-scan contracts {(on ? "on" : "off")}", this);
+        };
+        actions.Children.Add(LabeledToggle("Auto-scan contracts", autoScan));
+
+        // Show contract box reveals the yellow contract-detection indicator via the main window.
+        var showBox = new Hud.ToggleSwitch(false);
+        showBox.OnToggled = on =>
+        {
+            if (on) (Application.Current.MainWindow as MainWindow)?.FlashContractIndicator();
+            InteractionLog.Toggle($"Show contract box {(on ? "on" : "off")}", this);
+        };
+        actions.Children.Add(LabeledToggle("Show contract box", showBox));
 
         _clearBtn = ActionButton("Clear all");
         _clearBtn.VerticalAlignment = VerticalAlignment.Center;
+        _clearBtn.Margin = new Thickness(16, 0, 0, 0);
         _clearBtn.Click += (_, _) => App.Hauls.ClearAll();   // Changed -> Refresh() rebuilds the list
-        Grid.SetColumn(_clearBtn, 1); header.Children.Add(_clearBtn);
+        actions.Children.Add(_clearBtn);
 
+        var header = Hud.Header("LOGISTICS", "Cargo Hauling",
+            "Tracking active contracts from Game.log and the contract OCR box.", actions);
         Grid.SetRow(header, 0); root.Children.Add(header);
 
         var scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 14, 0, 0),
             Content = _body,
         };
         Grid.SetRow(scroller, 1); root.Children.Add(scroller);
 
         Content = root;
+    }
+
+    // A Hud toggle paired with its caption (switch on the left, label on the right, like the mock).
+    private FrameworkElement LabeledToggle(string label, Hud.ToggleSwitch sw)
+    {
+        var p = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) };
+        sw.VerticalAlignment = VerticalAlignment.Center;
+        p.Children.Add(sw);
+        p.Children.Add(new TextBlock
+        {
+            Text = label, FontFamily = Head, FontSize = 11.5, FontWeight = FontWeights.SemiBold,
+            Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        });
+        return p;
     }
 
     // -- active hauls --------------------------------------------------------------
@@ -98,40 +137,61 @@ public sealed class HaulingPage : UserControl
             _body.Children.Add(MutedLine("No active hauls right now."));
             return;
         }
+
+        // Two-up card grid (the mock's grid2). Per-card margins create the gutters.
+        var grid = new UniformGrid { Columns = 2 };
         foreach (var h in active)
-            _body.Children.Add(ActiveHaulCard(h));
+            grid.Children.Add(ActiveHaulCard(h));
+        _body.Children.Add(grid);
     }
 
     private UIElement ActiveHaulCard(Haul h)
     {
-        var inner = new StackPanel { Margin = new Thickness(12, 10, 12, 10) };
+        var inner = new StackPanel();
 
-        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
-        titleRow.Children.Add(new TextBlock
+        // Title row: company name + topology chip (left), aUEC reward, delete (right).
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var nameStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        nameStack.Children.Add(new TextBlock
         {
-            Text = Contractor(h), FontFamily = Head, FontSize = 14, FontWeight = FontWeights.SemiBold,
+            Text = Contractor(h), FontFamily = Head, FontSize = 14.5, FontWeight = FontWeights.SemiBold,
             Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
         });
-        titleRow.Children.Add(new TextBlock
+        if (!string.IsNullOrWhiteSpace(h.Topology))
         {
-            Text = h.Topology, FontSize = 11, FontWeight = FontWeights.SemiBold,
-            Foreground = Br("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
-        });
+            var topo = Hud.Chip(_amber, h.Topology);
+            topo.Margin = new Thickness(10, 0, 0, 0);
+            topo.VerticalAlignment = VerticalAlignment.Center;
+            nameStack.Children.Add(topo);
+        }
+        Grid.SetColumn(nameStack, 0); titleRow.Children.Add(nameStack);
+
+        if (h.Reward > 0)
+        {
+            var reward = new TextBlock
+            {
+                Text = $"{h.Reward:N0} aUEC", FontFamily = Mono, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Foreground = Br("CyanBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0),
+            };
+            Grid.SetColumn(reward, 1); titleRow.Children.Add(reward);
+        }
+        var del = DeleteButton(h.MissionId);
+        Grid.SetColumn(del, 2); titleRow.Children.Add(del);
         inner.Children.Add(titleRow);
 
+        // Route line in mono cyan (the mock's commodity route).
         if (!string.IsNullOrWhiteSpace(h.RouteTitle))
             inner.Children.Add(new TextBlock
             {
-                Text = h.RouteTitle, FontSize = 11, Foreground = Br("FgDimBrush"),
-                Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+                Text = h.RouteTitle, FontFamily = Mono, FontSize = 12, Foreground = Br("CyanBrush"),
+                Margin = new Thickness(0, 6, 0, 8), TextWrapping = TextWrapping.Wrap,
             });
-
-        if (h.Reward > 0)
-            inner.Children.Add(new TextBlock
-            {
-                Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = Br("AccentBrush"),
-                Margin = new Thickness(0, 3, 0, 0),
-            });
+        else
+            inner.Children.Add(new Border { Height = 6 });
 
         if (h.ContractObjectives.Count > 0)
             foreach (var o in h.ContractObjectives)
@@ -140,14 +200,9 @@ public sealed class HaulingPage : UserControl
             foreach (var leg in h.Legs)
                 inner.Children.Add(LegRow(leg));
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(inner, 0); grid.Children.Add(inner);
-        var del = DeleteButton(h.MissionId);
-        Grid.SetColumn(del, 1); grid.Children.Add(del);
-
-        return Card(grid);
+        var card = Hud.Panel(inner, brackets: true, padding: new Thickness(14, 12, 14, 12));
+        card.Margin = new Thickness(0, 0, 10, 10);
+        return card;
     }
 
     private UIElement LegRow(HaulLeg leg)
@@ -162,13 +217,22 @@ public sealed class HaulingPage : UserControl
         if (!string.IsNullOrWhiteSpace(leg.Destination)) segs.Add($"-> {leg.Destination}");
         var desc = string.Join(" ", segs);
 
-        var text = leg.Completed ? $"{role}: {desc}  [done]" : $"{role}: {desc}";
-        return new TextBlock
+        var text = $"{role}: {desc}";
+
+        // Progress row: a filled teal dot = leg completed, a hollow dot = still pending.
+        var grid = new Grid { Margin = new Thickness(2, 6, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var dot = StatusDot(leg.Completed);
+        Grid.SetColumn(dot, 0); grid.Children.Add(dot);
+        var tb = new TextBlock
         {
             Text = text, FontFamily = Mono, FontSize = 12,
             Foreground = leg.Completed ? Br("FgDimBrush") : Br("FgBrush"),
-            Margin = new Thickness(2, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
+            TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
+        Grid.SetColumn(tb, 1); grid.Children.Add(tb);
+        return grid;
     }
 
     // Builds the display string for one OCR-sourced ContractObjective, omitting empty segments.
@@ -186,107 +250,198 @@ public sealed class HaulingPage : UserControl
         return sb.ToString();
     }
 
-    private UIElement OcrObjectiveRow(ContractObjective o) => new TextBlock
+    private UIElement OcrObjectiveRow(ContractObjective o)
     {
-        Text = OcrObjectiveText(o), FontFamily = Mono, FontSize = 12,
-        Foreground = Br("FgBrush"),
-        Margin = new Thickness(2, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
-    };
-
-    // -- consolidation -------------------------------------------------------------
-
-    private void RenderConsolidation()
-    {
-        var con = App.Hauls.BuildConsolidation();
-        _body.Children.Add(SectionHeader("Load / drop consolidation"));
-
-        if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
+        // OCR objectives are contract targets (no completion state), so the marker is a static teal pip.
+        var grid = new Grid { Margin = new Thickness(2, 6, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var pip = new Border
         {
-            _body.Children.Add(MutedLine("Nothing to consolidate yet."));
+            Width = 7, Height = 7, CornerRadius = new CornerRadius(4),
+            Background = Br("AccentFaintBrush"), BorderBrush = Br("AccentBrush"), BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
+        };
+        Grid.SetColumn(pip, 0); grid.Children.Add(pip);
+        var tb = new TextBlock
+        {
+            Text = OcrObjectiveText(o), FontFamily = Mono, FontSize = 12, Foreground = Br("FgBrush"),
+            TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(tb, 1); grid.Children.Add(tb);
+        return grid;
+    }
+
+    // -- bottom row: consolidation table (left) + finished hauls (right) -----------
+
+    private void RenderBottom()
+    {
+        var consolidation = BuildConsolidationPanel();
+        var finished = App.Hauls.FinishedHauls;
+
+        if (finished.Count == 0)
+        {
+            consolidation.Margin = new Thickness(0, 16, 0, 0);
+            _body.Children.Add(consolidation);
             return;
         }
 
-        _body.Children.Add(SubHeader("Load at"));
-        if (con.Pickups.Count == 0) _body.Children.Add(MutedLine("No pickups pending."));
-        else foreach (var s in con.Pickups) _body.Children.Add(StopCard(s));
+        var row = new Grid { Margin = new Thickness(0, 16, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        _body.Children.Add(SubHeader("Drop at"));
-        if (con.Dropoffs.Count == 0) _body.Children.Add(MutedLine("No dropoffs pending."));
-        else foreach (var s in con.Dropoffs) _body.Children.Add(StopCard(s));
+        consolidation.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(consolidation, 0); row.Children.Add(consolidation);
+
+        var finishedPanel = BuildFinishedPanel();
+        finishedPanel.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(finishedPanel, 1); row.Children.Add(finishedPanel);
+
+        _body.Children.Add(row);
     }
 
-    private UIElement StopCard(ConsolidationStop stop)
+    // -- consolidation -------------------------------------------------------------
+
+    private Grid BuildConsolidationPanel()
     {
-        var inner = new StackPanel { Margin = new Thickness(12, 9, 12, 9) };
+        var con = App.Hauls.BuildConsolidation();
 
-        var head = new Grid();
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        head.Children.Add(new TextBlock
-        {
-            Text = stop.Location, FontFamily = Head, FontSize = 13, FontWeight = FontWeights.SemiBold,
-            Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        var total = new TextBlock
-        {
-            Text = $"{stop.TotalScu} SCU", FontFamily = Mono, FontSize = 12, FontWeight = FontWeights.SemiBold,
-            Foreground = Br("AccentBrush"), VerticalAlignment = VerticalAlignment.Center,
-        };
-        Grid.SetColumn(total, 1); head.Children.Add(total);
-        inner.Children.Add(head);
+        var bodyStack = new StackPanel();
+        bodyStack.Children.Add(PanelHeaderBar("Load / drop consolidation", "grouped by location"));
 
-        foreach (var item in stop.Items)
+        if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
         {
-            var commodity = string.IsNullOrWhiteSpace(item.Commodity) ? "Cargo" : item.Commodity;
-            inner.Children.Add(new TextBlock
-            {
-                Text = $"{item.Scu} SCU {commodity}", FontFamily = Mono, FontSize = 11.5,
-                Foreground = Br("FgDimBrush"), Margin = new Thickness(2, 4, 0, 0), TextWrapping = TextWrapping.Wrap,
-            });
+            bodyStack.Children.Add(new Border { Padding = new Thickness(14, 10, 14, 14), Child = MutedLine("Nothing to consolidate yet.") });
+            return Hud.Panel(bodyStack, padding: new Thickness(0));
         }
-        return Card(inner);
+
+        var table = new Grid { Margin = new Thickness(14, 10, 14, 12) };
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) }); // Location
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // Action
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });    // Commodity
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // SCU
+
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        AddCell(table, 0, 0, HeaderCell("LOCATION", false));
+        AddCell(table, 0, 1, HeaderCell("ACTION", false));
+        AddCell(table, 0, 2, HeaderCell("COMMODITY", false));
+        AddCell(table, 0, 3, HeaderCell("SCU", true));
+
+        var rowIdx = 1;
+        foreach (var s in con.Pickups)
+            foreach (var item in s.Items)
+                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, true, item.Commodity, item.Scu);
+        foreach (var s in con.Dropoffs)
+            foreach (var item in s.Items)
+                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, false, item.Commodity, item.Scu);
+
+        bodyStack.Children.Add(table);
+        return Hud.Panel(bodyStack, padding: new Thickness(0));
     }
+
+    private int AddConsolidationRow(Grid table, int row, string location, bool load, string commodity, int scu)
+    {
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var loc = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(location) ? "Unknown" : location, FontFamily = Head, FontSize = 12.5,
+            Foreground = Br("FgBrush"), Margin = new Thickness(0, 5, 8, 5), VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        AddCell(table, row, 0, loc);
+
+        // Colored action pill: Load = cyan, Drop = amber (per the mock's load/drop chips).
+        var chip = Hud.Chip(load ? Cyan : _amber, load ? "Load" : "Drop");
+        chip.Margin = new Thickness(0, 5, 12, 5);
+        chip.VerticalAlignment = VerticalAlignment.Center;
+        AddCell(table, row, 1, chip);
+
+        var com = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(commodity) ? "Cargo" : commodity, FontFamily = Mono, FontSize = 11.5,
+            Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 5, 8, 5), VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AddCell(table, row, 2, com);
+
+        var scuTb = new TextBlock
+        {
+            Text = scu.ToString("N0"), FontFamily = Mono, FontSize = 12, FontWeight = FontWeights.SemiBold,
+            Foreground = Br("CyanBrush"), TextAlignment = TextAlignment.Right, HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 5, 0, 5), VerticalAlignment = VerticalAlignment.Center,
+        };
+        AddCell(table, row, 3, scuTb);
+
+        return row + 1;
+    }
+
+    private static void AddCell(Grid g, int row, int col, UIElement el)
+    {
+        Grid.SetRow(el, row); Grid.SetColumn(el, col); g.Children.Add(el);
+    }
+
+    private UIElement HeaderCell(string text, bool right) => new TextBlock
+    {
+        Text = text, FontFamily = Mono, FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"),
+        Margin = new Thickness(0, 0, right ? 0 : 8, 8),
+        TextAlignment = right ? TextAlignment.Right : TextAlignment.Left,
+        HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+    };
 
     // -- finished hauls ------------------------------------------------------------
 
-    private void RenderFinished()
+    private Grid BuildFinishedPanel()
     {
         var finished = App.Hauls.FinishedHauls;
-        if (finished.Count == 0) return;
 
-        _body.Children.Add(SectionHeader($"Finished hauls · {finished.Count}"));
+        var bodyStack = new StackPanel();
+        bodyStack.Children.Add(PanelHeaderBar($"Finished hauls · {finished.Count}", null));
+
+        var rows = new StackPanel { Margin = new Thickness(14, 4, 10, 12) };
         foreach (var h in finished)
-            _body.Children.Add(FinishedRow(h));
+            rows.Children.Add(FinishedRow(h));
+        bodyStack.Children.Add(rows);
+
+        return Hud.Panel(bodyStack, padding: new Thickness(0));
     }
 
     private UIElement FinishedRow(Haul h)
     {
-        var grid = new Grid();
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var info = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        info.Children.Add(new TextBlock { Text = Contractor(h), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
-        var sub = string.IsNullOrWhiteSpace(h.RouteTitle) ? h.Topology : $"{h.Topology}  ·  {h.RouteTitle}";
-        info.Children.Add(new TextBlock { Text = sub, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
-        if (h.Reward > 0)
-            info.Children.Add(new TextBlock { Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = Br("AccentBrush"), Margin = new Thickness(0, 2, 0, 0) });
-        Grid.SetColumn(info, 0); grid.Children.Add(info);
-
-        var outcome = new TextBlock
+        var name = new TextBlock
         {
-            Text = h.Outcome.ToString(), FontSize = 11, FontWeight = FontWeights.SemiBold,
-            Foreground = h.Outcome == HaulOutcome.Complete ? Br("AccentBrush") : Br("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
+            Text = Contractor(h), FontFamily = Head, FontSize = 12.5, FontWeight = FontWeights.SemiBold,
+            Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 8, 6),
+            TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        Grid.SetColumn(outcome, 1); grid.Children.Add(outcome);
+        Grid.SetColumn(name, 0); grid.Children.Add(name);
+
+        var noteText = string.IsNullOrWhiteSpace(h.RouteTitle) ? h.Topology : h.RouteTitle;
+        var note = new TextBlock
+        {
+            Text = noteText, FontFamily = Mono, FontSize = 11, Foreground = Br("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 12, 6), TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(note, 1); grid.Children.Add(note);
+
+        // Complete = green chip; any other ending (Abandoned/Failed/Deactivated) reads as an amber warning.
+        var complete = h.Outcome == HaulOutcome.Complete;
+        var chip = Hud.Chip(complete ? _green : _amber, h.Outcome.ToString().ToUpperInvariant());
+        chip.VerticalAlignment = VerticalAlignment.Center;
+        chip.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(chip, 2); grid.Children.Add(chip);
 
         var del = DeleteButton(h.MissionId);
         del.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(del, 2); grid.Children.Add(del);
+        Grid.SetColumn(del, 3); grid.Children.Add(del);
 
-        return Card(grid);
+        return grid;
     }
 
     // -- helpers -------------------------------------------------------------------
@@ -317,22 +472,48 @@ public sealed class HaulingPage : UserControl
         return btn;
     }
 
-    private UIElement Card(UIElement child) => new Border
-    {
-        Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 6), Child = child,
-    };
-
+    // Section kicker rendered as a command-center teal eyebrow.
     private UIElement SectionHeader(string text) => new TextBlock
     {
-        Text = text.ToUpperInvariant(), FontFamily = Head, FontSize = 10, FontWeight = FontWeights.Bold,
-        Foreground = Br("FgDimBrush"), Margin = new Thickness(2, 12, 0, 8),
+        Text = text.ToUpperInvariant(), FontFamily = Head, FontSize = 10.5, FontWeight = FontWeights.Bold,
+        Foreground = Br("AccentBrush"), Margin = new Thickness(2, 4, 0, 10),
     };
 
-    private UIElement SubHeader(string text) => new TextBlock
+    // In-panel header bar: title (+ optional right-aligned sub) over a hairline divider.
+    private UIElement PanelHeaderBar(string title, string? sub)
     {
-        Text = text, FontFamily = Head, FontSize = 12, FontWeight = FontWeights.SemiBold,
-        Foreground = Br("FgBrush"), Margin = new Thickness(2, 6, 0, 6),
+        var wrap = new StackPanel();
+        var bar = new Grid { Margin = new Thickness(14, 11, 14, 9) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var t = new TextBlock
+        {
+            Text = title.ToUpperInvariant(), FontFamily = Head, FontSize = 12.5, FontWeight = FontWeights.Bold,
+            Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(t, 0); bar.Children.Add(t);
+
+        if (!string.IsNullOrWhiteSpace(sub))
+        {
+            var s = new TextBlock
+            {
+                Text = sub, FontSize = 10.5, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(s, 1); bar.Children.Add(s);
+        }
+        wrap.Children.Add(bar);
+        wrap.Children.Add(new Border { Height = 1, Background = Br("NavBorderBrush") });
+        return wrap;
+    }
+
+    // Small progress pip: filled teal when the step is done, hollow outline while pending.
+    private UIElement StatusDot(bool done) => new Border
+    {
+        Width = 7, Height = 7, CornerRadius = new CornerRadius(4),
+        Background = done ? Br("AccentBrush") : Brushes.Transparent,
+        BorderBrush = done ? Br("AccentBrush") : Br("NavBorderBrush"), BorderThickness = new Thickness(1.5),
+        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
     };
 
     private UIElement MutedLine(string text) => new TextBlock
@@ -341,9 +522,16 @@ public sealed class HaulingPage : UserControl
         Margin = new Thickness(2, 2, 0, 6), TextWrapping = TextWrapping.Wrap,
     };
 
-    private UIElement Placeholder(string text) => new TextBlock
+    // Empty state rendered as a centered chamfered HUD panel rather than bare text.
+    private UIElement Placeholder(string text)
     {
-        Text = text, Foreground = Br("FgDimBrush"), FontSize = 13, TextWrapping = TextWrapping.Wrap,
-        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(40),
-    };
+        var tb = new TextBlock
+        {
+            Text = text, Foreground = Br("FgDimBrush"), FontSize = 13, TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center,
+        };
+        var panel = Hud.Panel(tb, brackets: true, padding: new Thickness(28));
+        panel.Margin = new Thickness(0, 8, 0, 0);
+        return panel;
+    }
 }

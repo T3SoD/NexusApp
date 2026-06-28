@@ -53,10 +53,23 @@
     <SolidColorBrush x:Key="OverlayBgTopBrush" Color="{DynamicResource OverlayBgTopColor}"/>
     <SolidColorBrush x:Key="OverlayBgBotBrush" Color="{DynamicResource OverlayBgBotColor}"/>
 
-    <!-- Typography -->
-    <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
-    <FontFamily x:Key="HeadFont">/NexusApp;component/Assets/Fonts/#Outfit</FontFamily>
-    <FontFamily x:Key="MonoFont">Cascadia Code, Consolas</FontFamily>
+    <!-- ice-cyan secondary (live readouts / lock-on) + semantic status brushes -->
+    <SolidColorBrush x:Key="CyanBrush"     Color="{DynamicResource CyanColor}"/>
+    <SolidColorBrush x:Key="CyanDimBrush"  Color="{DynamicResource CyanDimColor}"/>
+    <SolidColorBrush x:Key="CyanLineBrush" Color="{DynamicResource CyanLineColor}"/>
+    <SolidColorBrush x:Key="CyanGlowBrush" Color="{DynamicResource CyanGlowColor}"/>
+    <SolidColorBrush x:Key="DangerBrush"   Color="{DynamicResource DangerColor}"/>
+    <SolidColorBrush x:Key="OkBrush"       Color="{DynamicResource OkColor}"/>
+    <SolidColorBrush x:Key="WarnBrush"     Color="{DynamicResource WarnColor}"/>
+
+    <!-- Typography (MOBIGLAS): Chakra Petch UI/labels, Rajdhani display, JetBrains Mono data.
+         Pack-URI-only to match the proven Outfit pattern; WPF auto-falls back if a face is missing.
+         TechFont is an explicit alias for Chakra Petch where a HUD label is wanted. -->
+    <FontFamily x:Key="UiFont">/NexusApp;component/Assets/Fonts/#Chakra Petch</FontFamily>
+    <FontFamily x:Key="HeadFont">/NexusApp;component/Assets/Fonts/#Chakra Petch</FontFamily>
+    <FontFamily x:Key="TechFont">/NexusApp;component/Assets/Fonts/#Chakra Petch</FontFamily>
+    <FontFamily x:Key="DisplayFont">/NexusApp;component/Assets/Fonts/#Rajdhani</FontFamily>
+    <FontFamily x:Key="MonoFont">/NexusApp;component/Assets/Fonts/#JetBrains Mono</FontFamily>
     <System:Double xmlns:System="clr-namespace:System;assembly=mscorlib" x:Key="FontSm">11</System:Double>
     <System:Double xmlns:System="clr-namespace:System;assembly=mscorlib" x:Key="FontMd">13</System:Double>
     <System:Double xmlns:System="clr-namespace:System;assembly=mscorlib" x:Key="FontLg">15</System:Double>
@@ -110,6 +123,9 @@
                             Background="{TemplateBinding Background}"
                             CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="16" ShadowDepth="0" Opacity="0.40"/>
+                        </Border.Effect>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -167,37 +183,44 @@
         <Setter Property="Background"               Value="Transparent"/>
         <Setter Property="Foreground"               Value="{DynamicResource FgDimBrush}"/>
         <Setter Property="Padding"                  Value="14,10"/>
-        <Setter Property="FontFamily"               Value="{StaticResource HeadFont}"/>
-        <Setter Property="FontSize"                 Value="11"/>
-        <Setter Property="FontWeight"               Value="Bold"/>
+        <Setter Property="FontFamily"               Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize"                 Value="12.5"/>
+        <Setter Property="FontWeight"               Value="SemiBold"/>
         <Setter Property="Cursor"                   Value="Hand"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="MinHeight"                Value="40"/>
+        <Setter Property="MinHeight"                Value="38"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="outer" Background="{TemplateBinding Background}">
+                    <Border x:Name="outer" Background="{TemplateBinding Background}"
+                            CornerRadius="4" Margin="9,1" BorderBrush="Transparent" BorderThickness="1">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="3"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Border x:Name="accentBar" Grid.Column="0" Background="Transparent"/>
+                            <Border x:Name="accentBar" Grid.Column="0" Background="Transparent" CornerRadius="2"/>
                             <ContentPresenter Grid.Column="1"
                                               Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Left"
+                                              HorizontalAlignment="Stretch"
                                               VerticalAlignment="Center"
                                               RecognizesAccessKey="True"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="outer" Property="Background" Value="{DynamicResource AccentFaintBrush}"/>
+                            <Setter TargetName="outer" Property="Background" Value="{DynamicResource HighlightBrush}"/>
                             <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="accentBar" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            <Setter TargetName="accentBar" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="12" ShadowDepth="0" Opacity="0.55"/>
+                                </Setter.Value>
+                            </Setter>
                             <Setter TargetName="outer" Property="Background" Value="{DynamicResource AccentFaintBrush}"/>
+                            <Setter TargetName="outer" Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
                             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -224,7 +247,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6">
+                            CornerRadius="4">
                         <Grid>
                             <ScrollViewer x:Name="PART_ContentHost"
                                           Padding="{TemplateBinding Padding}"
@@ -438,7 +461,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="12"
+                            CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -480,7 +503,7 @@
                                     <Border x:Name="border"
                                             Background="{DynamicResource Bg2NavBrush}"
                                             BorderBrush="{DynamicResource NavBorderBrush}"
-                                            BorderThickness="1" CornerRadius="6">
+                                            BorderThickness="1" CornerRadius="4">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -568,6 +591,67 @@
                 <Setter Property="Background" Value="{DynamicResource AccentDimBrush}"/>
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- ════ Command-center vocabulary (UI overhaul): reusable text + surface styles ════ -->
+
+    <!-- Eyebrow: small uppercase teal kicker above a page title -->
+    <Style x:Key="Eyebrow" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize"    Value="10.5"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="Foreground"  Value="{DynamicResource AccentBrush}"/>
+    </Style>
+
+    <!-- PageTitle: large Rajdhani display heading (page H1) -->
+    <Style x:Key="PageTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource DisplayFont}"/>
+        <Setter Property="FontSize"    Value="26"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
+        <Setter Property="Margin"      Value="0,3,0,0"/>
+    </Style>
+
+    <!-- SectionLabel: small uppercase dim label for panel headers / KPI keys -->
+    <Style x:Key="SectionLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize"    Value="10"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgDimBrush}"/>
+    </Style>
+
+    <!-- DataText: tabular JetBrains Mono for numbers/values -->
+    <Style x:Key="DataText" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource MonoFont}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
+    </Style>
+
+    <!-- KpiValue: big Rajdhani readout for dashboard KPI cards -->
+    <Style x:Key="KpiValue" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource DisplayFont}"/>
+        <Setter Property="FontSize"    Value="30"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
+    </Style>
+
+    <!-- Card / Panel: the HUD surface (sharp 4px corners, faint cyan hairline) -->
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource Bg2NavBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource NavBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="4"/>
+        <Setter Property="Padding"         Value="16"/>
+    </Style>
+
+    <!-- HudCard: an accented panel that carries the amber-line + soft glow signature.
+         Use for hero / primary readout surfaces (Operations hero, RS Decoder readout). -->
+    <Style x:Key="HudCard" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="22" ShadowDepth="0" Opacity="0.22"/>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

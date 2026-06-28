@@ -28,6 +28,16 @@
     <Color x:Key="AccentPressColor">#FF00A089</Color>
     <Color x:Key="OnAccentColor">#FF04140F</Color>
 
+    <!-- ice-cyan secondary + semantic (parity with the MOBIGLAS palette so
+         theme-switching never leaves a DynamicResource unresolved) -->
+    <Color x:Key="CyanColor">#FF39D0C4</Color>
+    <Color x:Key="CyanDimColor">#2439D0C4</Color>
+    <Color x:Key="CyanLineColor">#1A39D0C4</Color>
+    <Color x:Key="CyanGlowColor">#4439D0C4</Color>
+    <Color x:Key="DangerColor">#FFF85149</Color>
+    <Color x:Key="OkColor">#FF3FB950</Color>
+    <Color x:Key="WarnColor">#FFE8A23A</Color>
+
     <!-- overlay panel gradient -->
     <Color x:Key="OverlayBgTopColor">#F20D1828</Color>
     <Color x:Key="OverlayBgBotColor">#F2070B12</Color>

@@ -73,11 +73,10 @@ public static class ThemeService
         Application.Current.Shutdown();
     }
 
-    public static string LogoUri => IsClassic
-        ? "pack://application:,,,/Assets/nexus_logo_classic.png"
-        : "pack://application:,,,/Assets/nexus_logo.png";
+    // UI overhaul: the default palette is now the teal command-center identity, so both themes use
+    // the teal logo/icon assets (the old gold marks would clash with teal). Kept as one expression
+    // per asset so a distinct overhaul logo can be slotted in later without touching call sites.
+    public static string LogoUri => "pack://application:,,,/Assets/nexus_logo_classic.png";
 
-    public static string IconUri => IsClassic
-        ? "pack://application:,,,/Assets/nexus_icon_classic.png"
-        : "pack://application:,,,/Assets/nexus_icon.png";
+    public static string IconUri => "pack://application:,,,/Assets/nexus_icon_classic.png";
 }

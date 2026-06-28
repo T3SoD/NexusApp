@@ -129,6 +129,56 @@ public class GameLogBlueprintImporterTests
         Assert.Equal("FR-76", imp.ResolveLine(RealLine("2AFR-76"), LocMap()));
     }
 
+    // ── "Furthest back data read": the oldest log timestamp the scan could see ──────────────────
+    [Fact]
+    public void TryParseLineTimestampUtc_ParsesLeadingZuluTimestamp()
+    {
+        var ts = GameLogBlueprintImporter.TryParseLineTimestampUtc(
+            "<2026-05-19T11:04:00.765Z> BackupNameAttachment=\" Build(11854421)\"  -- used by backup system");
+        Assert.Equal(new DateTime(2026, 5, 19, 11, 4, 0, 765, DateTimeKind.Utc), ts);
+    }
+
+    [Fact]
+    public void TryParseLineTimestampUtc_NoLeadingTimestamp_ReturnsNull()
+    {
+        Assert.Null(GameLogBlueprintImporter.TryParseLineTimestampUtc("Log started on Tue May 19 11:04:00 2026"));
+    }
+
+    [Fact]
+    public void ScanHistory_ReportsEarliestTimestamp_AcrossLiveAndBackups()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var backups = Path.Combine(dir, "logbackups");
+        Directory.CreateDirectory(backups);
+        var live = Path.Combine(dir, "Game.log");
+        // The live log is newer; an older session sits in logbackups, so the earliest is the backup's.
+        File.WriteAllLines(live, new[] { "<2026-05-25T00:02:00.086Z> [Notice] live session" });
+        File.WriteAllLines(Path.Combine(backups, "old.log"), new[] { "<2026-05-19T11:04:00.765Z> [Notice] older session" });
+        try
+        {
+            var imp = new GameLogBlueprintImporter(Array.Empty<string>());
+            var scan = imp.ScanHistory(live);
+            Assert.Equal(new DateTime(2026, 5, 19, 11, 4, 0, 765, DateTimeKind.Utc), scan.EarliestUtc);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ScanHistory_NoTimestampedLines_EarliestIsNull()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var live = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(live, new[] { "no timestamp here", "still nothing" });
+        try
+        {
+            var imp = new GameLogBlueprintImporter(Array.Empty<string>());
+            Assert.Null(imp.ScanHistory(live).EarliestUtc);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public void ScanHistory_LocalizationMap_ResolvesCustomNamesIntoMatched()
     {

@@ -7,6 +7,10 @@ using NexusApp.Services;
 
 namespace NexusApp.ViewModels;
 
+// Tri-state for auto-scan status indicators: Off, On (running), or Paused (the user wants it on but it
+// is suspended because neither Nexus nor Star Citizen is in the foreground).
+public enum ScanIndicator { Off, On, Paused }
+
 public partial class MainViewModel : ObservableObject
 {
     private readonly ScannerService _scanner;
@@ -35,6 +39,7 @@ public partial class MainViewModel : ObservableObject
     public IEnumerable<MatchResult> OtherMatches => ScanResults.Skip(1);
     public bool HasResults => ScanResults.Count > 0;
     public bool NoResults  => ScanResults.Count == 0;
+    public bool IsScanning => _scanner.IsRunning;
 
     private void NotifyScanDerived()
     {
@@ -216,6 +221,9 @@ public partial class MainViewModel : ObservableObject
 
     private void Pause(ref bool reason)
     {
+        // Set the reason BEFORE flipping IsScanActive so listeners that re-read scan state on the
+        // IsScanActive change (e.g. the overlay LEDs via RsScanState) already see this pause reason.
+        reason = true;
         if (IsScanActive)
         {
             _scanIntent = true;
@@ -223,7 +231,6 @@ public partial class MainViewModel : ObservableObject
             IsScanActive = false;
             ScanStatusText = "● paused";
         }
-        reason = true;
     }
 
     private void Resume(ref bool reason)
@@ -232,6 +239,13 @@ public partial class MainViewModel : ObservableObject
         if (_pausedByHide || _pausedByBackground) return;   // another reason still holds it paused
         if (_scanIntent) { _scanIntent = false; _scanner.Start(); IsScanActive = true; }
     }
+
+    // RS auto-scan status for the HUB / header indicators: On while running, Paused when the user has it
+    // on but it is suspended because neither Nexus nor Star Citizen is in front, else Off.
+    public ScanIndicator RsScanState =>
+        IsScanActive                          ? ScanIndicator.On
+        : (_scanIntent && _pausedByBackground) ? ScanIndicator.Paused
+        : ScanIndicator.Off;
 
     public void StopScanner() => _scanner.Dispose();
 

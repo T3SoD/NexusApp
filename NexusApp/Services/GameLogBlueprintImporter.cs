@@ -24,6 +24,22 @@ public sealed class GameLogBlueprintImporter
     // player received no component blueprints. The class set is fixed: Civ/Cmp/Ind/Mil/Sth.
     private static readonly Regex StarStringsSignature = new(@"\b(Civ|Cmp|Ind|Mil|Sth)/\d{1,2}/[A-Za-z]\b", RegexOptions.Compiled);
 
+    // Leading "<2026-05-19T11:04:00.765Z>" timestamp every Game.log line opens with. Used to report
+    // how far back a history scan could actually see, so the user understands that blueprints received
+    // before then aren't recoverable (SC overwrites older logs). Null for the rare line without one.
+    private static readonly Regex LineTimestamp = new(@"^<(?<ts>[0-9T:.\-+Z]+)>", RegexOptions.Compiled);
+
+    /// <summary>Parses the leading "&lt;...Z&gt;" timestamp of a Game.log line as UTC, or null if the line
+    /// has none. Matches the ISO-8601 Zulu format SC writes (same shape ShardLogParser reads).</summary>
+    public static System.DateTime? TryParseLineTimestampUtc(string line)
+    {
+        var m = LineTimestamp.Match(line);
+        if (!m.Success) return null;
+        return System.DateTimeOffset.TryParse(m.Groups["ts"].Value, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dto)
+            ? dto.UtcDateTime : (System.DateTime?)null;
+    }
+
     private readonly Dictionary<string, string> _known;   // case-insensitive lookup -> canonical seed name
 
     public GameLogBlueprintImporter(IEnumerable<string> seedBlueprintNames)
@@ -80,7 +96,7 @@ public sealed class GameLogBlueprintImporter
     public static bool HasStarStringsComponentSignature(string line) =>
         line.IndexOf('/') >= 0 && StarStringsSignature.IsMatch(line);
 
-    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, List<string> UnmatchedLines, int FilesScanned, bool StarStringsDetected);
+    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, List<string> UnmatchedLines, int FilesScanned, bool StarStringsDetected, System.DateTime? EarliestUtc);
 
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
     // Returns DISTINCT canonical matched names + distinct unmatched raw names. Read-only,
@@ -92,6 +108,7 @@ public sealed class GameLogBlueprintImporter
         var unmatched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         var unmatchedLines = new List<string>();   // one full example log line per distinct unmatched name
         bool starStrings = false;
+        System.DateTime? earliest = null;           // oldest log timestamp seen = how far back the scan could see
 
         var files = new List<string>();
         try
@@ -114,8 +131,14 @@ public sealed class GameLogBlueprintImporter
                 using var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using var sr = new StreamReader(fs, Encoding.UTF8);
                 string? line;
+                bool fileStartCaptured = false;   // SC logs are chronological, so the first stamped line is this file's oldest
                 while ((line = sr.ReadLine()) != null)
                 {
+                    if (!fileStartCaptured)
+                    {
+                        var ts = TryParseLineTimestampUtc(line);
+                        if (ts.HasValue) { fileStartCaptured = true; if (earliest is null || ts < earliest) earliest = ts; }
+                    }
                     if (!starStrings && HasStarStringsComponentSignature(line)) starStrings = true;
                     if (line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var raw = ExtractRawName(line);
@@ -129,6 +152,6 @@ public sealed class GameLogBlueprintImporter
             progress?.Invoke(++done);
         }
 
-        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), unmatchedLines, files.Count, starStrings);
+        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), unmatchedLines, files.Count, starStrings, earliest);
     }
 }
