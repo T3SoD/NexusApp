@@ -23,6 +23,10 @@ public partial class App : Application
     // Server/shard tracker (own Game.log watcher, always on; rolling history persisted to settings).
     public static ShardTracker Shards { get; private set; } = null!;
 
+    // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
+    public static ContractOcrService ContractOcr { get; private set; } = null!;
+    public static ContractScanner ContractScan { get; private set; } = null!;
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -169,6 +173,15 @@ public partial class App : Application
             list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); })
         { PreferredPath = Settings.Current.GameLogPath };
         Shards.Start(Shards.StartPath(), fromBeginning: true);
+
+        // Contract OCR: scans the in-game Contracts panel and enriches the matching haul.
+        ContractOcr = new ContractOcrService();
+        if (Settings.Current.ContractRegion is { } cr) ContractOcr.SetRegion(cr.X, cr.Y, cr.Width, cr.Height);
+        ContractScan = new ContractScanner(ContractOcr);
+        // ContractScanner runs on a System.Timers.Timer thread; ApplyContractDetails raises Changed which
+        // the overlay handles by touching WPF, so marshal onto the UI thread.
+        ContractScan.ContractScanned += d => Current.Dispatcher.Invoke(() => Hauls.ApplyContractDetails(d));
+        if (Settings.Current.AutoScanContracts) ContractScan.Start();
     }
 
     // Builds the user's customDisplay -> official localization map from their global.ini, so the
@@ -214,6 +227,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _foreground?.Dispose();
+        ContractScan?.Dispose();
+        ContractOcr?.Dispose();
         Hauls?.Dispose();
         Shards?.Dispose();
         GameLog?.Dispose();
