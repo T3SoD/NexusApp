@@ -16,7 +16,7 @@
     <!-- SINGLE SOURCE OF TRUTH for the app version. The in-app badges read this
          at runtime and the installer reads it from the built exe. For a release,
          CI overrides it from the git tag (dotnet publish -p:Version=X.Y.Z). -->
-    <Version>5.5.2</Version>
+    <Version>5.6.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\nexus.ico</ApplicationIcon>
     <!-- Per-Monitor-DPI-Aware V2 (issue #6): makes PointToScreen + GDI capture use true
