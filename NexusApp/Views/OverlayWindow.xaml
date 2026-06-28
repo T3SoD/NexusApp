@@ -237,10 +237,10 @@
                     </Grid.RowDefinitions>
 
                     <!-- Scan controls: Auto-scan / Scan box toggle switches (built in code-behind to
-                         match the STATS tab) + a Set scan region link. -->
+                         match the STATS tab) + a Set RS detection region link. -->
                     <StackPanel Grid.Row="0" Margin="10,10,10,2">
                         <WrapPanel x:Name="ScanControlBar"/>
-                        <TextBlock x:Name="SetRegionBtn" Text="⊕  Set scan region" FontSize="11"
+                        <TextBlock x:Name="SetRegionBtn" Text="⊕  Set RS detection region" FontSize="11"
                                    Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
                                    Background="Transparent" Padding="2,3,2,2"
                                    HorizontalAlignment="Left" MouseLeftButtonUp="SetRegion_Click"/>
@@ -389,11 +389,11 @@
                     </Grid.RowDefinitions>
 
                     <!-- Contract scan controls: Auto-scan contracts / Contract box toggle switches (built in
-                         code-behind to match the SCAN tab) + a Set contract region link. Fixed area, OUTSIDE
+                         code-behind to match the SCAN tab) + a Set contract detection region link. Fixed area, OUTSIDE
                          HaulingList (which RebuildHaulingPanel clears). -->
                     <StackPanel Grid.Row="0" Margin="10,10,10,2">
                         <WrapPanel x:Name="HaulingControlBar"/>
-                        <TextBlock x:Name="SetContractRegionBtn" Text="⊕  Set contract region" FontSize="11"
+                        <TextBlock x:Name="SetContractRegionBtn" Text="⊕  Set contract detection region" FontSize="11"
                                    Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
                                    Background="Transparent" Padding="2,3,2,2"
                                    HorizontalAlignment="Left" MouseLeftButtonUp="SetContractRegion_Click"/>
