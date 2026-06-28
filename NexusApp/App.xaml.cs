@@ -30,6 +30,11 @@ public partial class App : Application
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
+    // True while Nexus or Star Citizen holds the OS foreground; false means OCR auto-scans are paused.
+    // Status indicators read this (and subscribe to the event) to show the paused (yellow) state.
+    public static bool IsForegroundRelevant => _foreground?.IsRelevantForeground ?? true;
+    public static event System.Action<bool>? ForegroundRelevanceChanged;
+
     // Reports the process's live DPI-awareness so nexus.log can confirm the shipped exe is actually
     // Per-Monitor V2 (issue #6) — DPI awareness is an embedded runtime property the CI compile can't verify.
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
@@ -147,11 +152,13 @@ public partial class App : Application
         // Cache the RSI handle auto-detected from Game.log (read-only) so export can pre-fill it.
         GameLog.HandleDetected += handle => Settings.SetDetectedRsiHandle(handle);
 
-        // Restore the saved Game.log path + Session Tracking toggles, then persist future changes
-        // so the path and the watch / auto-collect selections survive a reboot.
+        // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. Restore the
+        // saved Game.log path, then start the watch and auto-collect unconditionally on every launch.
+        // SetAutoMark(true) both enables auto-collect and starts the watcher (probing common installs if
+        // no path is saved yet). The path is still persisted below when the watcher resolves it.
         GameLog.PreferredPath = Settings.Current.GameLogPath;
-        if (Settings.Current.GameLogAutoTrack) GameLog.SetAutoMark(true);            // also starts the watch
-        else if (Settings.Current.GameLogTrackSession) GameLog.Start(GameLog.StartPath());
+        GameLog.SetAutoMark(true);
+        Logger.Info($"[GameLog] session tracking + auto-track always on; watching: {(string.IsNullOrEmpty(GameLog.Path) ? "<no log found yet>" : GameLog.Path)}");
         GameLog.StateChanged += () =>
         {
             Settings.Current.GameLogTrackSession = GameLog.IsRunning;
@@ -246,6 +253,9 @@ public partial class App : Application
             if (relevant) { if (Settings.Current.AutoScanContracts && !ContractScan.IsRunning) ContractScan.Start(); }
             else if (ContractScan.IsRunning) ContractScan.Stop();
         }
+
+        // Notify status indicators (HUB LEDs, header SCAN chip) so they flip to/from the paused state.
+        ForegroundRelevanceChanged?.Invoke(relevant);
     }
 
     protected override void OnExit(ExitEventArgs e)

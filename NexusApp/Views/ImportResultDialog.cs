@@ -16,7 +16,7 @@ public sealed class ImportResultDialog : Window
 {
     private readonly string _reportPayload;
 
-    public ImportResultDialog(IReadOnlyList<string> matched, IReadOnlyList<string> unmatched, int filesScanned, string reportPayload)
+    public ImportResultDialog(IReadOnlyList<string> matched, IReadOnlyList<string> unmatched, int filesScanned, DateTime? earliestUtc, string reportPayload)
     {
         _reportPayload = reportPayload;
 
@@ -44,6 +44,21 @@ public sealed class ImportResultDialog : Window
             Foreground = (Brush)Application.Current.FindResource("FgBrush"),
             Margin = new Thickness(0, 0, 0, 4),
         });
+
+        // How far back the scan could actually see. Star Citizen overwrites old logs as you play, so
+        // anything received before this point simply isn't in the files; this sets that expectation.
+        if (earliestUtc.HasValue)
+        {
+            var oldest = earliestUtc.Value.ToString("d MMM yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Oldest log data read: {oldest} UTC. Blueprints received before then aren't in these logs " +
+                       "(Star Citizen overwrites older logs as you play).",
+                FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+        }
 
         if (anyMatched)
         {

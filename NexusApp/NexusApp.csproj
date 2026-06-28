@@ -66,5 +66,21 @@
     <Resource Include="Assets\scan_region_example.png"/>
     <Resource Include="Assets\RS_Signature.png"/>
     <Resource Include="Assets\Fonts\Outfit-SemiBold.ttf"/>
+    <!-- UI overhaul type system: Rajdhani (display), Geist (body/UI), JetBrains Mono (data) -->
+    <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf"/>
+    <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf"/>
+    <Resource Include="Assets\Fonts\Rajdhani-Bold.ttf"/>
+    <Resource Include="Assets\Fonts\Geist-Regular.ttf"/>
+    <Resource Include="Assets\Fonts\Geist-Medium.ttf"/>
+    <Resource Include="Assets\Fonts\Geist-SemiBold.ttf"/>
+    <Resource Include="Assets\Fonts\Geist-Bold.ttf"/>
+    <Resource Include="Assets\Fonts\JetBrainsMono-Regular.ttf"/>
+    <Resource Include="Assets\Fonts\JetBrainsMono-Medium.ttf"/>
+    <Resource Include="Assets\Fonts\JetBrainsMono-Bold.ttf"/>
+    <!-- MOBIGLAS UI/label face -->
+    <Resource Include="Assets\Fonts\ChakraPetch-Regular.ttf"/>
+    <Resource Include="Assets\Fonts\ChakraPetch-Medium.ttf"/>
+    <Resource Include="Assets\Fonts\ChakraPetch-SemiBold.ttf"/>
+    <Resource Include="Assets\Fonts\ChakraPetch-Bold.ttf"/>
   </ItemGroup>
 </Project>
