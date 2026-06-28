@@ -1380,61 +1380,65 @@ public partial class MainWindow : Window
         return sp;
     }
 
-    private Border CategoryCard(string cat, int count)
+    private FrameworkElement CategoryCard(string cat, int count)
     {
-        var col      = CategoryBrush(cat);
-        var fg       = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dim      = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+        var col       = CategoryBrush(cat);
+        var fg        = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim       = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var bg2       = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        var highlight = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        var headFont  = (System.Windows.Media.FontFamily)FindResource("HeadFont");
 
-        var card = new Border { Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 0, 8), Cursor = System.Windows.Input.Cursors.Hand };
         var g = new Grid();
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.Children.Add(new Border { Background = col, CornerRadius = new CornerRadius(10, 0, 0, 10) });
 
-        var stack = new StackPanel { Margin = new Thickness(16, 12, 8, 12) };
-        Grid.SetColumn(stack, 1);
+        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new TextBlock { Text = cat, FontFamily = headFont, FontSize = 15, Foreground = fg });
         stack.Children.Add(new TextBlock { Text = "blueprints", FontSize = 9, Foreground = dim, Margin = new Thickness(0, 2, 0, 0) });
         g.Children.Add(stack);
 
-        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) };
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock { Text = count.ToString(), FontFamily = headFont, FontSize = 18, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
         right.Children.Add(new TextBlock { Text = "  ›", FontSize = 15, Foreground = dim, VerticalAlignment = VerticalAlignment.Center });
-        Grid.SetColumn(right, 2);
-        g.Children.Add(right);
+        Grid.SetColumn(right, 1); g.Children.Add(right);
 
-        card.Child = g;
-        card.MouseLeftButtonDown += (_, __) => EnterCategory(cat);
-        return card;
+        var host = Hud.CardFrame(g, out var frame, out _, chamfer: 11, padding: new Thickness(16, 12, 14, 12));
+        host.Margin = new Thickness(0, 0, 0, 8);
+        host.Cursor = System.Windows.Input.Cursors.Hand;
+        host.MouseEnter += (_, __) => frame.Fill = highlight;
+        host.MouseLeave += (_, __) => frame.Fill = bg2;
+        host.MouseLeftButtonDown += (_, __) => EnterCategory(cat);
+        return host;
     }
 
-    private Border DrillRow(string label, int count, System.Windows.Media.Brush col, Action onClick)
+    private FrameworkElement DrillRow(string label, int count, System.Windows.Media.Brush col, Action onClick)
     {
-        var fg       = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dim      = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
+        var fg        = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim       = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var bg2       = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        var highlight = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        var headFont  = (System.Windows.Media.FontFamily)FindResource("HeadFont");
 
-        var card = new Border { Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 6), Cursor = System.Windows.Input.Cursors.Hand };
         var g = new Grid();
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.Children.Add(new Border { Background = col, CornerRadius = new CornerRadius(8, 0, 0, 8) });
 
-        var name = new TextBlock { Text = label, FontFamily = headFont, FontSize = 12, Foreground = fg, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 9, 8, 9), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
-        Grid.SetColumn(name, 1); g.Children.Add(name);
+        var name = new TextBlock { Text = label, FontFamily = headFont, FontSize = 12, Foreground = fg, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
+        g.Children.Add(name);
 
-        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock { Text = count.ToString(), FontSize = 11, FontWeight = FontWeights.Bold, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
         right.Children.Add(new TextBlock { Text = "  ›", FontSize = 13, Foreground = dim, VerticalAlignment = VerticalAlignment.Center });
-        Grid.SetColumn(right, 2); g.Children.Add(right);
+        Grid.SetColumn(right, 1); g.Children.Add(right);
 
-        card.Child = g;
-        card.MouseLeftButtonDown += (_, __) => onClick();
-        return card;
+        var host = Hud.CardFrame(g, out var frame, out _, chamfer: 9, padding: new Thickness(14, 9, 12, 9));
+        host.Margin = new Thickness(0, 0, 0, 6);
+        host.Cursor = System.Windows.Input.Cursors.Hand;
+        host.MouseEnter += (_, __) => frame.Fill = highlight;
+        host.MouseLeave += (_, __) => frame.Fill = bg2;
+        host.MouseLeftButtonDown += (_, __) => onClick();
+        return host;
     }
 
     private Border BlueprintRow(NexusApp.Models.Blueprint bp, bool showCategory)
