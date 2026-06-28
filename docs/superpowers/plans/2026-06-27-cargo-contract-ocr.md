@@ -470,13 +470,17 @@ Write the full file with the copied capture/convert/P-Invoke verbatim from `OcrS
 
 ---
 
-### Task 7: Overlay controls (Set region + auto-scan toggle)
+### Task 7: Two independent scan boxes + HAULING-tab controls (REVISED)
+
+> REVISED 2026-06-27 (Zach): the contract scan uses a SECOND, independent indicator box - YELLOW (RS stays magenta) - via the draw-region + colored-marker model, with the contract controls on the HAULING tab (not the SCAN tab). Two regions are independent and may overlap. Implemented across 4 files: (1) `ScanIndicatorWindow.cs` gains a `ScanIndicatorWindow(Color)` ctor (parameterless still magenta); (2) `OverlayWindow.xaml(.cs)` declares `ContractRegionSelected`/`ContractBoxVisibilityToggled` events, a `SetContractRegion_Click` (own `_contractRegionSelector`), and `BuildHaulingControls()` building "Auto-scan contracts" + "Contract box" switches into a fixed `HaulingControlBar` in `HaulingTabContent` (outside `HaulingList`); (3) `MainWindow.xaml.cs` adds a yellow `_contractIndicator`, `ApplyContractRegion`, `EnsureContractIndicator`, and the event subscriptions, closing it on Closing. Contract path touches ONLY `App.ContractOcr`/`App.ContractScan`/`ContractRegion`/`AutoScanContracts` - never the RS `OcrService`/`ScanRegion`/`_scanIndicator`.
 
 **Files:**
-- Modify: `NexusApp/Views/OverlayWindow.xaml(.cs)`
+- Modify: `NexusApp/Views/ScanIndicatorWindow.cs`, `NexusApp/Views/MainWindow.xaml.cs`, `NexusApp/Views/OverlayWindow.xaml(.cs)`
 
 **Interfaces:**
-- Consumes: `App.ContractOcr`, `App.ContractScan`, `RegionSelectorWindow`.
+- Consumes: `App.ContractOcr`, `App.ContractScan`, `RegionSelectorWindow`, `ScanIndicatorWindow`.
+
+The original single-region SCAN-tab steps below are SUPERSEDED by the revision banner above; retained for context only.
 
 - [ ] **Step 1: Read** how the RS scan does it in `OverlayWindow.xaml.cs`: `SetRegion_Click` -> `RegionSelectorWindow` -> `ScanRegionSelected` (and how the result is saved to `AppSettings.ScanRegion`), and `BuildScanControls`/`SwitchPair` for the on/off toggle idiom.
 - [ ] **Step 2:** Add to the HAULING tab (or the scan controls area) a "Set contract region" button: open `RegionSelectorWindow` via the same path the RS region uses; on `RegionSelected`, save `Settings.Current.ContractRegion = new ScanRegion {X=..,Y=..,Width=..,Height=..}; Settings.Save();` and `App.ContractOcr.SetRegion(...)`.
@@ -494,7 +498,7 @@ Write the full file with the copied capture/convert/P-Invoke verbatim from `OcrS
 **Interfaces:**
 - Consumes: `Haul.Reward`, `Haul.ContractedBy`, `Haul.ContractObjectives`.
 
-- [ ] **Step 1:** In `HaulingPage.ActiveHaulCard` (and `FinishedRow`): when `h.Reward > 0` show a reward line (e.g. `$"{h.Reward:N0} aUEC"` in AccentBrush); when `h.ContractedBy` is non-empty prefer it for the company line. When `h.ContractObjectives.Count > 0`, render those (`$"{role}: {o.Scu} SCU {o.Commodity}  {o.Pickup} -> {o.Dropoff}"`) instead of the log legs; else keep the existing leg rows.
+- [ ] **Step 1:** In `HaulingPage.ActiveHaulCard` (and `FinishedRow`): when `h.Reward > 0` show a reward line (e.g. `$"{h.Reward:N0} aUEC"` in AccentBrush); when `h.ContractedBy` is non-empty prefer it for the company line. When `h.ContractObjectives.Count > 0`, render those (each `ContractObjective` is a full deliver leg, no role - `$"{o.Scu} SCU {o.Commodity}: {o.Pickup} -> {o.Dropoff}"`, omitting empty Pickup/Dropoff) instead of the log legs; else keep the existing leg rows.
 - [ ] **Step 2:** In overlay `RebuildHaulingPanel`: same - show reward + contractor when present and the OCR objectives when present.
 - [ ] **Step 3: Verify by inspection:** only existing brush keys; `:N0` formats the int; no emoji/em-dash; falls back to log legs when no OCR objectives. NOT buildable in WSL.
 - [ ] **Step 4: Commit** (ask Zach): `git add NexusApp/Views/HaulingPage.cs NexusApp/Views/OverlayWindow.xaml.cs && git commit -m "feat(contract): show reward + contractor + OCR objectives on hauls"`
