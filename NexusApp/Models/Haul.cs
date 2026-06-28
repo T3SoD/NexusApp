@@ -31,6 +31,9 @@ public sealed class Haul
     public string Topology { get; set; } = "Unknown"; // "1 to 1" / "1 to 2" / "1 to 3" / "2 to 1" / "Unknown"
     public string RouteTitle { get; set; } = "";      // Contract Accepted title, EM tags stripped
     public string PickupName { get; set; } = "";      // best-effort, left side of an "A > B" route title
+    public int Reward { get; set; }                 // aUEC, from OCR (0 = unknown)
+    public string ContractedBy { get; set; } = "";  // from OCR (cleaner than the generator)
+    public List<ContractObjective> ContractObjectives { get; set; } = new();  // OCR-sourced
     public HaulOutcome Outcome { get; set; } = HaulOutcome.Active;
     public DateTime StartedAt { get; init; } = DateTime.Now;
     public List<HaulLeg> Legs { get; } = new();
