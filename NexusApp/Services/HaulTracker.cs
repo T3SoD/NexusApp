@@ -120,6 +120,16 @@ public sealed class HaulTracker : IDisposable
     {
         var raw = e.Raw;
 
+        // Leaving the PU entirely (menu / quit / disconnect) abandons your in-game contracts, so clear
+        // all hauls on the EAC EndSession - the same signal the shard tracker uses to drop the "current"
+        // shard. This line does NOT pass LooksHaulRelevant, so it must be handled before that filter.
+        if (raw.Contains("CDisciplineServiceExternal::EndSession"))
+        {
+            _currentShardId = "";
+            if (_order.Count > 0) { Logger.Info("[HAUL] shard exit - cleared hauls"); ClearInternal(); }
+            return;
+        }
+
         // Missions are shard-specific: changing shard/server abandons your contracts in-game, so a new
         // shard clears all hauls (active and finished). Reuses the shard parser to read the join line.
         if (raw.Contains("<Join PU>"))
