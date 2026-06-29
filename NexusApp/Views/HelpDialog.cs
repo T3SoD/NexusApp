@@ -113,8 +113,8 @@ public class HelpDialog : Window
             [
                 "On the overlay's STATS tab, turn on Track Session to read your Game.log, then Auto-Track Blueprints to collect them automatically (Auto-Track turns Track Session on for you).",
                 "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library, bumps the session count, and pops a toast.",
-                "The STATS tab shows a live 'THIS SESSION' tally and a Blueprints Collected feed; counts reset when Star Citizen starts a new session, or via Reset session.",
-                "For more control, open the advanced monitor (Settings › Game.log, or the STATS tab footer): a raw log view, a custom log path, and snapshot export.",
+                "The overlay HUB shows a live 'BLUEPRINTS COLLECTED' count and a Collection Log feed; counts reset when Star Citizen starts a new session, or via Reset session in the advanced monitor.",
+                "For more control, open the advanced monitor (Settings › Game.log): a raw log view, a custom log path, snapshot export, and Reset session.",
                 "Import owned from past logs scans your current log plus the logbackups folder and collects everything you've already received (after a preview and confirmation).",
                 "Nexus only reads the log file - it never writes to game files or touches the game process.",
             ]),

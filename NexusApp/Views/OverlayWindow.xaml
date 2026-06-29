@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:conv="clr-namespace:NexusApp.Converters"
+        xmlns:views="clr-namespace:NexusApp.Views"
         Title="Nexus Overlay"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent"
@@ -44,15 +45,21 @@
         </Style>
     </Window.Resources>
 
-    <!-- ── Floating HUD panel ── -->
-    <Border CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                <GradientStop Color="{DynamicResource OverlayBgTopColor}" Offset="0"/>
-                <GradientStop Color="{DynamicResource OverlayBgBotColor}" Offset="1"/>
-            </LinearGradientBrush>
-        </Border.Background>
-        <Grid>
+    <!-- ── Floating HUD panel: MOBIGLAS chamfered shell (TL + BR bevel, like the mock's clip-path).
+         FramePath draws the bevelled fill + 1px slate border; ContentRoot is clipped to the same
+         silhouette so inner content can't poke past the bevel. Both geometries recompute on resize
+         in code-behind (UpdateChamfer). ── -->
+    <Grid>
+        <Path x:Name="FramePath" StrokeThickness="1" SnapsToDevicePixels="True"
+              Stroke="{DynamicResource BorderBrush}">
+            <Path.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="{DynamicResource OverlayBgTopColor}" Offset="0"/>
+                    <GradientStop Color="{DynamicResource OverlayBgBotColor}" Offset="1"/>
+                </LinearGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Grid x:Name="ContentRoot">
             <Grid.RowDefinitions>
                 <RowDefinition Height="34"/>
                 <RowDefinition Height="Auto"/>
@@ -71,8 +78,29 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
                             HorizontalAlignment="Stretch" Background="Transparent"
                             MouseLeftButtonDown="Header_MouseLeftButtonDown" Cursor="SizeAll">
-                    <Image x:Name="OverlayIcon" Source="/Assets/nexus_icon.png" Width="18" Height="18"
-                           Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <!-- Spinning amber ring (mock logo): ~270° arc with an open edge, 14s linear loop.
+                         Amber via DynamicResource so it tracks the active palette. -->
+                    <Grid Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <Path Width="14" Height="14" Stretch="None"
+                              Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"
+                              Data="M 7,0.5 A 6.5,6.5 0 1 1 0.5,7" RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="LogoSpin"/>
+                            </Path.RenderTransform>
+                            <Path.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="LogoSpin"
+                                                             Storyboard.TargetProperty="Angle"
+                                                             From="0" To="360" Duration="0:0:14"
+                                                             RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Path.Triggers>
+                        </Path>
+                    </Grid>
                     <TextBlock Text="NEXUS" Foreground="{DynamicResource AccentBrush}"
                                FontFamily="{StaticResource DisplayFont}" FontWeight="Bold"
                                FontSize="16" VerticalAlignment="Center"/>
@@ -164,122 +192,59 @@
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
 
-                <!-- STATS / HUB tab (Beta): Session Tracking - Game.log blueprint session.
-                     MOBIGLAS order: session toggles, hero session KPI, collected feed, shard list at the bottom. -->
-                <Grid x:Name="StatsTabContent" Visibility="Collapsed">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>   <!-- 0: session + scan toggles -->
-                        <RowDefinition Height="Auto"/>   <!-- 1: hero session KPI -->
-                        <RowDefinition Height="Auto"/>   <!-- 2: server / shard -->
-                        <RowDefinition Height="Auto"/>   <!-- 3: feed label -->
-                        <RowDefinition Height="*"/>      <!-- 4: collected feed -->
-                        <RowDefinition Height="Auto"/>   <!-- 5: footer -->
-                    </Grid.RowDefinitions>
+                <!-- HUB tab (Beta Game.log session): MOBIGLAS glance. Mock order = SCAN STATUS LEDs,
+                     BLUEPRINTS COLLECTED hero (accent chamfer + count-up), SERVER / SHARD (chamfer),
+                     COLLECTION LOG. One vertical scroll, like the mock's .body. The pills / status line /
+                     footer the old layout carried are gone: session-monitoring shows via the LEDs, and
+                     Reset session / advanced monitor now live in the advanced Game.log monitor. -->
+                <ScrollViewer x:Name="StatsTabContent" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12,10,12,12">
 
-                    <!-- Session Tracking + Auto-Track Blueprints are always on (no toggles): a tracking pill +
-                         status line, then read-only scan-state LEDs. Pinned to the TOP of the tab. -->
-                    <StackPanel Grid.Row="0" Margin="10,10,10,2">
-                        <!-- Tracking pill: at-a-glance confirmation the Game.log session is being monitored
-                             (green dot = monitoring, red = no log found). Painted in UpdateStatsStatus. -->
-                        <Border x:Name="SessionPill" HorizontalAlignment="Left" CornerRadius="3"
-                                Padding="7,2,9,3" Margin="1,0,0,5"
-                                Background="{DynamicResource Bg2NavBrush}"
-                                BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border x:Name="SessionPillDot" Width="8" Height="8" CornerRadius="4"
-                                        Margin="0,0,7,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="GAME SESSION" FontSize="9" FontWeight="Bold"
-                                           Foreground="{DynamicResource FgDimBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                <TextBlock x:Name="SessionPillText" Text="MONITORING"
-                                           FontFamily="{StaticResource MonoFont}" FontSize="9" FontWeight="Bold"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                        <!-- Blueprint-tracking pill: Auto-Track Blueprints is always on (green = tracking,
-                             red = off). Painted in UpdateStatsStatus. -->
-                        <Border x:Name="BlueprintPill" HorizontalAlignment="Left" CornerRadius="3"
-                                Padding="7,2,9,3" Margin="1,0,0,5"
-                                Background="{DynamicResource Bg2NavBrush}"
-                                BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border x:Name="BlueprintPillDot" Width="8" Height="8" CornerRadius="4"
-                                        Margin="0,0,7,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="BLUEPRINTS" FontSize="9" FontWeight="Bold"
-                                           Foreground="{DynamicResource FgDimBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                <TextBlock x:Name="BlueprintPillText" Text="TRACKING"
-                                           FontFamily="{StaticResource MonoFont}" FontSize="9" FontWeight="Bold"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock x:Name="StatsStatus" Text="Stopped" FontSize="9"
-                                   Foreground="{DynamicResource FgDimBrush}"
-                                   Margin="1,0,0,0"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <!-- Read-only scan-state LEDs (green = on, red = off). Toggle on SCAN / HAULING. -->
-                        <TextBlock Text="SCAN STATUS" Style="{StaticResource SectionLabel}"
-                                   Margin="1,9,0,4"/>
+                        <!-- SCAN STATUS: read-only LED pills (green on / yellow paused / red off),
+                             synced from the SCAN + HAULING toggles (built in BuildHubScanControls). -->
+                        <TextBlock Text="SCAN STATUS" Style="{StaticResource SectionLabel}" Margin="1,0,0,6"/>
                         <WrapPanel x:Name="HubScanBar"/>
-                    </StackPanel>
 
-                    <!-- Hero session KPI: big cyan blueprints-collected count for this session (built in code-behind) -->
-                    <Grid Grid.Row="1" Margin="10,9,10,0">
-                        <Border CornerRadius="4"
-                                Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
-                                BorderThickness="1">
-                            <StackPanel Margin="13,10,13,11">
-                                <TextBlock x:Name="StatsSessionHeader" Text="BLUEPRINTS COLLECTED"
-                                           Style="{StaticResource SectionLabel}" Padding="0,0,0,6"/>
-                                <Border Height="1" Background="{DynamicResource NavBorderBrush}" Margin="0,0,0,4"/>
-                                <StackPanel x:Name="StatsListItems"/>
+                        <!-- BLUEPRINTS COLLECTED hero: big cyan count-up for this session (CountUp.SetTo). -->
+                        <views:ChamferPanel Accent="True" ShowBrackets="True" Chamfer="12"
+                                            Padding="13,11" Margin="0,11,0,0">
+                            <StackPanel>
+                                <TextBlock Text="BLUEPRINTS COLLECTED" Style="{StaticResource SectionLabel}"/>
+                                <Border Height="1" Background="{DynamicResource NavBorderBrush}" Margin="0,6,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="StatsBigCount" Text="0"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="40" FontWeight="Bold"
+                                               Foreground="{DynamicResource CyanBrush}" VerticalAlignment="Bottom">
+                                        <TextBlock.Effect>
+                                            <DropShadowEffect Color="{DynamicResource CyanColor}" BlurRadius="16"
+                                                              ShadowDepth="0" Opacity="0.4"/>
+                                        </TextBlock.Effect>
+                                    </TextBlock>
+                                    <TextBlock Text="this session" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                               Foreground="{DynamicResource FgDimBrush}"
+                                               Margin="9,0,0,7" VerticalAlignment="Bottom"/>
+                                </StackPanel>
                             </StackPanel>
-                        </Border>
-                        <!-- MOBIGLAS signature: amber L-brackets hugging the card's outer corners, clear of the content -->
-                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,1.5,0,0"/>
-                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
-                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,1.5,1.5,0"/>
-                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
-                                HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,0,0,1.5"/>
-                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
-                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,0,1.5,1.5"/>
-                    </Grid>
+                        </views:ChamferPanel>
 
-                    <!-- SERVER / SHARD: current + recent shards (built in code-behind from App.Shards), above the blueprint feed -->
-                    <StackPanel x:Name="ShardPanel" Grid.Row="2" Margin="10,8,10,4"/>
+                        <!-- SERVER / SHARD: current + recent shards (built in code-behind, RebuildShardPanel). -->
+                        <views:ChamferPanel Chamfer="12" Padding="13,10" Margin="0,11,0,0">
+                            <StackPanel x:Name="ShardPanel"/>
+                        </views:ChamferPanel>
 
-                    <TextBlock Grid.Row="3" Text="COLLECTION LOG"
-                               Style="{StaticResource Eyebrow}" Margin="12,12,10,4"/>
-
-                    <!-- Marked feed (newest first) -->
-                    <Grid Grid.Row="4">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,0">
+                        <!-- COLLECTION LOG: blueprint feed (newest first), inline in the scroll. -->
+                        <TextBlock Text="COLLECTION LOG" Style="{StaticResource Eyebrow}" Margin="1,13,0,4"/>
+                        <Grid MinHeight="56">
                             <StackPanel x:Name="StatsFeedItems"/>
-                        </ScrollViewer>
-                        <TextBlock x:Name="StatsEmptyState"
-                                   Text="No blueprints yet this session.&#x0a;Unlock one in-game and it appears here."
-                                   FontSize="10" Foreground="{DynamicResource FgDimBrush}"
-                                   TextAlignment="Center" TextWrapping="Wrap"
-                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                    </Grid>
-
-                    <!-- Footer: reach the advanced monitor + reset the session tally -->
-                    <Grid Grid.Row="5" Margin="12,4,10,8">
-                        <TextBlock Text="Open advanced monitor…" FontSize="9"
-                                   Foreground="{DynamicResource AccentBrush}" Cursor="Hand"
-                                   Background="Transparent" Padding="2,3"
-                                   HorizontalAlignment="Left" MouseLeftButtonUp="OpenMonitorFromStats_Click"/>
-                        <TextBlock Text="Reset session" FontSize="9"
-                                   Foreground="{DynamicResource FgDimBrush}" Cursor="Hand"
-                                   Background="Transparent" Padding="2,3"
-                                   HorizontalAlignment="Right" MouseLeftButtonUp="ResetSession_Click"/>
-                    </Grid>
-                </Grid>
+                            <TextBlock x:Name="StatsEmptyState"
+                                       Text="No blueprints yet this session.&#x0a;Unlock one in-game and it appears here."
+                                       FontSize="10" Foreground="{DynamicResource FgDimBrush}"
+                                       TextAlignment="Center" TextWrapping="Wrap"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- SCAN tab -->
                 <Grid x:Name="ScanTabContent">
@@ -467,7 +432,7 @@
                           ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 
             <!-- History strip (RECENT scans - hidden on the STATS tab; it's scan-only) -->
-            <Border x:Name="HistoryStrip_Container" Grid.Row="4" CornerRadius="0,0,4,4" Background="{DynamicResource NavBgBrush}">
+            <Border x:Name="HistoryStrip_Container" Grid.Row="4" Background="{DynamicResource NavBgBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="12,6,8,4">
                         <TextBlock Text="RECENT" Style="{StaticResource SectionLabel}"
@@ -488,5 +453,5 @@
                 </DockPanel>
             </Border>
         </Grid>
-    </Border>
+    </Grid>
 </Window>
