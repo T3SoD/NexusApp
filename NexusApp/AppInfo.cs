@@ -20,7 +20,7 @@ public static class AppInfo
         }
     }
 
-    /// <summary>"Installer" (Setup.exe) or "Portable" — the same exe ships both ways, so this is
+    /// <summary>"Installer" (Setup.exe) or "Portable" - the same exe ships both ways, so this is
     /// detected from an installer-dropped marker, falling back to whether the app runs from the
     /// installer's %LocalAppData%\Nexus location. "Unknown" if detection fails.</summary>
     public static string Distribution
@@ -40,7 +40,7 @@ public static class AppInfo
         }
     }
 
-    // Asset bundle signature — verifies the packaged resources match this build.
+    // Asset bundle signature - verifies the packaged resources match this build.
     private const string AssetSignature =
         "TmV4dXMgLyBOZXh1c0FwcCAtLSBvcmlnaW5hbCB3b3JrIGJ5IFQzU29EIC0tIGdpdGh1" +
         "Yi5jb20vVDNTb0QvTmV4dXNBcHAgLS0gdWlkOmU1YWU4OTk0LTYyYzQtNDY3Ni1hMjFk" +

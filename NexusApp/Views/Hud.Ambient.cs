@@ -28,8 +28,20 @@ public static partial class Hud
         RouteConvoy,     // Cargo Hauling (HAUL // 01)
     }
 
-    /// <summary>Build a surface's signature glyph. animate=false gives the static resting pose.</summary>
-    public static FrameworkElement AmbientGlyph(Ambient kind, double size = 64, bool animate = true) => kind switch
+    /// <summary>Build a surface's signature glyph. animate=false gives the static resting pose.
+    /// When animate=true the looping glyph is wrapped in a host that only animates while on-screen:
+    /// switching tabs (Visibility=Collapsed) swaps it to the static pose, disposing the animation
+    /// clocks, so hidden pages cost no CPU. It re-animates when its tab is shown again.</summary>
+    public static FrameworkElement AmbientGlyph(Ambient kind, double size = 64, bool animate = true)
+    {
+        if (!animate) return Build(kind, size, false);
+
+        var host = new ContentControl { Width = size, Height = size, Focusable = false, Content = Build(kind, size, false) };
+        host.IsVisibleChanged += (_, e) => host.Content = Build(kind, size, (bool)e.NewValue);
+        return host;
+    }
+
+    private static FrameworkElement Build(Ambient kind, double size, bool animate) => kind switch
     {
         Ambient.StatusBoard     => StatusBoard(size, animate),
         Ambient.AcquisitionPing => AcquisitionPing(size, animate),
@@ -44,7 +56,9 @@ public static partial class Hud
     /// nav button is hovered or selected (checked). Rebuilds the small glyph on each state change.</summary>
     public static void AttachNavGlyph(System.Windows.Controls.Primitives.ToggleButton btn, ContentControl host, Ambient kind, double size = 42)
     {
-        void Refresh() => host.Content = AmbientGlyph(kind, size, btn.IsMouseOver || btn.IsChecked == true);
+        // Nav glyphs already gate on hover/checked (and the rail is always visible), so build the raw
+        // glyph directly instead of the IsVisible-gated wrapper.
+        void Refresh() => host.Content = Build(kind, size, btn.IsMouseOver || btn.IsChecked == true);
         Refresh();
         btn.MouseEnter += (_, _) => Refresh();
         btn.MouseLeave += (_, _) => Refresh();

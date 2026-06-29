@@ -13,11 +13,11 @@ public sealed class BlueprintMark
 // auto-mark, and the running "this session" tally. Both the standalone Game.log
 // monitor window and the overlay's STATS tab bind to this single instance, so there
 // is exactly one watcher and the count / feed / Start-Stop / Auto-mark state stay in
-// sync across both surfaces. Reads a game-authored file — see [[nexus-gamelog-ownership]]
+// sync across both surfaces. Reads a game-authored file - see [[nexus-gamelog-ownership]]
 // and rework the EAC-safety wording before this ever ships in a release.
 //
 // Ownership and the blueprint name list are injected (not read from App directly) so
-// the session logic is unit-testable headless — see GameLogSessionTests.
+// the session logic is unit-testable headless - see GameLogSessionTests.
 public sealed class GameLogSession : IDisposable
 {
     private readonly GameLogWatcher _watcher = new();
@@ -66,7 +66,7 @@ public sealed class GameLogSession : IDisposable
     public void Reset()
     {
         _marks.Clear();
-        _liveLocalizationMap = null;   // a new SC session may follow a localization change — rebuild lazily
+        _liveLocalizationMap = null;   // a new SC session may follow a localization change - rebuild lazily
         _liveLocalizationBuilt = false;
         SessionReset?.Invoke();
     }
@@ -99,7 +99,7 @@ public sealed class GameLogSession : IDisposable
 
     /// <summary>A blueprint was just auto-marked owned (raised once per distinct new blueprint).</summary>
     public event Action<BlueprintMark>? Marked;
-    /// <summary>Running / Auto-mark changed — bound UIs resync their Start-Stop + toggle.</summary>
+    /// <summary>Running / Auto-mark changed - bound UIs resync their Start-Stop + toggle.</summary>
     public event Action? StateChanged;
     /// <summary>SC running-state changed (Game.log went live or stale); bound session/blueprint pills flip on/off.</summary>
     public event Action<bool>? SessionLiveChanged;
@@ -108,7 +108,7 @@ public sealed class GameLogSession : IDisposable
     public event Action<string>? StatusChanged;
     /// <summary>A bulk ownership change happened outside the live feed (the past-logs import).</summary>
     public event Action? BulkOwnershipChanged;
-    /// <summary>The session tally was cleared (new SC session, or a manual reset) — bound UIs reset their counts.</summary>
+    /// <summary>The session tally was cleared (new SC session, or a manual reset) - bound UIs reset their counts.</summary>
     public event Action? SessionReset;
     /// <summary>The local player's RSI handle was detected in Game.log (read-only). Fires once per distinct handle.</summary>
     public event Action<string>? HandleDetected;
@@ -122,7 +122,7 @@ public sealed class GameLogSession : IDisposable
     public void Stop()
     {
         _watcher.Stop();
-        AutoMark = false;   // stopping the watch turns off auto-tracking — nothing to mark from
+        AutoMark = false;   // stopping the watch turns off auto-tracking - nothing to mark from
         StateChanged?.Invoke();
     }
 
@@ -130,7 +130,7 @@ public sealed class GameLogSession : IDisposable
     {
         if (AutoMark == on) return;
         AutoMark = on;
-        // "Auto-Track Blueprints" implies watching — you can't mark from a log you're not reading.
+        // "Auto-Track Blueprints" implies watching - you can't mark from a log you're not reading.
         if (on && !_watcher.IsRunning)
             _watcher.Start(StartPath(), false);
         StateChanged?.Invoke();
@@ -145,7 +145,7 @@ public sealed class GameLogSession : IDisposable
     public void NotifyBulkOwnershipChanged() => BulkOwnershipChanged?.Invoke();
 
     /// <summary>
-    /// Process one tailed line: surface it raw, and — when Auto-mark is on — mark a newly
+    /// Process one tailed line: surface it raw, and - when Auto-mark is on - mark a newly
     /// received blueprint owned exactly once, recording it in this session's tally.
     /// Public so the session logic can be exercised directly in tests; the watcher calls it.
     /// </summary>

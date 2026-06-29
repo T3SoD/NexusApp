@@ -9,7 +9,7 @@ using NexusApp.Services;
 
 namespace NexusApp.Views;
 
-// BETA — a tiny toast that floats at the bottom-right corner to confirm an auto-marked
+// BETA - a tiny toast that floats at the bottom-right corner to confirm an auto-marked
 // blueprint while you're in-game. Critically it's NON-ACTIVATING (ShowActivated=false)
 // and click-through (IsHitTestVisible=false) so it never steals focus or clicks from
 // Star Citizen. Reuses a single instance; each Show resets a 3.5s auto-dismiss timer.
@@ -54,7 +54,7 @@ public sealed class ToastWindow : Window
 
     // Apply the same no-activate / tool-window / click-through styles the other in-game overlays
     // use, so the toast NEVER pulls focus from Star Citizen. ShowActivated=false alone isn't
-    // reliable against a fullscreen/borderless game — this was tabbing players out mid-session.
+    // reliable against a fullscreen/borderless game - this was tabbing players out mid-session.
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -83,7 +83,7 @@ public sealed class ToastWindow : Window
     {
         if (_current is null)
         {
-            // A new toast is a non-activating window appearing over the game — log its creation so
+            // A new toast is a non-activating window appearing over the game - log its creation so
             // it can be ruled in or out as a cause of a mid-session tab-out.
             Logger.Info("[WIN] toast shown");
             _current = new ToastWindow();

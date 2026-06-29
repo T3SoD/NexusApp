@@ -24,7 +24,7 @@ public partial class RegionSelectorWindow : Window
 
     /// <summary>
     /// Shows the draw surface covering the single monitor that <paramref name="anchor"/> occupies
-    /// (the overlay / main window — i.e. where the user is working, usually the game's monitor)
+    /// (the overlay / main window - i.e. where the user is working, usually the game's monitor)
     /// instead of always the primary (issue #6). Sized in physical pixels via MoveWindow so it lands
     /// on the correct monitor under Per-Monitor-DPI-V2, where WPF Left/Top + Maximize does not.
     /// </summary>
@@ -38,7 +38,7 @@ public partial class RegionSelectorWindow : Window
     {
         base.OnSourceInitialized(e);
         var hwnd = new WindowInteropHelper(this).Handle;
-        // Cover the monitor the anchor (overlay / main window — usually the game's monitor) is on, in
+        // Cover the monitor the anchor (overlay / main window - usually the game's monitor) is on, in
         // PHYSICAL pixels. Under Per-Monitor-DPI-V2, positioning via WPF Left/Top + Maximize lands on
         // the wrong monitor across a DPI boundary (issue #6); MonitorFromWindow + MoveWindow is exact,
         // and PointToScreen on the canvas then yields the right physical coords for that monitor.

@@ -75,6 +75,12 @@ public sealed class HaulingPage : UserControl
         _clearBtn.VerticalAlignment = VerticalAlignment.Center;
         _clearBtn.Margin = new Thickness(0, 0, 0, 0);
         _clearBtn.Click += (_, _) => App.Hauls.ClearAll();   // Changed -> Refresh() rebuilds the list
+
+        // Ambient route-convoy accent, matching the glyph on the other page headers, left of the action.
+        var headGlyph = Hud.AmbientGlyph(Hud.Ambient.RouteConvoy, 40);
+        headGlyph.VerticalAlignment = VerticalAlignment.Center;
+        headGlyph.Margin = new Thickness(0, 0, 12, 0);
+        actions.Children.Add(headGlyph);
         actions.Children.Add(_clearBtn);
 
         var header = Hud.Header("LOGISTICS", "Cargo Hauling",

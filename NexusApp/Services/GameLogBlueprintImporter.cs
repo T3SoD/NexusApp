@@ -10,8 +10,8 @@ namespace NexusApp.Services;
 // to Nexus blueprint names so ownership can auto-fill. Handles BOTH vanilla names and the
 // community StarStrings text mod, which (in its default format) prefixes SHIP COMPONENTS with
 // Type/Size/Grade (e.g. "Tundra" -> "Mil/1/D Tundra") and leaves armor/FPS-weapons/ammo
-// alone. Other custom localization formats are resolved via the user's own global.ini — see
-// GlobalIniReader / ComponentStringReference. Reads a game-authored file — see the EAC note
+// alone. Other custom localization formats are resolved via the user's own global.ini - see
+// GlobalIniReader / ComponentStringReference. Reads a game-authored file - see the EAC note
 // in [[nexus-gamelog-ownership]].
 public sealed class GameLogBlueprintImporter
 {
@@ -20,7 +20,7 @@ public sealed class GameLogBlueprintImporter
     private static readonly Regex StarStringsPrefix = new(@"^[A-Za-z]+/\d+/[A-Za-z]+\s+", RegexOptions.Compiled);
 
     // StarStrings renames ship components to "<Class>/<Size>/<Grade> Name" (e.g. "Mil/1/D Tundra").
-    // Spotting that token anywhere in the log reliably signals the mod is active — even when the
+    // Spotting that token anywhere in the log reliably signals the mod is active - even when the
     // player received no component blueprints. The class set is fixed: Civ/Cmp/Ind/Mil/Sth.
     private static readonly Regex StarStringsSignature = new(@"\b(Civ|Cmp|Ind|Mil|Sth)/\d{1,2}/[A-Za-z]\b", RegexOptions.Compiled);
 
@@ -52,7 +52,7 @@ public sealed class GameLogBlueprintImporter
     // Pulls the blueprint name from a log line, or null if it isn't a receipt. The game wraps it:
     //   Added notification "Received Blueprint: <NAME>: " [n] to queue. ...   (older logs omit the ":")
     // The name itself can contain quotes for skinned variants (e.g. Atzkav "Igniter" Sniper Rifle),
-    // so end at the notification's CLOSING quote — the one right before " [" — not the first quote.
+    // so end at the notification's CLOSING quote - the one right before " [" - not the first quote.
     public static string? ExtractRawName(string line)
     {
         int i = line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase);
@@ -78,7 +78,7 @@ public sealed class GameLogBlueprintImporter
         var stripped = StarStringsPrefix.Replace(rawName, "");
         if (stripped.Length != rawName.Length && _known.TryGetValue(stripped, out canon)) return canon;
         // The user's global.ini (built into localizationMap as customDisplay -> official) handles any
-        // mod or custom format — including no-separator strings the prefix strip can't touch.
+        // mod or custom format - including no-separator strings the prefix strip can't touch.
         if (localizationMap is not null
             && localizationMap.TryGetValue(rawName, out var official)
             && _known.TryGetValue(official, out canon)) return canon;
@@ -91,7 +91,7 @@ public sealed class GameLogBlueprintImporter
         return raw is null ? null : Resolve(raw, localizationMap);
     }
 
-    /// <summary>True if a log line contains a StarStrings component token (e.g. "Mil/1/D") — a
+    /// <summary>True if a log line contains a StarStrings component token (e.g. "Mil/1/D") - a
     /// reliable signal the mod is active, checked across all log lines during a history scan.</summary>
     public static bool HasStarStringsComponentSignature(string line) =>
         line.IndexOf('/') >= 0 && StarStringsSignature.IsMatch(line);
@@ -100,7 +100,7 @@ public sealed class GameLogBlueprintImporter
 
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
     // Returns DISTINCT canonical matched names + distinct unmatched raw names. Read-only,
-    // but logbackups can be hundreds of MB — call from a background thread.
+    // but logbackups can be hundreds of MB - call from a background thread.
     public HistoryScan ScanHistory(string liveLogPath, System.Action<int>? progress = null,
         IReadOnlyDictionary<string, string>? localizationMap = null)
     {

@@ -83,7 +83,7 @@ public class ScanIndicatorWindow : Window
 
     // Position the borderless click-through indicator directly in PHYSICAL pixels. MoveWindow always
     // operates in device pixels regardless of any monitor's per-monitor DPI, so the magenta box lands
-    // exactly over the captured region on ANY-scale monitor (issue #6) — unlike the old code, which
+    // exactly over the captured region on ANY-scale monitor (issue #6) - unlike the old code, which
     // divided by the main window's single DPI and mis-placed the box on a different-DPI secondary.
     // First (offset) move lands the window on the region's monitor and fires WM_DPICHANGED so WPF
     // adopts that monitor's DPI; the second re-asserts the exact rect, overriding WPF's auto-resize.

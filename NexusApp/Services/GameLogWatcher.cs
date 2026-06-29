@@ -5,7 +5,7 @@ namespace NexusApp.Services;
 
 // BETA / EXPERIMENTAL. Reads the Star Citizen Game.log the client writes to disk.
 // NOTE: this reads a game-authored file, which differs from Nexus's usual
-// "screen-OCR only, no game files" model — keep it on the beta branch and rework
+// "screen-OCR only, no game files" model - keep it on the beta branch and rework
 // the EAC-safety wording before it ever ships in a release.
 
 public enum LogCategory
@@ -23,7 +23,7 @@ public sealed class GameLogEntry
 // Tails Game.log live WITHOUT locking it: the game keeps the file open for writing,
 // so we open it shared (FileShare.ReadWrite) and poll for appended bytes. Handles
 // the file being recreated/truncated on a new game session. UI-thread timer, so all
-// events are raised on the dispatcher — safe to touch UI from handlers.
+// events are raised on the dispatcher - safe to touch UI from handlers.
 public sealed class GameLogWatcher : IDisposable
 {
     public const string DefaultLivePath = @"C:\Program Files\Roberts Space Industries\StarCitizen\LIVE\Game.log";
@@ -37,7 +37,7 @@ public sealed class GameLogWatcher : IDisposable
 
     public event Action<GameLogEntry>? LineAppended;
     public event Action<string>? StatusChanged;
-    /// <summary>The log file was truncated/recreated — Star Citizen started a new session.</summary>
+    /// <summary>The log file was truncated/recreated - Star Citizen started a new session.</summary>
     public event Action? LogReset;
     /// <summary>Star Citizen's running state changed: true when the game process is running (independent of
     /// window focus), false once it is closed / exited / shut down.</summary>
@@ -151,7 +151,7 @@ public sealed class GameLogWatcher : IDisposable
             // New-session detection: SC starts a fresh Game.log each launch. Catch both a
             // recreated file (creation time changes) and an in-place truncation (length drops
             // below where we were). The creation-time check also covers the case where the new
-            // session grows past our old offset between polls — which a length check alone would
+            // session grows past our old offset between polls - which a length check alone would
             // miss if the previous session was short.
             DateTime creation;
             try { creation = File.GetCreationTimeUtc(_path); } catch { creation = _creationTimeUtc; }
@@ -161,7 +161,7 @@ public sealed class GameLogWatcher : IDisposable
             {
                 _position = 0;
                 _partial.Clear();
-                StatusChanged?.Invoke($"Log reset (new session) — {_path}");
+                StatusChanged?.Invoke($"Log reset (new session) - {_path}");
                 LogReset?.Invoke();
             }
             if (len <= _position) return;
@@ -193,7 +193,7 @@ public sealed class GameLogWatcher : IDisposable
         }
         catch (IOException)
         {
-            // transient (file momentarily busy) — try again next tick
+            // transient (file momentarily busy) - try again next tick
         }
         catch (Exception ex)
         {
@@ -202,11 +202,11 @@ public sealed class GameLogWatcher : IDisposable
     }
 
     // Best-effort tagging. SC's log format shifts between patches, so unknown lines
-    // fall to Other — the raw text + the filter box are the real discovery tools.
+    // fall to Other - the raw text + the filter box are the real discovery tools.
     public static LogCategory Categorize(string line)
     {
         string l = line.ToLowerInvariant();
-        // Blueprint acquisition is the priority signal we're hunting for — tag it first.
+        // Blueprint acquisition is the priority signal we're hunting for - tag it first.
         // Keywords are a guess until we see the real lines; widen once we know the format.
         if (l.Contains("blueprint") || l.Contains("recipe") || l.Contains("schematic")) return LogCategory.Blueprint;
         if (l.Contains("actor death") || l.Contains("<kill>") || l.Contains("killed")) return LogCategory.Kill;

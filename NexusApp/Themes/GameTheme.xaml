@@ -24,7 +24,7 @@
     <Color x:Key="SystemPyroColor">#FFF97316</Color>
     <Color x:Key="SystemNyxColor">#FFA78BFA</Color>
 
-    <!-- Brushes — Color via DynamicResource so a palette swap repaints live -->
+    <!-- Brushes - Color via DynamicResource so a palette swap repaints live -->
     <SolidColorBrush x:Key="BgBrush"       Color="{DynamicResource BgColor}"/>
     <SolidColorBrush x:Key="Bg2Brush"      Color="{DynamicResource Bg2Color}"/>
     <SolidColorBrush x:Key="Bg3Brush"      Color="{DynamicResource Bg3Color}"/>
@@ -75,7 +75,7 @@
     <System:Double xmlns:System="clr-namespace:System;assembly=mscorlib" x:Key="FontLg">15</System:Double>
     <System:Double xmlns:System="clr-namespace:System;assembly=mscorlib" x:Key="FontXl">20</System:Double>
 
-    <!-- ── NexusButton: secondary/clear button — Bg3 bg, dim text, subtle border -->
+    <!-- ── NexusButton: secondary/clear button - Bg3 bg, dim text, subtle border -->
     <Style x:Key="NexusButton" TargetType="Button">
         <Setter Property="Background"      Value="{DynamicResource Bg3Brush}"/>
         <Setter Property="Foreground"      Value="{DynamicResource FgDimBrush}"/>
@@ -110,7 +110,7 @@
         </Setter>
     </Style>
 
-    <!-- ── AccentButton: primary action — teal bg, dark text -->
+    <!-- ── AccentButton: primary action - teal bg, dark text -->
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource NexusButton}">
         <Setter Property="Background"  Value="{DynamicResource AccentBrush}"/>
         <Setter Property="Foreground"  Value="{DynamicResource OnAccentBrush}"/>
@@ -178,7 +178,7 @@
         </Setter>
     </Style>
 
-    <!-- ── NavButton: sidebar nav items — RadioButton with left accent bar -->
+    <!-- ── NavButton: sidebar nav items - RadioButton with left accent bar -->
     <Style x:Key="NavButton" TargetType="RadioButton">
         <Setter Property="Background"               Value="Transparent"/>
         <Setter Property="Foreground"               Value="{DynamicResource FgDimBrush}"/>
@@ -610,6 +610,14 @@
         <Setter Property="FontWeight"  Value="Bold"/>
         <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
         <Setter Property="Margin"      Value="0,3,0,0"/>
+    </Style>
+
+    <!-- PageSubtitle: dim one-line description under a page title (matches Hud.Header) -->
+    <Style x:Key="PageSubtitle" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize"    Value="12.5"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgDimBrush}"/>
+        <Setter Property="Margin"      Value="0,4,0,0"/>
     </Style>
 
     <!-- SectionLabel: small uppercase dim label for panel headers / KPI keys -->

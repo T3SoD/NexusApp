@@ -18,9 +18,9 @@ public class AppSettings
     public List<string> OwnedBlueprints { get; set; } = [];
     public bool FirstRunComplete { get; set; }
 
-    // BETA Session Tracking — remember whether the watch / auto-collect were on, so they
+    // BETA Session Tracking - remember whether the watch / auto-collect were on, so they
     // resume on next launch, plus the Game.log path the user picked (so a custom location
-    // isn't lost on restart — it was reverting to the default C: path).
+    // isn't lost on restart - it was reverting to the default C: path).
     public bool GameLogTrackSession { get; set; }
     public bool GameLogAutoTrack { get; set; }
     public string GameLogPath { get; set; } = "";
@@ -30,7 +30,7 @@ public class AppSettings
     // (any custom format) back to seed names. "" = auto-detect next to the Game.log path.
     public string GlobalIniPath { get; set; } = "";
 
-    // Blueprint Network — local identity only. The shared roster (other people's libraries)
+    // Blueprint Network - local identity only. The shared roster (other people's libraries)
     // lives in network.db; these few fields are just "who you are" when you export/share.
     public string LocalNetworkId { get; set; } = "";          // stable GUID, generated once
     public string LocalDisplayName { get; set; } = "";        // the label other users see

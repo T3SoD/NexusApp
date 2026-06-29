@@ -85,7 +85,7 @@ public class WorkOrderEditorPanel : UserControl
             Foreground = (Brush)Application.Current.FindResource("AccentBrush"),
             Margin = new Thickness(0, 4, 0, 4),
         };
-        // progress bar built in BuildUI — _progressScale already initialized
+        // progress bar built in BuildUI - _progressScale already initialized
 
         BuildUI();
         SetupResourcesAutocomplete();
@@ -490,7 +490,7 @@ public class WorkOrderEditorPanel : UserControl
 
     private void SetPillFromStatus(WorkOrderStatus status)
     {
-        // Mining is retired — treat existing Mining orders as Refining
+        // Mining is retired - treat existing Mining orders as Refining
         _pillRefining.IsChecked = status == WorkOrderStatus.Refining || status == WorkOrderStatus.Mining;
         _pillReady.IsChecked    = status == WorkOrderStatus.ReadyToCollect;
         _pillComplete.IsChecked = status == WorkOrderStatus.Complete;

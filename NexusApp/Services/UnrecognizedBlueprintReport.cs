@@ -8,7 +8,7 @@ namespace NexusApp.Services;
 // Builds the report a user Copies/Exports from the Game.log import when some blueprint
 // names couldn't be matched, so they can send it to the maintainer to fix the mapping.
 // Formatting is a pure function and the build-line extraction takes lines (not a path),
-// so both are unit-testable headless. Privacy: versions + build line + raw names only —
+// so both are unit-testable headless. Privacy: versions + build line + raw names only -
 // no player handle, no file paths (SC log paths contain the Windows username).
 public static class UnrecognizedBlueprintReport
 {
@@ -66,10 +66,10 @@ public static class UnrecognizedBlueprintReport
         var sb = new StringBuilder();
         sb.AppendLine($"Nexus v{appVersion}  ·  Mining data v{miningDataVersion}  ·  {timestamp:yyyy-MM-dd HH:mm}");
         sb.AppendLine($"Star Citizen build: {(string.IsNullOrWhiteSpace(buildLine) ? "unknown" : buildLine)}");
-        sb.AppendLine($"Scanned {filesScanned} log file(s) — matched {matchedCount}, unrecognized {unmatchedLines.Count}");
+        sb.AppendLine($"Scanned {filesScanned} log file(s) - matched {matchedCount}, unrecognized {unmatchedLines.Count}");
         sb.AppendLine($"StarStrings mod: {(starStringsDetected ? "detected" : "not detected")}");
         sb.AppendLine();
-        sb.AppendLine("Unrecognized blueprints — the full Game.log line for each (samples to fix the mapping):");
+        sb.AppendLine("Unrecognized blueprints - the full Game.log line for each (samples to fix the mapping):");
         foreach (var line in unmatchedLines) sb.AppendLine(line);
         return sb.ToString();
     }

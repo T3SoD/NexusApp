@@ -4,8 +4,8 @@ using System.Windows.Media;
 namespace NexusApp.Services;
 
 /// <summary>
-/// Records discrete user interactions to nexus.log together with WHERE they happened — the
-/// window type plus the nearest named container — so a diagnostic snapshot reads like a
+/// Records discrete user interactions to nexus.log together with WHERE they happened - the
+/// window type plus the nearest named container - so a diagnostic snapshot reads like a
 /// breadcrumb trail ("toggle: Auto-scan @ OverlayWindow/ScanControlBar"). User-driven UI only;
 /// background/automatic work (the scan loop) is logged separately under [SCAN].
 /// </summary>
@@ -27,8 +27,8 @@ public static class InteractionLog
 
     /// <summary>
     /// Best-effort "where" for a logged interaction: the window type plus the nearest named
-    /// container above the control (its x:Name from XAML), so duplicate labels — e.g. the three
-    /// separate "Clear" buttons — are distinguishable. Template-internal parts (PART_*) are skipped
+    /// container above the control (its x:Name from XAML), so duplicate labels - e.g. the three
+    /// separate "Clear" buttons - are distinguishable. Template-internal parts (PART_*) are skipped
     /// so the result names a real page/panel (PageScan, ScanHistorySection, ScanTabContent), not a
     /// control-template fragment. Returns "" if nothing useful is found.
     /// </summary>

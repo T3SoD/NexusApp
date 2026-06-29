@@ -10,7 +10,7 @@ namespace NexusApp.Views;
 
 /// <summary>
 /// First-run "choose your look" picker, shown once on a fresh install from
-/// App.OnStartup BEFORE the main window is built — so the app opens directly in
+/// App.OnStartup BEFORE the main window is built - so the app opens directly in
 /// the chosen theme with no restart and the welcome tour runs in that theme.
 /// Styled with its own explicit colors (not theme brushes) so it renders the
 /// same regardless of which palette happens to be loaded. The card layout keeps
@@ -63,7 +63,7 @@ public class ThemePickerWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "Choose your look — you can change it anytime in Settings.",
+            Text = "Choose your look - you can change it anytime in Settings.",
             FontSize = 13,
             Foreground = ChromeFgDim,
             HorizontalAlignment = HorizontalAlignment.Center,

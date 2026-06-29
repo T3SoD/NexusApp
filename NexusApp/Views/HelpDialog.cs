@@ -10,13 +10,13 @@ namespace NexusApp.Views;
 
 /// <summary>
 /// The in-app user guide: a two-pane topic browser that mirrors the app's own
-/// Mining Codex / Blueprint Library layout — a searchable topic list on the left,
+/// Mining Codex / Blueprint Library layout - a searchable topic list on the left,
 /// the selected topic's content on the right. Each topic leads with a one-line
 /// summary, a row of called-out key controls, then the detail bullets.
 /// </summary>
 public class HelpDialog : Window
 {
-    /// <summary>Set when the user clicks "Replay Tutorial" — the owner launches the tour after this dialog closes.</summary>
+    /// <summary>Set when the user clicks "Replay Tutorial" - the owner launches the tour after this dialog closes.</summary>
     public bool TutorialRequested { get; private set; }
 
     private sealed record HelpKey(string Glyph, string Label);
@@ -31,12 +31,12 @@ public class HelpDialog : Window
                 "Click ⧉ in the top-right of the main window to open the floating overlay.",
                 "Drag the NEXUS header bar to reposition the overlay anywhere on screen.",
                 "The overlay stays on top of all windows including your game.",
-                "Close it with the ✕ button — position and size are saved for next time.",
+                "Close it with the ✕ button - position and size are saved for next time.",
                 "The overlay has four tabs: STATS, SCAN, ORDERS, and SHOPPING.",
-                "STATS — Session Tracking: Track Session / Auto-Track Blueprints, a live THIS SESSION tally and a Blueprints Collected feed (see Session Tracking).",
-                "SCAN — auto-scan controls, RS input, results, and the RECENT scan history (shown on this tab only).",
-                "ORDERS — opens the Refinery Tracker flyout panel beside the overlay.",
-                "SHOPPING — an inline view of your current shopping list.",
+                "STATS - Session Tracking: Track Session / Auto-Track Blueprints, a live THIS SESSION tally and a Blueprints Collected feed (see Session Tracking).",
+                "SCAN - auto-scan controls, RS input, results, and the RECENT scan history (shown on this tab only).",
+                "ORDERS - opens the Refinery Tracker flyout panel beside the overlay.",
+                "SHOPPING - an inline view of your current shopping list.",
                 "The opacity slider sits in the overlay header, so it's available from every tab.",
             ]),
 
@@ -45,14 +45,14 @@ public class HelpDialog : Window
             [new("⊕", "draw region"), new("▶", "start"), new("■", "stop"), new("⊠", "show box"), new("⊡", "hide box")],
             [
                 "Switch to the SCAN tab in the overlay to access all scan controls.",
-                "Click ⊕ to draw a scan region — your cursor becomes a crosshair.",
+                "Click ⊕ to draw a scan region - your cursor becomes a crosshair.",
                 "Click and drag a rectangle over the RS value shown in your game.",
                 "img:/Assets/RS_Signature.png",
-                "Click ▶ to start scanning — the overlay reads the RS value automatically every ~0.5 seconds.",
-                "While scanning the button shows ■ — click it to stop. Click ⊕ again to redraw the region.",
+                "Click ▶ to start scanning - the overlay reads the RS value automatically every ~0.5 seconds.",
+                "While scanning the button shows ■ - click it to stop. Click ⊕ again to redraw the region.",
                 "Click ⊠ to show the magenta scan box indicator on screen; click ⊡ to hide it.",
                 "The scan box is hidden by default on launch.",
-                "Use the opacity slider in the overlay header to adjust transparency (20–100%) — it's on every tab and the refinery flyout dims along with it.",
+                "Use the opacity slider in the overlay header to adjust transparency (20–100%) - it's on every tab and the refinery flyout dims along with it.",
                 "◉ Reading… appears in the status bar when a candidate value is being confirmed.",
             ]),
 
@@ -65,9 +65,9 @@ public class HelpDialog : Window
                 "Pressing Enter runs the scan and clears the input so you can type the next value immediately.",
                 "Results show the matching resource, node count, tier, and match accuracy.",
                 "EXACT means the value is a perfect multiple of the resource's base RS.",
-                "~X.XX% means a close match within 0.5% — the resource is still very likely correct.",
+                "~X.XX% means a close match within 0.5% - the resource is still very likely correct.",
                 "The left border color indicates match quality: green = exact, amber = close.",
-                "Recent scans appear at the bottom as a text list — ◆ color matches the result tier.",
+                "Recent scans appear at the bottom as a text list - ◆ color matches the result tier.",
                 "Click any recent scan entry to re-run that lookup.",
                 "Click Clear next to RECENT SCANS to clear the history.",
             ]),
@@ -78,7 +78,7 @@ public class HelpDialog : Window
             [
                 "Navigate to REFINERY TRACKER from the left sidebar.",
                 "Click + New to create a work order. Fill in the label, resource, location, refinery, and status.",
-                "Set a refinery timer using the Hours and Minutes fields — the countdown starts immediately.",
+                "Set a refinery timer using the Hours and Minutes fields - the countdown starts immediately.",
                 "The live progress bar fills smoothly as time elapses.",
                 "When the timer expires the status automatically changes to Ready to Collect.",
                 "Click a work order row on the left to open it for editing.",
@@ -93,7 +93,7 @@ public class HelpDialog : Window
             [new("Enter", "search"), new("Add All", "to shopping list"), new("Owned", "toggle")],
             [
                 "Navigate to BLUEPRINT LIBRARY from the left sidebar.",
-                "Start typing a blueprint name — autocomplete suggestions appear as you type.",
+                "Start typing a blueprint name - autocomplete suggestions appear as you type.",
                 "Select a suggestion or press Enter to search.",
                 "The left panel lists matching blueprints. Click one to see its full ingredient list on the right.",
                 "Each ingredient card shows the resource name, quantity, unit, and rarity color.",
@@ -102,13 +102,13 @@ public class HelpDialog : Window
                 "A WHERE TO MINE section below the ingredients ranks the most efficient mining locations to gather all required resources.",
                 "The first recommended location covers the most ingredients; subsequent entries cover what remains.",
                 "Resources with no known mining location are listed separately at the bottom.",
-                "Mark a blueprint as Owned with its toggle — a manifest (You own X of Y blueprints) and per-category progress appear at the top of the library.",
+                "Mark a blueprint as Owned with its toggle - a manifest (You own X of Y blueprints) and per-category progress appear at the top of the library.",
                 "Filter the library by All, Owned, or Not owned; the owned count updates live as you mark blueprints.",
-                "Let Nexus collect these for you automatically as you play — see Session Tracking.",
+                "Let Nexus collect these for you automatically as you play - see Session Tracking.",
             ]),
 
         new("✓", "Session Tracking",
-            "Let Nexus read Star Citizen's Game.log to auto-collect blueprints you receive — marking them Owned, live as you play or in bulk from past logs. (Beta)",
+            "Let Nexus read Star Citizen's Game.log to auto-collect blueprints you receive - marking them Owned, live as you play or in bulk from past logs. (Beta)",
             [new("Track Session", "watch"), new("Auto-Track", "blueprints"), new("Import", "past logs")],
             [
                 "On the overlay's STATS tab, turn on Track Session to read your Game.log, then Auto-Track Blueprints to collect them automatically (Auto-Track turns Track Session on for you).",
@@ -116,19 +116,19 @@ public class HelpDialog : Window
                 "The STATS tab shows a live 'THIS SESSION' tally and a Blueprints Collected feed; counts reset when Star Citizen starts a new session, or via Reset session.",
                 "For more control, open the advanced monitor (Settings › Game.log, or the STATS tab footer): a raw log view, a custom log path, and snapshot export.",
                 "Import owned from past logs scans your current log plus the logbackups folder and collects everything you've already received (after a preview and confirmation).",
-                "Nexus only reads the log file — it never writes to game files or touches the game process.",
+                "Nexus only reads the log file - it never writes to game files or touches the game process.",
             ]),
 
         new("◆", "Mining Codex",
-            "The full reference table of every resource Nexus knows — filter and group it to plan a route before you undock.",
+            "The full reference table of every resource Nexus knows - filter and group it to plan a route before you undock.",
             [new("✕", "clear search"), new("Expand All", ""), new("Reset Sort", "")],
             [
                 "Navigate to MINING CODEX from the left sidebar.",
-                "Search by resource name, location, or blueprint — the table filters in real time.",
+                "Search by resource name, location, or blueprint - the table filters in real time.",
                 "Click ✕ to clear the search.",
                 "System pills (All / Stanton / Pyro / Nyx) filter resources by where they are found.",
                 "Method pills (All / Ship / ROC / FPS) filter by how the resource is mined.",
-                "Multiple pills can be active at once — they combine as AND filters. Click All to clear a row.",
+                "Multiple pills can be active at once - they combine as AND filters. Click All to clear a row.",
                 "Click Group: Resource / Group: Location to toggle between rarity-grouped and location-grouped views.",
                 "In location view, resources are grouped by system (Stanton / Pyro / Nyx) then by mining site.",
                 "Click Expand All to open every row. The button becomes Collapse All.",
@@ -160,35 +160,35 @@ public class HelpDialog : Window
             [new("Export", "your library"), new("Import", "a teammate's"), new("Groups…", "organize")],
             [
                 "Navigate to BLUEPRINT NETWORK from the left sidebar.",
-                "Click Export to save your owned blueprints to a .nexuslib file — share it as your RSI handle or a nickname.",
+                "Click Export to save your owned blueprints to a .nexuslib file - share it as your RSI handle or a nickname.",
                 "Send that file to friends however you like (Discord, a shared drive); they Import it to see your library.",
-                "Click Import to load a teammate's .nexuslib file — each person becomes a member of your network.",
-                "Re-importing someone's newer file updates them in place — no duplicates.",
+                "Click Import to load a teammate's .nexuslib file - each person becomes a member of your network.",
+                "Re-importing someone's newer file updates them in place - no duplicates.",
                 "A coordinator can import everyone, then Export one combined roster the whole group imports just once.",
-                "Members tab — everyone you've imported; use Groups… to add a member to a group, or + New group to create one (Friends, your org, …).",
-                "Overview tab — your group's coverage: percent owned, blueprints nobody has yet (farm targets), and ones only a single person holds.",
-                "Blueprints tab — every blueprint with how many of you own it; filter to Nobody owns / Single owner / I'm missing, and expand a row to see exactly who has it.",
+                "Members tab - everyone you've imported; use Groups… to add a member to a group, or + New group to create one (Friends, your org, …).",
+                "Overview tab - your group's coverage: percent owned, blueprints nobody has yet (farm targets), and ones only a single person holds.",
+                "Blueprints tab - every blueprint with how many of you own it; filter to Nobody owns / Single owner / I'm missing, and expand a row to see exactly who has it.",
                 "The group switcher scopes coverage to a group or to everyone; you're always counted in coverage.",
-                "No server, no account — Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
+                "No server, no account - Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
             ]),
 
         new("≡", "Settings",
-            "The cog button in the top-right of the main window opens Settings — your theme, the Game.log blueprint watcher, and a reset for saved data all live here.",
+            "The cog button in the top-right of the main window opens Settings - your theme, the Game.log blueprint watcher, and a reset for saved data all live here.",
             [new("Settings", "cog, top-right")],
             [
                 "Click the cog (Settings) button in the top-right of the main window to open it.",
-                "Appearance — switch between the Luxury Gold and Classic themes (applies on restart).",
-                "Game.log (Beta) — opens the advanced Game.log monitor for Session Tracking (see Session Tracking).",
-                "Data — Clear saved data wipes your owned blueprints, shopping cart, work orders and pinned resources after a confirmation; your theme and the mining reference data are left untouched.",
+                "Appearance - switch between the Luxury Gold and Classic themes (applies on restart).",
+                "Game.log (Beta) - opens the advanced Game.log monitor for Session Tracking (see Session Tracking).",
+                "Data - Clear saved data wipes your owned blueprints, shopping cart, work orders and pinned resources after a confirmation; your theme and the mining reference data are left untouched.",
             ]),
 
         new("◐", "Appearance",
-            "Choose how Nexus looks — pick a theme on first launch, or switch it anytime.",
+            "Choose how Nexus looks - pick a theme on first launch, or switch it anytime.",
             [new("Settings", "› Appearance")],
             [
                 "On first launch, a welcome picker lets you choose your look: Luxury Gold or Classic teal.",
                 "Luxury Gold is the default near-black-and-gold theme; Classic is the original slate-and-teal style.",
-                "Switch themes anytime from the Settings (cog) button in the top-right › Appearance — the change applies on restart.",
+                "Switch themes anytime from the Settings (cog) button in the top-right › Appearance - the change applies on restart.",
                 "Replay this guided tour anytime with the Replay Tutorial button below.",
             ]),
     ];
@@ -218,7 +218,7 @@ public class HelpDialog : Window
         return new Viewbox { Width = size, Height = size, Child = canvas };
     }
 
-    // Recolor a topic-row icon — a text glyph (Foreground) or the share vector (each shape's Stroke).
+    // Recolor a topic-row icon - a text glyph (Foreground) or the share vector (each shape's Stroke).
     private static void RecolorIcon(UIElement icon, Brush brush)
     {
         if (icon is TextBlock tb) { tb.Foreground = brush; return; }
@@ -236,7 +236,7 @@ public class HelpDialog : Window
 
     public HelpDialog()
     {
-        Title = "Help — Nexus";
+        Title = "Help - Nexus";
         Width = 880; Height = 600; MinWidth = 720; MinHeight = 480;
         Background = R("BgBrush");
         Foreground = R("FgBrush");

@@ -3,7 +3,7 @@ using System.Windows.Media;
 namespace NexusApp.Views;
 
 /// <summary>
-/// Pure presentation helpers shared across the views — colour/brush mapping for
+/// Pure presentation helpers shared across the views - colour/brush mapping for
 /// rarities, tiers, systems and categories, plus small string/format utilities.
 /// Extracted from MainWindow.xaml.cs so the per-page views can share them.
 /// </summary>

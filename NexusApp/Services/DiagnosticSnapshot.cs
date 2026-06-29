@@ -6,7 +6,7 @@ namespace NexusApp.Services;
 // Builds the diagnostic snapshot a user saves/copies from the App Log Monitor and sends for
 // debugging: a short context header (versions + key settings) followed by the full nexus.log.
 // Pure formatting so it's unit-testable headless. Local-only until the user chooses to share it;
-// contains versions, basic settings, and the app's own log — no other data.
+// contains versions, basic settings, and the app's own log - no other data.
 public static class DiagnosticSnapshot
 {
     public static string Build(

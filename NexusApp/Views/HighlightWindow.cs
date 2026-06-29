@@ -179,14 +179,14 @@ public class HighlightWindow : Window
 
         var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
 
-        // Core "breathing" pulse — never fully fades so the button stays clearly marked.
+        // Core "breathing" pulse - never fully fades so the button stays clearly marked.
         var breathe = new DoubleAnimation(1.0, 0.55, TimeSpan.FromMilliseconds(700))
         {
             AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease,
         };
         _core.BeginAnimation(OpacityProperty, breathe);
 
-        // Radar ping — scale outward and fade, repeating.
+        // Radar ping - scale outward and fade, repeating.
         var grow = new DoubleAnimation(1.0, 1.9, TimeSpan.FromMilliseconds(1150))
         {
             RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut },

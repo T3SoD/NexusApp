@@ -18,7 +18,7 @@ public class DataService : IDisposable
     private string _seedVersion = "0.0.0";
 
     /// <summary>The mining-data version currently applied to the database. This is the
-    /// seed-content version (auto-updatable) — distinct from <see cref="GameData.Version"/>,
+    /// seed-content version (auto-updatable) - distinct from <see cref="GameData.Version"/>,
     /// which tracks the Star Citizen patch and is bumped manually.</summary>
     public string MiningDataVersion => GetMeta("data_version") ?? _seedVersion;
 
@@ -113,7 +113,7 @@ public class DataService : IDisposable
     {
         try { Exec("ALTER TABLE work_orders ADD COLUMN timer_start TEXT"); } catch { }
         try { Exec("ALTER TABLE work_orders ADD COLUMN timer_end TEXT"); } catch { }
-        // If sub_category is missing the blueprint rows predate it — force a full reseed.
+        // If sub_category is missing the blueprint rows predate it - force a full reseed.
         try { Exec("ALTER TABLE blueprints ADD COLUMN sub_category TEXT"); _forceReseed = true; } catch { }
     }
 
@@ -139,7 +139,7 @@ public class DataService : IDisposable
     }
 
     // Streams just the top-level version property out of the seed JSON without
-    // building the full object graph — keeps cold start cheap on every launch.
+    // building the full object graph - keeps cold start cheap on every launch.
     private static string? ReadSeedVersion(byte[]? bytes)
     {
         if (bytes == null || bytes.Length == 0) return null;
@@ -170,7 +170,7 @@ public class DataService : IDisposable
 
     private void ApplySeed()
     {
-        // Read the raw seed bytes once and probe only the version string — the common
+        // Read the raw seed bytes once and probe only the version string - the common
         // path (no reseed) never pays to deserialize the whole ~1 MB payload.
         var bytes   = ReadEmbeddedSeedBytes();
         var seedVer = ReadSeedVersion(bytes);
@@ -179,7 +179,7 @@ public class DataService : IDisposable
         var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
         var applied = GetMeta("data_version");
 
-        // Fresh install — seed everything.
+        // Fresh install - seed everything.
         if (resourceCount == 0)
         {
             SeedAll(LoadSeed(bytes));
@@ -187,7 +187,7 @@ public class DataService : IDisposable
             return;
         }
 
-        // Old schema that just gained a column — repopulate from the current seed.
+        // Old schema that just gained a column - repopulate from the current seed.
         if (_forceReseed)
         {
             SeedAll(LoadSeed(bytes));
@@ -195,7 +195,7 @@ public class DataService : IDisposable
             return;
         }
 
-        // Pre-versioning DB already populated by an earlier build — adopt the current
+        // Pre-versioning DB already populated by an earlier build - adopt the current
         // version without a disruptive reseed; backfill unlocks if missing (v4.1).
         if (applied == null)
         {
@@ -204,7 +204,7 @@ public class DataService : IDisposable
             return;
         }
 
-        // A newer build shipped newer embedded data — full reseed.
+        // A newer build shipped newer embedded data - full reseed.
         if (CompareVersions(_seedVersion, applied) > 0)
         {
             SeedAll(LoadSeed(bytes));

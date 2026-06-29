@@ -6,7 +6,7 @@ namespace NexusApp.Services;
 
 /// <summary>
 /// Diagnostic-only watcher for OS foreground-window changes. On each change it logs the new
-/// foreground PROCESS NAME — never the window title, which could contain personal info — to
+/// foreground PROCESS NAME - never the window title, which could contain personal info - to
 /// nexus.log under [FG].
 ///
 /// This is the cause-agnostic signal for the "tabbed out of Star Citizen mid-session" reports:
@@ -74,7 +74,7 @@ public sealed class ForegroundMonitor : IDisposable
 
             string name;
             try { name = Process.GetProcessById((int)pid).ProcessName; }
-            catch { name = $"pid {pid}"; }                  // process gone / access denied — name only, no title
+            catch { name = $"pid {pid}"; }                  // process gone / access denied - name only, no title
             Logger.Info($"[FG] foreground -> {name}");
 
             bool relevant = RelevantProcesses.Contains(name);

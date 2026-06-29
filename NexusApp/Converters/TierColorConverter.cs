@@ -94,7 +94,7 @@ public class WorkOrderStatusColorConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
 }
 
-// Converts a "#RRGGBB" hex string to a SolidColorBrush — used for dynamic card border colors
+// Converts a "#RRGGBB" hex string to a SolidColorBrush - used for dynamic card border colors
 [ValueConversion(typeof(string), typeof(Brush))]
 public class HexColorConverter : IValueConverter
 {
