@@ -25,8 +25,6 @@ public partial class OverlayWindow : Window
     public event Action<bool>? ContractBoxVisibilityToggled;
     public event Action? Hidden;
     public event Action? Shown;
-    /// <summary>STATS tab asked to open the advanced Game.log monitor window.</summary>
-    public event Action? OpenMonitorRequested;
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
     public FrameworkElement SetRegionTarget   => SetRegionBtn;
@@ -42,7 +40,6 @@ public partial class OverlayWindow : Window
     public void ShowShoppingTabForTutorial() => SwitchTab("shopping");
 
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
-    private readonly Action _onThemeChanged;
     private readonly Action<string> _onOrderReady;
 
     public OverlayWindow(MainViewModel vm)
@@ -50,10 +47,9 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         _vm = vm;
 
-        OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(NexusApp.Services.ThemeService.IconUri));
-        _onThemeChanged = () =>
-            OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(NexusApp.Services.ThemeService.IconUri));
-        NexusApp.Services.ThemeService.ThemeChanged += _onThemeChanged;
+        // Chamfered shell: recompute the frame Path + the content clip whenever the overlay is resized
+        // (CanResizeWithGrip), so the MOBIGLAS bevel tracks the window. Fires on first layout too.
+        SizeChanged += (_, _) => UpdateChamfer();
 
         var s = App.Settings.Current;
         Left = s.OverlayLeft; Top = s.OverlayTop;
@@ -85,9 +81,9 @@ public partial class OverlayWindow : Window
         // overlay lives for the app's lifetime (created once, hidden/shown), so these
         // never need unsubscribing.
         App.GameLog.Marked += OnGameLogMarked;
-        App.GameLog.StateChanged += SyncStatsControls;
-        App.GameLog.StatusChanged += OnGameLogStatus;
         App.GameLog.SessionReset += OnSessionReset;
+        App.GameLog.StateChanged += RefreshSessionLed;        // keep the HUB SESSION LED live (start/stop)
+        App.GameLog.StatusChanged += OnGameLogStatusChanged;  // and as SC opens / closes (session liveness)
 
         // Cargo Hauling glance tab: refresh the list when the tracker changes, but only while
         // the HAULING tab is the one on screen (mirrors how OnGameLogMarked guards the STATS tab).
@@ -109,7 +105,6 @@ public partial class OverlayWindow : Window
 
         UpdateHaulingTabLabel();   // initial overlay tab count (updates as hauls stream in)
 
-        BuildStatsControls();
         BuildScanControls();
         BuildHaulingControls();
         BuildHubScanControls();
@@ -124,6 +119,15 @@ public partial class OverlayWindow : Window
             if (visible) Shown?.Invoke();
             else Hidden?.Invoke();
         };
+    }
+
+    // Paint the chamfered shell: the FramePath silhouette (bevelled fill + 1px border) and the matching
+    // clip on ContentRoot so inner content stays inside the TL + BR bevels. 16px chamfer = the mock frame.
+    private void UpdateChamfer()
+    {
+        var geo = Hud.ChamferGeometry(ActualWidth, ActualHeight, 16);
+        FramePath.Data = geo;
+        ContentRoot.Clip = geo;
     }
 
     public void ReceiveOcrValue(int value)
@@ -230,8 +234,7 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_scanSwTrack, _scanSwKnob, _vm.RsScanState);   // amber on / yellow paused / grey off
         SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
-        SetLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / yellow paused / red off)
-        SetLed(_hubBoxLed, _boxVisible);
+        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / yellow paused / red off)
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.RsScanState switch
         {
@@ -290,54 +293,76 @@ public partial class OverlayWindow : Window
             : App.Settings.Current.AutoScanContracts ? ScanIndicator.Paused : ScanIndicator.Off;
         SetSwitch(_haulScanSwTrack, _haulScanSwKnob, contractState);   // amber on / yellow paused / grey off
         SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
-        SetLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / yellow paused / red off)
-        SetLed(_hubContractBoxLed, _contractBoxVisible);
+        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / yellow paused / red off)
     }
 
-    // ── HUB tab: a READ-ONLY status glance of every auto-scan control (RS + contract). Each is shown as
-    // an LED (green = on, red = off) synced by SyncScanControls / SyncHaulingControls so the HUB stays in
-    // lockstep with the SCAN and HAULING tabs. The actual toggles live on those tabs, not here.
-    private Border? _hubScanLed, _hubBoxLed, _hubHaulScanLed, _hubContractBoxLed;
+    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row): Auto-scan RS + Contracts mirror the
+    // SCAN / HAULING auto-scan toggles (green on / yellow paused / red off), and Session shows Game.log
+    // monitoring (green = live game session being watched, red = SC closed / no log). The scan LEDs sync
+    // via SyncScanControls / SyncHaulingControls; Session via RefreshSessionLed. Toggles live on the tabs.
+    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed;
 
     private void BuildHubScanControls()
     {
         HubScanBar.Children.Clear();
 
+        _hubSessionLed = NewLed();
+        HubScanBar.Children.Add(HubLedRow(_hubSessionLed, "Session",
+            "Game.log session tracking (always on): green = monitoring a live game session, red = Star Citizen closed / no log"));
+
         _hubScanLed = NewLed();
         HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
 
-        _hubBoxLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubBoxLed, "RS box", "RS detection box: toggle on the SCAN tab"));
-
         _hubHaulScanLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Auto-scan contracts", "Auto-scan contracts: toggle on the HAULING tab"));
-
-        _hubContractBoxLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubContractBoxLed, "Contract box", "Contract detection box: toggle on the HAULING tab"));
+        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Contracts", "Auto-scan contracts: toggle on the HAULING tab"));
 
         SyncScanControls();
         SyncHaulingControls();
+        RefreshSessionLed();
     }
 
-    // Read-only HUB status indicator: an LED + short label (full text in the tooltip). Fixed width so a
-    // WrapPanel tiles two indicators per row. Not interactive; the live toggle is on SCAN / HAULING.
+    // SESSION LED: green (pulsing) while a live game session is being monitored, red when Star Citizen is
+    // closed / no log. Refreshed from the same GameLog state + status events the old monitoring pill used.
+    private void RefreshSessionLed() => SetHubLed(_hubSessionLed, App.GameLog.IsSessionLive);
+    private void OnGameLogStatusChanged(string _) => RefreshSessionLed();
+
+    // Read-only HUB status pill (mock .led): a bordered chip with an LED dot + short label, full text in
+    // the tooltip. Sizes to content and tiles in a WrapPanel. Not interactive; the live toggle is on
+    // SCAN / HAULING.
     private FrameworkElement HubLedRow(Border led, string label, string tooltip)
     {
         var row = new StackPanel
         {
-            Orientation = Orientation.Horizontal, Width = 138,
-            Margin = new Thickness(0, 0, 0, 5), VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = tooltip,
+            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
         };
         row.Children.Add(led);
         row.Children.Add(new TextBlock
         {
-            Text = label, FontSize = 10, Foreground = (Brush)FindResource("FgBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            Text = label, FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
         });
-        return row;
+        return new Border
+        {
+            Child = row,
+            Background = (Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = (Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 7, 7),
+            ToolTip = tooltip,
+        };
     }
+
+    // HUB status LED: paint it (green on / yellow paused / red off) and gently pulse it while On, matching
+    // the mock's breathing scan-status dots. Static while paused / off.
+    private void SetHubLed(Border? led, ScanIndicator state)
+    {
+        SetLed(led, state);
+        if (led != null) Hud.PulseDot(led, state == ScanIndicator.On);
+    }
+
+    private void SetHubLed(Border? led, bool on) => SetHubLed(led, on ? ScanIndicator.On : ScanIndicator.Off);
 
     // Status LED colors: green = on, red = off, yellow = paused (neither Nexus nor SC in front).
     private static readonly Color LedOn     = Color.FromRgb(0x3E, 0xD6, 0x8B);
@@ -636,61 +661,11 @@ public partial class OverlayWindow : Window
         }
     }
 
-    // ── STATS tab (Beta Game.log session) ──────────────────────────────────────
-    // Session Tracking + Auto-Track Blueprints are always on (see App startup), so the HUB has no
-    // on/off switches; just the tracking pill + status line below, which SyncStatsControls paints.
-    private void BuildStatsControls() => SyncStatsControls();
-
-    private void OpenMonitorFromStats_Click(object sender, MouseButtonEventArgs e)
-    {
-        InteractionLog.Click("Open advanced monitor", (System.Windows.DependencyObject)sender);
-        OpenMonitorRequested?.Invoke();
-    }
-
-    // Reset() raises SessionReset, which OnSessionReset handles (clears the note + refreshes).
-    private void ResetSession_Click(object sender, MouseButtonEventArgs e)
-    {
-        InteractionLog.Click("Reset session", (System.Windows.DependencyObject)sender);
-        App.GameLog.Reset();
-    }
-
-    // Feedback line under the switches: what the watcher is doing + the last blueprint collected.
-    private string _lastWatcherStatus = "";
-    private string _lastCollected = "";
-
-    private void OnGameLogStatus(string s) { _lastWatcherStatus = s; UpdateStatsStatus(); }
-
-    private void UpdateStatsStatus()
-    {
-        if (StatsStatus == null) return;
-        var running = App.GameLog.IsRunning;
-        bool live = App.GameLog.IsSessionLive;   // Game.log is fresh = Star Citizen is open
-
-        // Tracking pill: green = monitoring a live game session, red = SC closed / shut down (tracking is always on).
-        if (SessionPillDot != null && SessionPillText != null)
-        {
-            SetLed(SessionPillDot, live);
-            SessionPillText.Text = live ? "MONITORING" : "OFFLINE";
-            SessionPillText.Foreground = new SolidColorBrush(live ? LedOn : LedOff);
-            Hud.PulseDot(SessionPillDot, live);   // the green LED gently flashes while a session is live
-        }
-
-        // Blueprint-tracking pill: green = auto-collecting blueprints (always on while a session is live), red off.
-        if (BlueprintPillDot != null && BlueprintPillText != null)
-        {
-            bool tracking = live && App.GameLog.AutoMark;
-            SetLed(BlueprintPillDot, tracking);
-            BlueprintPillText.Text = tracking ? "TRACKING" : "OFF";
-            BlueprintPillText.Foreground = new SolidColorBrush(tracking ? LedOn : LedOff);
-            Hud.PulseDot(BlueprintPillDot, tracking);   // the green LED gently flashes while tracking
-        }
-
-        if (!running) { StatsStatus.Text = "Session tracking on, waiting for Game.log"; return; }
-        if (!live) { StatsStatus.Text = "Star Citizen not running. Tracking resumes on launch."; return; }
-        var s = string.IsNullOrEmpty(_lastWatcherStatus) ? "Watching" : _lastWatcherStatus;
-        if (!string.IsNullOrEmpty(_lastCollected)) s += $"  ·  last: {_lastCollected}";
-        StatsStatus.Text = s;
-    }
+    // ── STATS / HUB tab (Beta Game.log session) ────────────────────────────────
+    // The HUB carries no toggles or status text: Session Tracking + Auto-Track are always on (App
+    // startup), the live scan state shows via the LED pills, and the session count + collection feed are
+    // rebuilt in RebuildStatsPanel. Reset session and the raw log view now live in the advanced Game.log
+    // monitor (LogMonitorWindow, reachable from Settings > Open Game.log Monitor).
 
 
     private static Border NewSwitchTrack() => new()
@@ -745,17 +720,14 @@ public partial class OverlayWindow : Window
 
     private void OnGameLogMarked(BlueprintMark m)
     {
-        _lastCollected = m.Name;
-        UpdateStatsStatus();
         if (_activeTab == "stats") RebuildStatsPanel();
     }
 
-    // Session tally was cleared (new SC session, or a manual reset) - drop the last-collected
-    // note and refresh the visible counts.
+    // Session tally was cleared (new SC session, or a manual reset from the advanced monitor) - refresh
+    // the visible count + feed while the HUB is on screen.
     private void OnSessionReset()
     {
-        _lastCollected = "";
-        if (_activeTab == "stats") RebuildStatsPanel(); else UpdateStatsStatus();
+        if (_activeTab == "stats") RebuildStatsPanel();
     }
 
     // The overlay is app-lifetime (hidden/shown, not closed) in normal use; this only runs if
@@ -779,15 +751,14 @@ public partial class OverlayWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         App.GameLog.Marked -= OnGameLogMarked;
-        App.GameLog.StateChanged -= SyncStatsControls;
-        App.GameLog.StatusChanged -= OnGameLogStatus;
         App.GameLog.SessionReset -= OnSessionReset;
+        App.GameLog.StateChanged -= RefreshSessionLed;
+        App.GameLog.StatusChanged -= OnGameLogStatusChanged;
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
-        NexusApp.Services.ThemeService.ThemeChanged -= _onThemeChanged;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         base.OnClosed(e);
     }
@@ -824,45 +795,21 @@ public partial class OverlayWindow : Window
         => Dispatcher.Invoke(() => { _contractBoxVisible = App.ContractBoxVisible; SyncHaulingControls(); });
     private void OnContractBoxShared(bool on) => SyncContractFromShared();
 
-    // Session Tracking + Auto-Track are always on, so there are no switches to reflect; just refresh
-    // the tracking pill + status line when the watcher state changes.
-    private void SyncStatsControls() => UpdateStatsStatus();
-
     private void RebuildStatsPanel()
     {
-        // Server / Shard section sits at the top of the STATS tab; refresh it whenever the tab is built.
+        // Server / Shard section sits in the STATS tab; refresh it whenever the tab is built.
         RebuildShardPanel();
 
-        SyncStatsControls();
-
-        // Shared brushes / fonts for the hero KPI and the feed below it.
-        var cyan   = (Brush)FindResource("CyanBrush");
+        // Shared brushes / fonts for the feed below the hero count.
         var dim    = (Brush)FindResource("FgDimBrush");
         var fg     = (Brush)FindResource("FgBrush");
         var border = (Brush)FindResource("NavBorderBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
 
-        // Hero KPI: one big cyan blueprints-collected count for this session (instrument data -> cyan,
-        // MOBIGLAS signature), with a small "this session" caption. The "BLUEPRINTS COLLECTED" header is
-        // static in XAML; this fills the StatsListItems body.
-        StatsListItems.Children.Clear();
-        var kpiRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        kpiRow.Children.Add(new TextBlock
-        {
-            Text = App.GameLog.Count.ToString(),
-            FontFamily = mono, FontSize = 38, FontWeight = FontWeights.Bold, Foreground = cyan,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = Hud.Col("CyanBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.4,
-            },
-        });
-        kpiRow.Children.Add(new TextBlock
-        {
-            Text = "this session", FontFamily = mono, FontSize = 11, Foreground = dim,
-            Margin = new Thickness(9, 0, 0, 7), VerticalAlignment = VerticalAlignment.Bottom,
-        });
-        StatsListItems.Children.Add(kpiRow);
+        // Hero KPI: count this session's collected blueprints up from 0 into the big cyan readout (the
+        // BLUEPRINTS COLLECTED accent panel is in XAML; CountUp animates StatsBigCount). Re-runs only when
+        // the value changes, so flipping back to the HUB doesn't reset a settled number.
+        CountUp.SetTo(StatsBigCount, App.GameLog.Count);
 
         // Blueprints-collected feed (newest first).
         StatsFeedItems.Children.Clear();
@@ -878,8 +825,8 @@ public partial class OverlayWindow : Window
 
             var time = new TextBlock
             {
-                Text = mk.At.ToString("HH:mm:ss"), FontSize = 9, Foreground = dim,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+                Text = mk.At.ToString("HH:mm:ss"), FontFamily = mono, FontSize = 9, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
             };
             var name = new TextBlock
             {
@@ -900,66 +847,47 @@ public partial class OverlayWindow : Window
         }
     }
 
-    // ── Server / Shard section (bottom of the STATS tab) ───────────────────────────
-    // Current shard card (region + instance, then the raw shard id) plus up to 3 recent shards
-    // from App.Shards. Built in code with the same FindResource / Border-card / TextBlock idiom
-    // the STATS and HAULING glance panels use. Renders only shard metadata, never the player.
+    // ── Server / Shard section (inside the HUB's SERVER / SHARD chamfer panel) ──────
+    // Amber title, then the current shard (cyan dot + label, raw id beneath) and up to 3 recent shards
+    // (dot + region/instance, relative join time on the right) - the mock's SERVER / SHARD panel. The
+    // ChamferPanel host supplies the card frame, so this no longer draws its own border. Renders only
+    // shard metadata, never the player.
     private void RebuildShardPanel()
     {
         ShardPanel.Children.Clear();
 
         var accent   = (Brush)FindResource("AccentBrush");
         var cyan     = (Brush)FindResource("CyanBrush");
-        var fg       = (Brush)FindResource("FgBrush");
         var dim      = (Brush)FindResource("FgDimBrush");
-        var cardBg   = (Brush)FindResource("Bg2NavBrush");
-        var navB     = (Brush)FindResource("NavBorderBrush");
         var headFont = (FontFamily)FindResource("HeadFont");
         var monoFont = (FontFamily)FindResource("MonoFont");
 
-        // Section header (accent, like "BLUEPRINTS COLLECTED THIS SESSION").
+        // Panel title (amber kicker).
         ShardPanel.Children.Add(new TextBlock
         {
             Text = "SERVER / SHARD", FontSize = 9, FontWeight = FontWeights.Bold,
-            Foreground = accent, Margin = new Thickness(2, 0, 0, 4),
+            Foreground = accent, Margin = new Thickness(0, 0, 0, 5),
         });
 
-        // CURRENT: the shard the player is on right now, or a "not on a shard" line after they leave
+        // CURRENT: the shard the player is on right now (cyan), or a "not on a shard" line after they leave
         // (App.Shards.Current goes null once the log shows they left, until the next join).
         var current = App.Shards.Current;
         if (current != null)
         {
+            // Current shard/instance is the live "where am I" readout -> cyan (MOBIGLAS signature).
+            ShardPanel.Children.Add(ShardRow(ShardDot(cyan),
+                $"{current.Region}  .  Shard {current.Instance}", cyan, headFont, 13, FontWeights.SemiBold));
             ShardPanel.Children.Add(new TextBlock
             {
-                Text = "CURRENT", FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = dim, Margin = new Thickness(2, 2, 0, 3),
-            });
-            var cardStack = new StackPanel();
-            cardStack.Children.Add(new TextBlock
-            {
-                // Current shard/instance is the live "where am I" readout -> cyan (MOBIGLAS signature).
-                Text = $"{current.Region}  -  Shard {current.Instance}",
-                FontFamily = headFont, FontSize = 13, Foreground = cyan,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            cardStack.Children.Add(new TextBlock
-            {
-                Text = current.ShardId, FontFamily = monoFont, FontSize = 10, Foreground = dim,
-                Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            ShardPanel.Children.Add(new Border
-            {
-                Child = cardStack,
-                Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4), Padding = new Thickness(13, 9, 13, 9),
+                Text = current.ShardId, FontFamily = monoFont, FontSize = 9.5, Foreground = dim,
+                Margin = new Thickness(15, 1, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
             });
         }
         else
         {
             ShardPanel.Children.Add(new TextBlock
             {
-                Text = "Not on a shard.", FontSize = 11, Foreground = dim,
-                Margin = new Thickness(2, 2, 0, 0),
+                Text = "Not on a shard.", FontSize = 11, Foreground = dim, Margin = new Thickness(0, 1, 0, 0),
             });
         }
 
@@ -970,16 +898,46 @@ public partial class OverlayWindow : Window
             ShardPanel.Children.Add(new TextBlock
             {
                 Text = "RECENT", FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = dim, Margin = new Thickness(2, 10, 0, 4),
+                Foreground = dim, Margin = new Thickness(0, 9, 0, 3),
             });
             foreach (var s in recent)
-                ShardPanel.Children.Add(new TextBlock
+            {
+                var row = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(ShardRow(ShardDot(dim), $"{s.Region} . {s.Instance}", dim, null, 10, FontWeights.Normal));
+                var ago = new TextBlock
                 {
-                    Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}",
-                    FontFamily = monoFont, FontSize = 10, Foreground = dim,
-                    Margin = new Thickness(8, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
-                });
+                    Text = Ago(s.JoinedAt), FontFamily = monoFont, FontSize = 9, Foreground = dim,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                Grid.SetColumn(ago, 1);
+                row.Children.Add(ago);
+                ShardPanel.Children.Add(row);
+            }
         }
+    }
+
+    // A small filled status dot (mock .dot) leading a shard row.
+    private static Border ShardDot(Brush fill) => new()
+    {
+        Width = 7, Height = 7, CornerRadius = new CornerRadius(3.5), Background = fill,
+        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+    };
+
+    // Dot + label row, shared by the current shard line and each recent-shard line.
+    private static StackPanel ShardRow(Border dot, string text, Brush fg, FontFamily? font, double size, FontWeight weight)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(dot);
+        var tb = new TextBlock
+        {
+            Text = text, FontSize = size, FontWeight = weight, Foreground = fg,
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        if (font != null) tb.FontFamily = font;
+        row.Children.Add(tb);
+        return row;
     }
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".

@@ -160,6 +160,13 @@ public sealed class LogMonitorWindow : Window
             Foreground = Res("AccentBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0),
         };
         bpRow.Children.Add(_markCountLabel);
+        // Reset session: clears this session's collected-blueprint tally. Relocated here from the overlay
+        // HUB footer when the HUB was rebuilt to the MOBIGLAS mock. Raises SessionReset, which OnSessionReset
+        // (here) and the overlay HUB both mirror.
+        var resetBtn = MakeButton("Reset session"); resetBtn.Margin = new Thickness(16, 0, 0, 0);
+        resetBtn.ToolTip = "Clear this session's collected-blueprint tally";
+        resetBtn.Click += (s, _) => { InteractionLog.Click("Reset session", (DependencyObject)s!); App.GameLog.Reset(); };
+        bpRow.Children.Add(resetBtn);
         bp.Child = bpRow;
         Grid.SetRow(bp, 2); root.Children.Add(bp);
 

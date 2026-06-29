@@ -49,6 +49,31 @@
                         <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="9" ShadowDepth="0" Opacity="0.3"/>
                     </TextBlock.Effect>
                 </TextBlock>
+                <!-- App version badge - clickable easter egg. Leads the strip: app -> game -> shard -> session. -->
+                <Border x:Name="AppVersionBadge"
+                        Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="Transparent"
+                        BorderBrush="{StaticResource AccentDimBrush}"
+                        BorderThickness="1"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="AppBadge_Click">
+                    <TextBlock x:Name="AppVersionText" FontSize="9"
+                               Foreground="{StaticResource AccentBrush}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <!-- GAME version chip -->
+                <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="{StaticResource Bg2NavBrush}"
+                        BorderBrush="{StaticResource NavBorderBrush}"
+                        BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="GAME" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="GameVersionText" FontSize="10" FontFamily="{StaticResource MonoFont}"
+                                   Foreground="{StaticResource GoldBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
                 <!-- SHARD telemetry chip (live from App.Shards) -->
                 <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
@@ -81,17 +106,6 @@
                         <TextBlock x:Name="BlueprintChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
-                        Background="{StaticResource Bg2NavBrush}"
-                        BorderBrush="{StaticResource NavBorderBrush}"
-                        BorderThickness="1">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="GAME" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="GameVersionText" FontSize="10" FontFamily="{StaticResource MonoFont}"
-                                   Foreground="{StaticResource GoldBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
                 <!-- SCAN telemetry chip (auto-scan state) -->
                 <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
@@ -100,19 +114,6 @@
                         <TextBlock Text="SCAN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
                         <TextBlock x:Name="ScanChipText" Text="off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
-                </Border>
-                <!-- App version badge - clickable easter egg -->
-                <Border x:Name="AppVersionBadge"
-                        Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
-                        Background="Transparent"
-                        BorderBrush="{StaticResource AccentDimBrush}"
-                        BorderThickness="1"
-                        Cursor="Hand"
-                        MouseLeftButtonDown="AppBadge_Click">
-                    <TextBlock x:Name="AppVersionText" FontSize="9"
-                               Foreground="{StaticResource AccentBrush}"
-                               FontWeight="Bold"
-                               VerticalAlignment="Center"/>
                 </Border>
                 <!-- Easter egg hint - hidden until badge is clicked -->
                 <TextBlock x:Name="EggHintLabel"
