@@ -5,6 +5,7 @@
         Title="Nexus Overlay"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent"
+        FontFamily="{StaticResource UiFont}"
         Topmost="True"
         ResizeMode="CanResizeWithGrip"
         Width="320" Height="480"
@@ -261,7 +262,7 @@
                             <StackPanel x:Name="StatsFeedItems"/>
                         </ScrollViewer>
                         <TextBlock x:Name="StatsEmptyState"
-                                   Text="No blueprints yet.&#x0a;Turn on Auto-Track Blueprints."
+                                   Text="No blueprints yet this session.&#x0a;Unlock one in-game and it appears here."
                                    FontSize="10" Foreground="{DynamicResource FgDimBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"/>

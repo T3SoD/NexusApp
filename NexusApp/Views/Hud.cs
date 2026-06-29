@@ -253,7 +253,7 @@ public static partial class Hud
         public bool IsOn
         {
             get => _isOn;
-            set { _isOn = value; Apply(); OnToggled?.Invoke(value); }
+            set { if (_isOn == value) return; _isOn = value; Apply(); OnToggled?.Invoke(value); }
         }
         public Action<bool>? OnToggled;
 

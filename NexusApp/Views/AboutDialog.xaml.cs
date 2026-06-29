@@ -209,7 +209,7 @@ public class AboutDialog : Window
         ]),
         ("App  3.1.2  —  May 24, 2026",
         [
-            "Overlay shopping panel — 🛒 toggle in overlay title bar",
+            "Overlay shopping panel - cart toggle in overlay title bar",
             "Per-item removal in the shopping list dialog",
             "Shopping list dialog redesigned with scrollable per-row layout",
             "Overlay and shopping dialog stay in sync",
