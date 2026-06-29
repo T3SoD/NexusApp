@@ -172,7 +172,7 @@ public sealed class HaulingPage : UserControl
 
     private UIElement LegRow(HaulLeg leg)
     {
-        var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
+        var role = leg.Role == HaulRole.Pickup ? "Collect" : "Deliver";
 
         // Pickup legs often carry no commodity/SCU/destination of their own (those live on the
         // sibling dropoff). Show whatever fields are present, skipping the empties.
@@ -272,7 +272,7 @@ public sealed class HaulingPage : UserControl
         var con = App.Hauls.BuildConsolidation();
 
         var bodyStack = new StackPanel();
-        bodyStack.Children.Add(PanelHeaderBar("Load / drop consolidation", "grouped by location"));
+        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation", "grouped by location"));
 
         if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
         {
@@ -317,7 +317,7 @@ public sealed class HaulingPage : UserControl
         AddCell(table, row, 0, loc);
 
         // Colored action pill: Load = cyan, Drop = amber (per the mock's load/drop chips).
-        var chip = Hud.Chip(load ? Cyan : _amber, load ? "Load" : "Drop");
+        var chip = Hud.Chip(load ? Cyan : _amber, load ? "Collect" : "Deliver");
         chip.Margin = new Thickness(0, 5, 12, 5);
         chip.VerticalAlignment = VerticalAlignment.Center;
         AddCell(table, row, 1, chip);
@@ -491,7 +491,7 @@ public sealed class HaulingPage : UserControl
     private UIElement Placeholder(string text)
     {
         var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
-        var glyph = Hud.AmbientGlyph(Hud.Ambient.RoutePing, 104);
+        var glyph = Hud.AmbientGlyph(Hud.Ambient.RouteConvoy, 104);
         glyph.HorizontalAlignment = HorizontalAlignment.Center;
         glyph.Margin = new Thickness(0, 0, 0, 18);
         stack.Children.Add(glyph);
