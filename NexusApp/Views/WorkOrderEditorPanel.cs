@@ -467,6 +467,7 @@ public class WorkOrderEditorPanel : UserControl
         }
 
         _vm.SaveWorkOrderCommand.Execute(_order);
+        NexusApp.Services.Logger.Info($"[UI] work order saved: {(string.IsNullOrWhiteSpace(_order.Label) ? _order.Resources : _order.Label)}");
         UpdateCountdownDisplay();
         if (_order.TimerEnd.HasValue) { _ticker?.Stop(); StartTicker(); }
     }
@@ -475,6 +476,7 @@ public class WorkOrderEditorPanel : UserControl
     {
         _ticker?.Stop();
         _vm.DeleteWorkOrderCommand.Execute(_order.Id);
+        NexusApp.Services.Logger.Info("[UI] work order deleted");
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

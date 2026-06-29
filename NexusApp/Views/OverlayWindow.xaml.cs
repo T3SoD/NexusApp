@@ -41,14 +41,19 @@ public partial class OverlayWindow : Window
     /// <summary>Force the SHOPPING tab visible so the tour can point at the cart.</summary>
     public void ShowShoppingTabForTutorial() => SwitchTab("shopping");
 
+    // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
+    private readonly Action _onThemeChanged;
+    private readonly Action<string> _onOrderReady;
+
     public OverlayWindow(MainViewModel vm)
     {
         InitializeComponent();
         _vm = vm;
 
         OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(NexusApp.Services.ThemeService.IconUri));
-        NexusApp.Services.ThemeService.ThemeChanged += () =>
+        _onThemeChanged = () =>
             OverlayIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(NexusApp.Services.ThemeService.IconUri));
+        NexusApp.Services.ThemeService.ThemeChanged += _onThemeChanged;
 
         var s = App.Settings.Current;
         Left = s.OverlayLeft; Top = s.OverlayTop;
@@ -109,7 +114,8 @@ public partial class OverlayWindow : Window
         BuildHaulingControls();
         BuildHubScanControls();
 
-        WorkOrderEditorPanel.OrderReadyToCollect += label => PulseWorkOrderButton();
+        _onOrderReady = label => PulseWorkOrderButton();
+        WorkOrderEditorPanel.OrderReadyToCollect += _onOrderReady;
 
         IsVisibleChanged += (_, e) =>
         {
@@ -786,6 +792,8 @@ public partial class OverlayWindow : Window
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
+        NexusApp.Services.ThemeService.ThemeChanged -= _onThemeChanged;
+        WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         base.OnClosed(e);
     }
 

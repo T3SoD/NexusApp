@@ -97,7 +97,7 @@ public class HelpDialog : Window
                 "Select a suggestion or press Enter to search.",
                 "The left panel lists matching blueprints. Click one to see its full ingredient list on the right.",
                 "Each ingredient card shows the resource name, quantity, unit, and rarity color.",
-                "Click 🛒 on an ingredient to add it to your shopping list.",
+                "Click the cart button on an ingredient to add it to your shopping list.",
                 "Click Add All to Shopping List to add every ingredient at once.",
                 "A WHERE TO MINE section below the ingredients ranks the most efficient mining locations to gather all required resources.",
                 "The first recommended location covers the most ingredients; subsequent entries cover what remains.",
@@ -145,7 +145,7 @@ public class HelpDialog : Window
             [new("−", "remove item")],
             [
                 "Add items from RS Signal Decoder results, Blueprint Library ingredients, or the Mining Codex.",
-                "Click 🛒 in the main toolbar to open the shopping list dialog.",
+                "Click the cart button in the main toolbar to open the shopping list dialog.",
                 "Each row shows the resource name, quantity, and unit.",
                 "Click − next to an item to remove it.",
                 "In the overlay, switch to the SHOPPING tab to view the same list inline.",
