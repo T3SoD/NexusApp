@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:NexusApp.ViewModels"
         xmlns:conv="clr-namespace:NexusApp.Converters"
         xmlns:models="clr-namespace:NexusApp.Models"
+        xmlns:views="clr-namespace:NexusApp.Views"
         Title="Nexus" Icon="/Assets/nexus_icon.png" Height="820" Width="1280"
         MinHeight="600" MinWidth="900"
         Background="{DynamicResource BgBrush}"
@@ -322,7 +323,7 @@
                         </Grid>
 
                         <!-- status + legend -->
-                        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="12,8" Margin="2,10,0,0">
+                        <views:ChamferPanel Grid.Row="1" Chamfer="10" Padding="12,8" Margin="2,10,0,0">
                             <StackPanel>
                                 <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{StaticResource FgDimBrush}" Margin="0,0,0,4"/>
                                 <StackPanel Orientation="Horizontal">
@@ -333,7 +334,7 @@
                                     <TextBlock Text="RS values are patch-specific" FontSize="11" Foreground="{StaticResource FgDimBrush}"/>
                                 </StackPanel>
                             </StackPanel>
-                        </Border>
+                        </views:ChamferPanel>
 
                         <TextBlock Grid.Row="2" Text="BEST MATCH" FontSize="9" FontWeight="Bold"
                                    Foreground="{StaticResource FgDimBrush}" Margin="2,18,0,8"/>
@@ -343,13 +344,7 @@
                                         Visibility="{Binding HasResults, Converter={StaticResource BoolVis}}">
                             <ContentControl.ContentTemplate>
                                 <DataTemplate>
-                                    <Border CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource AccentBrush}" Padding="20,13,20,13">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="{DynamicResource AccentDimColor}" Offset="0"/>
-                                                <GradientStop Color="{DynamicResource Bg2Color}" Offset="1"/>
-                                            </LinearGradientBrush>
-                                        </Border.Background>
+                                    <views:ChamferPanel Accent="True" ShowBrackets="True" Chamfer="14" Padding="20,18,20,16">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -365,11 +360,11 @@
                                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <Border Width="18" Height="18" CornerRadius="5" Margin="0,0,12,0" VerticalAlignment="Center"
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
-                                                <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="26"
+                                                <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="Bold"
                                                            Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
                                                 <Border Padding="6,2" CornerRadius="4" Margin="12,0,0,0" VerticalAlignment="Center" Background="{StaticResource Bg3Brush}">
-                                                    <TextBlock Text="{Binding BadgeText}" FontSize="10" FontWeight="Bold"
-                                                               Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                                    <TextBlock Text="{Binding BadgeText}" FontSize="9" FontWeight="Bold"
+                                                               Foreground="{StaticResource GoldBrush}"/>
                                                 </Border>
                                                 <Border Padding="6,2" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center"
                                                         Background="{DynamicResource AccentBrush}"
@@ -381,8 +376,12 @@
                                             <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" HorizontalAlignment="Right">
                                                 <TextBlock Text="RS VALUE" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right"
                                                            Foreground="{StaticResource FgDimBrush}"/>
-                                                <TextBlock Text="{Binding Resource.BaseRs, StringFormat='{}{0:N0}'}" FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="37" Foreground="{StaticResource CyanBrush}" HorizontalAlignment="Right"/>
+                                                <TextBlock views:CountUp.To="{Binding Resource.BaseRs}" FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="37" Foreground="{StaticResource CyanBrush}" HorizontalAlignment="Right">
+                                                    <TextBlock.Effect>
+                                                        <DropShadowEffect Color="{DynamicResource CyanColor}" BlurRadius="16" ShadowDepth="0" Opacity="0.5"/>
+                                                    </TextBlock.Effect>
+                                                </TextBlock>
                                             </StackPanel>
 
                                             <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" FontSize="12"
@@ -405,13 +404,13 @@
                                                         CommandParameter="{Binding Resource}"/>
                                             </Grid>
                                         </Grid>
-                                    </Border>
+                                    </views:ChamferPanel>
                                 </DataTemplate>
                             </ContentControl.ContentTemplate>
                         </ContentControl>
 
                         <!-- empty placeholder: MOBIGLAS idle scan reticle (corner brackets + rotating ring + crosshair) -->
-                        <Border Grid.Row="3" CornerRadius="4" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1" Height="132"
+                        <views:ChamferPanel Grid.Row="3" Chamfer="11" Height="132" Padding="0"
                                 Visibility="{Binding NoResults, Converter={StaticResource BoolVis}}">
                             <Grid>
                                 <Border Width="16" Height="16" Margin="12" HorizontalAlignment="Left"  VerticalAlignment="Top"    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,1.5,0,0"/>
@@ -443,7 +442,7 @@
                                     <TextBlock Text="Scan an RS value to identify a deposit" Foreground="{StaticResource FgDimBrush}" FontSize="13" Margin="0,14,0,0" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Grid>
-                        </Border>
+                        </views:ChamferPanel>
 
                         <TextBlock Grid.Row="4" Text="OTHER MATCHES" FontSize="9" FontWeight="Bold"
                                    Foreground="{StaticResource FgDimBrush}" Margin="2,20,0,8"
@@ -453,18 +452,7 @@
                             <ItemsControl ItemsSource="{Binding OtherMatches}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Margin="0,0,0,8" CornerRadius="4" BorderThickness="1">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="{StaticResource Bg2NavBrush}"/>
-                                                    <Setter Property="BorderBrush" Value="{StaticResource NavBorderBrush}"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsInCart}" Value="True">
-                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
+                                        <views:ChamferPanel Margin="0,0,0,8" Chamfer="9" Padding="0">
                                             <Grid Height="58">
                                                 <Border Width="4" HorizontalAlignment="Left" CornerRadius="10,0,0,10"
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
@@ -499,7 +487,7 @@
                                                             CommandParameter="{Binding Resource}"/>
                                                 </Grid>
                                             </Grid>
-                                        </Border>
+                                        </views:ChamferPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -509,8 +497,7 @@
                     <!-- RIGHT RAIL: session + recent scans -->
                     <Grid Grid.Column="1" Margin="0,4,20,16">
 
-                        <Border x:Name="ScanHistorySection" Background="{StaticResource Bg2NavBrush}"
-                                BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1" CornerRadius="4">
+                        <views:ChamferPanel x:Name="ScanHistorySection" Chamfer="12" Padding="0">
                             <DockPanel>
                                 <Grid DockPanel.Dock="Top" Margin="14,10,10,8">
                                     <Grid.ColumnDefinitions>
@@ -573,7 +560,7 @@
                                     </ItemsControl>
                                 </ScrollViewer>
                             </DockPanel>
-                        </Border>
+                        </views:ChamferPanel>
                     </Grid>
                     </Grid>
                 </Grid>

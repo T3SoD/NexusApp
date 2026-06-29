@@ -60,7 +60,7 @@ public static partial class Hud
         return host;
     }
 
-    private static Geometry ChamferGeometry(double w, double h, double c)
+    public static Geometry ChamferGeometry(double w, double h, double c)
     {
         if (w <= 1 || h <= 1) return Geometry.Empty;
         c = Math.Min(c, Math.Min(w, h) / 2);
