@@ -313,13 +313,13 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="RsInputBox" Style="{StaticResource NexusTextBox}" FontSize="14" Height="48"
+                            <TextBox x:Name="RsInputBox" Style="{StaticResource ChamferTextBox}" FontSize="14" Height="48"
                                      Text="{Binding RsInput, UpdateSourceTrigger=PropertyChanged}"
                                      KeyDown="RsInput_KeyDown" Tag="Enter RS value…"
                                      ToolTip="Enter RS value and press Enter  ·  use ';' for multiple"/>
-                            <Button Grid.Column="1" Content="SCAN" Style="{StaticResource AccentButton}"
+                            <Button Grid.Column="1" Content="SCAN" Style="{StaticResource ChamferAccentButton}"
                                     Height="48" Width="100" Margin="8,0,0,0" FontSize="13" Command="{Binding LookupCommand}"/>
-                            <Button Grid.Column="2" Content="Clear" Style="{StaticResource NexusButton}"
+                            <Button Grid.Column="2" Content="Clear" Style="{StaticResource ChamferButton}"
                                     Height="48" Margin="6,0,0,0" Padding="16,0" Command="{Binding ClearScanCommand}"/>
                         </Grid>
 
@@ -400,7 +400,7 @@
                                                              Fill="{Binding RefineryColor, Converter={StaticResource HexColor}}"/>
                                                     <TextBlock Text="{Binding RefineryText}" FontSize="12" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                                                 </StackPanel>
-                                                <Button Grid.Column="1" Content="+ Add to cart" Style="{StaticResource AccentButton}" Padding="14,7"
+                                                <Button Grid.Column="1" Content="+ Add to cart" Style="{StaticResource ChamferAccentButton}" Padding="14,7"
                                                         Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding Resource}"/>
                                             </Grid>
@@ -483,7 +483,7 @@
                                                     </StackPanel>
                                                     <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" FontSize="18"
                                                                Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
-                                                    <Button Grid.Column="2" Content="Add" Style="{StaticResource NexusButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                    <Button Grid.Column="2" Content="Add" Style="{StaticResource ChamferButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
                                                             Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                             CommandParameter="{Binding Resource}"/>
                                                 </Grid>

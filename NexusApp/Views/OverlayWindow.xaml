@@ -265,16 +265,14 @@
                                    HorizontalAlignment="Left" MouseLeftButtonUp="SetRegion_Click"/>
                     </StackPanel>
 
-                    <!-- Scan status chip -->
-                    <Border Grid.Row="1" HorizontalAlignment="Left" Margin="10,8,10,0"
-                            CornerRadius="4" Background="{DynamicResource Bg2NavBrush}"
-                            BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1"
-                            Padding="10,3">
+                    <!-- Scan status chip (chamfered) -->
+                    <views:ChamferPanel Grid.Row="1" HorizontalAlignment="Left" Margin="10,8,10,0"
+                                        Chamfer="7" Padding="10,3">
                         <TextBlock x:Name="OverlayScanStatus"
                                    Text="◎  Scan off" FontSize="10"
                                    Foreground="{DynamicResource FgDimBrush}"
                                    TextTrimming="CharacterEllipsis"/>
-                    </Border>
+                    </views:ChamferPanel>
 
                     <!-- RS input -->
                     <Grid Grid.Row="2" Margin="10,8,10,8">
@@ -282,11 +280,11 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="OverlayRsInput" Style="{StaticResource NexusTextBox}"
+                        <TextBox x:Name="OverlayRsInput" Style="{StaticResource ChamferTextBox}"
                                  Height="42" FontSize="16" FontFamily="{StaticResource MonoFont}"
                                  KeyDown="OverlayRsInput_KeyDown"
                                  Tag="Enter RS value…"/>
-                        <Button Grid.Column="1" Content="→" Style="{StaticResource AccentButton}"
+                        <Button Grid.Column="1" Content="→" Style="{StaticResource ChamferAccentButton}"
                                 Height="42" Margin="6,0,0,0" Padding="13,0" FontSize="16"
                                 Click="OverlayScan_Click"/>
                     </Grid>
@@ -296,12 +294,11 @@
                         <ItemsControl x:Name="OverlayResults">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Margin="0,3" CornerRadius="4">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
+                                    <views:ChamferPanel Margin="0,3" Chamfer="9" ClipContent="True" Padding="0">
+                                        <views:ChamferPanel.Style>
+                                            <Style TargetType="{x:Type views:ChamferPanel}" BasedOn="{StaticResource {x:Type views:ChamferPanel}}">
                                                 <Setter Property="Background"    Value="{DynamicResource Bg3Brush}"/>
                                                 <Setter Property="BorderBrush"   Value="{DynamicResource BorderBrush}"/>
-                                                <Setter Property="BorderThickness" Value="1"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsInCart}" Value="True">
                                                         <Setter Property="Background"  Value="{DynamicResource AccentTintBrush}"/>
@@ -309,9 +306,9 @@
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </Border.Style>
+                                        </views:ChamferPanel.Style>
                                         <Grid>
-                                            <Border Width="3" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                            <Border Width="3" HorizontalAlignment="Left"
                                                     Background="{Binding CardColor, Converter={StaticResource HexColor}}"/>
                                             <Grid Margin="11,8">
                                                 <Grid.ColumnDefinitions>
@@ -350,7 +347,7 @@
                                                 </StackPanel>
                                             </Grid>
                                         </Grid>
-                                    </Border>
+                                    </views:ChamferPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -366,7 +363,7 @@
                     </Grid.RowDefinitions>
 
                     <Button x:Name="WorkOrderBtn" Grid.Row="0" Content="▤   Open Refinery Tracker"
-                            Style="{StaticResource AccentButton}"
+                            Style="{StaticResource ChamferAccentButton}"
                             HorizontalAlignment="Stretch"
                             Padding="0,12" Margin="10,12,10,0"
                             Click="WorkOrderToggle_Click"/>
@@ -379,12 +376,12 @@
                         </ScrollViewer>
                         <StackPanel x:Name="OrdersEmptyState" VerticalAlignment="Center"
                                     HorizontalAlignment="Center" Visibility="Collapsed">
-                            <Border Width="46" Height="46" CornerRadius="4"
-                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="2"
-                                    HorizontalAlignment="Center">
+                            <views:ChamferPanel Width="46" Height="46" Chamfer="6"
+                                                Background="Transparent" BorderBrush="{DynamicResource BorderBrush}"
+                                                Padding="0" HorizontalAlignment="Center">
                                 <TextBlock Text="▤" FontSize="20" Foreground="{DynamicResource FgDimBrush}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
+                            </views:ChamferPanel>
                             <TextBlock Text="No active work orders" FontSize="11" FontWeight="Bold"
                                        Foreground="{DynamicResource FgDimBrush}"
                                        HorizontalAlignment="Center" Margin="0,12,0,0"/>

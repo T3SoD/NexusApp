@@ -48,7 +48,22 @@ public sealed class ChamferPanel : ContentControl
         set => SetValue(AccentProperty, value);
     }
 
+    /// <summary>
+    /// Clip the content to the same chamfer silhouette, so a child that runs to the edge (e.g. a flush
+    /// status / rarity accent bar) follows the bevel instead of poking past it. Use with Padding="0".
+    /// </summary>
+    public static readonly DependencyProperty ClipContentProperty =
+        DependencyProperty.Register(nameof(ClipContent), typeof(bool), typeof(ChamferPanel),
+            new PropertyMetadata(false, OnChamferChanged));
+
+    public bool ClipContent
+    {
+        get => (bool)GetValue(ClipContentProperty);
+        set => SetValue(ClipContentProperty, value);
+    }
+
     private Path? _frame;
+    private FrameworkElement? _content;
 
     public ChamferPanel()
     {
@@ -62,6 +77,7 @@ public sealed class ChamferPanel : ContentControl
     {
         base.OnApplyTemplate();
         _frame = GetTemplateChild("PART_Frame") as Path;
+        _content = GetTemplateChild("PART_Content") as FrameworkElement;
         UpdateGeometry();
     }
 
@@ -69,5 +85,9 @@ public sealed class ChamferPanel : ContentControl
     {
         if (_frame != null)
             _frame.Data = Hud.ChamferGeometry(ActualWidth, ActualHeight, Chamfer);
+        if (_content != null)
+            _content.Clip = ClipContent
+                ? Hud.ChamferGeometry(_content.ActualWidth, _content.ActualHeight, Chamfer)
+                : null;
     }
 }
