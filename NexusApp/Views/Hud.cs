@@ -35,7 +35,8 @@ public static partial class Hud
     // Optional amber corner brackets and an amber outer glow.
     public static Grid Panel(UIElement content, double chamfer = 12, bool brackets = false,
                              bool glow = false, Brush? bg = null, Brush? border = null,
-                             Thickness? padding = null, double bracketSize = 14, Brush? bracketBrush = null)
+                             Thickness? padding = null, double bracketSize = 14, Brush? bracketBrush = null,
+                             bool clipContent = false)
     {
         bg ??= Br("Bg2NavBrush");
         border ??= Br("NavBorderBrush");
@@ -56,7 +57,12 @@ public static partial class Hud
 
         if (brackets) host.Children.Add(BracketLayer(bracketSize, bracketBrush ?? Br("AccentStrongBrush")));
 
-        host.SizeChanged += (_, _) => frame.Data = ChamferGeometry(host.ActualWidth, host.ActualHeight, chamfer);
+        host.SizeChanged += (_, _) =>
+        {
+            frame.Data = ChamferGeometry(host.ActualWidth, host.ActualHeight, chamfer);
+            // Clip a flush-edge child (e.g. a status bar) to the bevel so it follows the chamfer.
+            if (clipContent) cp.Clip = ChamferGeometry(cp.ActualWidth, cp.ActualHeight, chamfer);
+        };
         return host;
     }
 

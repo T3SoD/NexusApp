@@ -1290,7 +1290,7 @@ public partial class OverlayWindow : Window
         };
     }
 
-    private Border BuildOverlayOrderCard(WorkOrder wo)
+    private UIElement BuildOverlayOrderCard(WorkOrder wo)
     {
         var cardBg   = (Brush)FindResource("Bg2NavBrush");
         var navB     = (Brush)FindResource("NavBorderBrush");
@@ -1302,11 +1302,11 @@ public partial class OverlayWindow : Window
         var headFont = (FontFamily)FindResource("HeadFont");
         var statusBrush = HexBrush(wo.StatusColorHex);
 
-        var outer = new Border { Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 0, 8) };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.Children.Add(new Border { Background = statusBrush, CornerRadius = new CornerRadius(4, 0, 0, 4) });
+        // Flush status bar; the chamfer panel below clips it to the bevel (clipContent), so no rounding here.
+        grid.Children.Add(new Border { Background = statusBrush });
 
         var stack = new StackPanel { Margin = new Thickness(12, 9, 10, 9) };
         Grid.SetColumn(stack, 1);
@@ -1363,8 +1363,11 @@ public partial class OverlayWindow : Window
         }
 
         grid.Children.Add(stack);
-        outer.Child = grid;
-        return outer;
+        // Chamfered MOBIGLAS card (TL+BR bevel) with the status bar clipped to the silhouette.
+        var card = Hud.Panel(grid, chamfer: 10, bg: cardBg, border: navB,
+                             padding: new Thickness(0), clipContent: true);
+        card.Margin = new Thickness(0, 0, 0, 8);
+        return card;
     }
 
     private void OrdersTicker_Tick(object? sender, EventArgs e)
