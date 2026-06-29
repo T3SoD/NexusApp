@@ -48,7 +48,7 @@ public sealed class CommandPage : UserControl
     // ── header: glow-dash eyebrow + title + subtitle, with an ambient radar sweep accent ──
     private UIElement HeaderRow()
     {
-        var radar = Hud.AmbientGlyph(Hud.Ambient.RadarSweep, 46);
+        var radar = Hud.AmbientGlyph(Hud.Ambient.StatusBoard, 46);
         radar.VerticalAlignment = VerticalAlignment.Center;
         return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", radar);
     }

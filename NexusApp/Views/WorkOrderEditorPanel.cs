@@ -423,7 +423,7 @@ public class WorkOrderEditorPanel : UserControl
         if (remaining <= TimeSpan.Zero)
         {
             _timerCountdown.Text = "Ready to Collect";
-            _timerCountdown.Foreground = BrushFromHex("#2ECC71");
+            _timerCountdown.Foreground = BrushFromHex("#66E6A6");
             _progressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _progressScale.ScaleX = 1;
 
@@ -444,7 +444,7 @@ public class WorkOrderEditorPanel : UserControl
         _timerCountdown.Text = h > 0 ? $"{h}h {m:D2}m {s:D2}s remaining"
                                       : m > 0 ? $"{m}m {s:D2}s remaining"
                                               : $"{s}s remaining";
-        _timerCountdown.Foreground = BrushFromHex("#E67E22");
+        _timerCountdown.Foreground = BrushFromHex("#FF9D4D");
     }
 
     // ── Save / Delete ────────────────────────────────────────────────────────

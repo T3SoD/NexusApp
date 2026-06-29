@@ -52,9 +52,19 @@ public partial class MainWindow : Window
 
         // Ambient HUD glyphs: each always-populated tab carries its own signature looping animation, in the
         // spirit of the RS Decoder reticle. RS Decoder keeps its reticle and Network keeps its coverage donut.
-        ReferenceGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Crystal, 36);
+        ReferenceGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.SpectralAssay, 36);
         BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Hologram, 46);
-        WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Crucible, 38);
+        WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.OreConveyor, 38);
+
+        // Animated nav-rail icons: static until the tab is hovered or is the selected tab, then the
+        // surface's signature animation plays (Settings stays in the top bar, not the rail).
+        Hud.AttachNavGlyph(NavCommand, NavIcoCommand, Hud.Ambient.StatusBoard);
+        Hud.AttachNavGlyph(NavScan,    NavIcoScan,    Hud.Ambient.AcquisitionPing);
+        Hud.AttachNavGlyph(NavRef,     NavIcoRef,     Hud.Ambient.SpectralAssay);
+        Hud.AttachNavGlyph(NavWork,    NavIcoWork,    Hud.Ambient.OreConveyor);
+        Hud.AttachNavGlyph(NavBlue,    NavIcoBlue,    Hud.Ambient.Hologram);
+        Hud.AttachNavGlyph(NavNetwork, NavIcoNetwork, Hud.Ambient.Mesh);
+        Hud.AttachNavGlyph(NavHauling, NavIcoHauling, Hud.Ambient.RouteConvoy);
 
         RestoreWindowPosition();
         SetActivePage("command");
@@ -167,11 +177,11 @@ public partial class MainWindow : Window
         Title = page switch
         {
             "command"    => "Nexus - Operations",
-            "scan"       => "Nexus — RS Signal Decoder",
-            "blueprints" => "Nexus — Blueprint Library",
-            "reference"  => "Nexus — Mining Codex",
+            "scan"       => "Nexus - RS Signal Decoder",
+            "blueprints" => "Nexus - Blueprint Library",
+            "reference"  => "Nexus - Mining Codex",
             "workorders" => "Nexus - Refinery Tracker",
-            "network"    => "Nexus — Blueprint Network",
+            "network"    => "Nexus - Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
             "settings"   => "Nexus - Settings",
             _            => "Nexus",
@@ -1008,7 +1018,7 @@ public partial class MainWindow : Window
     {
         var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 40, 0, 0) };
-        var glyph = Hud.AmbientGlyph(Hud.Ambient.Crucible, 96);
+        var glyph = Hud.AmbientGlyph(Hud.Ambient.OreConveyor, 96);
         glyph.HorizontalAlignment = HorizontalAlignment.Center;
         glyph.Margin = new Thickness(0, 0, 0, 18);
         stack.Children.Add(glyph);

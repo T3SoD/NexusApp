@@ -649,8 +649,8 @@ public sealed class NetworkPage : UserControl
     }
 
     // Frozen + cached so the coverage list doesn't allocate a brush per row.
-    private static readonly SolidColorBrush _amber = Frozen(0xE8, 0xA2, 0x3A);
-    private static readonly SolidColorBrush _red = Frozen(0xE0, 0x6A, 0x55);
+    private static readonly SolidColorBrush _amber = Frozen(0xFF, 0xB2, 0x3E);   // theme amber (matches AccentBrush / WarnBrush)
+    private static readonly SolidColorBrush _red = Frozen(0xFF, 0x6B, 0x6B);     // theme danger (matches DangerBrush)
     private static SolidColorBrush Frozen(byte r, byte g, byte b) { var br = new SolidColorBrush(Color.FromRgb(r, g, b)); br.Freeze(); return br; }
     private static Brush Amber() => _amber;
     private static Brush Redish() => _red;

@@ -528,11 +528,6 @@ public partial class OverlayWindow : Window
         _vm.ScanHistory.Clear();
     }
 
-    private void ResultCard_Click(object sender, MouseButtonEventArgs e)
-    {
-        InteractionLog.Click("result card", (System.Windows.DependencyObject)sender);
-        // Mirror click to main window lookup — already synced via shared vm
-    }
 
     private void PulseWorkOrderButton()
     {
@@ -1214,7 +1209,7 @@ public partial class OverlayWindow : Window
             foreach (var leg in h.Legs)
             {
                 if (leg.Completed) continue;
-                var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
+                var role = leg.Role == HaulRole.Pickup ? "Collect" : "Deliver";
                 var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
                 var segs = new System.Collections.Generic.List<string>();
                 if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
@@ -1309,8 +1304,8 @@ public partial class OverlayWindow : Window
     private static string StatusHex(WorkOrderStatus s) => s switch
     {
         WorkOrderStatus.Mining         => "#3B82F6",
-        WorkOrderStatus.Refining       => "#E67E22",
-        WorkOrderStatus.ReadyToCollect => "#2ECC71",
+        WorkOrderStatus.Refining       => "#FF9D4D",
+        WorkOrderStatus.ReadyToCollect => "#66E6A6",
         WorkOrderStatus.Complete       => "#7F8C8D",
         _                              => "#7F8C8D",
     };
