@@ -70,7 +70,7 @@ public partial class MainViewModel : ObservableObject
 
         ShoppingList.CollectionChanged += (_, _) => RefreshCartStatus();
 
-        // Auto-scan is OPT-IN — deliberately NOT started here. Continuously capturing the screen
+        // Auto-scan is OPT-IN - deliberately NOT started here. Continuously capturing the screen
         // knocks games running in exclusive fullscreen out of fullscreen (it was tabbing players
         // out mid-session), so the user starts it from the overlay's SCAN tab only when they
         // actually want to decode RS values. IsScanActive defaults to false.
@@ -91,7 +91,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var wo in App.Data.GetWorkOrders())
                 WorkOrders.Add(wo);
         }
-        catch { /* schema mismatch on old DB — migration handles it on next launch */ }
+        catch { /* schema mismatch on old DB - migration handles it on next launch */ }
     }
 
     private void LoadShoppingList()

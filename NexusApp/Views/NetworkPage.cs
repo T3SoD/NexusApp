@@ -355,7 +355,7 @@ public sealed class NetworkPage : UserControl
         var scopeSet = new HashSet<string>(scope.ScopeIds);
         var members = _store.GetMembers().Where(m => scopeSet.Contains(m.Id)).ToList();
         if (members.Count == 0)
-            return Placeholder("No one shared yet. Click Export to share your library, or Import a teammate's .nexuslib file — they'll show up here.");
+            return Placeholder("No one shared yet. Click Export to share your library, or Import a teammate's .nexuslib file - they'll show up here.");
 
         var groupNames = _store.GetGroups().ToDictionary(g => g.Id, g => g.Name);
         var list = new StackPanel();
@@ -450,7 +450,7 @@ public sealed class NetworkPage : UserControl
     {
         var win = new Window
         {
-            Title = $"Groups — {m.DisplayName}", Width = 340, SizeToContent = SizeToContent.Height,
+            Title = $"Groups - {m.DisplayName}", Width = 340, SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this),
             Background = Br("BgBrush"), Foreground = Br("FgBrush"), ResizeMode = ResizeMode.NoResize,
         };
@@ -466,7 +466,7 @@ public sealed class NetworkPage : UserControl
             panel.Children.Add(cb);
         }
         if (checks.Count == 0)
-            panel.Children.Add(new TextBlock { Text = "No groups yet — create one below.", Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) });
+            panel.Children.Add(new TextBlock { Text = "No groups yet - create one below.", Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) });
 
         panel.Children.Add(SectionLabel("New group (optional):"));
         var newBox = new TextBox { Padding = new Thickness(6, 4, 6, 4) };
@@ -521,7 +521,7 @@ public sealed class NetworkPage : UserControl
             + (scope.IncludeSelf && _settings.IsBlueprintOwned(name) ? 1 : 0);
 
         // Surface blueprints owned by members (or you) that aren't in the local seed under an
-        // "Unrecognized" group — they'd otherwise be invisible, since this list is built from the catalog.
+        // "Unrecognized" group - they'd otherwise be invisible, since this list is built from the catalog.
         var catalogNames = new HashSet<string>(catalog.Select(b => b.Name), StringComparer.OrdinalIgnoreCase);
         var all = catalog.ToList();
         foreach (var n in UnrecognizedNames(counts.Keys, catalogNames))
@@ -955,14 +955,14 @@ public sealed class NetworkPage : UserControl
         var res = _files.Import(file, _store, opts);
 
         // If the file was your own (matched by GUID or RSI handle), pull its owned blueprints into
-        // your own Blueprint Library too — importing your own export syncs your collection.
+        // your own Blueprint Library too - importing your own export syncs your collection.
         var selfMarked = res.SelfBlueprints.Count > 0 ? _settings.SetBlueprintsOwned(res.SelfBlueprints) : 0;
         if (selfMarked > 0) App.GameLog?.NotifyBulkOwnershipChanged();
 
         Logger.Info($"[NET] import done: +{res.NewMembers} new, {res.UpdatedMembers} updated, {res.BlueprintsMatched} matched, {res.BlueprintsUnrecognized} unrecognized, self-owned +{selfMarked}");
 
         var msg = $"Added {res.NewMembers} and updated {res.UpdatedMembers} member(s).";
-        if (res.SkippedSelf > 0) msg += "\nThat file was you — not added as a member.";
+        if (res.SkippedSelf > 0) msg += "\nThat file was you - not added as a member.";
         if (selfMarked > 0) msg += $"\nMarked {selfMarked} blueprint(s) Owned in your library from it.";
         if (!string.IsNullOrEmpty(res.GroupName)) msg += $"\nFiled under \"{res.GroupName}\".";
         if (res.BlueprintsUnrecognized > 0) msg += $"\n{res.BlueprintsUnrecognized} blueprint name(s) weren't recognised (kept as-is).";
@@ -1023,7 +1023,7 @@ public sealed class NetworkPage : UserControl
             _files.Save(save.FileName, file);
             var count = choice.Roster ? (file.Members?.Count ?? 0) : 1;
             Logger.Info($"[NET] export: kind={file.Kind}, identity={kind}, members={count}");
-            MessageBox.Show($"Exported to {save.FileName}.\nShare it with your group — they Import it to see your blueprints.",
+            MessageBox.Show($"Exported to {save.FileName}.\nShare it with your group - they Import it to see your blueprints.",
                 "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -1055,7 +1055,7 @@ public sealed class NetworkPage : UserControl
         var handleRadio = new RadioButton
         {
             GroupName = "id", Foreground = Br("FgBrush"), Margin = new Thickness(0, 6, 0, 0), IsEnabled = hasHandle, IsChecked = hasHandle,
-            Content = hasHandle ? $"RSI handle: {detectedHandle}" : "RSI handle (not detected — launch SC with Nexus open)",
+            Content = hasHandle ? $"RSI handle: {detectedHandle}" : "RSI handle (not detected - launch SC with Nexus open)",
         };
         var nickRadio = new RadioButton { GroupName = "id", Foreground = Br("FgBrush"), Margin = new Thickness(0, 6, 0, 0), IsChecked = !hasHandle, Content = "Nickname:" };
         var nickBox = new TextBox { Margin = new Thickness(20, 4, 0, 0), Padding = new Thickness(6, 4, 6, 4) };
@@ -1072,7 +1072,7 @@ public sealed class NetworkPage : UserControl
         panel.Children.Add(SectionLabel("Shared in this file:"));
         panel.Children.Add(new TextBlock
         {
-            Text = "•  Owned blueprints\n•  RSI handle or nickname\n•  Nothing else — no game files or PC info",
+            Text = "•  Owned blueprints\n•  RSI handle or nickname\n•  Nothing else - no game files or PC info",
             Foreground = Br("FgDimBrush"), FontSize = 12, Margin = new Thickness(2, 6, 0, 0), TextWrapping = TextWrapping.Wrap,
         });
 

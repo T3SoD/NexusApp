@@ -14,7 +14,7 @@ public partial class App : Application
     // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
     public static GameLogSession GameLog { get; private set; } = null!;
 
-    /// <summary>Blueprint Network store (network.db) — imported members, their owned blueprints, and groups.</summary>
+    /// <summary>Blueprint Network store (network.db) - imported members, their owned blueprints, and groups.</summary>
     public static NetworkStore Network { get; private set; } = null!;
 
     // BETA: cargo-hauling tracker (own Game.log watcher, decoupled from blueprint session).
@@ -48,7 +48,7 @@ public partial class App : Application
     }
 
     // Reports the process's live DPI-awareness so nexus.log can confirm the shipped exe is actually
-    // Per-Monitor V2 (issue #6) — DPI awareness is an embedded runtime property the CI compile can't verify.
+    // Per-Monitor V2 (issue #6) - DPI awareness is an embedded runtime property the CI compile can't verify.
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
     [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr a, IntPtr b);
     private static readonly IntPtr DPI_PMV2   = (IntPtr)(-4);
@@ -80,7 +80,7 @@ public partial class App : Application
         {
             Logger.Error("Unhandled UI exception", ex.Exception);
             System.Windows.MessageBox.Show(crashMessage,
-                "Nexus — Unexpected Error", System.Windows.MessageBoxButton.OK,
+                "Nexus - Unexpected Error", System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
             ex.Handled = true;
             Shutdown(1);
@@ -90,7 +90,7 @@ public partial class App : Application
         {
             Logger.Error("Unhandled non-UI exception", ex.ExceptionObject as Exception);
             System.Windows.MessageBox.Show(crashMessage,
-                "Nexus — Unexpected Error", System.Windows.MessageBoxButton.OK,
+                "Nexus - Unexpected Error", System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         };
 
@@ -104,7 +104,7 @@ public partial class App : Application
 
         // Pick the palette BEFORE the main window is created. StartupUri builds
         // MainWindow inside base.OnStartup, and its StaticResource theme brushes
-        // resolve once at load time — so the palette must already be swapped or
+        // resolve once at load time - so the palette must already be swapped or
         // those brushes freeze on the default (Luxury) gold even in Classic.
         // One-time migration of user data from the old %AppData%\Nexus_v4 folder
         // (pre-5.0.1) to the version-neutral %AppData%\NexusApp, so upgraders
@@ -119,7 +119,7 @@ public partial class App : Application
         {
             // First run: let the user pick a theme before MainWindow is built, so
             // the app opens directly in their choice with no restart. The picker is
-            // the only window at this point, so it gets auto-assigned as MainWindow —
+            // the only window at this point, so it gets auto-assigned as MainWindow -
             // guard against OnMainWindowClose shutting us down when it closes, then
             // clear MainWindow so StartupUri reassigns the real window below.
             var prevShutdownMode = ShutdownMode;
@@ -232,7 +232,7 @@ public partial class App : Application
     // App-wide class handlers that log every Button click and nav (RadioButton) to nexus.log via
     // InteractionLog, so a diagnostic snapshot shows what the user was doing. Non-Button clickables
     // (overlay toggle switches, links, filter chips, the version badge) log themselves from their
-    // own handlers. The 150ms scan tick is NOT logged here — it has its own sparse [SCAN]
+    // own handlers. The 150ms scan tick is NOT logged here - it has its own sparse [SCAN]
     // breadcrumbs (start/stop + a 10s heartbeat) in ScannerService.
     private static void RegisterInteractionLogging()
     {

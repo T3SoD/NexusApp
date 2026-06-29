@@ -29,7 +29,7 @@ public sealed class AppLogMonitorWindow : Window
 
     public AppLogMonitorWindow()
     {
-        Title = "App Log Monitor — Nexus";
+        Title = "App Log Monitor - Nexus";
         Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
         Background = Res("BgBrush");
         Foreground = Res("FgBrush");
@@ -47,7 +47,7 @@ public sealed class AppLogMonitorWindow : Window
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_list, ScrollBarVisibility.Auto);
 
-        // Row 0 — controls
+        // Row 0 - controls
         var ctl = new StackPanel { Orientation = Orientation.Horizontal };
         ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
         _filterBox = new TextBox { Width = 220, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
@@ -188,7 +188,7 @@ public sealed class AppLogMonitorWindow : Window
         try
         {
             Clipboard.SetText(BuildSnapshot());
-            _status.Text = "Snapshot copied — paste it to T3SoD on Discord or into a GitHub issue (github.com/T3SoD/NexusApp/issues).";
+            _status.Text = "Snapshot copied - paste it to T3SoD on Discord or into a GitHub issue (github.com/T3SoD/NexusApp/issues).";
         }
         catch (Exception ex) { _status.Text = $"Copy failed: {ex.Message}"; }
     }
@@ -204,7 +204,7 @@ public sealed class AppLogMonitorWindow : Window
         try
         {
             File.WriteAllText(dlg.FileName, BuildSnapshot());
-            _status.Text = $"Saved to {dlg.FileName} — send it to T3SoD on Discord or attach it to a GitHub issue (github.com/T3SoD/NexusApp/issues).";
+            _status.Text = $"Saved to {dlg.FileName} - send it to T3SoD on Discord or attach it to a GitHub issue (github.com/T3SoD/NexusApp/issues).";
         }
         catch (Exception ex) { _status.Text = $"Save failed: {ex.Message}"; }
     }

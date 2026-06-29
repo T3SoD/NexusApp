@@ -9,7 +9,7 @@ using System.Windows.Media;
 namespace NexusApp.Views;
 
 // Shown after a Game.log "import owned from past logs" scan. Lists the blueprints that
-// will be marked owned, plus any names that weren't recognized — with Copy / Export so the
+// will be marked owned, plus any names that weren't recognized - with Copy / Export so the
 // user can send them to the maintainer to get the mapping fixed. ShowDialog() returns
 // true when the user chose to mark the matched blueprints owned.
 public sealed class ImportResultDialog : Window
@@ -68,7 +68,7 @@ public sealed class ImportResultDialog : Window
 
         if (unmatched.Count > 0)
         {
-            panel.Children.Add(SectionLabel($"NOT RECOGNIZED — SKIPPED ({unmatched.Count})"));
+            panel.Children.Add(SectionLabel($"NOT RECOGNIZED - SKIPPED ({unmatched.Count})"));
             panel.Children.Add(new TextBlock
             {
                 Text = "These names from your log don't match Nexus's blueprint data, so they can't be marked owned. " +
@@ -157,7 +157,7 @@ public sealed class ImportResultDialog : Window
         try
         {
             Clipboard.SetText(_reportPayload);
-            MessageBox.Show(this, "Unrecognized names copied — paste them into a Discord message to T3SoD.",
+            MessageBox.Show(this, "Unrecognized names copied - paste them into a Discord message to T3SoD.",
                 "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

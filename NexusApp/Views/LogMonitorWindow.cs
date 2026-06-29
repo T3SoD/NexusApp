@@ -10,12 +10,12 @@ using NexusApp.Services;
 
 namespace NexusApp.Views;
 
-// BETA / EXPERIMENTAL — floating viewer that tails Star Citizen's Game.log live and shows
+// BETA / EXPERIMENTAL - floating viewer that tails Star Citizen's Game.log live and shows
 // the raw lines, with a retroactive "import from past logs" scan. The live tail, blueprint
 // auto-mark and the per-session tally all live in the shared App.GameLog session, so this
 // window and the overlay's STATS tab share one watcher and stay in sync. This stays the
 // full/advanced tool (raw log, filter, snapshot, import); the overlay is the lightweight
-// in-game surface. Reads a game-authored file — rework the "no game files" EAC wording
+// in-game surface. Reads a game-authored file - rework the "no game files" EAC wording
 // before any release. See GameLogSession / GameLogWatcher / GameLogBlueprintImporter.
 public sealed class LogMonitorWindow : Window
 {
@@ -42,7 +42,7 @@ public sealed class LogMonitorWindow : Window
 
     public LogMonitorWindow()
     {
-        Title = "Game.log Monitor — Advanced (Beta)";
+        Title = "Game.log Monitor - Advanced (Beta)";
         Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
         Background = Res("BgBrush");
         Foreground = Res("FgBrush");
@@ -64,7 +64,7 @@ public sealed class LogMonitorWindow : Window
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_list, ScrollBarVisibility.Auto);
 
-        // Row 0 — log path + browse + start/stop
+        // Row 0 - log path + browse + start/stop
         var pathRow = new Grid();
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -86,8 +86,8 @@ public sealed class LogMonitorWindow : Window
         Grid.SetColumn(_startBtn, 2); pathRow.Children.Add(_startBtn);
 
         // Optional localization file (global.ini). When set (or auto-detected next to Game.log),
-        // the import translates blueprint names renamed by community localization mods — any custom
-        // format — back to library names. Read-only.
+        // the import translates blueprint names renamed by community localization mods - any custom
+        // format - back to library names. Read-only.
         var globalRow = new Grid();
         globalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         globalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -96,10 +96,10 @@ public sealed class LogMonitorWindow : Window
             Text = App.Settings.Current.GlobalIniPath,
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
-            ToolTip = "Optional: Star Citizen's global.ini (…\\Data\\Localization\\english). Leave blank to auto-detect next to Game.log. Read-only — used to translate mod-renamed blueprint names.",
+            ToolTip = "Optional: Star Citizen's global.ini (…\\Data\\Localization\\english). Leave blank to auto-detect next to Game.log. Read-only - used to translate mod-renamed blueprint names.",
         };
         Grid.SetColumn(_globalIniBox, 0); globalRow.Children.Add(_globalIniBox);
-        // Remember the path as soon as it's set — same as the Game.log path — not just on import.
+        // Remember the path as soon as it's set - same as the Game.log path - not just on import.
         _globalIniBox.LostFocus += (_, _) => PersistGlobalIniPath();
         var browseGlobal = MakeButton("Browse…"); browseGlobal.Click += (_, _) => BrowseGlobalIni();
         Grid.SetColumn(browseGlobal, 1); globalRow.Children.Add(browseGlobal);
@@ -108,13 +108,13 @@ public sealed class LogMonitorWindow : Window
         pathStack.Children.Add(pathRow);
         pathStack.Children.Add(new TextBlock
         {
-            Text = "Localization file for mod-renamed blueprints (optional — auto-detected if blank):",
+            Text = "Localization file for mod-renamed blueprints (optional - auto-detected if blank):",
             Foreground = Res("FgDimBrush"), FontSize = 11, Margin = new Thickness(0, 6, 0, 2),
         });
         pathStack.Children.Add(globalRow);
         Grid.SetRow(pathStack, 0); root.Children.Add(pathStack);
 
-        // Row 1 — viewer controls
+        // Row 1 - viewer controls
         var ctl = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
         _filterBox = new TextBox { Width = 240, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
@@ -136,7 +136,7 @@ public sealed class LogMonitorWindow : Window
         ctl.Children.Add(saveBtn);
         Grid.SetRow(ctl, 1); root.Children.Add(ctl);
 
-        // Row 2 — blueprint auto-import (the feature)
+        // Row 2 - blueprint auto-import (the feature)
         var bp = new Border
         {
             Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(8, 6, 8, 6),
@@ -163,10 +163,10 @@ public sealed class LogMonitorWindow : Window
         bp.Child = bpRow;
         Grid.SetRow(bp, 2); root.Children.Add(bp);
 
-        // Row 3 — live list (created above)
+        // Row 3 - live list (created above)
         Grid.SetRow(_list, 3); root.Children.Add(_list);
 
-        // Row 4 — status
+        // Row 4 - status
         _status = new TextBlock
         {
             Text = "Beta: tails Game.log. Turn on Auto-Track Blueprints to collect them live, or import from past logs.",
@@ -214,7 +214,7 @@ public sealed class LogMonitorWindow : Window
         _status.Text = $"Collected: {m.Name}";
     }
 
-    // A new SC session (or a manual reset elsewhere) cleared the tally — clear the count label
+    // A new SC session (or a manual reset elsewhere) cleared the tally - clear the count label
     // to match its empty initial state (Count is 0 again).
     private void OnSessionReset() => _markCountLabel.Text = "";
 

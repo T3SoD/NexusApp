@@ -9,7 +9,7 @@ namespace NexusApp.Services;
 //
 // Community localization mods (any of them) edit only the VALUE side of global.ini; the KEY is
 // constant, so reading the user's own file translates whatever custom display string the game
-// wrote to Game.log back to a name the seed knows — regardless of the format the user chose, even
+// wrote to Game.log back to a name the seed knows - regardless of the format the user chose, even
 // formats with no separators. Strictly read-only and CIG-sanctioned community localization.
 public static class GlobalIniReader
 {
@@ -54,7 +54,7 @@ public static class GlobalIniReader
     }
 
     /// <summary>Read the user's global.ini (shared, read-only) and build the customDisplay -> official
-    /// map. Null when the file is absent or unreadable — callers fall back to today's behavior. The
+    /// map. Null when the file is absent or unreadable - callers fall back to today's behavior. The
     /// file can be several MB, so it streams line by line.</summary>
     public static IReadOnlyDictionary<string, string>? TryBuildFromFile(
         string globalIniPath, IReadOnlyDictionary<string, string> keyToOfficial)

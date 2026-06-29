@@ -100,7 +100,7 @@ public partial class MainWindow : Window
         ShowTutorial();
     }
 
-    /// <summary>Runs the welcome tour. Always shows, regardless of FirstRunComplete —
+    /// <summary>Runs the welcome tour. Always shows, regardless of FirstRunComplete -
     /// the first-run gate lives in MaybeShowFirstRunWizard, while Help can replay this.
     /// Launches the modeless anchored coach-mark tour (TourController).</summary>
     public void ShowTutorial()
@@ -620,6 +620,7 @@ public partial class MainWindow : Window
         var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
         var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
         var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
 
         // hero header
         var hg = new Grid();
@@ -634,7 +635,7 @@ public partial class MainWindow : Window
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
-        rsStack.Children.Add(new TextBlock { Text = r.Method == "ship" ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = headFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
+        rsStack.Children.Add(new TextBlock { Text = r.Method == "ship" ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = monoFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
         Grid.SetColumn(rsStack, 1); hg.Children.Add(rsStack);
 
         // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).
@@ -645,7 +646,7 @@ public partial class MainWindow : Window
         hero.Margin = new Thickness(0, 0, 0, 12);
         ReferenceDetailPanel.Children.Add(hero);
 
-        // refinery yields — best first, top 5 + show all
+        // refinery yields - best first, top 5 + show all
         if (r.Refineries.Count > 0)
         {
             ReferenceDetailPanel.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {r.Refineries.Count}"));
@@ -662,7 +663,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // locations — top 6 + show all
+        // locations - top 6 + show all
         ReferenceDetailPanel.Children.Add(RefSectionLabel($"LOCATIONS  ·  {r.Locations.Count}"));
         if (r.Locations.Count == 0)
             ReferenceDetailPanel.Children.Add(new TextBlock { Text = "None", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 0, 0, 8) });
@@ -680,7 +681,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // blueprints — full list
+        // blueprints - full list
         var bps = App.Data.GetBlueprintsForResource(r.Name);
         ReferenceDetailPanel.Children.Add(RefSectionLabel($"USED IN BLUEPRINTS  ·  {bps.Count}"));
         if (bps.Count == 0)
@@ -757,6 +758,7 @@ public partial class MainWindow : Window
         var sig = new TextBlock
         {
             Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12,
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
             Foreground = r.Method == "ship" ? TierBrush(r.Tier) : (System.Windows.Media.Brush)FindResource("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -1054,7 +1056,7 @@ public partial class MainWindow : Window
     // Maps a blueprint name to its nav-row toggle pill so a single toggle updates that
     // one row in place instead of rebuilding the whole list (the source of the lag).
     // Maps a blueprint name to a callback that refreshes that nav row's ownership
-    // visuals (left strip, ✓ tick, hover pill) in place — so one toggle updates the
+    // visuals (left strip, ✓ tick, hover pill) in place - so one toggle updates the
     // row without rebuilding the whole list.
     private readonly Dictionary<string, Action<bool>> _bpRowOwned = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] _bpCategories = ["Armor", "Weapons", "Ship Components", "Ammo"];
@@ -1247,7 +1249,7 @@ public partial class MainWindow : Window
     // Family key used for grouping variants together. Weapon/ship skins are quoted
     // or parenthesised, so the colour-list FamilyKey handles them. Armor skins are
     // free-text words trailing the piece ("Antium Helmet Moss Camo") that a fixed
-    // colour list can't catch — so for armor we keep everything up to and including
+    // colour list can't catch - so for armor we keep everything up to and including
     // the piece word and drop the rest, collapsing all of a model's skins into one.
     private static string FamilyKeyOf(NexusApp.Models.Blueprint b)
         => b.Category == "Armor" ? ArmorFamilyKey(b.Name) : FamilyKey(b.Name);
@@ -1623,8 +1625,8 @@ public partial class MainWindow : Window
 
     // Applies a single ownership change to the UI. Always updates the count and the
     // detail toggle. In the All view it updates just the toggled row's pill in place
-    // — no rebuild. In a filtered view that row no longer belongs in the list, so the
-    // current drill-down level is re-rendered (cheap — one level, not the catalog).
+    // - no rebuild. In a filtered view that row no longer belongs in the list, so the
+    // current drill-down level is re-rendered (cheap - one level, not the catalog).
     private void OnOwnershipChanged(string name, bool nowOwned)
     {
         UpdateOwnedCount();
@@ -1732,7 +1734,7 @@ public partial class MainWindow : Window
         BlueprintDetailPanel.Children.Add(line);
 
         BlueprintDetailPanel.Children.Add(new TextBlock { Text = $"{pct}%", FontFamily = headFont, FontSize = 48, FontWeight = FontWeights.Bold, Foreground = accent, Margin = new Thickness(2, 4, 0, 0) });
-        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "Mark blueprints as Owned as you unlock them in-game — your manifest fills in here.", FontSize = 12, Foreground = dim, Margin = new Thickness(2, 2, 0, 18), TextWrapping = TextWrapping.Wrap, MaxWidth = 540, HorizontalAlignment = HorizontalAlignment.Left });
+        BlueprintDetailPanel.Children.Add(new TextBlock { Text = "Mark blueprints as Owned as you unlock them in-game - your manifest fills in here.", FontSize = 12, Foreground = dim, Margin = new Thickness(2, 2, 0, 18), TextWrapping = TextWrapping.Wrap, MaxWidth = 540, HorizontalAlignment = HorizontalAlignment.Left });
 
         foreach (var cat in _bpCategories)
         {
@@ -2290,7 +2292,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show($"Overlay error:\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
                             "Overlay Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            try { _overlay?.Close(); } catch { /* discarding a broken overlay — its OnClosed detaches handlers */ }
+            try { _overlay?.Close(); } catch { /* discarding a broken overlay - its OnClosed detaches handlers */ }
             _overlay = null;
         }
     }
@@ -2329,7 +2331,7 @@ public partial class MainWindow : Window
 
     // ── Cargo-contract region (independent of the RS region above) ───────────────
     // The contract path uses its OWN settings key, OCR service, and a SEPARATE yellow
-    // ScanIndicatorWindow — it never touches _scanIndicator / OcrService / the RS region.
+    // ScanIndicatorWindow - it never touches _scanIndicator / OcrService / the RS region.
     private void ApplyContractRegion(NexusApp.Models.ScanRegion r)
     {
         App.Settings.Current.ContractRegion = r;
@@ -2411,7 +2413,7 @@ public partial class MainWindow : Window
 
     private LogMonitorWindow? _logMonitor;
 
-    // BETA: opens (or re-surfaces) the floating Game.log monitor — kept modeless and un-owned
+    // BETA: opens (or re-surfaces) the floating Game.log monitor - kept modeless and un-owned
     // so it can float over the game while you play. Reached from Settings → Game.log.
     public void ShowLogMonitor()
     {
@@ -2429,7 +2431,7 @@ public partial class MainWindow : Window
 
     private AppLogMonitorWindow? _appLogMonitor;
 
-    // Opens (or re-surfaces) the Nexus app-log monitor — Settings → Diagnostics. Modeless so it can
+    // Opens (or re-surfaces) the Nexus app-log monitor - Settings → Diagnostics. Modeless so it can
     // float beside the app while a bug is reproduced; its Save-snapshot button bundles a bug report.
     public void ShowAppLogMonitor()
     {
@@ -2447,11 +2449,11 @@ public partial class MainWindow : Window
     // Blueprint page's owned count + nav reflect the change immediately.
     public void RefreshBlueprintOwnership()
     {
-        if (!_bpInit) return;            // not visited yet — it'll read current ownership on first open
+        if (!_bpInit) return;            // not visited yet - it'll read current ownership on first open
         UpdateOwnedCount();
         RenderBlueprintNav();
         // Rebuild the manifest landing so its "You own X of Y blueprints" line, percentage and
-        // category bars reflect the new count live. Only when the landing is showing — if a single
+        // category bars reflect the new count live. Only when the landing is showing - if a single
         // blueprint's detail is open (_detailBpName != null) it has no manifest count, and rebuilding
         // would replace the detail the user is reading.
         if (_detailBpName == null) ShowBlueprintLanding();
@@ -2540,7 +2542,7 @@ public partial class MainWindow : Window
         });
         panel.Children.Add(new TextBlock
         {
-            Text = "— CannonActual", FontSize = 11,
+            Text = "- CannonActual", FontSize = 11,
             Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
             HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20),
         });

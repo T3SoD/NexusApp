@@ -9,7 +9,7 @@ namespace NexusApp.Services;
 
 /// <summary>
 /// Reads and writes .nexuslib files and applies an imported file to a <see cref="NetworkStore"/>.
-/// All network traffic is the user moving a file by hand — this service never touches the network.
+/// All network traffic is the user moving a file by hand - this service never touches the network.
 /// Pure/headless: file I/O and store access are the only side effects, both injectable for tests.
 /// </summary>
 public sealed class NetworkFileService
@@ -188,7 +188,7 @@ public sealed class NetworkFileService
     }
 
     /// <summary>Incoming would-be-new members whose display name collides with an existing member of
-    /// a different id — the UI prompts "new person, or merge?" before importing.</summary>
+    /// a different id - the UI prompts "new person, or merge?" before importing.</summary>
     public IReadOnlyList<NameCollision> DetectCollisions(NetworkFile file, NetworkStore store, string? selfId = null)
     {
         var collisions = new List<NameCollision>();
@@ -272,7 +272,7 @@ public sealed class ImportResult
     public int BlueprintsMatched { get; set; }
     public int BlueprintsUnrecognized { get; set; }
     public string? GroupName { get; set; }
-    /// <summary>Owned blueprints from your own entry in the file (matched as self) — the caller marks
+    /// <summary>Owned blueprints from your own entry in the file (matched as self) - the caller marks
     /// these Owned in your local library so importing your own export syncs your collection.</summary>
     public List<string> SelfBlueprints { get; } = new();
     public int TotalApplied => NewMembers + UpdatedMembers;
@@ -280,14 +280,14 @@ public sealed class ImportResult
 
 public sealed class ImportOptions
 {
-    /// <summary>The local user's GUID — their own entry in a roster is skipped (self comes from settings).</summary>
+    /// <summary>The local user's GUID - their own entry in a roster is skipped (self comes from settings).</summary>
     public string? SelfId { get; init; }
-    /// <summary>The local user's RSI handle — also used to recognise their own entry.</summary>
+    /// <summary>The local user's RSI handle - also used to recognise their own entry.</summary>
     public string? SelfHandle { get; init; }
     /// <summary>For a single-library import, the group to file the new member under. A roster uses its
     /// own embedded group name instead.</summary>
     public string? AssignToGroupName { get; init; }
-    /// <summary>Known blueprint names (from the local seed) — lets the result report matched vs
+    /// <summary>Known blueprint names (from the local seed) - lets the result report matched vs
     /// unrecognized. Compared case-insensitively regardless of the collection passed.</summary>
     public IReadOnlyCollection<string>? KnownBlueprints { get; init; }
 }

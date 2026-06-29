@@ -32,7 +32,7 @@ public class ScannerService : IDisposable
         if (_running) return;
         _running = true;
         // Diagnostic breadcrumb: marks when continuous full-screen capture begins. Lets a tab-out
-        // report be lined up against capture activity — confirming OR clearing the auto-scan theory.
+        // report be lined up against capture activity - confirming OR clearing the auto-scan theory.
         Logger.Info("[SCAN] auto-scan started (continuous full-screen capture @150ms)");
         StatusChanged?.Invoke(_ocr.IsAvailable ? "active" : "no OCR engine");
         _timer = new System.Timers.Timer(150);

@@ -5,7 +5,7 @@ namespace NexusApp.Services;
 /// <summary>
 /// Extracts the local player's RSI handle from Star Citizen Game.log lines (read-only). Two
 /// authoritative login-time lines carry it; both are matched here. Confirmed against a real LIVE
-/// Game.log. Only the handle is taken — never the accountId/geid that sit on the same lines.
+/// Game.log. Only the handle is taken - never the accountId/geid that sit on the same lines.
 /// </summary>
 public static class RsiHandleParser
 {
@@ -15,7 +15,7 @@ public static class RsiHandleParser
         handle = "";
         if (string.IsNullOrEmpty(line)) return false;
 
-        // Primary — the authenticated login response:
+        // Primary - the authenticated login response:
         //   <Legacy login response> [CIG-net] User Login Success - Handle[<HANDLE>] - Time[...]
         if (line.Contains("User Login Success", StringComparison.Ordinal))
         {
@@ -23,7 +23,7 @@ public static class RsiHandleParser
             if (!string.IsNullOrWhiteSpace(h)) { handle = h!.Trim(); return true; }
         }
 
-        // Fallback — the current character status line:
+        // Fallback - the current character status line:
         //   <AccountLoginCharacterStatus_Character> Character: ... - name <HANDLE> - state STATE_CURRENT
         if (line.Contains("AccountLoginCharacterStatus_Character", StringComparison.Ordinal))
         {
@@ -44,7 +44,7 @@ public static class RsiHandleParser
     }
 
     /// <summary>Scan a Game.log file for the latest handle, opened with shared access (the game keeps
-    /// the file open for writing — a plain read would hit a sharing violation). Null on any error.</summary>
+    /// the file open for writing - a plain read would hit a sharing violation). Null on any error.</summary>
     public static string? ScanFile(string path)
     {
         try

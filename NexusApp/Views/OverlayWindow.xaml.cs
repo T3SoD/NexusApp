@@ -81,7 +81,7 @@ public partial class OverlayWindow : Window
 
         SwitchTab("stats");
 
-        // BETA Game.log blueprint session — drive + mirror it from the STATS tab. The
+        // BETA Game.log blueprint session - drive + mirror it from the STATS tab. The
         // overlay lives for the app's lifetime (created once, hidden/shown), so these
         // never need unsubscribing.
         App.GameLog.Marked += OnGameLogMarked;
@@ -172,7 +172,7 @@ public partial class OverlayWindow : Window
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
         selector.Closed += (_, _) => { if (ReferenceEquals(_regionSelector, selector)) _regionSelector = null; };
         // Open the draw surface on the monitor this overlay sits on (the user drags it onto the
-        // game's monitor), not always the primary — issue #6.
+        // game's monitor), not always the primary - issue #6.
         selector.ShowOnMonitorOf(this);
     }
 
@@ -584,7 +584,7 @@ public partial class OverlayWindow : Window
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
         TabHaulingIndicator.Background  = tab == "hauling"  ? accent : none;
 
-        // RECENT scans belong to the SCAN tab only — hide the strip on every other tab.
+        // RECENT scans belong to the SCAN tab only - hide the strip on every other tab.
         SetHistoryStripVisible(tab == "scan");
 
         if (tab == "stats") RebuildStatsPanel();
@@ -604,7 +604,7 @@ public partial class OverlayWindow : Window
     }
 
     // The RECENT scan-history strip + its splitter live in the window chrome (below the
-    // tabs), so they'd otherwise show on every tab. They're scan-only — collapse them and
+    // tabs), so they'd otherwise show on every tab. They're scan-only - collapse them and
     // reclaim their rows on the STATS tab, preserving any height the user dragged them to.
     private GridLength _savedHistoryHeight = new(120);
     private double _savedHistoryMinHeight = 50;
@@ -750,7 +750,7 @@ public partial class OverlayWindow : Window
         if (_activeTab == "stats") RebuildStatsPanel();
     }
 
-    // Session tally was cleared (new SC session, or a manual reset) — drop the last-collected
+    // Session tally was cleared (new SC session, or a manual reset) - drop the last-collected
     // note and refresh the visible counts.
     private void OnSessionReset()
     {
@@ -759,7 +759,7 @@ public partial class OverlayWindow : Window
     }
 
     // The overlay is app-lifetime (hidden/shown, not closed) in normal use; this only runs if
-    // it's discarded — e.g. MainWindow recreates it after an error — so detach the app-lifetime
+    // it's discarded - e.g. MainWindow recreates it after an error - so detach the app-lifetime
     // session handlers to avoid leaking them onto a dead window.
     // Focus changes on the in-game overlay are a prime diagnostic for the mid-session tab-out
     // reports: an [WIN] overlay activated line at the moment a user got pulled out of the game
@@ -843,8 +843,8 @@ public partial class OverlayWindow : Window
         var mono   = (FontFamily)FindResource("MonoFont");
 
         // Hero KPI: one big cyan blueprints-collected count for this session (instrument data -> cyan,
-        // MOBIGLAS signature), with a small "this session" caption. The "THIS SESSION" header is static
-        // in XAML; this fills the StatsListItems body.
+        // MOBIGLAS signature), with a small "this session" caption. The "BLUEPRINTS COLLECTED" header is
+        // static in XAML; this fills the StatsListItems body.
         StatsListItems.Children.Clear();
         var kpiRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         kpiRow.Children.Add(new TextBlock

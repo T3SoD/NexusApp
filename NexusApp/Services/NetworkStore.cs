@@ -6,12 +6,12 @@ using NexusApp.Models;
 namespace NexusApp.Services;
 
 /// <summary>
-/// Storage for the Blueprint Network feature — other people's shared blueprint libraries and the
+/// Storage for the Blueprint Network feature - other people's shared blueprint libraries and the
 /// groups they belong to. Lives in its OWN SQLite file (network.db) so it survives the nexus.db
 /// reseed that runs on every app update, and so the ~60k ownership rows at org scale stay indexed
 /// and out of settings.json.
 ///
-/// NOTE: the local user ("self") is NOT stored here — self's ownership is the single source of
+/// NOTE: the local user ("self") is NOT stored here - self's ownership is the single source of
 /// truth in AppSettings.OwnedBlueprints. Coverage that includes self unions the two above this
 /// layer. This store holds imported members only.
 /// </summary>
@@ -160,7 +160,7 @@ public sealed class NetworkStore : IDisposable
     // ── Ownership ───────────────────────────────────────────────────────────────
 
     /// <summary>Replace a member's entire owned-blueprint set (delete then insert) in one
-    /// transaction — newer-wins import just hands us the new set.</summary>
+    /// transaction - newer-wins import just hands us the new set.</summary>
     public void ReplaceOwnership(string memberId, IEnumerable<string> blueprintNames)
     {
         using var tx = _conn.BeginTransaction();
@@ -354,7 +354,7 @@ public sealed class NetworkStore : IDisposable
         return list;
     }
 
-    /// <summary>Wipe the entire network store — all members, their ownership, and all groups.</summary>
+    /// <summary>Wipe the entire network store - all members, their ownership, and all groups.</summary>
     public void ClearAll()
     {
         using var tx = _conn.BeginTransaction();

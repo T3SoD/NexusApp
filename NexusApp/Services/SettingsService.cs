@@ -70,7 +70,7 @@ public class SettingsService
         }
         catch (Exception ex) { Logger.Error($"Failed to load settings from {_path}; using defaults", ex); return new AppSettings(); }
 
-        // Schema migrations — bump SettingsSchemaVersion after each one
+        // Schema migrations - bump SettingsSchemaVersion after each one
         var migrated = false;
         if (settings.SettingsSchemaVersion < 1)
         {
@@ -92,7 +92,7 @@ public class SettingsService
         }
         if (settings.SettingsSchemaVersion < 4)
         {
-            // An existing settings file means this isn't a first run — don't show
+            // An existing settings file means this isn't a first run - don't show
             // the welcome wizard to upgraders. Genuine fresh installs have no file
             // and keep FirstRunComplete = false.
             settings.FirstRunComplete = true;
@@ -146,18 +146,18 @@ public class SettingsService
     {
         if (owned)
         {
-            if (!OwnedSet.Add(name)) return;      // already owned — no change, no disk write
+            if (!OwnedSet.Add(name)) return;      // already owned - no change, no disk write
             Current.OwnedBlueprints.Add(name);
         }
         else
         {
-            if (!OwnedSet.Remove(name)) return;   // wasn't owned — no change, no disk write
+            if (!OwnedSet.Remove(name)) return;   // wasn't owned - no change, no disk write
             Current.OwnedBlueprints.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         }
         Save();
     }
 
-    // Bulk-mark owned with a single disk write — used by the Game.log importer so a
+    // Bulk-mark owned with a single disk write - used by the Game.log importer so a
     // retroactive scan of dozens of blueprints doesn't save settings dozens of times.
     // Returns how many were newly marked (already-owned ones are skipped).
     public int SetBlueprintsOwned(IEnumerable<string> names)
@@ -200,7 +200,7 @@ public class SettingsService
         return Current.LocalNetworkId;
     }
 
-    /// <summary>Records how the user wants to be shown when they export — their RSI handle or a
+    /// <summary>Records how the user wants to be shown when they export - their RSI handle or a
     /// freeform nickname. The GUID, not this label, is the stable identity.</summary>
     public void SetLocalIdentity(string displayName, string identityKind)
     {
@@ -219,7 +219,7 @@ public class SettingsService
         Save();
     }
 
-    /// <summary>Reset the local Blueprint Network identity (GUID + label + detected RSI handle) — used
+    /// <summary>Reset the local Blueprint Network identity (GUID + label + detected RSI handle) - used
     /// by "Clear saved data". A fresh GUID is generated on the next launch.</summary>
     public void ClearLocalNetworkIdentity()
     {

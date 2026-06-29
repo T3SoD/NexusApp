@@ -6,7 +6,7 @@ namespace NexusApp.Services;
 /// <summary>
 /// Theme selection. "luxury" = v5 gold, "classic" = v4 slate/teal/amber.
 /// The chosen palette is applied once at startup (App.OnStartup) by swapping the
-/// merged palette dictionary BEFORE any window is created — that resolves cleanly
+/// merged palette dictionary BEFORE any window is created - that resolves cleanly
 /// through every DynamicResource consumer. We deliberately do NOT swap themes live
 /// at runtime (mutating shared brushes in place was unreliable); instead the picker
 /// saves the choice and prompts the user to restart.

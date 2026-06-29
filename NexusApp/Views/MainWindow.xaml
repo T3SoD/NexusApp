@@ -28,7 +28,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ── Header strip (68px) — caption area for WindowChrome drag ── -->
+        <!-- ── Header strip (68px) - caption area for WindowChrome drag ── -->
         <Grid Grid.Row="0"
               Background="{DynamicResource NavBgBrush}">
             <Grid.ColumnDefinitions>
@@ -100,7 +100,7 @@
                         <TextBlock x:Name="ScanChipText" Text="off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- App version badge — clickable easter egg -->
+                <!-- App version badge - clickable easter egg -->
                 <Border x:Name="AppVersionBadge"
                         Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="Transparent"
@@ -113,7 +113,7 @@
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>
                 </Border>
-                <!-- Easter egg hint — hidden until badge is clicked -->
+                <!-- Easter egg hint - hidden until badge is clicked -->
                 <TextBlock x:Name="EggHintLabel"
                            Text="" FontSize="9" FontStyle="Italic"
                            Foreground="{StaticResource FgDimBrush}"
@@ -260,7 +260,7 @@
             <!-- ── Page content ── -->
             <Grid Grid.Column="1" Background="{DynamicResource PageBgBrush}">
 
-                <!-- ── BLUEPRINT NETWORK PAGE (built in code — Views/NetworkPage.cs) ── -->
+                <!-- ── BLUEPRINT NETWORK PAGE (built in code - Views/NetworkPage.cs) ── -->
                 <!-- ── OPERATIONS / COMMAND DASHBOARD (built in code - Views/CommandPage.cs) ── -->
                 <Grid x:Name="PageCommand" Visibility="Collapsed"/>
 
@@ -279,10 +279,11 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Page header: teal eyebrow + display title -->
+                    <!-- Page header: teal eyebrow + display title + subtitle -->
                     <StackPanel Grid.Row="0" Margin="20,16,20,4">
-                        <TextBlock Text="MINING" Style="{StaticResource Eyebrow}"/>
+                        <TextBlock Text="SIGNAL" Style="{StaticResource Eyebrow}"/>
                         <TextBlock Text="RS Decoder" Style="{StaticResource PageTitle}"/>
+                        <TextBlock Text="Identify a deposit from its rock-scan RS value and match confidence." Style="{StaticResource PageSubtitle}"/>
                     </StackPanel>
 
                     <!-- Two-column scan body -->
@@ -380,7 +381,7 @@
                                             <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" HorizontalAlignment="Right">
                                                 <TextBlock Text="RS VALUE" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right"
                                                            Foreground="{StaticResource FgDimBrush}"/>
-                                                <TextBlock Text="{Binding Resource.BaseRs, StringFormat='{}{0:N0}'}" FontFamily="{StaticResource DisplayFont}"
+                                                <TextBlock Text="{Binding Resource.BaseRs, StringFormat='{}{0:N0}'}" FontFamily="{StaticResource MonoFont}"
                                                            FontSize="37" Foreground="{StaticResource CyanBrush}" HorizontalAlignment="Right"/>
                                             </StackPanel>
 
@@ -491,7 +492,7 @@
                                                             <TextBlock Text="{Binding NodesText}" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                                                         </StackPanel>
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource HeadFont}" FontSize="18"
+                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" FontSize="18"
                                                                Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
                                                     <Button Grid.Column="2" Content="Add" Style="{StaticResource NexusButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
                                                             Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -591,6 +592,7 @@
                         <StackPanel>
                             <TextBlock Text="CRAFTING" Style="{StaticResource Eyebrow}"/>
                             <TextBlock Text="Blueprint Library" Style="{StaticResource PageTitle}"/>
+                            <TextBlock Text="Browse components and track which blueprints you own." Style="{StaticResource PageSubtitle}"/>
                         </StackPanel>
                         <ContentControl x:Name="BlueprintGlyphHost" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False"/>
                     </Grid>
@@ -727,6 +729,7 @@
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="MINING" Style="{StaticResource Eyebrow}"/>
                             <TextBlock Text="Mining Codex" Style="{StaticResource PageTitle}"/>
+                            <TextBlock Text="Resource properties, RS values, and refinery yields." Style="{StaticResource PageSubtitle}"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                             <ContentControl x:Name="ReferenceGlyphHost" VerticalAlignment="Center" Margin="0,0,14,0" IsHitTestVisible="False"/>

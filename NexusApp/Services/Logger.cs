@@ -3,7 +3,7 @@ using System.IO;
 namespace NexusApp.Services;
 
 /// <summary>
-/// Minimal append-only file logger at %AppData%\NexusApp\logs\nexus.log. Local only —
+/// Minimal append-only file logger at %AppData%\NexusApp\logs\nexus.log. Local only -
 /// nothing is ever sent anywhere. Logging must never throw, so every path is guarded.
 /// </summary>
 public static class Logger
@@ -58,7 +58,7 @@ public static class Logger
             File.AppendAllText(path, line + Environment.NewLine);
             // NTFS file-system tunneling re-applies a deleted file's ORIGINAL creation time when a
             // same-named file is recreated in the same folder within ~15s. Without overriding it, the
-            // 72h age check stays permanently true after the first rotation — deleting and rewriting a
+            // 72h age check stays permanently true after the first rotation - deleting and rewriting a
             // single line on every call, which pins the log to one ever-overwritten line. Stamp the
             // real creation time so rotation genuinely restarts the window (across app restarts too).
             if (rotated)

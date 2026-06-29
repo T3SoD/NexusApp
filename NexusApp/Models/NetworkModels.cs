@@ -1,7 +1,7 @@
 namespace NexusApp.Models;
 
 /// <summary>
-/// A person in the user's Blueprint Network — someone whose shared library has been imported.
+/// A person in the user's Blueprint Network - someone whose shared library has been imported.
 /// The local user ("self") is represented from <see cref="AppSettings"/>, not as one of these.
 /// </summary>
 public class NetworkMember

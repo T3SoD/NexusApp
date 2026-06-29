@@ -87,7 +87,7 @@ public class WorkOrderFlyoutWindow : Window
         Grid.SetColumn(btnPanel, 1);
         header.Children.Add(btnPanel);
 
-        // accent hairline under header — same recipe as the overlay
+        // accent hairline under header - same recipe as the overlay
         var hairline = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 0) };
         var hlBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
         hlBrush.GradientStops.Add(new GradientStop(Col("AccentClearColor"), 0));
