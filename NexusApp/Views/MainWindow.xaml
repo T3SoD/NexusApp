@@ -306,8 +306,6 @@
                                 </Grid>
                                 <TextBlock Text="Cargo Hauling" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock x:Name="NavHaulingBadge" Grid.Column="1" Text="" FontFamily="{StaticResource MonoFont}"
-                                           FontSize="10" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,2,0"/>
                             </Grid>
                         </RadioButton>
                     </StackPanel>
