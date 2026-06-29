@@ -91,7 +91,7 @@ public sealed class GameLogSession : IDisposable
     public int Count => _marks.Count;
 
     public bool IsRunning => _watcher.IsRunning;
-    /// <summary>Star Citizen appears to be running (Game.log is fresh). False once the game closes / shuts down.</summary>
+    /// <summary>Star Citizen is running (its process is alive), independent of window focus. False once it exits.</summary>
     public bool IsSessionLive => _watcher.IsSessionLive;
     public bool AutoMark { get; private set; }
     public string Path => _watcher.Path;

@@ -996,182 +996,239 @@ public partial class OverlayWindow : Window
     // haul (Company - Topology + its incomplete legs), then a where-to-drop consolidation
     // summary. Built in code from App.Hauls with the same TextBlock/FindResource idiom the
     // STATS tab uses; no live SCU progress exists (legs are binary done / not-done).
+    // The HAULING tab leads with the action plan a hauler actually needs at a glance: stack TOTALS
+    // (count / SCU / aUEC + delivered-drops progress), then CONSOLIDATED STOPS grouped COLLECT/DELIVER
+    // by location (the cross-contract rollup the in-game MobiGlas does not give you), and finally the
+    // per-contract CONTRACTS cards (identity + payout) in a collapsible section so the plan stays glanceable.
     private void RebuildHaulingPanel()
     {
         HaulingList.Children.Clear();
 
         var accent = (Brush)FindResource("AccentBrush");
         var cyan   = (Brush)FindResource("CyanBrush");
-        var fg     = (Brush)FindResource("FgBrush");
         var dim    = (Brush)FindResource("FgDimBrush");
         var border = (Brush)FindResource("NavBorderBrush");
         var cardBg = (Brush)FindResource("Bg2NavBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
 
-        // Indented mono detail line used for the haul route / collect / deliver rows.
-        TextBlock Row(string text, Brush brush, double indent) => new()
-        {
-            Text = text, FontFamily = mono, FontSize = 11, Foreground = brush,
-            Margin = new Thickness(indent, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
-        };
-
         var active = App.Hauls.ActiveHauls;
 
-        // Count header + a compact "Clear all" affordance. The count sits in column 0; the button
-        // (shown only when there's something to clear) is right-aligned in column 1. Click clears
-        // every haul; the resulting Changed -> OnHaulsChanged path rebuilds this panel.
-        var headerGrid = new Grid { Margin = new Thickness(2, 2, 0, 6) };
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var countBlock = new TextBlock
+        // Compact "Clear all" affordance, shown whenever there is anything to clear (active or finished).
+        Button? ClearAllButton()
         {
-            // Live active-haul count reads as instrument data -> cyan (MOBIGLAS signature).
-            Text = $"Active hauls: {active.Count}", FontSize = 12, FontWeight = FontWeights.Bold,
-            Foreground = cyan, VerticalAlignment = VerticalAlignment.Center,
-        };
-        Grid.SetColumn(countBlock, 0);
-        headerGrid.Children.Add(countBlock);
-
-        if (App.Hauls.AllHauls.Count > 0)
-        {
-            var clearBtn = new Button
+            if (App.Hauls.AllHauls.Count == 0) return null;
+            var b = new Button
             {
                 Content = "Clear all", FontSize = 10, FontWeight = FontWeights.Bold,
-                Background = cardBg, Foreground = accent,
-                BorderBrush = border, BorderThickness = new Thickness(1),
+                Background = cardBg, Foreground = accent, BorderBrush = border, BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 2, 8, 2), Cursor = Cursors.Hand,
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right,
             };
-            clearBtn.Click += (_, __) => App.Hauls.ClearAll();   // Changed -> OnHaulsChanged rebuilds
-            Grid.SetColumn(clearBtn, 1);
-            headerGrid.Children.Add(clearBtn);
+            b.Click += (_, __) => App.Hauls.ClearAll();   // Changed -> OnHaulsChanged rebuilds
+            return b;
         }
-
-        HaulingList.Children.Add(headerGrid);
 
         if (active.Count == 0)
         {
-            HaulingList.Children.Add(new TextBlock
-            {
-                Text = "No active hauls.", FontSize = 11, Foreground = dim,
-                Margin = new Thickness(2, 2, 0, 0),
-            });
+            var c = ClearAllButton();
+            if (c != null) HaulingList.Children.Add(c);
+            HaulingList.Children.Add(new TextBlock { Text = "No active hauls.", FontSize = 11, Foreground = dim, Margin = new Thickness(2, 2, 0, 0) });
             return;
         }
 
-        // One block per active haul: "Company - Topology" then each incomplete leg.
+        // ── TOTALS: how big is this run, will it fit, what is it worth, and how far along am I ──
+        int totalScu = 0, totalReward = 0, drops = 0, dropsDone = 0;
         foreach (var h in active)
         {
-            var missionId = h.MissionId;   // capture this haul's id for its own delete handler
-            var company = string.IsNullOrWhiteSpace(h.ContractedBy)
-                ? (string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company)
-                : h.ContractedBy;
-
-            // Title row: "Company - Topology" (ellipsis-trimmed) in column 0, a flat "x" delete
-            // affordance right-aligned in column 1. Click removes just this haul; Changed ->
-            // OnHaulsChanged rebuilds the panel.
-            var titleGrid = new Grid { Margin = new Thickness(2, 8, 0, 2) };
-            titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            // Faction (line 1). A small accent dot marks hauls whose detail was paired from a contract scan.
-            var enriched = h.ContractObjectives.Count > 0 || h.Reward > 0;
-            var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            if (enriched)
-                titleStack.Children.Add(new System.Windows.Shapes.Ellipse
-                {
-                    Width = 7, Height = 7, Fill = accent, Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Details paired from a contract scan",
-                });
-            titleStack.Children.Add(new TextBlock
-            {
-                Text = company, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = fg,
-                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            Grid.SetColumn(titleStack, 0);
-            titleGrid.Children.Add(titleStack);
-
-            var deleteBtn = new Button
-            {
-                Content = "x", FontFamily = mono, FontSize = 13, FontWeight = FontWeights.Bold,
-                Foreground = dim, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
-                Padding = new Thickness(6, 0, 6, 0), Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            deleteBtn.Click += (_, __) => App.Hauls.Remove(missionId);   // Changed -> OnHaulsChanged rebuilds
-            Grid.SetColumn(deleteBtn, 1);
-            titleGrid.Children.Add(deleteBtn);
-
-            HaulingList.Children.Add(titleGrid);
-
-            if (h.Reward > 0)
-                HaulingList.Children.Add(new TextBlock
-                {
-                    // aUEC reward is a live numeric payout readout -> cyan (MOBIGLAS signature).
-                    Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = cyan,
-                    Margin = new Thickness(8, 2, 0, 0),
-                });
-
-            if (h.ContractObjectives.Count > 0)
-            {
-                // Per objective: the cargo (SCU + commodity) as the primary line, then a dim from -> to
-                // route subline. Collect and Deliver carry the same cargo, so showing it once is enough.
-                foreach (var o in h.ContractObjectives)
-                {
-                    var pickup  = string.IsNullOrWhiteSpace(o.Pickup)  ? "?" : o.Pickup;
-                    var dropoff = string.IsNullOrWhiteSpace(o.Dropoff) ? "?" : o.Dropoff;
-                    var cargo   = ((o.Scu > 0 ? $"{o.Scu} SCU " : "") + o.Commodity).Trim();
-                    HaulingList.Children.Add(Row(cargo.Length == 0 ? "(cargo unknown)" : cargo, fg, 8));
-                    HaulingList.Children.Add(Row($"{pickup} -> {dropoff}", dim, 16));
-                }
-            }
-            else
-            {
-                foreach (var leg in h.Legs)
-                {
-                    if (leg.Completed) continue;
-
-                    var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
-                    // Dropoff legs carry their own destination; a pickup leg borrows the haul's
-                    // best-effort PickupName (the dropoff's own location lives on the sibling leg).
-                    var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
-
-                    var segs = new System.Collections.Generic.List<string>();
-                    if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
-                    if (!string.IsNullOrWhiteSpace(leg.Commodity)) segs.Add(leg.Commodity);
-                    if (!string.IsNullOrWhiteSpace(location)) segs.Add($"@ {location}");
-                    var desc = string.Join(" ", segs);
-
-                    HaulingList.Children.Add(new TextBlock
-                    {
-                        Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}",
-                        FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0),
-                        TextWrapping = TextWrapping.Wrap,
-                    });
-                }
-            }
+            // SCU committed: prefer the OCR objectives the cards render, fall back to the dropoff legs.
+            totalScu += h.ContractObjectives.Count > 0
+                ? h.ContractObjectives.Sum(o => o.Scu)
+                : h.Legs.Where(l => l.Role == HaulRole.Dropoff).Sum(l => l.TargetScu);
+            if (h.Reward > 0) totalReward += h.Reward;
+            var d = h.Legs.Where(l => l.Role == HaulRole.Dropoff).ToList();
+            drops += d.Count;
+            dropsDone += d.Count(l => l.Completed);
         }
 
-        // Compact consolidation glance: where to drop and how much, across all active hauls.
-        var con = App.Hauls.BuildConsolidation();
-        if (con.Dropoffs.Count > 0)
+        var totals = new TextBlock { Margin = new Thickness(2, 2, 0, 2), TextWrapping = TextWrapping.Wrap };
+        totals.Inlines.Add(new System.Windows.Documents.Run("HAULS ") { Foreground = accent, FontWeight = FontWeights.Bold, FontSize = 11 });
+        totals.Inlines.Add(new System.Windows.Documents.Run($"{active.Count}") { Foreground = cyan, FontWeight = FontWeights.Bold, FontSize = 12 });
+        totals.Inlines.Add(new System.Windows.Documents.Run($"    {totalScu:N0} SCU") { Foreground = cyan, FontFamily = mono, FontSize = 11 });
+        if (totalReward > 0)
+            totals.Inlines.Add(new System.Windows.Documents.Run($"    {FormatAuec(totalReward)}") { Foreground = cyan, FontFamily = mono, FontSize = 11 });
+        HaulingList.Children.Add(totals);
+
+        if (drops > 0)
         {
-            HaulingList.Children.Add(new Border { Height = 1, Background = border, Margin = new Thickness(0, 10, 0, 6) });
-            HaulingList.Children.Add(new TextBlock
-            {
-                Text = "CONSOLIDATION", FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = dim, Margin = new Thickness(2, 0, 0, 4),
-            });
-            foreach (var stop in con.Dropoffs)
-                HaulingList.Children.Add(new TextBlock
-                {
-                    Text = $"Drop at {stop.Location}: {stop.TotalScu} SCU", FontSize = 11,
-                    Foreground = fg, Margin = new Thickness(8, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
-                });
+            HaulingList.Children.Add(new TextBlock { Text = $"DELIVERED  {dropsDone}/{drops} drops", FontFamily = mono, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, Margin = new Thickness(2, 2, 0, 2) });
+            var bar = Hud.StateBar((double)dropsDone / drops, Hud.BarState.Cyan, 6);
+            if (bar is FrameworkElement fe) fe.Margin = new Thickness(2, 0, 2, 2);
+            HaulingList.Children.Add(bar);
+        }
+
+        // ── STOPS: the cross-contract action plan (consolidated COLLECT + DELIVER by location) ──
+        var stopsHeader = new Grid { Margin = new Thickness(2, 10, 0, 2) };
+        stopsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        stopsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var stopsTitle = new TextBlock { Text = "STOPS", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(stopsTitle, 0); stopsHeader.Children.Add(stopsTitle);
+        var clear = ClearAllButton();
+        if (clear != null) { Grid.SetColumn(clear, 1); stopsHeader.Children.Add(clear); }
+        HaulingList.Children.Add(stopsHeader);
+
+        var con = App.Hauls.BuildConsolidation();
+        AddStopGroup("COLLECT", con.Pickups);
+        AddStopGroup("DELIVER", con.Dropoffs);
+
+        // ── CONTRACTS: per-contract identity + payout, collapsible (collapse by default when busy) ──
+        var cards = new StackPanel();
+        foreach (var h in active.OrderByDescending(x => x.Reward))
+            cards.Children.Add(BuildHaulCard(h));
+        bool startCollapsed = active.Count > 3;
+        cards.Visibility = startCollapsed ? Visibility.Collapsed : Visibility.Visible;
+
+        HaulingList.Children.Add(new Border { Height = 1, Background = border, Margin = new Thickness(0, 10, 0, 0) });
+        var chevron = new TextBlock { Text = startCollapsed ? "v" : "^", FontFamily = mono, FontSize = 11, Foreground = dim, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) };
+        var contractsHeader = new Grid { Margin = new Thickness(2, 8, 0, 2), Cursor = Cursors.Hand, Background = Brushes.Transparent };
+        contractsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        contractsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var ch = new TextBlock { Text = $"CONTRACTS ({active.Count})", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(ch, 0); contractsHeader.Children.Add(ch);
+        Grid.SetColumn(chevron, 1); contractsHeader.Children.Add(chevron);
+        contractsHeader.MouseLeftButtonUp += (_, __) =>
+        {
+            bool show = cards.Visibility != Visibility.Visible;
+            cards.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            chevron.Text = show ? "^" : "v";
+        };
+        HaulingList.Children.Add(contractsHeader);
+        HaulingList.Children.Add(cards);
+    }
+
+    // Indented mono detail line used for the per-contract cargo / route rows.
+    private TextBlock HaulRow(string text, Brush brush, double indent)
+        => new() { Text = text, FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 11, Foreground = brush, Margin = new Thickness(indent, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
+
+    // A consolidated stop group (COLLECT or DELIVER): each location with its total SCU and a per-commodity
+    // breakdown (commodity, summed SCU, and how many contracts a single placement there clears).
+    private void AddStopGroup(string label, System.Collections.Generic.List<ConsolidationStop> stops)
+    {
+        if (stops.Count == 0) return;
+        var accent = (Brush)FindResource("AccentBrush");
+        var cyan   = (Brush)FindResource("CyanBrush");
+        var fg     = (Brush)FindResource("FgBrush");
+        var dim    = (Brush)FindResource("FgDimBrush");
+        var mono   = (FontFamily)FindResource("MonoFont");
+
+        HaulingList.Children.Add(new TextBlock { Text = label, FontFamily = mono, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = accent, Margin = new Thickness(4, 6, 0, 2) });
+
+        foreach (var stop in stops.OrderByDescending(s => s.TotalScu))
+        {
+            var row = new Grid { Margin = new Thickness(8, 2, 0, 0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var loc = new TextBlock { Text = string.IsNullOrWhiteSpace(stop.Location) ? "Unknown" : stop.Location, FontSize = 11, Foreground = fg, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(loc, 0); row.Children.Add(loc);
+            var tot = new TextBlock { Text = $"{stop.TotalScu} SCU", FontFamily = mono, FontSize = 11, Foreground = cyan, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(6, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(tot, 1); row.Children.Add(tot);
+            HaulingList.Children.Add(row);
+
+            // Per-commodity mini-lines: "Titanium  120 SCU (2)" where (2) = contracts contributing.
+            var groups = stop.Items
+                .GroupBy(i => string.IsNullOrWhiteSpace(i.Commodity) ? "Cargo" : i.Commodity)
+                .Select(g => new { Commodity = g.Key, Scu = g.Sum(i => i.Scu), Count = g.Count() })
+                .OrderByDescending(g => g.Scu);
+            foreach (var g in groups)
+                HaulingList.Children.Add(new TextBlock { Text = $"{g.Commodity}  {g.Scu} SCU ({g.Count})", FontFamily = mono, FontSize = 10, Foreground = dim, Margin = new Thickness(18, 1, 0, 0), TextWrapping = TextWrapping.Wrap });
         }
     }
+
+    // One per-contract card: identity (paired dot + company + topology) and drops progress on the title
+    // row, then reward and the cargo lines (OCR objectives when paired, else the incomplete log legs).
+    private UIElement BuildHaulCard(Haul h)
+    {
+        var accent = (Brush)FindResource("AccentBrush");
+        var cyan   = (Brush)FindResource("CyanBrush");
+        var fg     = (Brush)FindResource("FgBrush");
+        var dim    = (Brush)FindResource("FgDimBrush");
+        var mono   = (FontFamily)FindResource("MonoFont");
+
+        var missionId = h.MissionId;   // capture for this card's delete handler
+        var company = string.IsNullOrWhiteSpace(h.ContractedBy)
+            ? (string.IsNullOrWhiteSpace(h.Company) ? "Unknown company" : h.Company)
+            : h.ContractedBy;
+
+        var card = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+
+        var titleGrid = new Grid();
+        titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var enriched = h.ContractObjectives.Count > 0 || h.Reward > 0;
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        if (enriched)
+            titleStack.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = accent, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Details paired from a contract scan" });
+        titleStack.Children.Add(new TextBlock { Text = company, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = fg, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+        var topo = TopologyShort(h.Topology);
+        if (topo.Length > 0)
+            titleStack.Children.Add(new TextBlock { Text = topo, FontFamily = mono, FontSize = 10, Foreground = dim, Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(titleStack, 0); titleGrid.Children.Add(titleStack);
+
+        var dropLegs = h.Legs.Where(l => l.Role == HaulRole.Dropoff).ToList();
+        if (dropLegs.Count > 0)
+        {
+            var prog = new TextBlock { Text = $"{dropLegs.Count(l => l.Completed)}/{dropLegs.Count}", FontFamily = mono, FontSize = 10, Foreground = cyan, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) };
+            Grid.SetColumn(prog, 1); titleGrid.Children.Add(prog);
+        }
+
+        var deleteBtn = new Button { Content = "x", FontFamily = mono, FontSize = 13, FontWeight = FontWeights.Bold, Foreground = dim, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(6, 0, 6, 0), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
+        deleteBtn.Click += (_, __) => App.Hauls.Remove(missionId);   // Changed -> OnHaulsChanged rebuilds
+        Grid.SetColumn(deleteBtn, 2); titleGrid.Children.Add(deleteBtn);
+        card.Children.Add(titleGrid);
+
+        if (h.Reward > 0)
+            card.Children.Add(new TextBlock { Text = $"{h.Reward:N0} aUEC", FontSize = 11, Foreground = cyan, Margin = new Thickness(8, 2, 0, 0) });
+
+        if (h.ContractObjectives.Count > 0)
+        {
+            foreach (var o in h.ContractObjectives)
+            {
+                var pickup  = string.IsNullOrWhiteSpace(o.Pickup)  ? "?" : o.Pickup;
+                var dropoff = string.IsNullOrWhiteSpace(o.Dropoff) ? "?" : o.Dropoff;
+                var cargo   = ((o.Scu > 0 ? $"{o.Scu} SCU " : "") + o.Commodity).Trim();
+                card.Children.Add(HaulRow(cargo.Length == 0 ? "(cargo unknown)" : cargo, fg, 8));
+                card.Children.Add(HaulRow($"{pickup} -> {dropoff}", dim, 16));
+            }
+        }
+        else
+        {
+            foreach (var leg in h.Legs)
+            {
+                if (leg.Completed) continue;
+                var role = leg.Role == HaulRole.Pickup ? "Load" : "Drop";
+                var location = leg.Role == HaulRole.Dropoff ? leg.Destination : h.PickupName;
+                var segs = new System.Collections.Generic.List<string>();
+                if (leg.TargetScu > 0) segs.Add($"{leg.TargetScu} SCU");
+                if (!string.IsNullOrWhiteSpace(leg.Commodity)) segs.Add(leg.Commodity);
+                if (!string.IsNullOrWhiteSpace(location)) segs.Add($"@ {location}");
+                var desc = string.Join(" ", segs);
+                card.Children.Add(new TextBlock { Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}", FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0), TextWrapping = TextWrapping.Wrap });
+            }
+        }
+
+        return card;
+    }
+
+    // "1 to 2" -> "1->2"; blank / Unknown -> "" (so the tag is simply omitted).
+    private static string TopologyShort(string t)
+        => string.IsNullOrWhiteSpace(t) || t == "Unknown" ? "" : t.Replace(" to ", "->");
+
+    // Compact aUEC: 1.85M / 745K / full number for small values.
+    private static string FormatAuec(int v)
+        => v >= 1_000_000 ? $"{v / 1_000_000.0:0.##}M aUEC"
+         : v >= 10_000    ? $"{v / 1000.0:0.#}K aUEC"
+         : $"{v:N0} aUEC";
 
     private System.Windows.Threading.DispatcherTimer? _ordersTicker;
     private readonly Dictionary<string, (TextBlock Txt, ColumnDefinition Fill, ColumnDefinition Remain)> _orderTimerRefs = new();

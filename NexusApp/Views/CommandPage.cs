@@ -33,6 +33,8 @@ public sealed class CommandPage : UserControl
         _navigate = navigate;
         _vm = vm;
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root };
+        // Keep the dashboard live (shard card + KPIs) when the shard changes while Operations is open.
+        if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(Refresh);
     }
 
     public void Refresh()
@@ -195,7 +197,9 @@ public sealed class CommandPage : UserControl
         right.Children.Add(Hud.Panel(ActiveHauls(), chamfer: 14, padding: new Thickness(18)));
         var risk = NetworkRisk();
         if (risk != null) { risk.Margin = new Thickness(0, 12, 0, 0); right.Children.Add(risk); }
-        right.Children.Add(ShardLine());
+        var shardCard = ShardCard();
+        shardCard.Margin = new Thickness(0, 12, 0, 0);
+        right.Children.Add(shardCard);
         Grid.SetColumn(right, 1); grid.Children.Add(right);
         return grid;
     }
@@ -302,13 +306,47 @@ public sealed class CommandPage : UserControl
                          bg: new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xB2, 0x3E)), border: Br("AccentStrongBrush"));
     }
 
-    private UIElement ShardLine()
+    // Server / shard card: the current shard (region + instance + raw id) and up to 3 recent shards,
+    // mirroring the overlay's STATS shard panel. Reads App.Shards (Current / Recent); shard metadata only.
+    private FrameworkElement ShardCard()
     {
-        var shard = App.Shards.Current;
-        var line = new TextBlock { FontFamily = Ui, FontSize = 11.5, Margin = new Thickness(2, 12, 0, 0) };
-        line.Inlines.Add(new Run("SHARD  ") { FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush") });
-        line.Inlines.Add(new Run(shard == null ? "not detected" : $"{shard.Region} · {shard.Instance}") { Foreground = Br("FgBrush") });
-        return line;
+        var sp = new StackPanel();
+        sp.Children.Add(new TextBlock { Text = "SERVER / SHARD", FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush"), Margin = new Thickness(0, 0, 0, 10) });
+
+        var current = App.Shards.Current;
+        if (current != null)
+        {
+            sp.Children.Add(new TextBlock { Text = "CURRENT", FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 3) });
+            var card = new StackPanel();
+            card.Children.Add(new TextBlock { Text = $"{current.Region}  -  Shard {current.Instance}", FontFamily = Ui, FontSize = 13, Foreground = Br("CyanBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
+            card.Children.Add(new TextBlock { Text = current.ShardId, FontFamily = Mono, FontSize = 10, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+            sp.Children.Add(new Border { Child = card, Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(13, 9, 13, 9) });
+        }
+        else
+        {
+            sp.Children.Add(new TextBlock { Text = "Not on a shard.", FontSize = 12, Foreground = Br("FgDimBrush") });
+        }
+
+        var recent = App.Shards.Recent;
+        if (recent.Count > 0)
+        {
+            sp.Children.Add(new TextBlock { Text = "RECENT", FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 12, 0, 4) });
+            foreach (var s in recent)
+                sp.Children.Add(new TextBlock { Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}", FontFamily = Mono, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+        }
+
+        return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+    }
+
+    // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
+    private static string Ago(DateTime utcWhen)
+    {
+        var span = DateTime.UtcNow - utcWhen;
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalHours   < 1) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalDays    < 1) return $"{(int)span.TotalHours}h ago";
+        return $"{(int)span.TotalDays}d ago";
     }
 
     // ── small helpers ──

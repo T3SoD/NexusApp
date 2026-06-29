@@ -52,9 +52,9 @@ public partial class MainWindow : Window
 
         // Ambient HUD glyphs: each always-populated tab carries its own signature looping animation, in the
         // spirit of the RS Decoder reticle. RS Decoder keeps its reticle and Network keeps its coverage donut.
-        ReferenceGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Orbit, 36);
-        BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Schematic, 46);
-        WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.ScanLine, 38);
+        ReferenceGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Crystal, 36);
+        BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Hologram, 46);
+        WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Crucible, 38);
 
         RestoreWindowPosition();
         SetActivePage("command");
@@ -303,13 +303,11 @@ public partial class MainWindow : Window
         }
     }
 
-    // Active-count badges on the Refinery + Cargo Hauling rail items.
+    // Active-count badge on the Refinery rail item.
     private void UpdateNavBadges()
     {
         int orders = App.Data.GetWorkOrders().FindAll(o => o.Status != WorkOrderStatus.Complete).Count;
-        int hauls = App.Hauls.ActiveHauls.Count;
         NavWorkBadge.Text = orders > 0 ? orders.ToString() : "";
-        NavHaulingBadge.Text = hauls > 0 ? hauls.ToString() : "";
     }
 
     private void InitNetworkPage()
@@ -1010,7 +1008,7 @@ public partial class MainWindow : Window
     {
         var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 40, 0, 0) };
-        var glyph = Hud.AmbientGlyph(Hud.Ambient.ScanLine, 96);
+        var glyph = Hud.AmbientGlyph(Hud.Ambient.Crucible, 96);
         glyph.HorizontalAlignment = HorizontalAlignment.Center;
         glyph.Margin = new Thickness(0, 0, 0, 18);
         stack.Children.Add(glyph);

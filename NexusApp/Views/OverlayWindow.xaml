@@ -169,9 +169,9 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>   <!-- 0: session + scan toggles -->
                         <RowDefinition Height="Auto"/>   <!-- 1: hero session KPI -->
-                        <RowDefinition Height="Auto"/>   <!-- 2: feed label -->
-                        <RowDefinition Height="*"/>      <!-- 3: collected feed -->
-                        <RowDefinition Height="Auto"/>   <!-- 4: server / shard (bottom) -->
+                        <RowDefinition Height="Auto"/>   <!-- 2: server / shard -->
+                        <RowDefinition Height="Auto"/>   <!-- 3: feed label -->
+                        <RowDefinition Height="*"/>      <!-- 4: collected feed -->
                         <RowDefinition Height="Auto"/>   <!-- 5: footer -->
                     </Grid.RowDefinitions>
 
@@ -223,37 +223,40 @@
                     </StackPanel>
 
                     <!-- Hero session KPI: big cyan blueprints-collected count for this session (built in code-behind) -->
-                    <Border Grid.Row="1" Margin="10,9,10,0" CornerRadius="4"
-                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
-                            BorderThickness="1" Padding="13,9,13,11">
-                        <Grid>
-                            <StackPanel>
+                    <Grid Grid.Row="1" Margin="10,9,10,0">
+                        <Border CornerRadius="4"
+                                Background="{DynamicResource Bg2NavBrush}" BorderBrush="{DynamicResource NavBorderBrush}"
+                                BorderThickness="1">
+                            <StackPanel Margin="13,10,13,11">
                                 <TextBlock x:Name="StatsSessionHeader" Text="THIS SESSION"
                                            Style="{StaticResource SectionLabel}" Padding="0,0,0,6"/>
                                 <Border Height="1" Background="{DynamicResource NavBorderBrush}" Margin="0,0,0,4"/>
                                 <StackPanel x:Name="StatsListItems"/>
                             </StackPanel>
-                            <!-- MOBIGLAS signature: amber L-brackets framing the hero session card (decorative, non-interactive) -->
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False"
-                                    HorizontalAlignment="Left" VerticalAlignment="Top"
-                                    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,1.5,0,0"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False"
-                                    HorizontalAlignment="Right" VerticalAlignment="Top"
-                                    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,1.5,1.5,0"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False"
-                                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,0,0,1.5"/>
-                            <Border Width="16" Height="16" Margin="10" IsHitTestVisible="False"
-                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                    BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,0,1.5,1.5"/>
-                        </Grid>
-                    </Border>
+                        </Border>
+                        <!-- MOBIGLAS signature: amber L-brackets hugging the card's outer corners, clear of the content -->
+                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,1.5,0,0"/>
+                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,1.5,1.5,0"/>
+                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
+                                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="1.5,0,0,1.5"/>
+                        <Border Width="10" Height="10" Margin="3" IsHitTestVisible="False"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                BorderBrush="{DynamicResource AccentStrongBrush}" BorderThickness="0,0,1.5,1.5"/>
+                    </Grid>
 
-                    <TextBlock Grid.Row="2" Text="BLUEPRINTS COLLECTED THIS SESSION"
+                    <!-- SERVER / SHARD: current + recent shards (built in code-behind from App.Shards), above the blueprint feed -->
+                    <StackPanel x:Name="ShardPanel" Grid.Row="2" Margin="10,8,10,4"/>
+
+                    <TextBlock Grid.Row="3" Text="BLUEPRINTS COLLECTED THIS SESSION"
                                Style="{StaticResource Eyebrow}" Margin="12,12,10,4"/>
 
                     <!-- Marked feed (newest first) -->
-                    <Grid Grid.Row="3">
+                    <Grid Grid.Row="4">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="10,0">
                             <StackPanel x:Name="StatsFeedItems"/>
                         </ScrollViewer>
@@ -263,9 +266,6 @@
                                    TextAlignment="Center" TextWrapping="Wrap"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"/>
                     </Grid>
-
-                    <!-- SERVER / SHARD: current + recent shards (built in code-behind from App.Shards), pinned to the BOTTOM -->
-                    <StackPanel x:Name="ShardPanel" Grid.Row="4" Margin="10,8,10,4"/>
 
                     <!-- Footer: reach the advanced monitor + reset the session tally -->
                     <Grid Grid.Row="5" Margin="12,4,10,8">
