@@ -59,6 +59,14 @@ public partial class MainWindow : Window
         // Nav is the Wrist-OS app dock (mock #31): static line glyphs in chamfered dock tiles, styled in
         // GameTheme (DockTile). The old animated NavIco rail glyphs were retired with the rail.
         StartOsClock();
+        DockTiles.SizeChanged += (_, _) => PositionDockSelector(false);
+        Loaded += (_, _) =>
+        {
+            AnimateDockIn();                         // staggered tile entrance
+            PositionDockSelector(false);             // place the active selector once laid out
+            Hud.PulseDot(VpRunDot, true);            // breathing run/LIVE dots
+            Hud.PulseDot(OpsLiveDot, true);
+        };
 
         RestoreWindowPosition();
         SetActivePage("command");
@@ -173,6 +181,7 @@ public partial class MainWindow : Window
         // flicker + scan sweep so switching modules reads like the OS launching the app.
         if (VpModule != null) VpModule.Text = $"module://nexus/{page}";
         PlayViewportSweep();
+        PositionDockSelector(true);
 
         Title = page switch
         {
@@ -260,6 +269,73 @@ public partial class MainWindow : Window
         flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.4,  System.Windows.Media.Animation.KeyTime.FromPercent(0.52)));
         flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,    System.Windows.Media.Animation.KeyTime.FromPercent(1)));
         VpFlick.BeginAnimation(UIElement.OpacityProperty, flick);
+    }
+
+    // The currently-checked dock tile (the active module), or null during very early init.
+    private System.Windows.Controls.RadioButton? ActiveDockTile()
+    {
+        if (NavCommand.IsChecked == true)  return NavCommand;
+        if (NavScan.IsChecked == true)     return NavScan;
+        if (NavWork.IsChecked == true)     return NavWork;
+        if (NavRef.IsChecked == true)      return NavRef;
+        if (NavBlue.IsChecked == true)     return NavBlue;
+        if (NavNetwork.IsChecked == true)  return NavNetwork;
+        if (NavHauling.IsChecked == true)  return NavHauling;
+        if (NavSettings.IsChecked == true) return NavSettings;
+        return null;
+    }
+
+    // Slide the single amber selector bar to the active dock tile (mock #31's layoutId bar). Re-runs on
+    // page switch, dock resize, and load; defers until the tile is laid out so the math is valid.
+    private void PositionDockSelector(bool animated)
+    {
+        var tile = ActiveDockTile();
+        if (tile == null || DockTiles == null || DockSelector == null || DockSelectorT == null) return;
+        if (!tile.IsLoaded || tile.ActualHeight < 1)
+        {
+            Dispatcher.BeginInvoke(new Action(() => PositionDockSelector(animated)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
+        }
+        const double inset = 7;
+        double top = tile.TransformToVisual(DockTiles).Transform(new System.Windows.Point(0, 0)).Y;
+        double targetY = top + inset;
+        DockSelector.Height = Math.Max(8, tile.ActualHeight - inset * 2);
+        DockSelector.Opacity = 1;
+        if (animated)
+        {
+            DockSelectorT.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(targetY, TimeSpan.FromMilliseconds(280))
+                { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+        }
+        else
+        {
+            DockSelectorT.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+            DockSelectorT.Y = targetY;
+        }
+    }
+
+    // Staggered entrance for the dock tiles on first show (slide in from the left + fade).
+    private void AnimateDockIn()
+    {
+        if (DockTiles == null) return;
+        int i = 0;
+        foreach (var child in DockTiles.Children)
+        {
+            if (child is FrameworkElement fe)
+            {
+                var begin = TimeSpan.FromMilliseconds(70 + i * 45);
+                var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+                var tt = new System.Windows.Media.TranslateTransform(-12, 0);
+                fe.RenderTransform = tt;
+                fe.Opacity = 0;
+                fe.BeginAnimation(UIElement.OpacityProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { BeginTime = begin, EasingFunction = ease });
+                tt.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(-12, 0, TimeSpan.FromMilliseconds(340)) { BeginTime = begin, EasingFunction = ease });
+                i++;
+            }
+        }
     }
 
     private SettingsPage? _settingsPage;
