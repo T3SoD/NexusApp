@@ -49,33 +49,8 @@
                             <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="9" ShadowDepth="0" Opacity="0.3"/>
                         </TextBlock.Effect>
                     </TextBlock>
-                    <TextBlock Text="WRIST-OS v5" FontFamily="{StaticResource MonoFont}" FontSize="8"
-                               Foreground="{DynamicResource FgDimBrush}" Margin="1,1,0,0"/>
                 </StackPanel>
 
-                <!-- carrier signal strength (animated) + secure-link label -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="0,0,8,2">
-                        <StackPanel.Triggers>
-                            <EventTrigger RoutedEvent="Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.6" To="1"
-                                                         Duration="0:0:1.3" AutoReverse="True" RepeatBehavior="Forever"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </StackPanel.Triggers>
-                        <Rectangle Width="3" Height="6"  Fill="{DynamicResource CyanBrush}" VerticalAlignment="Bottom" Margin="0,0,2,0"/>
-                        <Rectangle Width="3" Height="9"  Fill="{DynamicResource CyanBrush}" VerticalAlignment="Bottom" Margin="0,0,2,0"/>
-                        <Rectangle Width="3" Height="12" Fill="{DynamicResource CyanBrush}" VerticalAlignment="Bottom" Margin="0,0,2,0"/>
-                        <Rectangle Width="3" Height="15" Fill="{DynamicResource CyanBrush}" VerticalAlignment="Bottom" Margin="0,0,2,0"/>
-                        <Rectangle Width="3" Height="16" Fill="{DynamicResource NavBorderBrush}" VerticalAlignment="Bottom"/>
-                    </StackPanel>
-                    <TextBlock Text="SECURE LINK" FontFamily="{StaticResource MonoFont}" FontSize="9"
-                               Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
-                    <Border Width="1" Height="18" Background="{DynamicResource NavBorderBrush}" Margin="11,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
                 <!-- App version badge - clickable easter egg. Leads the strip: app -> game -> shard -> session. -->
                 <Border x:Name="AppVersionBadge"
                         Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
@@ -372,14 +347,15 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <views:ChamferPanel Chamfer="6" Width="32" Height="32" Padding="0"
                                                 Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentStrongBrush}">
-                                <TextBlock Text="OP" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="13"
+                                <TextBlock Text="SC" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="13"
                                            Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </views:ChamferPanel>
                             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource FgBrush}"/>
+                                <TextBlock x:Name="OperatorName" Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11"
+                                           Foreground="{DynamicResource FgBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <TextBlock Text="ONLINE . SECURE LINK" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}"/>
+                                    <Ellipse x:Name="LinkDot" Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBlock x:Name="LinkStatusText" Text="ONLINE . SECURE LINK" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}"/>
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>
@@ -418,7 +394,9 @@
                         <Rectangle Width="9" Height="9" Fill="{DynamicResource NavBorderBrush}" Margin="3,0"/>
                         <Rectangle Width="9" Height="9" Fill="{DynamicResource AccentBrush}" Margin="3,0"/>
                     </StackPanel>
-                    <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="1">
+                    <Border x:Name="VpUnderline" Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="1"
+                            RenderTransformOrigin="0,0.5">
+                        <Border.RenderTransform><ScaleTransform x:Name="VpUnderlineT" ScaleX="1"/></Border.RenderTransform>
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                 <GradientStop Color="{DynamicResource AccentClearColor}" Offset="0"/>
@@ -1037,27 +1015,6 @@
                     </ScrollViewer>
                 </Grid>
 
-                <!-- Boot flicker + scan sweep, replayed on each page switch (Wrist-OS launch fx). -->
-                <Rectangle x:Name="VpSweep" Height="160" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0">
-                    <Rectangle.Fill>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#007FE9E0" Offset="0"/>
-                            <GradientStop Color="#247FE9E0" Offset="0.44"/>
-                            <GradientStop Color="#73FFC766" Offset="0.5"/>
-                            <GradientStop Color="#247FE9E0" Offset="0.56"/>
-                            <GradientStop Color="#007FE9E0" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Rectangle.Fill>
-                    <Rectangle.RenderTransform><TranslateTransform x:Name="VpSweepT" Y="-200"/></Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle x:Name="VpFlick" IsHitTestVisible="False" Opacity="0">
-                    <Rectangle.Fill>
-                        <RadialGradientBrush GradientOrigin="0.36,0.56" Center="0.36,0.56" RadiusX="0.7" RadiusY="0.7">
-                            <GradientStop Color="#40FFC766" Offset="0"/>
-                            <GradientStop Color="#00FFC766" Offset="0.72"/>
-                        </RadialGradientBrush>
-                    </Rectangle.Fill>
-                </Rectangle>
                 </Grid>
                 </Grid>
                 </views:ChamferPanel>

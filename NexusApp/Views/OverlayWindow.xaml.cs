@@ -677,7 +677,9 @@ public partial class OverlayWindow : Window
     private static Border NewSwitchKnob() => new()
     {
         Width = 13, Height = 13, CornerRadius = new CornerRadius(4),
-        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 2, 0),
+        VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left,
+        Margin = new Thickness(2, 0, 2, 0),
+        RenderTransform = new System.Windows.Media.TranslateTransform(),
     };
 
     private FrameworkElement SwitchPair(Border track, string label, Action onToggle, Action sync)
@@ -714,7 +716,15 @@ public partial class OverlayWindow : Window
         };
         track.Background  = onBrush;
         track.BorderBrush = active ? onBrush : (Brush)FindResource("NavBorderBrush");
-        knob.HorizontalAlignment = active ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        // Slide the knob (track inner 28 - knob 13 - margins 2/2 = 11px travel) instead of snapping ends.
+        if (knob.RenderTransform is System.Windows.Media.TranslateTransform kt)
+        {
+            double knobX = active ? 11 : 0;
+            if (Motion.Reduced) { kt.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null); kt.X = knobX; }
+            else kt.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(knobX, new Duration(TimeSpan.FromMilliseconds(Motion.HoverMs)))
+                { EasingFunction = Motion.SlideOut });
+        }
         knob.Background = active ? (Brush)FindResource("OnAccentBrush") : (Brush)FindResource("FgDimBrush");
     }
 
@@ -1192,7 +1202,9 @@ public partial class OverlayWindow : Window
          : $"{v:N0} aUEC";
 
     private System.Windows.Threading.DispatcherTimer? _ordersTicker;
-    private readonly Dictionary<string, (TextBlock Txt, ColumnDefinition Fill, ColumnDefinition Remain)> _orderTimerRefs = new();
+    // The countdown text per active order; the fill bar animates itself over the remaining
+    // time (smooth ScaleX), so the ticker only refreshes the text each second.
+    private readonly Dictionary<string, TextBlock> _orderTimerRefs = new();
 
     private void RebuildOrdersPanel()
     {
@@ -1347,19 +1359,28 @@ public partial class OverlayWindow : Window
             var tTxt = new TextBlock { Text = wo.TimerRemainingShort, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = cyan, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
             timerRow.Children.Add(tTxt);
 
-            var frac = wo.TimerFraction;
-            var fillCol = new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) };
-            var restCol = new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) };
-            var barGrid = new Grid();
-            barGrid.ColumnDefinitions.Add(fillCol);
-            barGrid.ColumnDefinitions.Add(restCol);
-            barGrid.Children.Add(new Border { Background = statusBrush, CornerRadius = new CornerRadius(2) });
-            var track = new Border { Background = trackBg, CornerRadius = new CornerRadius(2), Height = 5, VerticalAlignment = VerticalAlignment.Center, Child = barGrid };
+            var frac = System.Math.Clamp(wo.TimerFraction, 0, 1);
+            // Smooth fill: scale a stretched bar from frac -> 1 over the remaining time (matches the
+            // main page / refinery flyout), instead of stepping GridLength once a second.
+            var scale = new System.Windows.Media.ScaleTransform(frac, 1);
+            var fill = new Border
+            {
+                Background = statusBrush, CornerRadius = new CornerRadius(2),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                RenderTransform = scale, RenderTransformOrigin = new System.Windows.Point(0, 0.5),
+            };
+            var track = new Border { Background = trackBg, CornerRadius = new CornerRadius(2), Height = 5, VerticalAlignment = VerticalAlignment.Center, Child = fill };
             Grid.SetColumn(track, 1);
             timerRow.Children.Add(track);
             stack.Children.Add(timerRow);
 
-            _orderTimerRefs[wo.Id] = (tTxt, fillCol, restCol);
+            var remaining = wo.TimerEnd.HasValue ? wo.TimerEnd.Value - DateTime.UtcNow : TimeSpan.Zero;
+            if (remaining > TimeSpan.Zero)
+                scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(frac, 1.0, remaining)
+                    { FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd });
+
+            _orderTimerRefs[wo.Id] = tTxt;
         }
 
         grid.Children.Add(stack);
@@ -1375,13 +1396,10 @@ public partial class OverlayWindow : Window
         bool anyActive = false;
         foreach (var wo in _vm.WorkOrders)
         {
-            if (!_orderTimerRefs.TryGetValue(wo.Id, out var refs)) continue;
+            if (!_orderTimerRefs.TryGetValue(wo.Id, out var txt)) continue;
             if (!wo.HasActiveTimer) { RebuildOrdersPanel(); return; }
             anyActive = true;
-            var frac = wo.TimerFraction;
-            refs.Fill.Width = new GridLength(frac, GridUnitType.Star);
-            refs.Remain.Width = new GridLength(1 - frac, GridUnitType.Star);
-            refs.Txt.Text = wo.TimerRemainingShort;
+            txt.Text = wo.TimerRemainingShort;
         }
         if (!anyActive) { _ordersTicker?.Stop(); _ordersTicker = null; }
     }

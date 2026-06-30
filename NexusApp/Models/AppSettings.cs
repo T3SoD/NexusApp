@@ -45,6 +45,13 @@ public class AppSettings
     // ContractRegion mirrors ScanRegion (same pixel-coordinate struct); null = not yet set by user.
     public ScanRegion? ContractRegion { get; set; }
     public bool AutoScanContracts { get; set; }
+
+    // Accessibility/comfort: when on, the app minimizes motion (skips page transitions,
+    // dock/HUD pulses, count-ups, switch slides and the ambient panel glyphs). Default off.
+    public bool ReduceAnimations { get; set; }
+
+    // Top-bar clock format: true = 24-hour (HH:mm:ss), false = 12-hour with AM/PM. Default 24-hour.
+    public bool Clock24Hour { get; set; } = true;
 }
 
 public class ScanRegion

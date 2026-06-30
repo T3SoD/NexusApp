@@ -88,6 +88,35 @@ public sealed class SettingsPage : UserControl
                 "github.com/T3SoD/NexusApp/issues.",
                 openAppLogBtn, last: true)));
 
+        // ── Appearance ──────────────────────────────────────────────────────────
+        var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
+        {
+            OnToggled = on =>
+            {
+                App.Settings.Current.ReduceAnimations = on;
+                App.Settings.Save();
+                Motion.Reduced = on;
+                Logger.Info($"[UI] Reduce animations: {(on ? "on" : "off")}");
+            },
+        };
+        var clockToggle = new Hud.ToggleSwitch(App.Settings.Current.Clock24Hour)
+        {
+            OnToggled = on =>
+            {
+                App.Settings.Current.Clock24Hour = on;
+                App.Settings.Save();
+                Logger.Info($"[UI] Clock format: {(on ? "24-hour" : "12-hour")}");
+            },
+        };
+        panel.Children.Add(SectionPanel("Appearance", false,
+            SettingRow("Reduce animations",
+                "Minimize motion across Nexus: skip page transitions, the dock and HUD pulses, " +
+                "count-ups and the ambient panel glyphs. Takes full effect as you move between pages.",
+                reduceToggle, last: false),
+            SettingRow("24-hour clock",
+                "Show the top-bar clock in 24-hour time. Off uses 12-hour with AM/PM.",
+                clockToggle, last: true)));
+
         // ── Data ──────────────────────────────────────────────────────────────
         var clearBtn = DangerButton("Clear saved data…");
         clearBtn.MouseLeftButtonUp += (s, e) => ClearSavedData();

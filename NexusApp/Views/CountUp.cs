@@ -22,6 +22,13 @@ public static class CountUp
     public static void SetTo(DependencyObject o, double value) => o.SetValue(ToProperty, value);
     public static double GetTo(DependencyObject o) => (double)o.GetValue(ToProperty);
 
+    // Optional unit appended after the number (e.g. "%"). Set it BEFORE To.
+    public static readonly DependencyProperty SuffixProperty = DependencyProperty.RegisterAttached(
+        "Suffix", typeof(string), typeof(CountUp), new PropertyMetadata(""));
+
+    public static void SetSuffix(DependencyObject o, string value) => o.SetValue(SuffixProperty, value);
+    public static string GetSuffix(DependencyObject o) => (string)o.GetValue(SuffixProperty);
+
     // Internal animated value; each tick writes the formatted number into the TextBlock.
     private static readonly DependencyProperty CurrentProperty = DependencyProperty.RegisterAttached(
         "Current", typeof(double), typeof(CountUp), new PropertyMetadata(0.0, OnCurrentChanged));
@@ -32,19 +39,27 @@ public static class CountUp
         double to = (double)e.NewValue;
         if (double.IsNaN(to)) return;
 
-        // Restart from 0 each time a new value is detected, then animate up with an ease-out.
+        // Reduce animations: snap straight to the final value, no count-up.
+        if (Motion.Reduced)
+        {
+            tb.BeginAnimation(CurrentProperty, null);
+            tb.Text = to.ToString("N0") + GetSuffix(tb);
+            return;
+        }
+
+        // Restart from 0 each time a new value is detected, then settle up with the mock count-up curve.
         tb.BeginAnimation(CurrentProperty, null);
         tb.SetValue(CurrentProperty, 0.0);
-        tb.Text = "0";
-        var anim = new DoubleAnimation(0, to, new Duration(TimeSpan.FromMilliseconds(850)))
+        tb.Text = "0" + GetSuffix(tb);
+        var anim = new DoubleAnimation(0, to, new Duration(TimeSpan.FromMilliseconds(Motion.CountUpMs)))
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            EasingFunction = Motion.Settle,
         };
         tb.BeginAnimation(CurrentProperty, anim);
     }
 
     private static void OnCurrentChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
     {
-        if (o is TextBlock tb) tb.Text = ((double)e.NewValue).ToString("N0");
+        if (o is TextBlock tb) tb.Text = ((double)e.NewValue).ToString("N0") + GetSuffix(tb);
     }
 }
