@@ -826,19 +826,10 @@
                                 </MultiBinding>
                             </Path.Data>
                         </Path>
-                        <Border x:Name="bar" Width="2.5" HorizontalAlignment="Left" Margin="0,7"
-                                CornerRadius="2" Background="{DynamicResource AccentBrush}" Opacity="0"
-                                RenderTransformOrigin="0,0.5">
-                            <Border.RenderTransform><ScaleTransform x:Name="barScale" ScaleY="0.3"/></Border.RenderTransform>
-                            <Border.Effect>
-                                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="10" ShadowDepth="0" Opacity="0.85"/>
-                            </Border.Effect>
-                        </Border>
                         <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                             <Setter TargetName="frame" Property="Fill" Value="{DynamicResource Bg3Brush}"/>
                             <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentStrongBrush}"/>
                             <Trigger.EnterActions>
@@ -853,7 +844,6 @@
                             </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                             <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentBrush}"/>
                             <Setter TargetName="frame" Property="Fill">
                                 <Setter.Value>
@@ -863,18 +853,6 @@
                                     </LinearGradientBrush>
                                 </Setter.Value>
                             </Setter>
-                            <Trigger.EnterActions>
-                                <BeginStoryboard><Storyboard>
-                                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
-                                    <DoubleAnimation Storyboard.TargetName="barScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.22"/>
-                                </Storyboard></BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard><Storyboard>
-                                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
-                                    <DoubleAnimation Storyboard.TargetName="barScale" Storyboard.TargetProperty="ScaleY" To="0.3" Duration="0:0:0.14"/>
-                                </Storyboard></BeginStoryboard>
-                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -882,15 +860,59 @@
         </Setter>
     </Style>
 
-    <!-- DockChip: the 40px chamfered glyph holder inside a dock tile. Border color tracks the tile. -->
+    <!-- DockChip: 40px chamfered glyph holder. Dark default; amber-filled when its tile is active. -->
     <Style x:Key="DockChip" TargetType="views:ChamferPanel" BasedOn="{StaticResource {x:Type views:ChamferPanel}}">
         <Setter Property="Chamfer" Value="7"/>
         <Setter Property="Width"   Value="40"/>
         <Setter Property="Height"  Value="40"/>
         <Setter Property="Padding" Value="0"/>
-        <Setter Property="Background"  Value="{DynamicResource BgBrush}"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="BorderBrush" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+        <Setter Property="Background"  Value="{DynamicResource BgBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NavBorderBrush}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="Background"  Value="{DynamicResource AccentBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- DockGlyph: line-glyph Path in a chip. Dim default, amber on hover, dark on active (amber chip). -->
+    <Style x:Key="DockGlyph" TargetType="Path">
+        <Setter Property="Fill" Value="{x:Null}"/>
+        <Setter Property="StrokeThickness" Value="1.6"/>
+        <Setter Property="StrokeStartLineCap" Value="Round"/>
+        <Setter Property="StrokeEndLineCap" Value="Round"/>
+        <Setter Property="StrokeLineJoin" Value="Round"/>
+        <Setter Property="Stroke" Value="{DynamicResource FgDimBrush}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="Stroke" Value="{DynamicResource AccentBrush}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="Stroke" Value="{DynamicResource OnAccentBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- DockTileName: module name. Dim default, bright when hovered or active. -->
+    <Style x:Key="DockTileName" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize"   Value="12.5"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        <Setter Property="Foreground" Value="{DynamicResource FgDimBrush}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource FgBrush}"/>
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- SectionLabel: small uppercase dim label for panel headers / KPI keys -->
