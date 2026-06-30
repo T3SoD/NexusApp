@@ -197,6 +197,7 @@ public class HighlightWindow : Window
         var fade = new DoubleAnimation(0.85, 0.0, TimeSpan.FromMilliseconds(1150))
         {
             RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut },
         };
         _ping.BeginAnimation(OpacityProperty, fade);
     }

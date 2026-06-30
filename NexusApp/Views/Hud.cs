@@ -140,12 +140,14 @@ public static partial class Hud
     // Used by the GAME SESSION / BLUEPRINTS pills so a green (live) LED gently flashes; off LEDs stay solid.
     public static void PulseDot(UIElement dot, bool on)
     {
-        if (on)
+        // Reduce animations: hold the LED solid instead of breathing.
+        if (on && !Motion.Reduced)
         {
-            var anim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromSeconds(1.1)))
+            var anim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromMilliseconds(Motion.BreatheMs)))
             {
                 AutoReverse = true,
                 RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+                EasingFunction = Motion.Breathe,
             };
             dot.BeginAnimation(UIElement.OpacityProperty, anim);
         }
@@ -254,6 +256,7 @@ public static partial class Hud
     {
         private readonly Border _track;
         private readonly Border _knob;
+        private readonly TranslateTransform _knobT = new();
         private bool _isOn;
 
         public bool IsOn
@@ -278,6 +281,7 @@ public static partial class Hud
             {
                 Width = 14, Height = 14, CornerRadius = new CornerRadius(7), Margin = new Thickness(3, 0, 3, 0),
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left,
+                RenderTransform = _knobT,
             };
             var g = new Grid();
             g.Children.Add(_track);
@@ -300,7 +304,12 @@ public static partial class Hud
             _track.Background = _isOn ? Br("AccentBrush") : Br("Bg3Brush");
             _track.BorderBrush = _isOn ? Br("AccentBrush") : Br("NavBorderBrush");
             _track.BorderThickness = new Thickness(1);
-            _knob.HorizontalAlignment = _isOn ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            // Slide the knob between ends (track 38 - knob 14 - margins 3/3 = 18px travel) instead of snapping.
+            double knobX = _isOn ? 18 : 0;
+            if (Motion.Reduced) { _knobT.BeginAnimation(TranslateTransform.XProperty, null); _knobT.X = knobX; }
+            else _knobT.BeginAnimation(TranslateTransform.XProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(knobX, new Duration(TimeSpan.FromMilliseconds(Motion.HoverMs)))
+                { EasingFunction = Motion.SlideOut });
             _knob.Background = _isOn ? Br("OnAccentBrush") : Br("FgDimBrush");
             _track.Effect = _isOn ? new DropShadowEffect { Color = Col("AccentBrush"), BlurRadius = 10, ShadowDepth = 0, Opacity = 0.6 } : null;
         }

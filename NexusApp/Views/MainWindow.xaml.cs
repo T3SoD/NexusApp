@@ -33,7 +33,11 @@ public partial class MainWindow : Window
         UpdateSessionChip();
         UpdateBlueprintChip();
         if (App.GameLog != null)
+        {
             App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionChip(); UpdateBlueprintChip(); });
+            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => UpdateOperatorIdentity(h));
+        }
+        UpdateOperatorIdentity();
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
         _vm = new MainViewModel();
         DataContext = _vm;
@@ -224,51 +228,41 @@ public partial class MainWindow : Window
     private static void AnimatePageIn(FrameworkElement? page)
     {
         if (page == null) return;
-        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        if (Motion.Reduced) { page.Opacity = 1; page.RenderTransform = null; return; }
+        var ease = Motion.Reveal;   // exact mock page-reveal bezier (0.2,0.8,0.2,1)
         var slide = new System.Windows.Media.TranslateTransform(0, 12);
         page.RenderTransform = slide;
         page.BeginAnimation(UIElement.OpacityProperty,
-            new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(Motion.PageFadeMs)) { EasingFunction = ease });
         slide.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
-            new System.Windows.Media.Animation.DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+            new System.Windows.Media.Animation.DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(Motion.PageRiseMs)) { EasingFunction = ease });
     }
 
     // OS status-bar clock (Wrist-OS, mock #31): ticks the HH:mm:ss readout once a second.
     private System.Windows.Threading.DispatcherTimer? _osClockTimer;
     private void StartOsClock()
     {
-        void Tick() { if (OsClock != null) OsClock.Text = DateTime.Now.ToString("HH:mm:ss"); }
+        void Tick() { if (OsClock != null) OsClock.Text = DateTime.Now.ToString(App.Settings.Current.Clock24Hour ? "HH:mm:ss" : "h:mm:ss tt"); }
         Tick();
         _osClockTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _osClockTimer.Tick += (_, _) => Tick();
         _osClockTimer.Start();
     }
 
-    // Wrist-OS launch fx: replay the boot flicker + a cyan-amber scan sweep down the viewport on each
-    // page switch, so opening a module reads like the OS launching the app.
+    // Wrist-OS launch fx: on each page switch, redraw the amber underline beneath the viewport title
+    // bar with a quick left-to-right draw, so opening a module reads as a deliberate page change
+    // without a full-height scan band wiping across the content.
     private void PlayViewportSweep()
     {
-        if (VpSweep == null || VpFlick == null || VpSweepT == null) return;
-        double travel = ((VpSweep.Parent as FrameworkElement)?.ActualHeight ?? 700) + 200;
-
-        VpSweepT.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
-            new System.Windows.Media.Animation.DoubleAnimation(-200, travel, TimeSpan.FromMilliseconds(620))
-            { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn } });
-
-        var sweepOp = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(620) };
-        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,   System.Windows.Media.Animation.KeyTime.FromPercent(0)));
-        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.9, System.Windows.Media.Animation.KeyTime.FromPercent(0.18)));
-        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.9, System.Windows.Media.Animation.KeyTime.FromPercent(0.8)));
-        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,   System.Windows.Media.Animation.KeyTime.FromPercent(1)));
-        VpSweep.BeginAnimation(UIElement.OpacityProperty, sweepOp);
-
-        var flick = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(540) };
-        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,    System.Windows.Media.Animation.KeyTime.FromPercent(0)));
-        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.55, System.Windows.Media.Animation.KeyTime.FromPercent(0.12)));
-        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.1,  System.Windows.Media.Animation.KeyTime.FromPercent(0.32)));
-        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.4,  System.Windows.Media.Animation.KeyTime.FromPercent(0.52)));
-        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,    System.Windows.Media.Animation.KeyTime.FromPercent(1)));
-        VpFlick.BeginAnimation(UIElement.OpacityProperty, flick);
+        if (VpUnderlineT == null) return;
+        if (Motion.Reduced)
+        {
+            VpUnderlineT.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+            VpUnderlineT.ScaleX = 1;
+            return;
+        }
+        VpUnderlineT.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = Motion.SlideOut });
     }
 
     // The currently-checked dock tile (the active module), or null during very early init.
@@ -302,7 +296,7 @@ public partial class MainWindow : Window
         double targetY = top + inset;
         DockSelector.Height = Math.Max(8, tile.ActualHeight - inset * 2);
         DockSelector.Opacity = 1;
-        if (animated)
+        if (animated && !Motion.Reduced)
         {
             DockSelectorT.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
                 new System.Windows.Media.Animation.DoubleAnimation(targetY, TimeSpan.FromMilliseconds(280))
@@ -319,6 +313,7 @@ public partial class MainWindow : Window
     private void AnimateDockIn()
     {
         if (DockTiles == null) return;
+        if (Motion.Reduced) return;   // reduce animations: tiles just appear, no staggered slide
         int i = 0;
         foreach (var child in DockTiles.Children)
         {
@@ -389,6 +384,16 @@ public partial class MainWindow : Window
         SessionDot.Fill = new System.Windows.Media.SolidColorBrush(c);
         SessionChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
         Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
+
+        // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
+        // green ONLINE while Star Citizen is running, red OFFLINE when it's closed.
+        if (LinkDot != null)
+        {
+            LinkDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+            Hud.PulseDot(LinkDot, live);
+        }
+        if (LinkStatusText != null)
+            LinkStatusText.Text = live ? "ONLINE . SECURE LINK" : "OFFLINE . NO LINK";
     }
 
     // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
@@ -404,6 +409,15 @@ public partial class MainWindow : Window
         BlueprintDot.Fill = new System.Windows.Media.SolidColorBrush(c);
         BlueprintChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
         Hud.PulseDot(BlueprintDot, tracking);   // the green LED gently flashes while tracking
+    }
+
+    // Dock-foot identity: show the detected RSI handle, or fall back to CITIZEN when no handle
+    // has been detected from the Game.log yet. (The avatar box is a static "SC" badge.)
+    private void UpdateOperatorIdentity(string? handle = null)
+    {
+        if (OperatorName == null) return;
+        handle = string.IsNullOrWhiteSpace(handle) ? App.Settings.Current.DetectedRsiHandle : handle;
+        OperatorName.Text = string.IsNullOrWhiteSpace(handle) ? "CITIZEN" : handle.Trim();
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;

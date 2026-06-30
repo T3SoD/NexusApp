@@ -34,10 +34,10 @@ public static partial class Hud
     /// clocks, so hidden pages cost no CPU. It re-animates when its tab is shown again.</summary>
     public static FrameworkElement AmbientGlyph(Ambient kind, double size = 64, bool animate = true)
     {
-        if (!animate) return Build(kind, size, false);
+        if (!animate || Motion.Reduced) return Build(kind, size, false);
 
         var host = new ContentControl { Width = size, Height = size, Focusable = false, Content = Build(kind, size, false) };
-        host.IsVisibleChanged += (_, e) => host.Content = Build(kind, size, (bool)e.NewValue);
+        host.IsVisibleChanged += (_, e) => host.Content = Build(kind, size, (bool)e.NewValue && !Motion.Reduced);
         return host;
     }
 
@@ -89,7 +89,7 @@ public static partial class Hud
             if (animate)
             {
                 var dur = new Duration(TimeSpan.FromSeconds(1.6 + (i % 5) * 0.5));
-                chip.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.18, 1, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = TimeSpan.FromSeconds((i % 4) * 0.45) });
+                chip.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.18, 1, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe, BeginTime = TimeSpan.FromSeconds((i % 4) * 0.45) });
             }
             else chip.Opacity = 0.6;
         }
@@ -149,8 +149,8 @@ public static partial class Hud
         {
             scan.Y1 = 22; scan.Y2 = 22;
             var sdur = new Duration(TimeSpan.FromSeconds(1.3));
-            scan.BeginAnimation(Line.Y1Property, new DoubleAnimation(22, 68, sdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
-            scan.BeginAnimation(Line.Y2Property, new DoubleAnimation(22, 68, sdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            scan.BeginAnimation(Line.Y1Property, new DoubleAnimation(22, 68, sdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
+            scan.BeginAnimation(Line.Y2Property, new DoubleAnimation(22, 68, sdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
         }
         else { scan.Y1 = 45; scan.Y2 = 45; }
         c.Children.Add(scan);
@@ -164,8 +164,8 @@ public static partial class Hud
             {
                 bar.Height = 4; Canvas.SetTop(bar, 82);
                 var dur = new Duration(TimeSpan.FromSeconds((1.5 + i * 0.25) / 2));
-                bar.BeginAnimation(FrameworkElement.HeightProperty, new DoubleAnimation(4, a, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
-                bar.BeginAnimation(Canvas.TopProperty, new DoubleAnimation(82, 86 - a, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+                bar.BeginAnimation(FrameworkElement.HeightProperty, new DoubleAnimation(4, a, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
+                bar.BeginAnimation(Canvas.TopProperty, new DoubleAnimation(82, 86 - a, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
             }
             else { bar.Height = a; Canvas.SetTop(bar, 86 - a); }
             c.Children.Add(bar);
@@ -201,10 +201,10 @@ public static partial class Hud
         if (animate)
         {
             var gdur = new Duration(TimeSpan.FromSeconds(0.9));
-            var gscale = new DoubleAnimation(5.0 / 6.0, 7.0 / 6.0, gdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+            var gscale = new DoubleAnimation(5.0 / 6.0, 7.0 / 6.0, gdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe };
             gst.BeginAnimation(ScaleTransform.ScaleXProperty, gscale);
             gst.BeginAnimation(ScaleTransform.ScaleYProperty, gscale);
-            glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.4, 0.9, gdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.4, 0.9, gdur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
         }
         else glow.Opacity = 0.7;
 
@@ -266,7 +266,7 @@ public static partial class Hud
         Canvas.SetLeft(node, 63.5); Canvas.SetTop(node, 37.5);
         c.Children.Add(node);
         if (animate)
-            node.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.3, 1, new Duration(TimeSpan.FromSeconds(1.3))) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            node.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.3, 1, new Duration(TimeSpan.FromSeconds(1.3))) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
 
         return new Viewbox { Width = size, Height = size, Child = c };
     }
@@ -298,7 +298,7 @@ public static partial class Hud
             c.Children.Add(node);
             if (animate)
                 node.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.4, 1.0, new Duration(TimeSpan.FromSeconds(2)))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = TimeSpan.FromSeconds(i * 0.3) });
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe, BeginTime = TimeSpan.FromSeconds(i * 0.3) });
         }
 
         var packet = new Ellipse { Width = 4.8, Height = 4.8, Fill = Br("CyanBrush"), Effect = Glow("CyanBrush", 6) };
@@ -375,8 +375,11 @@ public static partial class Hud
                 Canvas.SetLeft(dot, sx[0] - 2.6);
                 Canvas.SetTop(dot, sy[0] - 2.6);
                 var begin = TimeSpan.FromSeconds(begins[d]);
-                var lx = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
-                var ty = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
+                // Explicit duration: without it the FromPercent keytimes collapse to the default
+                // 1s, sprinting the route. 3.4s paces the convoy like the mock (KeptRouteConvoy).
+                var cdur = new Duration(TimeSpan.FromSeconds(3.4));
+                var lx = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, Duration = cdur };
+                var ty = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, Duration = cdur };
                 for (int k = 0; k < 4; k++)
                 {
                     var pct = KeyTime.FromPercent(k / 3.0);

@@ -817,17 +817,17 @@ public sealed class NetworkPage : UserControl
         // Draw the arc in + count the percentage up once, when the donut is first laid out.
         host.Loaded += (_, __) =>
         {
-            var draw = new System.Windows.Media.Animation.DoubleAnimation(dashLen, dashLen * (1 - frac), TimeSpan.FromSeconds(0.9))
-            {
-                EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
-            };
-            arc.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, draw);
+            if (Motion.Reduced)
+                arc.StrokeDashOffset = dashLen * (1 - frac);
+            else
+                arc.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(dashLen, dashLen * (1 - frac), TimeSpan.FromSeconds(0.9))
+                    { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
 
             if (pct <= 0) { pctTb.Text = "0%"; return; }
-            int cur = 0;
-            var counter = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Math.Max(12, 900.0 / pct)) };
-            counter.Tick += (s, e) => { cur++; pctTb.Text = cur + "%"; if (cur >= pct) counter.Stop(); };
-            counter.Start();
+            // Reuse the shared count-up (eased DoubleAnimation) instead of a UI-thread timer.
+            CountUp.SetSuffix(pctTb, "%");
+            CountUp.SetTo(pctTb, pct);
         };
         return host;
     }
