@@ -788,6 +788,111 @@
         </Setter>
     </Style>
 
+    <!-- ============================================================
+         WRIST-OS APP DOCK (nav mock #31): clean line glyphs + chamfered dock tiles.
+         ============================================================ -->
+    <!-- Monochrome 24x24 line glyphs (stroke, no fill) for each module. -->
+    <PathGeometry x:Key="GlyphOps"       Figures="M3.2,3.2 H10.4 V10.4 H3.2 Z M13.6,3.2 H20.8 V10.4 H13.6 Z M3.2,13.6 H10.4 V20.8 H3.2 Z M13.6,13.6 H20.8 V20.8 H13.6 Z"/>
+    <PathGeometry x:Key="GlyphRs"        Figures="M2.5,13 L6,13 L8,7 L11,18.5 L14,11 L16,13 L21.5,13 M18.2,5.6 A1.4,1.4 0 1 1 21,5.6 A1.4,1.4 0 1 1 18.2,5.6 Z"/>
+    <PathGeometry x:Key="GlyphRefinery"  Figures="M9.2,3.6 H14.8 M10.3,3.6 V8.9 L5.5,18 A1.6,1.6 0 0 0 6.95,20.4 H17.05 A1.6,1.6 0 0 0 18.5,18 L13.7,8.9 V3.6 M8.5,14.4 H15.5"/>
+    <PathGeometry x:Key="GlyphCodex"     Figures="M12,3.2 L20.5,7.6 L12,12 L3.5,7.6 Z M3.5,12 L12,16.4 L20.5,12 M3.5,16.4 L12,20.8 L20.5,16.4"/>
+    <PathGeometry x:Key="GlyphBlueprint" Figures="M6,3.4 H13 L18,8.4 V20.6 H6 Z M13,3.4 V8.4 H18 M8.7,14.6 A2.3,2.3 0 1 1 13.3,14.6 A2.3,2.3 0 1 1 8.7,14.6 Z M8.3,11.7 H13.7"/>
+    <PathGeometry x:Key="GlyphNetwork"   Figures="M3,6 A2,2 0 1 1 7,6 A2,2 0 1 1 3,6 Z M17,6 A2,2 0 1 1 21,6 A2,2 0 1 1 17,6 Z M10,18 A2,2 0 1 1 14,18 A2,2 0 1 1 10,18 Z M6.7,7.1 L10.4,16.4 M17.3,7.1 L13.6,16.4 M7,6 H17"/>
+    <PathGeometry x:Key="GlyphCargo"     Figures="M5,6.5 H19 A1,1 0 0 1 20,7.5 V18.5 A1,1 0 0 1 19,19.5 H5 A1,1 0 0 1 4,18.5 V7.5 A1,1 0 0 1 5,6.5 Z M4,10.6 H20 M9.8,6.5 V10.6 M14.2,6.5 V10.6"/>
+    <PathGeometry x:Key="GlyphSettings"  Figures="M8.9,12 A3.1,3.1 0 1 1 15.1,12 A3.1,3.1 0 1 1 8.9,12 Z M12,2.6 V5 M12,19 V21.4 M21.4,12 H19 M5,12 H2.6 M18.6,5.4 L16.9,7.1 M7.1,16.9 L5.4,18.6 M18.6,18.6 L16.9,16.9 M7.1,7.1 L5.4,5.4"/>
+
+    <!-- DockTile: a chamfered app-dock module button (RadioButton). Foreground drives glyph + name +
+         chip border (dim default, amber on hover/active). Hover slides 3px; active grows an amber left
+         bar in. The chip + name + optional pill are supplied as the tile's Content. -->
+    <Style x:Key="DockTile" TargetType="RadioButton">
+        <Setter Property="Background"  Value="{DynamicResource Bg2NavBrush}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource FgDimBrush}"/>
+        <Setter Property="Cursor"      Value="Hand"/>
+        <Setter Property="Margin"      Value="0,0,0,7"/>
+        <Setter Property="Padding"     Value="11,8"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid RenderTransformOrigin="0,0.5">
+                        <Grid.RenderTransform><TranslateTransform x:Name="slide"/></Grid.RenderTransform>
+                        <Path x:Name="frame" Fill="{TemplateBinding Background}"
+                              Stroke="{DynamicResource NavBorderBrush}" StrokeThickness="1" SnapsToDevicePixels="True"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                            <Path.Data>
+                                <MultiBinding Converter="{StaticResource ChamferGeo}" ConverterParameter="9">
+                                    <Binding Path="ActualWidth"  RelativeSource="{RelativeSource TemplatedParent}"/>
+                                    <Binding Path="ActualHeight" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                </MultiBinding>
+                            </Path.Data>
+                        </Path>
+                        <Border x:Name="bar" Width="2.5" HorizontalAlignment="Left" Margin="0,7"
+                                CornerRadius="2" Background="{DynamicResource AccentBrush}" Opacity="0"
+                                RenderTransformOrigin="0,0.5">
+                            <Border.RenderTransform><ScaleTransform x:Name="barScale" ScaleY="0.3"/></Border.RenderTransform>
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="10" ShadowDepth="0" Opacity="0.85"/>
+                            </Border.Effect>
+                        </Border>
+                        <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                            <Setter TargetName="frame" Property="Fill" Value="{DynamicResource Bg3Brush}"/>
+                            <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentStrongBrush}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard><Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="slide" Storyboard.TargetProperty="X" To="3" Duration="0:0:0.16"/>
+                                </Storyboard></BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard><Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="slide" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.16"/>
+                                </Storyboard></BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                            <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentBrush}"/>
+                            <Setter TargetName="frame" Property="Fill">
+                                <Setter.Value>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="{DynamicResource AccentFaintColor}" Offset="0"/>
+                                        <GradientStop Color="{DynamicResource Bg2NavColor}" Offset="0.7"/>
+                                    </LinearGradientBrush>
+                                </Setter.Value>
+                            </Setter>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard><Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                                    <DoubleAnimation Storyboard.TargetName="barScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.22"/>
+                                </Storyboard></BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard><Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                                    <DoubleAnimation Storyboard.TargetName="barScale" Storyboard.TargetProperty="ScaleY" To="0.3" Duration="0:0:0.14"/>
+                                </Storyboard></BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- DockChip: the 40px chamfered glyph holder inside a dock tile. Border color tracks the tile. -->
+    <Style x:Key="DockChip" TargetType="views:ChamferPanel" BasedOn="{StaticResource {x:Type views:ChamferPanel}}">
+        <Setter Property="Chamfer" Value="7"/>
+        <Setter Property="Width"   Value="40"/>
+        <Setter Property="Height"  Value="40"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background"  Value="{DynamicResource BgBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+    </Style>
+
     <!-- SectionLabel: small uppercase dim label for panel headers / KPI keys -->
     <Style x:Key="SectionLabel" TargetType="TextBlock">
         <Setter Property="FontFamily"  Value="{StaticResource UiFont}"/>

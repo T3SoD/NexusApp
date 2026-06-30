@@ -41,14 +41,17 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                 <Image x:Name="NavIcon" Source="/Assets/nexus_icon.png" Width="28" Height="28"
                        Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
-                           Foreground="{StaticResource FgBrush}" Margin="0,1,10,0"
-                           VerticalAlignment="Center">
-                    <Run Text="NE"/><Run Text="X" Foreground="{StaticResource AccentBrush}"/><Run Text="US"/>
-                    <TextBlock.Effect>
-                        <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="9" ShadowDepth="0" Opacity="0.3"/>
-                    </TextBlock.Effect>
-                </TextBlock>
+                <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                    <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource FgBrush}" VerticalAlignment="Center">
+                        <Run Text="NE"/><Run Text="X" Foreground="{StaticResource AccentBrush}"/><Run Text="US"/>
+                        <TextBlock.Effect>
+                            <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="9" ShadowDepth="0" Opacity="0.3"/>
+                        </TextBlock.Effect>
+                    </TextBlock>
+                    <TextBlock Text="WRIST-OS v5" FontFamily="{StaticResource MonoFont}" FontSize="8"
+                               Foreground="{DynamicResource FgDimBrush}" Margin="1,1,0,0"/>
+                </StackPanel>
                 <!-- App version badge - clickable easter egg. Leads the strip: app -> game -> shard -> session. -->
                 <Border x:Name="AppVersionBadge"
                         Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
@@ -123,9 +126,14 @@
                            Visibility="Collapsed"/>
             </StackPanel>
 
-            <!-- Right: action buttons -->
+            <!-- Right: OS clock + action buttons -->
             <StackPanel Grid.Column="1" Orientation="Horizontal"
                         VerticalAlignment="Center" Margin="0,0,8,0">
+                <TextBlock x:Name="OsClock" Text="00:00:00" FontFamily="{StaticResource MonoFont}" FontSize="13"
+                           Foreground="{DynamicResource FgBrush}" VerticalAlignment="Center" Margin="0,0,2,0"/>
+                <TextBlock Text="STD" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                           Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center" Margin="0,2,0,0"/>
+                <Border Width="1" Height="18" Background="{DynamicResource NavBorderBrush}" Margin="11,0,9,0" VerticalAlignment="Center"/>
                 <Button x:Name="OverlayToggleBtn" Content="⧉" ToolTip="Toggle Overlay"
                         Style="{StaticResource HeaderButton}"
                         Width="38" Height="38" Margin="2,0"
@@ -165,102 +173,229 @@
                     </Viewbox>
                 </Button>
             </StackPanel>
+
+            <!-- amber OS-bar hairline -->
+            <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="1">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="{DynamicResource AccentClearColor}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource AccentGlowColor}" Offset="0.5"/>
+                        <GradientStop Color="{DynamicResource AccentClearColor}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
         </Grid>
 
         <!-- ── Body: sidebar + content ── -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="196"/>
+                <ColumnDefinition Width="248"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ── Sidebar ── -->
+            <!-- ── App dock (Wrist-OS, nav mock #31) ── -->
             <Border Grid.Column="0"
                     Background="{DynamicResource NavBgBrush}"
                     BorderBrush="{DynamicResource NavBorderBrush}"
                     BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <!-- Nav area (fills remaining space, top-aligned) -->
-                    <StackPanel>
-                        <!-- COMMAND (rail starts here; the NEXUS brand lives in the top bar) -->
-                        <TextBlock Text="COMMAND" FontSize="9" FontWeight="Bold"
-                                   Foreground="{StaticResource FgDimBrush}" Margin="20,18,14,6"/>
-                        <RadioButton x:Name="NavCommand" Tag="command" Style="{StaticResource NavButton}"
-                                     IsChecked="True" Click="Nav_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoCommand" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Operations" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </RadioButton>
+                <Grid Margin="12,14,12,13">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                        <!-- MINING -->
-                        <TextBlock Text="MINING" FontSize="9" FontWeight="Bold"
-                                   Foreground="{StaticResource FgDimBrush}" Margin="20,14,14,6"/>
-                        <RadioButton x:Name="NavScan" Tag="scan" Style="{StaticResource NavButton}"
-                                     Click="Nav_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoScan" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="RS Decoder" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRef" Tag="reference" Style="{StaticResource NavButton}" Click="Nav_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoRef" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Mining Codex" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </RadioButton>
-                        <!-- CRAFTING -->
-                        <TextBlock Text="CRAFTING" FontSize="9" FontWeight="Bold"
-                                   Foreground="{StaticResource FgDimBrush}" Margin="20,14,14,6"/>
-                        <RadioButton x:Name="NavWork" Tag="workorders" Style="{StaticResource NavButton}" Click="Nav_Click">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                    <ContentControl x:Name="NavIcoWork" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Refinery" VerticalAlignment="Center"/>
+                    <!-- dock head -->
+                    <Grid Grid.Row="0" Margin="3,0,2,2">
+                        <TextBlock Text="INSTALLED MODULES" FontFamily="{StaticResource UiFont}" FontWeight="Bold"
+                                   FontSize="8.5" Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                        <Border HorizontalAlignment="Right" BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1" Padding="6,1">
+                            <TextBlock Text="08" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- module tiles -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,13,0,0">
+                        <StackPanel>
+                            <RadioButton x:Name="NavCommand" Tag="command" Style="{StaticResource DockTile}" IsChecked="True" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphOps}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Operations" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="HUD HOME" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="LIVE" FontFamily="{StaticResource MonoFont}" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavScan" Tag="scan" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphRs}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="RS Decoder" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="SCANNER" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavWork" Tag="workorders" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphRefinery}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Refinery" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="PROCESSING" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                    <Border x:Name="NavWorkPill" Grid.Column="2" VerticalAlignment="Center" CornerRadius="9" Padding="6,1"
+                                            Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentDimBrush}" BorderThickness="1" Visibility="Collapsed">
+                                        <TextBlock x:Name="NavWorkBadge" Text="" FontFamily="{StaticResource MonoFont}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavRef" Tag="reference" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphCodex}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Mining Codex" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="REFERENCE" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavBlue" Tag="blueprints" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphBlueprint}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Blueprints" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="CRAFTING" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavNetwork" Tag="network" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphNetwork}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Network" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="COMMS" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavHauling" Tag="hauling" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphCargo}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Cargo Hauling" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="LOGISTICS" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                    <Border x:Name="NavHaulPill" Grid.Column="2" VerticalAlignment="Center" CornerRadius="9" Padding="6,1"
+                                            Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentDimBrush}" BorderThickness="1" Visibility="Collapsed">
+                                        <TextBlock x:Name="NavHaulBadge" Text="" FontFamily="{StaticResource MonoFont}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavSettings" Tag="settings" Style="{StaticResource DockTile}" Click="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphSettings}" Fill="{x:Null}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/></Viewbox>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Settings" FontFamily="{StaticResource UiFont}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                        <TextBlock Text="SYSTEM" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- dock foot: operator -->
+                    <views:ChamferPanel Grid.Row="2" Chamfer="8" Padding="11,9" Margin="0,10,0,0" Background="{DynamicResource BgBrush}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <views:ChamferPanel Chamfer="6" Width="32" Height="32" Padding="0"
+                                                Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentStrongBrush}">
+                                <TextBlock Text="OP" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="13"
+                                           Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </views:ChamferPanel>
+                            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource FgBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBlock Text="ONLINE . SECURE LINK" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}"/>
                                 </StackPanel>
-                                <TextBlock x:Name="NavWorkBadge" Grid.Column="1" Text="" FontFamily="{StaticResource MonoFont}"
-                                           FontSize="10" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,2,0"/>
-                            </Grid>
-                        </RadioButton>
-
-                        <RadioButton x:Name="NavBlue" Tag="blueprints" Style="{StaticResource NavButton}" Click="Nav_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoBlue" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Blueprints" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavNetwork" Tag="network" Style="{StaticResource NavButton}" Click="Nav_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoNetwork" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Network" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <!-- LOGISTICS -->
-                        <TextBlock Text="LOGISTICS" FontSize="9" FontWeight="Bold"
-                                   Foreground="{StaticResource FgDimBrush}" Margin="20,14,14,6"/>
-                        <RadioButton x:Name="NavHauling" Tag="hauling" Style="{StaticResource NavButton}" Click="Nav_Click">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                <ContentControl x:Name="NavIcoHauling" Width="48" Height="48" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Cargo Hauling" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Grid>
-                        </RadioButton>
-                    </StackPanel>
-                </DockPanel>
+                        </StackPanel>
+                    </views:ChamferPanel>
+                </Grid>
             </Border>
 
-            <!-- ── Page content ── -->
-            <Grid Grid.Column="1" Background="{DynamicResource PageBgBrush}">
+            <!-- ── Viewport (Wrist-OS launched-app window, nav mock #31): a title bar over the page stage ── -->
+            <Grid Grid.Column="1" Margin="14,14,16,16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="34"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- viewport title bar: run dot + module path + RUNNING + window controls + amber hairline -->
+                <Grid Grid.Row="0" Background="{DynamicResource Bg2NavBrush}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <Ellipse Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                        <TextBlock x:Name="VpModule" Text="module://nexus/command" FontFamily="{StaticResource MonoFont}"
+                                   FontSize="10" Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                        <Border Margin="10,0,0,0" Padding="6,2" Background="{DynamicResource AccentFaintBrush}"
+                                BorderBrush="{DynamicResource AccentDimBrush}" BorderThickness="1">
+                            <TextBlock Text="RUNNING" FontFamily="{StaticResource MonoFont}" FontSize="8"
+                                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+                        <Rectangle Width="9" Height="9" Fill="{DynamicResource NavBorderBrush}" Margin="3,0"/>
+                        <Rectangle Width="9" Height="9" Fill="{DynamicResource NavBorderBrush}" Margin="3,0"/>
+                        <Rectangle Width="9" Height="9" Fill="{DynamicResource AccentBrush}" Margin="3,0"/>
+                    </StackPanel>
+                    <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="{DynamicResource AccentClearColor}" Offset="0"/>
+                                <GradientStop Color="{DynamicResource AccentGlowColor}" Offset="0.5"/>
+                                <GradientStop Color="{DynamicResource AccentClearColor}" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                </Grid>
+
+                <!-- viewport stage: the existing page content + boot/sweep overlays -->
+                <Grid Grid.Row="1" Background="{DynamicResource PageBgBrush}">
 
                 <!-- ── BLUEPRINT NETWORK PAGE (built in code - Views/NetworkPage.cs) ── -->
                 <!-- ── OPERATIONS / COMMAND DASHBOARD (built in code - Views/CommandPage.cs) ── -->
@@ -867,7 +1002,28 @@
                     </ScrollViewer>
                 </Grid>
 
-
+                <!-- Boot flicker + scan sweep, replayed on each page switch (Wrist-OS launch fx). -->
+                <Rectangle x:Name="VpSweep" Height="160" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#007FE9E0" Offset="0"/>
+                            <GradientStop Color="#247FE9E0" Offset="0.44"/>
+                            <GradientStop Color="#73FFC766" Offset="0.5"/>
+                            <GradientStop Color="#247FE9E0" Offset="0.56"/>
+                            <GradientStop Color="#007FE9E0" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                    <Rectangle.RenderTransform><TranslateTransform x:Name="VpSweepT" Y="-200"/></Rectangle.RenderTransform>
+                </Rectangle>
+                <Rectangle x:Name="VpFlick" IsHitTestVisible="False" Opacity="0">
+                    <Rectangle.Fill>
+                        <RadialGradientBrush GradientOrigin="0.36,0.56" Center="0.36,0.56" RadiusX="0.7" RadiusY="0.7">
+                            <GradientStop Color="#40FFC766" Offset="0"/>
+                            <GradientStop Color="#00FFC766" Offset="0.72"/>
+                        </RadialGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                </Grid>
             </Grid>
         </Grid>
 
