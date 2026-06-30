@@ -56,15 +56,9 @@ public partial class MainWindow : Window
         BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Hologram, 46);
         WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.OreConveyor, 38);
 
-        // Animated nav-rail icons: static until the tab is hovered or is the selected tab, then the
-        // surface's signature animation plays (Settings stays in the top bar, not the rail).
-        Hud.AttachNavGlyph(NavCommand, NavIcoCommand, Hud.Ambient.StatusBoard);
-        Hud.AttachNavGlyph(NavScan,    NavIcoScan,    Hud.Ambient.AcquisitionPing);
-        Hud.AttachNavGlyph(NavRef,     NavIcoRef,     Hud.Ambient.SpectralAssay);
-        Hud.AttachNavGlyph(NavWork,    NavIcoWork,    Hud.Ambient.OreConveyor);
-        Hud.AttachNavGlyph(NavBlue,    NavIcoBlue,    Hud.Ambient.Hologram);
-        Hud.AttachNavGlyph(NavNetwork, NavIcoNetwork, Hud.Ambient.Mesh);
-        Hud.AttachNavGlyph(NavHauling, NavIcoHauling, Hud.Ambient.RouteConvoy);
+        // Nav is the Wrist-OS app dock (mock #31): static line glyphs in chamfered dock tiles, styled in
+        // GameTheme (DockTile). The old animated NavIco rail glyphs were retired with the rail.
+        StartOsClock();
 
         RestoreWindowPosition();
         SetActivePage("command");
@@ -166,13 +160,19 @@ public partial class MainWindow : Window
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
         PageSettings.Visibility   = page == "settings"   ? Visibility.Visible : Visibility.Collapsed;
 
-        NavCommand.IsChecked = page == "command";
-        NavScan.IsChecked    = page == "scan";
-        NavBlue.IsChecked    = page == "blueprints";
-        NavRef.IsChecked     = page == "reference";
-        NavWork.IsChecked    = page == "workorders";
-        NavNetwork.IsChecked = page == "network";
-        NavHauling.IsChecked = page == "hauling";
+        NavCommand.IsChecked  = page == "command";
+        NavScan.IsChecked     = page == "scan";
+        NavBlue.IsChecked     = page == "blueprints";
+        NavRef.IsChecked      = page == "reference";
+        NavWork.IsChecked     = page == "workorders";
+        NavNetwork.IsChecked  = page == "network";
+        NavHauling.IsChecked  = page == "hauling";
+        NavSettings.IsChecked = page == "settings";
+
+        // Viewport (Wrist-OS launched-app window): update the module path readout and replay the boot
+        // flicker + scan sweep so switching modules reads like the OS launching the app.
+        if (VpModule != null) VpModule.Text = $"module://nexus/{page}";
+        PlayViewportSweep();
 
         Title = page switch
         {
@@ -222,6 +222,44 @@ public partial class MainWindow : Window
             new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
         slide.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
             new System.Windows.Media.Animation.DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+    }
+
+    // OS status-bar clock (Wrist-OS, mock #31): ticks the HH:mm:ss readout once a second.
+    private System.Windows.Threading.DispatcherTimer? _osClockTimer;
+    private void StartOsClock()
+    {
+        void Tick() { if (OsClock != null) OsClock.Text = DateTime.Now.ToString("HH:mm:ss"); }
+        Tick();
+        _osClockTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _osClockTimer.Tick += (_, _) => Tick();
+        _osClockTimer.Start();
+    }
+
+    // Wrist-OS launch fx: replay the boot flicker + a cyan-amber scan sweep down the viewport on each
+    // page switch, so opening a module reads like the OS launching the app.
+    private void PlayViewportSweep()
+    {
+        if (VpSweep == null || VpFlick == null || VpSweepT == null) return;
+        double travel = ((VpSweep.Parent as FrameworkElement)?.ActualHeight ?? 700) + 200;
+
+        VpSweepT.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(-200, travel, TimeSpan.FromMilliseconds(620))
+            { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn } });
+
+        var sweepOp = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(620) };
+        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,   System.Windows.Media.Animation.KeyTime.FromPercent(0)));
+        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.9, System.Windows.Media.Animation.KeyTime.FromPercent(0.18)));
+        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.9, System.Windows.Media.Animation.KeyTime.FromPercent(0.8)));
+        sweepOp.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,   System.Windows.Media.Animation.KeyTime.FromPercent(1)));
+        VpSweep.BeginAnimation(UIElement.OpacityProperty, sweepOp);
+
+        var flick = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(540) };
+        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,    System.Windows.Media.Animation.KeyTime.FromPercent(0)));
+        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.55, System.Windows.Media.Animation.KeyTime.FromPercent(0.12)));
+        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.1,  System.Windows.Media.Animation.KeyTime.FromPercent(0.32)));
+        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0.4,  System.Windows.Media.Animation.KeyTime.FromPercent(0.52)));
+        flick.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0,    System.Windows.Media.Animation.KeyTime.FromPercent(1)));
+        VpFlick.BeginAnimation(UIElement.OpacityProperty, flick);
     }
 
     private SettingsPage? _settingsPage;
@@ -318,6 +356,11 @@ public partial class MainWindow : Window
     {
         int orders = App.Data.GetWorkOrders().FindAll(o => o.Status != WorkOrderStatus.Complete).Count;
         NavWorkBadge.Text = orders > 0 ? orders.ToString() : "";
+        NavWorkPill.Visibility = orders > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        int hauls = App.Hauls?.ActiveHauls.Count ?? 0;
+        NavHaulBadge.Text = hauls > 0 ? hauls.ToString() : "";
+        NavHaulPill.Visibility = hauls > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void InitNetworkPage()
