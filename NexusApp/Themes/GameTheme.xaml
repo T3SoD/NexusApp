@@ -882,8 +882,9 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
             </DataTrigger>
             <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
-                <Setter Property="Background"  Value="{DynamicResource AccentBrush}"/>
-                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <!-- Soft amber tint: translucent fill + .42 amber border (no solid-amber invert). -->
+                <Setter Property="Background"  Value="{DynamicResource AccentDimBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>

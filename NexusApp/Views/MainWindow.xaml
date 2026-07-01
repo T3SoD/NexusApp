@@ -227,7 +227,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphOps}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="operations" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Operations" Style="{StaticResource DockTileName}"/>
@@ -244,7 +244,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphRs}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="rs" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="RS Decoder" Style="{StaticResource DockTileName}"/>
@@ -257,7 +257,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphRefinery}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="refinery" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Refinery" Style="{StaticResource DockTileName}"/>
@@ -274,7 +274,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphCodex}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="codex" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Mining Codex" Style="{StaticResource DockTileName}"/>
@@ -287,7 +287,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphBlueprint}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="blueprint" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Blueprints" Style="{StaticResource DockTileName}"/>
@@ -300,7 +300,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphNetwork}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="network" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Network" Style="{StaticResource DockTileName}"/>
@@ -313,7 +313,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphCargo}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="cargo" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Cargo Hauling" Style="{StaticResource DockTileName}"/>
@@ -330,7 +330,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <Viewbox Width="22" Height="22"><Path Data="{StaticResource GlyphSettings}" Style="{StaticResource DockGlyph}"/></Viewbox>
+                                        <views:AnimatedDockIcon IconKey="settings" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Settings" Style="{StaticResource DockTileName}"/>
