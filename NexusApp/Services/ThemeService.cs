@@ -19,9 +19,8 @@ public static class ThemeService
         Application.Current.Shutdown();
     }
 
-    // The teal command-center identity marks. Kept as one expression per asset so a
-    // distinct overhaul logo can be slotted in later without touching call sites.
+    // The teal command-center identity mark. Kept as one expression so a distinct
+    // overhaul logo can be slotted in later without touching call sites. The window
+    // and header icons reference Assets/nexus_icon_classic.png directly in XAML.
     public static string LogoUri => "pack://application:,,,/Assets/nexus_logo_classic.png";
-
-    public static string IconUri => "pack://application:,,,/Assets/nexus_icon_classic.png";
 }

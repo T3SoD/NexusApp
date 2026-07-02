@@ -114,7 +114,7 @@ public class HelpDialog : Window
             [
                 "Session tracking and blueprint auto-collect are always on - there's nothing to switch on.",
                 "The header pills show the live state - GAME SESSION reads monitoring while Star Citizen runs and offline once it's closed; BLUEPRINTS reads tracking or off.",
-                "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library, bumps the session count, and pops a toast.",
+                "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library and bumps the session count - quietly, with no popups.",
                 "The overlay HUB shows a live BLUEPRINTS COLLECTED count and the Collection Log feed; counts reset when Star Citizen starts a new session.",
                 "For more control, open the advanced monitor from Settings › Game.log Paths › Open Game.log Monitor - a raw log view, snapshot export, and Reset session.",
                 "Import owned from logs… in the Blueprint Library scans your current log plus the logbackups folder and collects everything you've already received (after a preview and confirmation).",

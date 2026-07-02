@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Threading;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -82,6 +83,7 @@ public sealed class TourController
 
     public void Start()
     {
+        Logger.Info("[UI] tour: started");
         _i = 0;
         _ring = new HighlightWindow();
         _bubble = new CoachMarkWindow();
@@ -106,6 +108,7 @@ public sealed class TourController
     private void Render()
     {
         var step = Steps[_i];
+        Logger.Info($"[UI] tour: step {_i + 1}/{Steps.Length} - {step.Title}");
         bool isLast = _i == Steps.Length - 1;
         var target = _resolve(step.Target);   // navigates (page/overlay) and returns the element, or null
 
@@ -133,6 +136,7 @@ public sealed class TourController
 
     private void Finish(bool setupAutoScan)
     {
+        Logger.Info(setupAutoScan ? "[UI] tour: finished - handing off to auto-scan setup" : "[UI] tour: closed");
         _ring?.Close(); _ring = null;
         _bubble?.Close(); _bubble = null;
         if (setupAutoScan) _onSetupAutoScan();

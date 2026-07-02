@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        ApplyThemedAssets();
         AppVersionText.Text = $"App v{AppInfo.Version}";
         GameVersionText.Text = $"SC PU {GameData.Version}";
         UpdateShardChip();
@@ -602,11 +601,6 @@ public partial class MainWindow : Window
     }
 
     private DateTime _keyPopupClosedAt = DateTime.MinValue;
-
-    private void ApplyThemedAssets()
-    {
-        NavIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(ThemeService.IconUri));
-    }
 
     private void KeyButton_Click(object sender, RoutedEventArgs e)
     {
