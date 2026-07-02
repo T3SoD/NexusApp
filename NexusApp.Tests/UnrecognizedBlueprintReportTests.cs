@@ -60,7 +60,7 @@ public class UnrecognizedBlueprintReportTests
         Assert.Contains("Mining data v1.2.4", report);
         Assert.Contains("2026-06-21 14:32", report);
         Assert.Contains("Changelist: 123", report);
-        Assert.Contains("Scanned 7 log file(s) — matched 80, unrecognized 2", report);
+        Assert.Contains("Scanned 7 log file(s) - matched 80, unrecognized 2", report);
         Assert.Contains("StarStrings mod: detected", report);   // passed in (detected from log scan)
         Assert.Contains("Received Blueprint: Mystery Part", report);
         Assert.Contains("Received Blueprint: Mil/1/D Foo Cooler", report);

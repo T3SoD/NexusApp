@@ -5,7 +5,7 @@
         xmlns:conv="clr-namespace:NexusApp.Converters"
         xmlns:models="clr-namespace:NexusApp.Models"
         xmlns:views="clr-namespace:NexusApp.Views"
-        Title="Nexus" Icon="/Assets/nexus_icon.png" Height="820" Width="1280"
+        Title="Nexus" Icon="/Assets/nexus_icon_classic.png" Height="820" Width="1280"
         MinHeight="600" MinWidth="900"
         Background="{DynamicResource BgBrush}"
         Foreground="{DynamicResource FgBrush}"
@@ -39,7 +39,7 @@
 
             <!-- Left: logo + title + version badges -->
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                <Image x:Name="NavIcon" Source="/Assets/nexus_icon.png" Width="28" Height="28"
+                <Image x:Name="NavIcon" Source="/Assets/nexus_icon_classic.png" Width="28" Height="28"
                        Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
                     <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"

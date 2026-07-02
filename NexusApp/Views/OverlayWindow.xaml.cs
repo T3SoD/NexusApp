@@ -27,11 +27,7 @@ public partial class OverlayWindow : Window
     public event Action? Shown;
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
-    public FrameworkElement SetRegionTarget   => SetRegionBtn;
-    public FrameworkElement BoxToggleTarget   => _boxSwitchPair ?? SetRegionBtn;
     public FrameworkElement ScanToggleTarget  => _scanSwitchPair ?? SetRegionBtn;
-    public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the HUB/SCAN/REFINERY/SHOPPING/HAULING strip
-    public FrameworkElement ShoppingTabTarget => TabShoppingBtn;
     public FrameworkElement HubTarget         => HubScanBar;      // the HUB's SCAN STATUS light rows
     public FrameworkElement ContractRegionTarget => SetContractRegionBtn;   // HAULING tab's set-region link
 
@@ -40,9 +36,6 @@ public partial class OverlayWindow : Window
 
     /// <summary>Force the HUB tab visible so the tour can point at the status lights.</summary>
     public void ShowHubTabForTutorial() => SwitchTab("stats");
-
-    /// <summary>Force the SHOPPING tab visible so the tour can point at the cart.</summary>
-    public void ShowShoppingTabForTutorial() => SwitchTab("shopping");
 
     /// <summary>Force the HAULING tab visible so the tour can point at the contract scan controls.</summary>
     public void ShowHaulingTabForTutorial() => SwitchTab("hauling");
@@ -322,7 +315,7 @@ public partial class OverlayWindow : Window
         HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
 
         _hubHaulScanLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Contracts", "Auto-scan contracts: toggle on the HAULING tab"));
+        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Auto-scan Contracts", "Auto-scan contracts: toggle on the HAULING tab"));
 
         SyncScanControls();
         SyncHaulingControls();

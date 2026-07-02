@@ -58,8 +58,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Assets\nexus_icon.png"/>
-    <Resource Include="Assets\nexus_logo.png"/>
     <Resource Include="Assets\nexus_icon_classic.png"/>
     <Resource Include="Assets\nexus_logo_classic.png"/>
     <Resource Include="Assets\nexus.ico"/>

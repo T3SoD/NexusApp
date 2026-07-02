@@ -124,18 +124,16 @@ public partial class App : Application
 
         // BETA Game.log blueprint watch. Created after seed data loads (the importer needs
         // the blueprint name list). One instance app-wide, shared by the standalone monitor
-        // window and the overlay STATS tab so they stay in sync. A live auto-mark pops a
-        // toast and refreshes the Blueprint Library count; a past-logs import just refreshes.
+        // window and the overlay STATS tab so they stay in sync. Auto-marks refresh the
+        // Blueprint Library count quietly - no popups by design (toasts removed app-wide);
+        // the overlay HUB's count and Collection Log carry the feedback.
         GameLog = new GameLogSession(
             () => Data.GetAllBlueprints().Select(b => b.Name),
             name => Settings.IsBlueprintOwned(name),
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
             BuildLocalizationMap);
         GameLog.Marked += m =>
-        {
-            Views.ToastWindow.Show($"Marked owned: {m.Name}");
             (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
-        };
         GameLog.BulkOwnershipChanged += () =>
             (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
 
@@ -181,13 +179,11 @@ public partial class App : Application
         // ContractScanner runs on a System.Timers.Timer thread; ApplyContractDetails raises Changed which
         // the overlay handles by touching WPF, so marshal onto the UI thread.
         ContractScan.ContractScanned += d => Current.Dispatcher.Invoke(() => Hauls.ApplyContractDetails(d));
-        // When an OCR scan first pairs with a log-detected haul, confirm it: a toast + a green flash of
-        // the yellow contract box (mirrors the RS scan-success flash).
+        // When an OCR scan first pairs with a log-detected haul, confirm it with a green flash of
+        // the yellow contract box (mirrors the RS scan-success flash). No popup - toasts are
+        // removed app-wide by design.
         Hauls.ContractPaired += h => Current.Dispatcher.Invoke(() =>
-        {
-            Views.ToastWindow.Show($"Contract paired: {(string.IsNullOrWhiteSpace(h.ContractedBy) ? h.Company : h.ContractedBy)}");
-            (Current.MainWindow as Views.MainWindow)?.FlashContractIndicator();
-        });
+            (Current.MainWindow as Views.MainWindow)?.FlashContractIndicator());
         if (Settings.Current.AutoScanContracts) ContractScan.Start();
     }
 
