@@ -7,7 +7,9 @@ DISCLAIMER
 
   Nexus is an unofficial fan-made tool. It is NOT affiliated with,
   endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts
-  Space Industries (RSI). Star Citizen is a trademark of CIG.
+  Space Industries (RSI). Star Citizen®, Roberts Space Industries®
+  and Cloud Imperium® are registered trademarks of Cloud Imperium
+  Rights LLC.
 
   This app reads pixel data from your screen and provides reference
   information from a local database. The optional Session Tracking and

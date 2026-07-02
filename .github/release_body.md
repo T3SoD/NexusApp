@@ -48,4 +48,4 @@ Run the app directly, with no installation.
 - **Refinery Tracker** — live countdown timers for refinery jobs
 
 ---
-*Nexus is not affiliated with, endorsed by, or sponsored by Cloud Imperium Games or Roberts Space Industries. Star Citizen is a trademark of CIG.*
+*Nexus is not affiliated with, endorsed by, or sponsored by Cloud Imperium Games or Roberts Space Industries. Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.*

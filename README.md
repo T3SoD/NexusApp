@@ -4,11 +4,18 @@
   <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/made-by-the-community-white.png">
+    <img src="docs/made-by-the-community-black.png" alt="Star Citizen Made By The Community" width="96">
+  </picture>
+</p>
+
 **The offline, EAC-safe companion for Star Citizen's mine, refine, craft, haul loop.**
 
 Nexus decodes RS scan values into resource type and node count, times your refinery jobs, and doubles as a searchable reference for resources, blueprints, and which blueprints you own. It reads the game log to auto-collect blueprints the moment you unlock them and to merge your accepted hauling contracts into one consolidated pickup and delivery route, all from an overlay that floats over the game, **fully offline**. The **Blueprint Network** extends ownership tracking to friends or your org: trade library files and everyone sees who owns what.
 
-> **Disclaimer:** Nexus is an unofficial, fan-made tool. It is **not** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen is a trademark of CIG.
+> **Disclaimer:** Nexus is an unofficial, fan-made tool. It is **not** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.
 
 > **EAC-safe by design:** Nexus runs entirely outside Star Citizen - no injection, no memory reading, no game files modified. It only captures your screen (the standard Windows OCR APIs) and reads the plain-text `Game.log` the game writes to disk (read-only, opened shared). It installs per-user, runs fully offline, and the whole pipeline is open source in this repo. There's nothing for Easy Anti-Cheat to flag.
 
