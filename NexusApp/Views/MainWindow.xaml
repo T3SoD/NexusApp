@@ -161,16 +161,6 @@
                               Data="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z M13,17h-2v-6h2V17z M13,9h-2V7h2V9z"/>
                     </Viewbox>
                 </Button>
-                <Button ToolTip="Settings"
-                        Style="{StaticResource HeaderButton}"
-                        Width="38" Height="38" Margin="2,0"
-                        Click="Settings_Click">
-                    <!-- Vector cog (font glyphs for U+2699 render as a flower in the emoji fallback font) -->
-                    <Viewbox Width="18" Height="18">
-                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
-                    </Viewbox>
-                </Button>
             </StackPanel>
 
             <!-- amber OS-bar hairline -->
@@ -235,7 +225,7 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Ellipse x:Name="OpsLiveDot" Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                        <TextBlock Text="LIVE" FontFamily="{StaticResource MonoFont}" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="OpsLiveText" Text="LIVE" FontFamily="{StaticResource MonoFont}" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
                             </RadioButton>
@@ -278,7 +268,7 @@
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Mining Codex" Style="{StaticResource DockTileName}"/>
-                                        <TextBlock Text="REFERENCE" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                        <TextBlock Text="ORE REFERENCE" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </RadioButton>
@@ -290,7 +280,7 @@
                                         <views:AnimatedDockIcon IconKey="blueprint" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                                        <TextBlock Text="Blueprints" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="Blueprint Library" Style="{StaticResource DockTileName}"/>
                                         <TextBlock Text="CRAFTING" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Grid>
@@ -304,7 +294,7 @@
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Network" Style="{StaticResource DockTileName}"/>
-                                        <TextBlock Text="COMMS" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                        <TextBlock Text="BLUEPRINT SHARING" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </RadioButton>
@@ -464,7 +454,7 @@
                             <TextBox x:Name="RsInputBox" Style="{StaticResource ChamferTextBox}" FontSize="14" Height="48"
                                      Text="{Binding RsInput, UpdateSourceTrigger=PropertyChanged}"
                                      KeyDown="RsInput_KeyDown" Tag="Enter RS value…"
-                                     ToolTip="Enter RS value and press Enter  ·  use ';' for multiple"/>
+                                     ToolTip="Enter an RS value and press Enter"/>
                             <Button Grid.Column="1" Content="SCAN" Style="{StaticResource ChamferAccentButton}"
                                     Height="48" Width="100" Margin="8,0,0,0" FontSize="13" Command="{Binding LookupCommand}"/>
                             <Button Grid.Column="2" Content="Clear" Style="{StaticResource ChamferButton}"
@@ -997,7 +987,7 @@
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="CRAFTING" Style="{StaticResource Eyebrow}"/>
                             <TextBlock Text="Refinery" Style="{StaticResource PageTitle}"/>
-                            <TextBlock Text="Work orders and refining timers across Stanton and Pyro."
+                            <TextBlock Text="Work orders and refining timers across the verse."
                                        FontFamily="{StaticResource UiFont}" FontSize="12.5"
                                        Foreground="{StaticResource FgDimBrush}" Margin="0,4,0,0"/>
                         </StackPanel>

@@ -25,7 +25,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         ApplyThemedAssets();
-        ThemeService.ThemeChanged += ApplyThemedAssets;
         AppVersionText.Text = $"App v{AppInfo.Version}";
         GameVersionText.Text = $"SC PU {GameData.Version}";
         UpdateShardChip();
@@ -68,8 +67,8 @@ public partial class MainWindow : Window
         {
             AnimateDockIn();                         // staggered tile entrance
             PositionDockSelector(false);             // place the active selector once laid out
-            Hud.PulseDot(VpRunDot, true);            // breathing run/LIVE dots
-            Hud.PulseDot(OpsLiveDot, true);
+            Hud.PulseDot(VpRunDot, true);            // breathing viewport run dot; the Operations
+                                                     // LIVE badge is driven by UpdateSessionChip
         };
 
         RestoreWindowPosition();
@@ -124,7 +123,9 @@ public partial class MainWindow : Window
         TutorialTarget.DrawRegion     => PrepareOverlayForTutorial()?.SetRegionTarget,
         TutorialTarget.ScanToggle     => PrepareOverlayForTutorial()?.ScanToggleTarget,
         TutorialTarget.OverlayTabs    => PrepareOverlayForTutorial()?.TabStripTarget,
-        TutorialTarget.ReferenceTools => NavBlue,
+        TutorialTarget.OverlayHub     => PrepareOverlayForTutorial(hub: true)?.HubTarget,
+        TutorialTarget.AppDock        => DockTiles,
+        TutorialTarget.CargoHauling   => Anchor("hauling", NavHauling),
         TutorialTarget.BlueprintNetwork => Anchor("network", NavNetwork),
         _                             => null,
     };
@@ -142,13 +143,14 @@ public partial class MainWindow : Window
         selector.ShowOnMonitorOf(this);   // draw surface opens on this window's monitor (issue #6)
     }
 
-    /// <summary>Ensures the overlay is open, visible, and on the SCAN tab for the tour.</summary>
-    private OverlayWindow? PrepareOverlayForTutorial()
+    /// <summary>Ensures the overlay is open, visible, and on the SCAN tab (or the HUB) for the tour.</summary>
+    private OverlayWindow? PrepareOverlayForTutorial(bool hub = false)
     {
         EnsureOverlay();
         if (_overlay == null) return null;
         if (!_overlay.IsVisible) _overlay.Show();
-        _overlay.ShowScanTabForTutorial();
+        if (hub) _overlay.ShowHubTabForTutorial();
+        else _overlay.ShowScanTabForTutorial();
         _overlay.UpdateLayout();
         return _overlay;
     }
@@ -394,6 +396,19 @@ public partial class MainWindow : Window
         }
         if (LinkStatusText != null)
             LinkStatusText.Text = live ? "ONLINE . SECURE LINK" : "OFFLINE . NO LINK";
+
+        // Same signal on the Operations dock tile badge: LIVE while Star Citizen runs,
+        // OFFLINE once it's closed.
+        if (OpsLiveDot != null)
+        {
+            OpsLiveDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+            Hud.PulseDot(OpsLiveDot, live);
+        }
+        if (OpsLiveText != null)
+        {
+            OpsLiveText.Text = live ? "LIVE" : "OFFLINE";
+            OpsLiveText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+        }
     }
 
     // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
@@ -2539,9 +2554,6 @@ public partial class MainWindow : Window
     {
         new AboutDialog { Owner = this }.ShowDialog();
     }
-
-    private void Settings_Click(object sender, RoutedEventArgs e)
-        => SetActivePage("settings");
 
     private LogMonitorWindow? _logMonitor;
 

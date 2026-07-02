@@ -32,134 +32,133 @@ public class HelpDialog : Window
                 "Drag the NEXUS header bar to reposition the overlay anywhere on screen.",
                 "The overlay stays on top of all windows including your game.",
                 "Close it with the ✕ button - position and size are saved for next time.",
-                "The overlay has four tabs: STATS, SCAN, ORDERS, and SHOPPING.",
-                "STATS - Session Tracking: Track Session / Auto-Track Blueprints, a live THIS SESSION tally and a Blueprints Collected feed (see Session Tracking).",
-                "SCAN - auto-scan controls, RS input, results, and the RECENT scan history (shown on this tab only).",
-                "ORDERS - opens the Refinery Tracker flyout panel beside the overlay.",
+                "The overlay has five tabs: HUB, SCAN, REFINERY, SHOPPING, and HAULING - it opens on the HUB the first time, then reopens on the tab you last used.",
+                "HUB - a read-only glance: SCAN STATUS lights (green = on, yellow = paused, red = off), a live BLUEPRINTS COLLECTED count, the SERVER / SHARD panel, and the Collection Log feed (see Session Tracking).",
+                "SCAN - the Auto-scan RS switch, RS input, results, and the RECENT scan history (shown on this tab only).",
+                "REFINERY - your work orders at a glance, plus ▤ Open Refinery Tracker for the flyout panel.",
                 "SHOPPING - an inline view of your current shopping list.",
+                "HAULING - the contract scan switches, your active hauls, and the consolidated STOPS plan (see Cargo Hauling).",
                 "The opacity slider sits in the overlay header, so it's available from every tab.",
             ]),
 
         new("◎", "Auto-scan",
             "Let Nexus read RS values straight off your screen and decode them automatically as you mine.",
-            [new("⊕", "draw region"), new("▶", "start"), new("■", "stop"), new("⊠", "show box"), new("⊡", "hide box")],
+            [new("⊕", "set RS region"), new("Auto-scan RS", "switch"), new("Show/Hide box", "switch")],
             [
-                "Switch to the SCAN tab in the overlay to access all scan controls.",
-                "Click ⊕ to draw a scan region - your cursor becomes a crosshair.",
+                "Switch to the SCAN tab in the overlay to access all RS scan controls.",
+                "Click ⊕ Set RS detection region - your cursor becomes a crosshair.",
                 "Click and drag a rectangle over the RS value shown in your game.",
                 "img:/Assets/RS_Signature.png",
-                "Click ▶ to start scanning - the overlay reads the RS value automatically every ~0.5 seconds.",
-                "While scanning the button shows ■ - click it to stop. Click ⊕ again to redraw the region.",
-                "Click ⊠ to show the magenta scan box indicator on screen; click ⊡ to hide it.",
-                "The scan box is hidden by default on launch.",
+                "Turn on the Auto-scan RS switch - Nexus reads the region several times a second and confirms a value after two matching reads.",
+                "Auto-scan starts off on launch - Nexus only captures the screen while the switch is on.",
+                "Scanning pauses on its own while both Nexus and Star Citizen are in the background, and resumes when either returns to the front - the HUB light shows yellow while paused.",
+                "Use the Show/Hide RS detection box switch to see the magenta scan box on screen - it's hidden by default.",
+                "Contract scanning for Cargo Hauling uses its own separate detection box - see Cargo Hauling.",
                 "Use the opacity slider in the overlay header to adjust transparency (20–100%) - it's on every tab and the refinery flyout dims along with it.",
-                "◉ Reading… appears in the status bar when a candidate value is being confirmed.",
+                "◉ Reading… appears while a candidate value is being confirmed.",
             ]),
 
-        new("RS", "RS Signal Decoder",
-            "Type an RS value and Nexus tells you the resource, node count, tier, and how confident the match is.",
+        new("dock:rs", "RS Signal Decoder",
+            "Type an RS value and Nexus tells you the resource, node count, rarity color, and how confident the match is.",
             [new("Enter", "run scan"), new("Clear", "wipe history")],
             [
-                "Navigate to RS SIGNAL DECODER from the left sidebar.",
+                "Open the RS Decoder module in the app dock.",
                 "Type an RS value into the input box and press Enter or click SCAN.",
                 "Pressing Enter runs the scan and clears the input so you can type the next value immediately.",
-                "Results show the matching resource, node count, tier, and match accuracy.",
+                "BEST MATCH shows the top result as a hero card; OTHER MATCHES lists the rest.",
                 "EXACT means the value is a perfect multiple of the resource's base RS.",
-                "~X.XX% means a close match within 0.5% - the resource is still very likely correct.",
-                "The left border color indicates match quality: green = exact, amber = close.",
-                "Recent scans appear at the bottom as a text list - ◆ color matches the result tier.",
-                "Click any recent scan entry to re-run that lookup.",
+                "A close match within 0.5% is still very likely correct.",
+                "Click + Add to cart on the best match to put it on your shopping list.",
+                "RECENT SCANS keeps your history - filter it with the pills, and click any entry to re-run that lookup.",
                 "Click Clear next to RECENT SCANS to clear the history.",
             ]),
 
-        new("◑", "Refinery Tracker",
+        new("dock:refinery", "Refinery Tracker",
             "Log your refinery jobs so you never lose track of what's cooking or when it's ready to collect.",
-            [new("+ New", "create order"), new("▤", "open flyout")],
+            [new("+ Add work order", "create"), new("▤", "open flyout")],
             [
-                "Navigate to REFINERY TRACKER from the left sidebar.",
-                "Click + New to create a work order. Fill in the label, resource, location, refinery, and status.",
+                "Open the Refinery module in the app dock.",
+                "Click + Add work order - a popup editor takes the label, resource, location, refinery, and status.",
                 "Set a refinery timer using the Hours and Minutes fields - the countdown starts immediately.",
-                "The live progress bar fills smoothly as time elapses.",
-                "When the timer expires the status automatically changes to Ready to Collect.",
-                "Click a work order row on the left to open it for editing.",
-                "Use Save to commit changes and Delete to remove the order.",
+                "Work orders show as cards with a live progress bar and timer.",
+                "When the timer expires while the order is open in the editor (or the next time you open it), the status changes to Ready to Collect.",
+                "Click a card to reopen it in the editor. Save commits changes, Delete removes the order.",
                 "Work orders and their timers survive app restarts.",
-                "In the overlay, switch to the ORDERS tab and click ▤ Open Refinery Tracker to open the flyout panel.",
+                "In the overlay, the REFINERY tab gives a quick status view - click ▤ Open Refinery Tracker there to open the flyout panel.",
                 "The flyout has a hide-completed toggle (☐/☑) and a side-swap button (⇄) in its header.",
             ]),
 
-        new("▣", "Blueprint Library",
+        new("dock:blueprint", "Blueprint Library",
             "Search any craftable item to see the exact resources it needs and the best places to mine them.",
-            [new("Enter", "search"), new("Add All", "to shopping list"), new("Owned", "toggle")],
+            [new("Enter", "search"), new("+ Add all to cart", "every ingredient"), new("Owned", "toggle")],
             [
-                "Navigate to BLUEPRINT LIBRARY from the left sidebar.",
+                "Open the Blueprint Library module in the app dock.",
+                "Browse by category and drill in - the breadcrumb trail stays pinned at the top as you scroll and jumps you back up.",
                 "Start typing a blueprint name - autocomplete suggestions appear as you type.",
                 "Select a suggestion or press Enter to search.",
                 "The left panel lists matching blueprints. Click one to see its full ingredient list on the right.",
                 "Each ingredient card shows the resource name, quantity, unit, and rarity color.",
-                "Click the cart button on an ingredient to add it to your shopping list.",
-                "Click Add All to Shopping List to add every ingredient at once.",
-                "A WHERE TO MINE section below the ingredients ranks the most efficient mining locations to gather all required resources.",
+                "Click + on an ingredient row to add it to your shopping list.",
+                "Click + Add all to cart to add every ingredient at once.",
+                "A WHERE TO MINE section beside the ingredient list ranks the most efficient mining locations to gather all required resources.",
                 "The first recommended location covers the most ingredients; subsequent entries cover what remains.",
                 "Resources with no known mining location are listed separately at the bottom.",
                 "Mark a blueprint as Owned with its toggle - a manifest (You own X of Y blueprints) and per-category progress appear at the top of the library.",
                 "Filter the library by All, Owned, or Not owned; the owned count updates live as you mark blueprints.",
-                "Let Nexus collect these for you automatically as you play - see Session Tracking.",
+                "Click Import owned from logs… to scan your Game.log and its backups and mark everything you've already received as Owned - or let Session Tracking collect them live as you play.",
             ]),
 
         new("✓", "Session Tracking",
-            "Let Nexus read Star Citizen's Game.log to auto-collect blueprints you receive - marking them Owned, live as you play or in bulk from past logs. (Beta)",
-            [new("Track Session", "watch"), new("Auto-Track", "blueprints"), new("Import", "past logs")],
+            "Nexus reads Star Citizen's Game.log and auto-collects blueprints you receive - marking them Owned live as you play, or in bulk from past logs. Always on. (Beta)",
+            [new("GAME SESSION", "header pill"), new("Import", "past logs")],
             [
-                "On the overlay's STATS tab, turn on Track Session to read your Game.log, then Auto-Track Blueprints to collect them automatically (Auto-Track turns Track Session on for you).",
+                "Session tracking and blueprint auto-collect are always on - there's nothing to switch on.",
+                "The header pills show the live state - GAME SESSION reads monitoring while Star Citizen runs and offline once it's closed; BLUEPRINTS reads tracking or off.",
                 "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library, bumps the session count, and pops a toast.",
-                "The overlay HUB shows a live 'BLUEPRINTS COLLECTED' count and a Collection Log feed; counts reset when Star Citizen starts a new session, or via Reset session in the advanced monitor.",
-                "For more control, open the advanced monitor (Settings › Game.log): a raw log view, a custom log path, snapshot export, and Reset session.",
-                "Import owned from past logs scans your current log plus the logbackups folder and collects everything you've already received (after a preview and confirmation).",
+                "The overlay HUB shows a live BLUEPRINTS COLLECTED count and the Collection Log feed; counts reset when Star Citizen starts a new session.",
+                "For more control, open the advanced monitor from Settings › Game.log Paths › Open Game.log Monitor - a raw log view, snapshot export, and Reset session.",
+                "Import owned from logs… in the Blueprint Library scans your current log plus the logbackups folder and collects everything you've already received (after a preview and confirmation).",
+                "If Nexus can't find your Game.log, set its path in Settings › Game.log Paths.",
                 "Nexus only reads the log file - it never writes to game files or touches the game process.",
             ]),
 
-        new("◆", "Mining Codex",
-            "The full reference table of every resource Nexus knows - filter and group it to plan a route before you undock.",
-            [new("✕", "clear search"), new("Expand All", ""), new("Reset Sort", "")],
+        new("dock:codex", "Mining Codex",
+            "The full reference table of every resource Nexus knows - search and filter it to plan a route before you undock.",
+            [new("✕", "clear search"), new("Key ▾", "color key"), new("Reset filters", "")],
             [
-                "Navigate to MINING CODEX from the left sidebar.",
-                "Search by resource name, location, or blueprint - the table filters in real time.",
+                "Open the Mining Codex module in the app dock.",
+                "Search by resource name, location, or blueprint - the list filters in real time.",
                 "Click ✕ to clear the search.",
                 "System pills (All / Stanton / Pyro / Nyx) filter resources by where they are found.",
                 "Method pills (All / Ship / ROC / FPS) filter by how the resource is mined.",
-                "Multiple pills can be active at once - they combine as AND filters. Click All to clear a row.",
-                "Click Group: Resource / Group: Location to toggle between rarity-grouped and location-grouped views.",
-                "In location view, resources are grouped by system (Stanton / Pyro / Nyx) then by mining site.",
-                "Click Expand All to open every row. The button becomes Collapse All.",
-                "Click Reset Sort to clear all filters, the search, and return to resource grouping.",
-                "Expand a resource node to see its Locations, Refinery Yields, and Blueprints.",
-                "Under Ship Components, blueprints are further grouped by subcategory (Cooler, Mining Laser, Shield, etc.).",
-                "Blueprints are lazy-loaded on first expand to keep navigation fast.",
+                "Multiple pills in a row broaden the match (Stanton + Pyro shows resources in either); the System and Method rows combine. Click All to clear a row.",
+                "Click a resource to open its detail panel - Locations, Refinery Yields, and Blueprints.",
+                "Click Key ▾ for the color key: rarity tiers and refinery yield colors.",
                 "Rarity: Legendary (gold) · Epic (purple) · Rare (blue) · Uncommon (green) · Common (gray).",
                 "Refinery: Bonus yield (green) · No modifier (gray) · Reduced yield (red).",
+                "Click Reset filters to clear the search and every pill.",
             ]),
 
-        new("▤", "Shopping List",
+        new("cart", "Shopping List",
             "A running list of the resources you're after this run, highlighted everywhere they appear.",
             [new("−", "remove item")],
             [
-                "Add items from RS Signal Decoder results, Blueprint Library ingredients, or the Mining Codex.",
-                "Click the cart button in the main toolbar to open the shopping list dialog.",
+                "Add items from RS Decoder results (+ Add to cart on the best match, Add on other matches) or Blueprint Library ingredients (+ on an ingredient, or + Add all to cart).",
+                "Click the cart button in the main window header to open the shopping list dialog.",
                 "Each row shows the resource name, quantity, and unit.",
                 "Click − next to an item to remove it.",
                 "In the overlay, switch to the SHOPPING tab to view the same list inline.",
                 "Shopping list data is saved and persists across sessions.",
-                "Resources already in your list are highlighted with a teal background in scan results and recent scan history.",
+                "Resources already in your list are highlighted with a faint amber tint in recent scan history and the overlay's results.",
                 "An IN CART badge appears on matching scan result cards; a CART badge appears on matching history entries.",
                 "Highlights update automatically when you add or remove items from the list.",
             ]),
 
-        new("share", "Blueprint Network",
+        new("dock:network", "Blueprint Network",
             "Share which blueprints you own with friends or your org, and see who in your group has what.",
             [new("Export", "your library"), new("Import", "a teammate's"), new("Groups…", "organize")],
             [
-                "Navigate to BLUEPRINT NETWORK from the left sidebar.",
+                "Open the Network module in the app dock - its dock label reads BLUEPRINT SHARING.",
                 "Click Export to save your owned blueprints to a .nexuslib file - share it as your RSI handle or a nickname.",
                 "Send that file to friends however you like (Discord, a shared drive); they Import it to see your library.",
                 "Click Import to load a teammate's .nexuslib file - each person becomes a member of your network.",
@@ -169,62 +168,91 @@ public class HelpDialog : Window
                 "Overview tab - your group's coverage: percent owned, blueprints nobody has yet (farm targets), and ones only a single person holds.",
                 "Blueprints tab - every blueprint with how many of you own it; filter to Nobody owns / Single owner / I'm missing, and expand a row to see exactly who has it.",
                 "The group switcher scopes coverage to a group or to everyone; you're always counted in coverage.",
+                "Scope any tab to a single member with the person switcher - see exactly what one friend owns or is missing.",
+                "Settings › Blueprint Network can detect your RSI handle (read-only, from Game.log) so exports come pre-filled - or just use a nickname at export.",
                 "No server, no account - Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
             ]),
 
-        new("≡", "Settings",
-            "The cog button in the top-right of the main window opens Settings - your theme, the Game.log blueprint watcher, and a reset for saved data all live here.",
-            [new("Settings", "cog, top-right")],
+        new("dock:settings", "Settings",
+            "One module for everything Nexus needs configured - file paths, identity, diagnostics, motion, and data.",
+            [new("Settings", "app dock, bottom")],
             [
-                "Click the cog (Settings) button in the top-right of the main window to open it.",
-                "Appearance - switch between the Luxury Gold and Classic themes (applies on restart).",
-                "Game.log (Beta) - opens the advanced Game.log monitor for Session Tracking (see Session Tracking).",
-                "Data - Clear saved data wipes your owned blueprints, shopping cart, work orders and pinned resources after a confirmation; your theme and the mining reference data are left untouched.",
+                "Click the Settings module at the bottom of the app dock to open it.",
+                "Game.log Paths - set your Game.log location (used by Session Tracking, Cargo Hauling, and server / shard tracking) and an optional global.ini path that translates blueprint names renamed by a localization mod. Open Game.log Monitor lives here too.",
+                "Blueprint Network - detect your RSI handle (read-only, from Game.log) so library exports come pre-filled.",
+                "Diagnostics - the App Log Monitor shows Nexus's own activity live, and a snapshot bundles app info and the log into one file to attach to a bug report.",
+                "Appearance - Reduce animations tones down motion across the app; 24-hour clock switches the top-bar clock format.",
+                "Data - Clear saved data wipes your owned blueprints, Blueprint Network members and groups, detected RSI handle, shopping cart, work orders and pinned resources after a confirmation; the mining reference data is left untouched.",
             ]),
 
         new("◐", "Appearance",
-            "Choose how Nexus looks - pick a theme on first launch, or switch it anytime.",
+            "Tune how Nexus moves and reads - motion and clock options live in Settings.",
             [new("Settings", "› Appearance")],
             [
-                "On first launch, a welcome picker lets you choose your look: Luxury Gold or Classic teal.",
-                "Luxury Gold is the default near-black-and-gold theme; Classic is the original slate-and-teal style.",
-                "Switch themes anytime from the Settings (cog) button in the top-right › Appearance - the change applies on restart.",
+                "Turn on Reduce animations in Settings › Appearance to minimize motion across the app.",
+                "Switch the top-bar clock between 12-hour and 24-hour time in Settings › Appearance.",
                 "Replay this guided tour anytime with the Replay Tutorial button below.",
+            ]),
+
+        new("dock:cargo", "Cargo Hauling",
+            "Nexus reads the hauling contracts you accept from Game.log and builds a consolidated collect-and-deliver plan across every active haul. (Beta)",
+            [new("Auto-scan contracts", "switch"), new("⊕", "set contract region")],
+            [
+                "Open the Cargo Hauling module in the app dock - contracts you accept in game appear automatically, no manual entry.",
+                "Active hauls show as cards with the contractor, route, and each collect / deliver leg.",
+                "The Collect / deliver consolidation table groups every leg by location, so you can fly one efficient route across all your hauls.",
+                "Finished hauls drop to the bottom with an outcome chip - Complete in green, other endings in amber.",
+                "Want reward, contractor, and cargo details? Scan the in-game Contracts screen: on the overlay HAULING tab, turn on Auto-scan contracts and click ⊕ Set contract detection region over the contract panel.",
+                "Contract scanning uses its own yellow detection box, separate from the magenta RS box - the two never interfere.",
+                "The overlay HAULING tab also shows your totals and the consolidated STOPS plan without leaving the game.",
+                "Hauls clear automatically when you change or leave a shard - see your current and recent shards on the overlay HUB.",
+                "Needs your Game.log - set the path in Settings › Game.log Paths if it isn't auto-detected.",
+            ]),
+
+        new("dock:operations", "Operations",
+            "The landing dashboard - your whole operation at a glance, with jump-off links into every module.",
+            [new("LIVE / OFFLINE", "game link")],
+            [
+                "Operations opens by default when Nexus starts - it's the first module in the app dock.",
+                "KPI cards along the top give an at-a-glance readout: last RS scan, refinery queue, cargo in transit, session blueprints, and network coverage.",
+                "The REFINERY QUEUE and ACTIVE HAULS panels link straight into their modules with Open tracker and Open hauling.",
+                "NETWORK RISK flags blueprints only one person in your Blueprint Network owns.",
+                "SERVER / SHARD shows your current shard and recent ones - the same data as the overlay HUB.",
+                "The LIVE badge on the Operations dock tile means Star Citizen is running; it flips to OFFLINE when the game closes. The GAME SESSION pill in the header mirrors the same signal.",
             ]),
     ];
 
     private static Brush R(string key) => (Brush)Application.Current.FindResource(key);
 
-    // The 3-node "share" glyph, matching the Blueprint Network nav icon. Topics whose Icon is the
-    // sentinel "share" render this vector instead of a text glyph.
-    private static Viewbox ShareIcon(double size, Brush stroke)
+    // The header shopping-cart vector - the same Path data as the main window's cart button.
+    private const string CartPathData =
+        "M7,18c-1.1,0-1.99,0.9-1.99,2S5.9,22,7,22s2-0.9,2-2S8.1,18,7,18z M1,2v2h2l3.6,7.59l-1.35,2.45C5.16,14.37,5,14.79,5,15.25c0,1.1,0.9,2,2,2h12v-2H7.42c-0.14,0-0.25-0.11-0.25-0.25l0.03-0.12L8.1,13h7.45c0.75,0,1.41-0.41,1.75-1.03l3.58-6.49C20.95,5.34,21,5.17,21,5c0-0.55-0.45-1-1-1H5.21L4.27,2H1z M17,18c-1.1,0-1.99,0.9-1.99,2s0.89,2,1.99,2s2-0.9,2-2S18.1,18,17,18z";
+
+    // Topic vector factory. "dock:<key>" renders the module's actual dock glyph (static,
+    // via AnimatedDockIcon with no RadioButton host); "cart" renders the header cart vector.
+    private static FrameworkElement TopicVector(string icon, double size, Brush color)
     {
-        var canvas = new Canvas { Width = 24, Height = 24 };
-        void AddLine(double x1, double y1, double x2, double y2) =>
-            canvas.Children.Add(new System.Windows.Shapes.Line
-            {
-                X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Stroke = stroke, StrokeThickness = 1.7,
-                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
-            });
-        void AddNode(double left, double top)
+        if (icon == "cart")
         {
-            var e = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Stroke = stroke, StrokeThickness = 1.7, Fill = Brushes.Transparent };
-            Canvas.SetLeft(e, left); Canvas.SetTop(e, top);
-            canvas.Children.Add(e);
+            var p = new System.Windows.Shapes.Path { Data = Geometry.Parse(CartPathData), Fill = color };
+            return new Viewbox { Width = size, Height = size, Child = p };
         }
-        AddLine(8.2, 10.9, 15.8, 7.1);
-        AddLine(8.2, 13.1, 15.8, 16.9);
-        AddNode(3.5, 9.5); AddNode(15.5, 3.5); AddNode(15.5, 15.5);
-        return new Viewbox { Width = size, Height = size, Child = canvas };
+        var g = new AnimatedDockIcon { IconKey = icon[5..], Width = size, Height = size };
+        g.SetStaticColor(color);
+        return g;
     }
 
-    // Recolor a topic-row icon - a text glyph (Foreground) or the share vector (each shape's Stroke).
+    private static bool IsVectorIcon(string icon) => icon == "cart" || icon.StartsWith("dock:");
+
+    // Recolor a topic-row icon - a text glyph, a dock glyph, or the cart vector.
     private static void RecolorIcon(UIElement icon, Brush brush)
     {
-        if (icon is TextBlock tb) { tb.Foreground = brush; return; }
-        if (icon is Border b && b.Child is Viewbox vb && vb.Child is Canvas c)
-            foreach (var child in c.Children)
-                if (child is System.Windows.Shapes.Shape shape) shape.Stroke = brush;
+        switch (icon)
+        {
+            case TextBlock tb: tb.Foreground = brush; break;
+            case Border { Child: AnimatedDockIcon adi }: adi.SetStaticColor(brush); break;
+            case Border { Child: Viewbox { Child: System.Windows.Shapes.Path p } }: p.Fill = brush; break;
+        }
     }
 
     private readonly TextBox _search = new();
@@ -346,9 +374,9 @@ public class HelpDialog : Window
         {
             var bar = new Border { Width = 3, CornerRadius = new CornerRadius(2), Background = Brushes.Transparent };
             UIElement icon;
-            if (topic.Icon == "share")
+            if (IsVectorIcon(topic.Icon))
             {
-                var sv = ShareIcon(15, R("FgDimBrush"));
+                var sv = TopicVector(topic.Icon, 15, R("FgDimBrush"));
                 sv.HorizontalAlignment = HorizontalAlignment.Center;
                 icon = new Border { MinWidth = 18, VerticalAlignment = VerticalAlignment.Center, Child = sv };
             }
@@ -442,9 +470,9 @@ public class HelpDialog : Window
 
         // Header: icon + title
         var header = new StackPanel { Orientation = Orientation.Horizontal };
-        if (topic.Icon == "share")
+        if (IsVectorIcon(topic.Icon))
         {
-            var sv = ShareIcon(20, R("AccentBrush"));
+            var sv = TopicVector(topic.Icon, 20, R("AccentBrush"));
             sv.VerticalAlignment = VerticalAlignment.Center;
             sv.Margin = new Thickness(0, 0, 10, 0);
             header.Children.Add(sv);

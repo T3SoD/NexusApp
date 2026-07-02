@@ -3,10 +3,9 @@
                     xmlns:views="clr-namespace:NexusApp.Views"
                     xmlns:conv="clr-namespace:NexusApp.Converters">
 
-    <!-- Base palette tokens live in Themes/Palette.Luxury.xaml / Palette.Classic.xaml,
-         merged ahead of this dictionary and swapped at runtime by ThemeService.
-         The brushes below bind their Color via DynamicResource so a palette swap
-         repaints the whole app live. -->
+    <!-- Base palette tokens live in Themes/Palette.Luxury.xaml, merged ahead of
+         this dictionary in App.xaml (single theme, no runtime swapping). The
+         brushes below bind their Color via DynamicResource. -->
 
     <!-- Shared motion vocabulary (mirrors Views/Motion.cs): the named easing curves
          the MOBIGLAS mocks are authored with. Entrances settle, page reveals use the
