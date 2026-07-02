@@ -23,6 +23,11 @@ public sealed class CommandPage : UserControl
     private readonly MainViewModel _vm;
     private readonly StackPanel _root = new() { Margin = new Thickness(24, 22, 26, 40) };
 
+    private Grid? _kpiRow;
+
+    /// <summary>The KPI card row, for the welcome tour's Operations step to ring.</summary>
+    public FrameworkElement? KpiRowTarget => _kpiRow;
+
     private Brush Br(string k) => (Brush)Application.Current.FindResource(k);
     private FontFamily Ui => (FontFamily)Application.Current.FindResource("UiFont");
     private FontFamily Disp => (FontFamily)Application.Current.FindResource("DisplayFont");
@@ -87,6 +92,7 @@ public sealed class CommandPage : UserControl
             Grid.SetColumn(cards[i], i);
             grid.Children.Add(cards[i]);
         }
+        _kpiRow = grid;
         return grid;
     }
 

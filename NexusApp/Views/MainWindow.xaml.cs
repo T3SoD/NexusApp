@@ -123,7 +123,7 @@ public partial class MainWindow : Window
         TutorialTarget.DrawRegion     => PrepareOverlayForTutorial()?.SetRegionTarget,
         TutorialTarget.ScanToggle     => PrepareOverlayForTutorial()?.ScanToggleTarget,
         TutorialTarget.OverlayTabs    => PrepareOverlayForTutorial()?.TabStripTarget,
-        TutorialTarget.OverlayHub     => PrepareOverlayForTutorial(hub: true)?.HubTarget,
+        TutorialTarget.OverlayHub     => PrepareOverlayForTutorial("hub")?.HubTarget,
         TutorialTarget.AppDock        => DockTiles,
         TutorialTarget.CargoHauling   => Anchor("hauling", NavHauling),
         TutorialTarget.BlueprintNetwork => Anchor("network", NavNetwork),
@@ -143,14 +143,18 @@ public partial class MainWindow : Window
         selector.ShowOnMonitorOf(this);   // draw surface opens on this window's monitor (issue #6)
     }
 
-    /// <summary>Ensures the overlay is open, visible, and on the SCAN tab (or the HUB) for the tour.</summary>
-    private OverlayWindow? PrepareOverlayForTutorial(bool hub = false)
+    /// <summary>Ensures the overlay is open, visible, and on the requested tab for the tour.</summary>
+    private OverlayWindow? PrepareOverlayForTutorial(string tab = "scan")
     {
         EnsureOverlay();
         if (_overlay == null) return null;
         if (!_overlay.IsVisible) _overlay.Show();
-        if (hub) _overlay.ShowHubTabForTutorial();
-        else _overlay.ShowScanTabForTutorial();
+        switch (tab)
+        {
+            case "hub": _overlay.ShowHubTabForTutorial(); break;
+            case "hauling": _overlay.ShowHaulingTabForTutorial(); break;
+            default: _overlay.ShowScanTabForTutorial(); break;
+        }
         _overlay.UpdateLayout();
         return _overlay;
     }

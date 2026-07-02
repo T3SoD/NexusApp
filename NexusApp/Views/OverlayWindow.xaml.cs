@@ -33,6 +33,7 @@ public partial class OverlayWindow : Window
     public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the HUB/SCAN/REFINERY/SHOPPING/HAULING strip
     public FrameworkElement ShoppingTabTarget => TabShoppingBtn;
     public FrameworkElement HubTarget         => HubScanBar;      // the HUB's SCAN STATUS light rows
+    public FrameworkElement ContractRegionTarget => SetContractRegionBtn;   // HAULING tab's set-region link
 
     /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
     public void ShowScanTabForTutorial() => SwitchTab("scan");
@@ -42,6 +43,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Force the SHOPPING tab visible so the tour can point at the cart.</summary>
     public void ShowShoppingTabForTutorial() => SwitchTab("shopping");
+
+    /// <summary>Force the HAULING tab visible so the tour can point at the contract scan controls.</summary>
+    public void ShowHaulingTabForTutorial() => SwitchTab("hauling");
 
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
     private readonly Action<string> _onOrderReady;
