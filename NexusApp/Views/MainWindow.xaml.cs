@@ -118,22 +118,26 @@ public partial class MainWindow : Window
     /// (null = a centered, anchorless step).</summary>
     private FrameworkElement? ResolveTutorialTarget(TutorialTarget t) => t switch
     {
-        TutorialTarget.RsDecoder      => Anchor("scan", RsInputBox),
-        TutorialTarget.OpenOverlay    => OverlayToggleBtn,
-        TutorialTarget.DrawRegion     => PrepareOverlayForTutorial()?.SetRegionTarget,
-        TutorialTarget.ScanToggle     => PrepareOverlayForTutorial()?.ScanToggleTarget,
-        TutorialTarget.OverlayTabs    => PrepareOverlayForTutorial()?.TabStripTarget,
-        TutorialTarget.OverlayHub     => PrepareOverlayForTutorial("hub")?.HubTarget,
-        TutorialTarget.AppDock        => DockTiles,
-        TutorialTarget.CargoHauling   => Anchor("hauling", NavHauling),
-        TutorialTarget.BlueprintNetwork => Anchor("network", NavNetwork),
-        _                             => null,
+        TutorialTarget.SessionPill     => SessionChip,
+        TutorialTarget.BlueprintsPill  => BlueprintChip,
+        TutorialTarget.AppDock         => DockTiles,
+        TutorialTarget.OperationsKpis  => OperationsKpiAnchor(),
+        TutorialTarget.RsDecoderTile   => NavScan,
+        TutorialTarget.RefineryTile    => NavWork,
+        TutorialTarget.HaulingTile     => NavHauling,
+        TutorialTarget.NetworkTile     => NavNetwork,
+        TutorialTarget.OpenOverlay     => OverlayToggleBtn,
+        TutorialTarget.OverlayHub      => PrepareOverlayForTutorial("hub")?.HubTarget,
+        TutorialTarget.ScanToggle      => PrepareOverlayForTutorial("scan")?.ScanToggleTarget,
+        TutorialTarget.ContractRegion  => PrepareOverlayForTutorial("hauling")?.ContractRegionTarget,
+        _                              => null,
     };
 
-    private FrameworkElement Anchor(string page, FrameworkElement element)
+    // The Operations step navigates to the dashboard first, then rings its KPI row.
+    private FrameworkElement? OperationsKpiAnchor()
     {
-        SetActivePage(page);
-        return element;
+        SetActivePage("command");   // lazily creates + refreshes the dashboard
+        return _commandPage?.KpiRowTarget ?? _commandPage;
     }
 
     private void StartScanRegionSetup()

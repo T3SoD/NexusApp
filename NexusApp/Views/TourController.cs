@@ -8,15 +8,18 @@ namespace NexusApp.Views;
 public enum TutorialTarget
 {
     None,            // centered step, no anchor
-    RsDecoder,
-    OpenOverlay,
-    DrawRegion,
-    ScanToggle,
-    OverlayTabs,
-    OverlayHub,      // the overlay's HUB tab (status lights)
-    AppDock,         // the Wrist-OS module dock
-    CargoHauling,
-    BlueprintNetwork,
+    SessionPill,     // GAME SESSION header pill
+    BlueprintsPill,  // BLUEPRINTS header pill
+    AppDock,         // the whole Wrist-OS module dock
+    OperationsKpis,  // KPI card row on the Operations page
+    RsDecoderTile,   // dock tile (ring only, no navigation)
+    RefineryTile,    // dock tile (ring only, no navigation)
+    HaulingTile,     // dock tile (ring only, no navigation)
+    NetworkTile,     // dock tile (ring only, no navigation)
+    OpenOverlay,     // overlay toggle button in the header
+    OverlayHub,      // overlay HUB tab status lights
+    ScanToggle,      // overlay SCAN tab Auto-scan RS switch
+    ContractRegion,  // overlay HAULING tab set-contract-region link
 }
 
 /// <summary>
@@ -28,32 +31,38 @@ public enum TutorialTarget
 /// </summary>
 public sealed class TourController
 {
-    private sealed record Step(TutorialTarget Target, string Title, string Caption);
+    internal sealed record Step(TutorialTarget Target, string Title, string Caption);
 
-    private static readonly Step[] Steps =
+    internal static readonly Step[] Steps =
     [
-        new(TutorialTarget.None, "Welcome to Nexus",
-            "Nexus reads RS values straight off your screen and decodes the resource and node count. This quick tour points out the essentials - skip anytime, replay later from Help."),
-        new(TutorialTarget.RsDecoder, "RS Signal Decoder",
-            "Type any RS value here and press Enter. Nexus lists every matching resource, ranked by likelihood, with node counts and the best match's refinery yields."),
-        new(TutorialTarget.OpenOverlay, "The floating overlay",
-            "Open this to float Nexus over your game. Drag its NEXUS header to move it; it stays on top while you mine."),
-        new(TutorialTarget.DrawRegion, "Auto-scan: draw the region",
-            "Click here, then drag a tight box around just the RS digits on screen. Smaller is better - digits only, no labels."),
-        new(TutorialTarget.ScanToggle, "Auto-scan: start reading",
-            "Turn on Auto-scan RS and Nexus reads your region several times a second, decoding each value as you mine. It pauses while you and the game are both in the background."),
-        new(TutorialTarget.OverlayTabs, "Overlay tabs",
-            "HUB, SCAN, REFINERY, SHOPPING, and HAULING - live status, auto-scan, refinery jobs, your cart, and your haul plan, all without leaving the game."),
-        new(TutorialTarget.OverlayHub, "The HUB",
-            "The overlay lands here: a light for each scanner (green on, yellow paused, red off), blueprints collected this session, and your current server and shard."),
-        new(TutorialTarget.AppDock, "The app dock",
-            "All eight modules live in this dock - the Blueprint Library for recipes, the Mining Codex ore reference, the Refinery tracker, Cargo Hauling, and Settings at the bottom."),
-        new(TutorialTarget.CargoHauling, "Cargo Hauling",
-            "Contracts you accept in game appear here automatically from Game.log, consolidated into collect and deliver stops per location. No manual entry."),
-        new(TutorialTarget.BlueprintNetwork, "Blueprint Network",
-            "Share your blueprint library with friends and your org - export yours, import theirs, and see who owns what together. No server, no account - you share the files yourself."),
-        new(TutorialTarget.None, "You're set",
-            "That's the tour. Want to set up auto-scan now? Have Star Citizen open with an RS value on screen. You can replay this anytime from Help."),
+        new(TutorialTarget.None, "Already working",
+            "Nexus went live the moment you launched it - your game feeds it everything through one log file, no setup required. This quick tour shows you the map: a status strip that reports, a module dock that works, and an overlay that flies with you."),
+        new(TutorialTarget.SessionPill, "The status strip",
+            "This pill lights up when Star Citizen writes to Game.log and Nexus reads along - read-only, nothing modified, EAC-safe. If it stays dark, point Settings at your Game.log path."),
+        new(TutorialTarget.BlueprintsPill, "Blueprints count themselves",
+            "Pick up a blueprint in the verse and this count ticks on its own - every find lands in your Blueprint Library with zero clicks. WHERE TO MINE there shows how to get the ones you are missing."),
+        new(TutorialTarget.AppDock, "The module dock",
+            "Eight modules, one click each. When you want to do something instead of glance at it, it lives on this dock - Settings included, down at the bottom."),
+        new(TutorialTarget.OperationsKpis, "Operations preflight",
+            "Nexus lands here on launch. Read the row - last scan, refinery queue, cargo in transit, session blueprints, network coverage - and every panel below links straight into its module."),
+        new(TutorialTarget.RsDecoderTile, "RS Decoder",
+            "Your first stop after scanning a rock: click in, type the RS value, and get a best-match ore breakdown. Or skip the typing - auto-scan can read it off your screen."),
+        new(TutorialTarget.RefineryTile, "Refinery",
+            "Click + Add work order inside and Nexus counts down every job. The pill on this tile shows how many orders are cooking."),
+        new(TutorialTarget.HaulingTile, "Hauling tracks itself",
+            "Accept a hauling contract in game and it appears here on its own - the pill shows your active hauls. Click in for consolidated collect and deliver stops across all of them."),
+        new(TutorialTarget.NetworkTile, "Share without a server",
+            "Network trades blueprint libraries by file - export yours, import a friend's, see who owns what together. Fully offline; nothing leaves your machine unless you hand it over."),
+        new(TutorialTarget.OpenOverlay, "The third space",
+            "Click here to launch the overlay - a compact panel that floats over Star Citizen so you never leave the game to use Nexus."),
+        new(TutorialTarget.OverlayHub, "Proof of life",
+            "The overlay opens on the HUB: green lights mean a feed is live right now - session, RS auto-scan, contracts. Blueprints collected, server, and shard read out below."),
+        new(TutorialTarget.ScanToggle, "Auto-scan is opt-in",
+            "Switch this on and Nexus reads rock signatures straight off your screen through the magenta box you draw once. It pauses on its own whenever you and the game are both in the background."),
+        new(TutorialTarget.ContractRegion, "Contracts get their own box",
+            "Contract scanning uses a separate region, set right here - yellow for contracts, magenta stays RS. The two never interfere."),
+        new(TutorialTarget.None, "You have the map",
+            "Strip reports, dock works, overlay flies with you - and the loop is track, scan, refine, haul, share. One thing left: click Set up auto-scan to draw your magenta RS box now, or replay this tour anytime from Help."),
     ];
 
     private readonly Window _owner;
