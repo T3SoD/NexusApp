@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.0.1  -  Jul 02, 2026",
+        [
+            "Updated for Star Citizen patch 4.8.3 - blueprint unlock data refreshed: 11 new missions now award blueprints (Rayari, United Wayfarers Club, Vaughn, Citizens For Prosperity, Headhunters, and Wikelo contracts), plus expanded reward pools on existing missions",
+            "Shubin's Lrg. and XL ore purchase orders now unlock 57 more blueprints between them, including most mining lasers and scan modules",
+            "System availability corrected for several unlock missions",
+            "Mining reference data (resources, recipes, locations) verified current for 4.8.3",
+        ]),
         ("App  6.0.0  -  Jul 02, 2026",
         [
             "Complete UI overhaul - Nexus is now a MOBIGLAS-style HUD: amber-on-void look, chamfered panels, and every page rebuilt, with an app dock of animated module icons replacing the old sidebar",
