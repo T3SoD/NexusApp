@@ -7,7 +7,8 @@ using NexusApp.Services;
 
 namespace NexusApp.Views;
 
-// Settings as an in-app page (hosted in the main content area, reached from the header gear),
+// Settings as an in-app page (hosted in the main content area, reached from the Settings module
+// at the bottom of the app dock),
 // not a pop-out dialog. Single theme (MOBIGLAS), so there is no appearance/theme picker: just
 // the Game.log paths, Blueprint Network identity, diagnostics, and the destructive clear-data action.
 public sealed class SettingsPage : UserControl

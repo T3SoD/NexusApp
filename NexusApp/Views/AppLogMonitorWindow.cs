@@ -171,7 +171,6 @@ public sealed class AppLogMonitorWindow : Window
         var settings = new List<(string, string)>
         {
             ("Distribution", AppInfo.Distribution),
-            ("Theme", App.Settings.Current.Theme),
             ("Scan region set", App.Settings.Current.ScanRegion != null ? "yes" : "no"),
             ("Game.log path", string.IsNullOrEmpty(App.Settings.Current.GameLogPath) ? "(default / auto-detect)" : App.Settings.Current.GameLogPath),
             ("Session Tracking", App.Settings.Current.GameLogTrackSession ? "on" : "off"),

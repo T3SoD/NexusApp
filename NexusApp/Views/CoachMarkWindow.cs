@@ -16,8 +16,7 @@ namespace NexusApp.Views;
 ///
 /// Topmost + no-activate (WS_EX_NOACTIVATE) so it floats above the app and the
 /// overlay without stealing focus from the game; its buttons stay clickable.
-/// Styled from the active theme's resources, so it is gold in Luxury and teal in
-/// Classic automatically.
+/// Styled from the app's shared theme resources.
 /// </summary>
 public sealed class CoachMarkWindow : Window
 {

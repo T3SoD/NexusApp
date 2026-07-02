@@ -37,6 +37,15 @@ public class AnimatedDockIcon : Viewbox
     private Storyboard? _selected;
     private RadioButton? _host;
     private bool _built;
+    private Brush? _staticColor;
+
+    /// <summary>Fixed colour override for static hosts (e.g. the Help topic list) that have no
+    /// RadioButton driving the rest / hover / selected colours. Safe to call before load.</summary>
+    public void SetStaticColor(Brush b)
+    {
+        _staticColor = b;
+        if (_built) SetColor(b);
+    }
 
     private sealed class PartRt
     {
@@ -140,7 +149,7 @@ public class AnimatedDockIcon : Viewbox
         Child = canvas;
         _hover = BuildStoryboard(spec, "hover");
         _selected = BuildStoryboard(spec, "selected");
-        SetColor(Res("FgDimBrush"));
+        SetColor(_staticColor ?? Res("FgDimBrush"));
     }
 
     private Point ResolvePivot(JsonElement part, string id, JsonElement spec, Geometry geom)
@@ -362,7 +371,7 @@ public class AnimatedDockIcon : Viewbox
         return null;
     }
 
-    private void ApplyInitial() => SetColor(Res(_host?.IsChecked == true ? "CyanBrush" : "FgDimBrush"));
+    private void ApplyInitial() => SetColor(_staticColor ?? Res(_host?.IsChecked == true ? "CyanBrush" : "FgDimBrush"));
 
     private void Host_Enter(object sender, MouseEventArgs e)
     {

@@ -13,7 +13,9 @@ public enum TutorialTarget
     DrawRegion,
     ScanToggle,
     OverlayTabs,
-    ReferenceTools,  // the left nav rail (Blueprints / Codex / Refinery)
+    OverlayHub,      // the overlay's HUB tab (status lights)
+    AppDock,         // the Wrist-OS module dock
+    CargoHauling,
     BlueprintNetwork,
 }
 
@@ -33,17 +35,21 @@ public sealed class TourController
         new(TutorialTarget.None, "Welcome to Nexus",
             "Nexus reads RS values straight off your screen and decodes the resource and node count. This quick tour points out the essentials - skip anytime, replay later from Help."),
         new(TutorialTarget.RsDecoder, "RS Signal Decoder",
-            "Type any RS value here and press Enter. Nexus lists every matching resource, ranked by likelihood, with its tier and where to sell."),
+            "Type any RS value here and press Enter. Nexus lists every matching resource, ranked by likelihood, with node counts and the best match's refinery yields."),
         new(TutorialTarget.OpenOverlay, "The floating overlay",
             "Open this to float Nexus over your game. Drag its NEXUS header to move it; it stays on top while you mine."),
         new(TutorialTarget.DrawRegion, "Auto-scan: draw the region",
             "Click here, then drag a tight box around just the RS digits on screen. Smaller is better - digits only, no labels."),
         new(TutorialTarget.ScanToggle, "Auto-scan: start reading",
-            "Press start and Nexus reads your region every half-second, decoding each value automatically as you mine."),
+            "Turn on Auto-scan RS and Nexus reads your region several times a second, decoding each value as you mine. It pauses while you and the game are both in the background."),
         new(TutorialTarget.OverlayTabs, "Overlay tabs",
-            "SCAN, ORDERS, and SHOPPING - your live results, refinery jobs, and shopping cart, all without leaving the game."),
-        new(TutorialTarget.ReferenceTools, "Your reference tools",
-            "Three tools live in the nav: the Blueprint Library for recipes, the Mining Codex reference table, and the Refinery Tracker for your refines."),
+            "HUB, SCAN, REFINERY, SHOPPING, and HAULING - live status, auto-scan, refinery jobs, your cart, and your haul plan, all without leaving the game."),
+        new(TutorialTarget.OverlayHub, "The HUB",
+            "The overlay lands here: a light for each scanner (green on, yellow paused, red off), blueprints collected this session, and your current server and shard."),
+        new(TutorialTarget.AppDock, "The app dock",
+            "All eight modules live in this dock - the Blueprint Library for recipes, the Mining Codex ore reference, the Refinery tracker, Cargo Hauling, and Settings at the bottom."),
+        new(TutorialTarget.CargoHauling, "Cargo Hauling",
+            "Contracts you accept in game appear here automatically from Game.log, consolidated into collect and deliver stops per location. No manual entry."),
         new(TutorialTarget.BlueprintNetwork, "Blueprint Network",
             "Share your blueprint library with friends and your org - export yours, import theirs, and see who owns what together. No server, no account - you share the files yourself."),
         new(TutorialTarget.None, "You're set",

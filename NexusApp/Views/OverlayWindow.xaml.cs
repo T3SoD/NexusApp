@@ -30,11 +30,15 @@ public partial class OverlayWindow : Window
     public FrameworkElement SetRegionTarget   => SetRegionBtn;
     public FrameworkElement BoxToggleTarget   => _boxSwitchPair ?? SetRegionBtn;
     public FrameworkElement ScanToggleTarget  => _scanSwitchPair ?? SetRegionBtn;
-    public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the SCAN/ORDERS/SHOPPING strip
+    public FrameworkElement TabStripTarget    => TabOrdersBtn;    // points at the HUB/SCAN/REFINERY/SHOPPING/HAULING strip
     public FrameworkElement ShoppingTabTarget => TabShoppingBtn;
+    public FrameworkElement HubTarget         => HubScanBar;      // the HUB's SCAN STATUS light rows
 
     /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
     public void ShowScanTabForTutorial() => SwitchTab("scan");
+
+    /// <summary>Force the HUB tab visible so the tour can point at the status lights.</summary>
+    public void ShowHubTabForTutorial() => SwitchTab("stats");
 
     /// <summary>Force the SHOPPING tab visible so the tour can point at the cart.</summary>
     public void ShowShoppingTabForTutorial() => SwitchTab("shopping");

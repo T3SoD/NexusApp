@@ -102,10 +102,6 @@ public partial class App : Application
         _foreground.RelevanceChanged += OnForegroundRelevanceChanged;
         _foreground.Start();
 
-        // Pick the palette BEFORE the main window is created. StartupUri builds
-        // MainWindow inside base.OnStartup, and its StaticResource theme brushes
-        // resolve once at load time - so the palette must already be swapped or
-        // those brushes freeze on the default (Luxury) gold even in Classic.
         // One-time migration of user data from the old %AppData%\Nexus_v4 folder
         // (pre-5.0.1) to the version-neutral %AppData%\NexusApp, so upgraders
         // keep their settings, work orders and history. Runs before anything reads.
@@ -116,27 +112,8 @@ public partial class App : Application
         // export), so the import self-skip can always recognise "you" and never double-count.
         Settings.EnsureLocalNetworkId();
 
-        if (!Settings.Current.FirstRunComplete)
-        {
-            // First run: let the user pick a theme before MainWindow is built, so
-            // the app opens directly in their choice with no restart. The picker is
-            // the only window at this point, so it gets auto-assigned as MainWindow -
-            // guard against OnMainWindowClose shutting us down when it closes, then
-            // clear MainWindow so StartupUri reassigns the real window below.
-            var prevShutdownMode = ShutdownMode;
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-
-            var picker = new Views.ThemePickerWindow();
-            picker.ShowDialog();
-            ThemeService.Apply(picker.SelectedTheme, save: true);
-
-            MainWindow = null;
-            ShutdownMode = prevShutdownMode;
-        }
-        else
-        {
-            ThemeService.Apply(Settings.Current.Theme, save: false);
-        }
+        // Single theme: the palette is merged statically in App.xaml
+        // (Themes/Palette.Luxury.xaml); there is no picker and no runtime switch.
 
         base.OnStartup(e);
         Data = new DataService();
@@ -183,8 +160,10 @@ public partial class App : Application
         // BETA Game.log cargo-hauling tracker. Own watcher (decoupled from the blueprint
         // session so haul tracking runs regardless of the blueprint toggle). Replays the
         // current Game.log from the top so a mid-session restart rebuilds active hauls.
+        // No toast on HaulEnded: the startup replay re-raises last session's ended hauls,
+        // which popped stale "Haul Abandoned" toasts on every launch. The Hauling tab and
+        // [HAUL] log lines carry the outcome instead.
         Hauls = new HaulTracker { PreferredPath = Settings.Current.GameLogPath };
-        Hauls.HaulEnded += h => Views.ToastWindow.Show($"Haul {h.Outcome}: {h.Company}");
         Hauls.Start(Hauls.StartPath(), fromBeginning: true);
 
         // Server/shard tracker. Own watcher (always on); persists the rolling list to settings so the
