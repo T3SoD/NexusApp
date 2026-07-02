@@ -20,7 +20,7 @@ public sealed class ImportResultDialog : Window
     {
         _reportPayload = reportPayload;
 
-        Title = "Import owned blueprints (Beta)";
+        Title = "Import owned blueprints";
         Width = 560; Height = 560; MinWidth = 460; MinHeight = 400;
         Background = (Brush)Application.Current.FindResource("BgBrush");
         Foreground = (Brush)Application.Current.FindResource("FgBrush");

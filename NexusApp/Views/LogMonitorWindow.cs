@@ -42,7 +42,7 @@ public sealed class LogMonitorWindow : Window
 
     public LogMonitorWindow()
     {
-        Title = "Game.log Monitor - Advanced (Beta)";
+        Title = "Game.log Monitor - Advanced";
         Width = 940; Height = 560; MinWidth = 600; MinHeight = 380;
         Background = Res("BgBrush");
         Foreground = Res("FgBrush");
@@ -143,7 +143,7 @@ public sealed class LogMonitorWindow : Window
             Background = Res("Bg2NavBrush"), BorderBrush = Res("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6),
         };
         var bpRow = new StackPanel { Orientation = Orientation.Horizontal };
-        bpRow.Children.Add(new TextBlock { Text = "Session tracking (Beta):", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
+        bpRow.Children.Add(new TextBlock { Text = "Session tracking:", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Res("AccentBrush"), Margin = new Thickness(0, 0, 12, 0) });
         _autoMark = MakeCheck("Auto-Track Blueprints (collects them to your library)", App.GameLog.AutoMark);
         _autoMark.Margin = new Thickness(0, 0, 0, 0);
         _autoMark.ToolTip = "When the log shows a 'Received Blueprint' event, collect it (mark it Owned in your library) automatically";
@@ -176,7 +176,7 @@ public sealed class LogMonitorWindow : Window
         // Row 4 - status
         _status = new TextBlock
         {
-            Text = "Beta: tails Game.log. Turn on Auto-Track Blueprints to collect them live, or import from past logs.",
+            Text = "Tails Game.log. Turn on Auto-Track Blueprints to collect them live, or import from past logs.",
             Foreground = Res("FgDimBrush"), Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
         };
         Grid.SetRow(_status, 4); root.Children.Add(_status);
