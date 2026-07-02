@@ -164,14 +164,27 @@ public partial class MainWindow : Window
 
     // ── Nav ──────────────────────────────────────────────────────────────────
 
+    // Wired to BOTH Click and Checked on the dock tiles: Checked also fires when the
+    // tile is selected through UI Automation (accessibility tools, scripted drivers),
+    // which never raises Click. The _activePage guard makes the double dispatch on a
+    // plain mouse click (Checked then Click) a no-op.
     private void Nav_Click(object sender, RoutedEventArgs e)
     {
+        // Checked fires for NavCommand's IsChecked="True" DURING InitializeComponent,
+        // before the page elements exist - ignore until the window is up (the ctor's
+        // explicit SetActivePage("command") sets the initial page).
+        if (!IsLoaded) return;
         if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string page)
             SetActivePage(page);
     }
 
+    private string? _activePage;
+
     private void SetActivePage(string page)
     {
+        if (page == _activePage) return;
+        _activePage = page;
+
         PageCommand.Visibility    = page == "command"    ? Visibility.Visible : Visibility.Collapsed;
         PageScan.Visibility       = page == "scan"       ? Visibility.Visible : Visibility.Collapsed;
         PageBlueprints.Visibility = page == "blueprints" ? Visibility.Visible : Visibility.Collapsed;

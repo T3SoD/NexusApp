@@ -78,29 +78,8 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
                             HorizontalAlignment="Stretch" Background="Transparent"
                             MouseLeftButtonDown="Header_MouseLeftButtonDown" Cursor="SizeAll">
-                    <!-- Spinning amber ring (mock logo): ~270° arc with an open edge, 14s linear loop.
-                         Amber via DynamicResource so it tracks the active palette. -->
-                    <Grid Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0">
-                        <Path Width="14" Height="14" Stretch="None"
-                              Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"
-                              Data="M 7,0.5 A 6.5,6.5 0 1 1 0.5,7" RenderTransformOrigin="0.5,0.5">
-                            <Path.RenderTransform>
-                                <RotateTransform x:Name="LogoSpin"/>
-                            </Path.RenderTransform>
-                            <Path.Triggers>
-                                <EventTrigger RoutedEvent="Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="LogoSpin"
-                                                             Storyboard.TargetProperty="Angle"
-                                                             From="0" To="360" Duration="0:0:14"
-                                                             RepeatBehavior="Forever"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Path.Triggers>
-                        </Path>
-                    </Grid>
+                    <!-- Animated Nexus mark (beam + sparks), replacing the old spinning arc. -->
+                    <views:NexusBeamIcon Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="NEXUS" Foreground="{DynamicResource AccentBrush}"
                                FontFamily="{StaticResource DisplayFont}" FontWeight="Bold"
                                FontSize="16" VerticalAlignment="Center"/>

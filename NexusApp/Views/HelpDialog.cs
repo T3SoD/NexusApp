@@ -109,7 +109,7 @@ public class HelpDialog : Window
             ]),
 
         new("✓", "Session Tracking",
-            "Nexus reads Star Citizen's Game.log and auto-collects blueprints you receive - marking them Owned live as you play, or in bulk from past logs. Always on. (Beta)",
+            "Nexus reads Star Citizen's Game.log and auto-collects blueprints you receive - marking them Owned live as you play, or in bulk from past logs. Always on.",
             [new("GAME SESSION", "header pill"), new("Import", "past logs")],
             [
                 "Session tracking and blueprint auto-collect are always on - there's nothing to switch on.",
@@ -195,7 +195,7 @@ public class HelpDialog : Window
             ]),
 
         new("dock:cargo", "Cargo Hauling",
-            "Nexus reads the hauling contracts you accept from Game.log and builds a consolidated collect-and-deliver plan across every active haul. (Beta)",
+            "Nexus reads the hauling contracts you accept from Game.log and builds a consolidated collect-and-deliver plan across every active haul.",
             [new("Auto-scan contracts", "switch"), new("⊕", "set contract region")],
             [
                 "Open the Cargo Hauling module in the app dock - contracts you accept in game appear automatically, no manual entry.",

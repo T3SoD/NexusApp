@@ -447,8 +447,9 @@ public class AboutDialog : Window
 
         AddLegalSection("How This App Works",
             "Nexus reads pixel data from your screen (screen capture) and displays reference information " +
-            "from a local database. The optional Session Tracking feature (Beta) additionally reads - " +
-            "read-only - the Game.log text file Star Citizen writes to disk, to auto-collect blueprints. " +
+            "from a local database. Session Tracking and Cargo Hauling additionally read - " +
+            "read-only - the Game.log text file Star Citizen writes to disk, to auto-collect blueprints " +
+            "and track the hauling contracts you accept. " +
             "When you choose to export your library in the Blueprint Network, Nexus also reads your RSI " +
             "handle from that same Game.log (read-only) to pre-fill it - you can use a nickname instead. " +
             "If you use a community localization mod that renames components, Nexus can also read - " +
