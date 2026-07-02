@@ -13,6 +13,18 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.0.0  -  Jul 02, 2026",
+        [
+            "Complete UI overhaul - Nexus is now a MOBIGLAS-style HUD: amber-on-void look, chamfered panels, and every page rebuilt, with an app dock of animated module icons replacing the old sidebar",
+            "New Operations dashboard - the landing page shows your last scan, refinery queue, cargo in transit, session blueprints, and network coverage at a glance, with links into every module",
+            "Overlay rebuilt around five tabs - HUB (a read-only status glance: scan lights, blueprints collected, server and shard), SCAN, REFINERY, SHOPPING, and HAULING",
+            "Session Tracking and blueprint auto-collect are now always on - no toggles to remember; the GAME SESSION and BLUEPRINTS pills in the header show the live state",
+            "New welcome tour - a 14-step orientation of the whole app, replayable from Help - plus a rebuilt help guide covering every module, including Cargo Hauling and Operations",
+            "The Nexus mark is now animated - the mining beam fires down and sparks fly, in the app header and the overlay",
+            "One look - the theme picker is gone; Nexus ships a single design, and the app icon is teal everywhere including the taskbar",
+            "Quieter by design - popup notifications removed; feedback lives in the HUB counts, dock pills, and scan-box flashes",
+            "Settings is now a module in the dock - Game.log paths, RSI handle detection, diagnostics, reduce animations, and a 24-hour clock",
+        ]),
         ("App  5.6.0  -  Jun 27, 2026",
         [
             "New: Cargo Hauling. Nexus reads the hauling contracts you accept from Star Citizen's Game.log and tracks them in a new Hauling tab (main window and overlay), with a consolidation view of what to load and drop at each stop across all your active hauls. Fully automatic, no manual entry.",
