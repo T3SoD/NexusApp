@@ -87,7 +87,7 @@
                     </StackPanel>
                 </Border>
                 <!-- SESSION telemetry chip: Game.log tracking is always on (green = monitoring, red = no log) -->
-                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                <Border x:Name="SessionChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
                         ToolTip="Star Citizen session tracking (always on)">
@@ -98,7 +98,7 @@
                     </StackPanel>
                 </Border>
                 <!-- BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on (green = tracking, red = off) -->
-                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                <Border x:Name="BlueprintChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
                         ToolTip="Auto-Track Blueprints: collects blueprints you unlock to your library (always on)">
