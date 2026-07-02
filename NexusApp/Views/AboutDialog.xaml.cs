@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.0.2  -  Jul 02, 2026",
+        [
+            "Updated the trademark notice in About > Legal, the README, and the release notes to Star Citizen's official Fan Kit wording",
+            "Added the Star Citizen Made By The Community mark to the project README and its gameplay screenshots",
+        ]),
         ("App  6.0.1  -  Jul 02, 2026",
         [
             "Updated for Star Citizen patch 4.8.3 - blueprint unlock data refreshed: 11 new missions now award blueprints (Rayari, United Wayfarers Club, Vaughn, Citizens For Prosperity, Headhunters, and Wikelo contracts), plus expanded reward pools on existing missions",
@@ -462,7 +467,8 @@ public class AboutDialog : Window
         AddLegalSection("Non-Affiliation",
             "Nexus is an unofficial, fan-made tool created independently. It is not affiliated with, " +
             "endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). " +
-            "Star Citizen® is a registered trademark of Cloud Imperium Games Corporation.");
+            "Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks " +
+            "of Cloud Imperium Rights LLC.");
 
         AddLegalSection("How This App Works",
             "Nexus reads pixel data from your screen (screen capture) and displays reference information " +
