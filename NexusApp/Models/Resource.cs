@@ -14,9 +14,11 @@ public class Resource
 
     // Python: ratio = rs / base_rs; nearest = round(ratio)
     // exact if rs % base_rs == 0; fuzzy if abs(ratio - nearest)/nearest <= 0.5%
+    // Ship ores only: hand/vehicle deposits share one flat family signature (3000 fps / 4000
+    // vehicle), so they cannot be discriminated by RS and would only pollute ship-scan matching.
     public (bool Matches, int Nodes, bool IsExact, double ErrorPct) CheckRs(int rs)
     {
-        if (BaseRs <= 0) return (false, 0, false, 0);
+        if (BaseRs <= 0 || Method != "ship") return (false, 0, false, 0);
         double ratio = (double)rs / BaseRs;
         int nearest = (int)Math.Round(ratio);
         if (nearest < 1) return (false, 0, false, 0);

@@ -11,6 +11,8 @@ public class ShardTrackerTests
         $"<2026-06-27T13:14:51.882Z> [Notice] <Join PU> address[{ip}] port[64318] shard[{shard}] locationId[1] [x]";
     private static string Leave() =>
         "<2026-06-27T14:30:51.596Z> [Notice] <CDisciplineServiceExternal::EndSession> Ending session [AntiCheat][EAC]";
+    private static string LeaveSystemQuit() =>
+        "<2026-07-03T03:16:19.651Z> [Notice] <SystemQuit> CSystem::Quit invoked with - cause=30016, reason=User closed the application, exitCode=0, thread id=17232";
 
     [Fact]
     public void FirstJoin_SetsCurrent_RecentEmpty()
@@ -126,5 +128,40 @@ public class ShardTrackerTests
         var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
         t.Ingest(E("<2026-06-27T13:14:51.882Z> [Notice] <Something> foo"));
         Assert.Null(t.Current);
+    }
+
+    // SC 4.8 stopped writing the EAC EndSession line; <SystemQuit> is the leave marker now.
+    [Fact]
+    public void SystemQuit_ClearsCurrent_AndMovesItToRecent()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        t.Ingest(E(LeaveSystemQuit()));
+        Assert.Null(t.Current);
+        Assert.False(t.OnShard);
+        Assert.Equal("pub_use1b_12030094_140", t.Recent[0].ShardId);
+    }
+
+    // Replaying a cold leftover log must record history but never claim the player is on a shard.
+    [Fact]
+    public void StaleReplay_Join_GoesToHistory_NotCurrent()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.BeginStaleReplay();
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        Assert.Null(t.Current);
+        Assert.False(t.OnShard);
+        Assert.Equal("pub_use1b_12030094_140", t.Recent[0].ShardId);
+    }
+
+    [Fact]
+    public void StaleReplay_RejoinPersistedShard_StaysOff()
+    {
+        var persisted = new List<ShardSession> { new() { ShardId = "pub_euw1b_1_99", Instance = "99" } };
+        var t = new ShardTracker(() => persisted, _ => { });
+        t.BeginStaleReplay();
+        t.Ingest(E(Join("pub_euw1b_1_99")));   // same shard as persisted history head
+        Assert.Null(t.Current);
+        Assert.Single(t.All);
     }
 }
