@@ -31,6 +31,16 @@ public static class ContractParser
         RegexOptions.Compiled);
     private static readonly Regex RepTag = new(@"\[[^\]]*\]", RegexOptions.Compiled);
 
+    // The contract states its max container size in the details prose. "SC\w+" tolerates OCR rendering
+    // "SCU" as "SCIJ". Most specific wording first. Never matches a "N SCU of <commodity>" objective line.
+    private static readonly Regex[] ContainerCapRx =
+    {
+        new(@"(\d+)\s*SC\w+\s+(?:cargo\s+)?containers?", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"(\d+)\s*SC\w+\s+or\s+smaller", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"max(?:imum)?\s+(?:container|box)[^0-9]{0,24}(\d+)\s*SC\w+", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+    };
+    private static readonly int[] StandardBoxSizes = { 1, 2, 4, 8, 16, 24, 32 };
+
     public static ContractDetails? Parse(string ocrText)
     {
         if (string.IsNullOrWhiteSpace(ocrText)) return null;
@@ -65,7 +75,29 @@ public static class ContractParser
             Reward = ParseReward(ocrText),
             ContractedBy = contractedBy,
             Objectives = objectives,
+            ContainerCap = ParseContainerCap(ocrText),
         };
+    }
+
+    // The contract's max container size, snapped to the nearest standard box (1/2/4/8/16/24/32).
+    // Null when the panel text did not state a container size (the caller then defaults it).
+    public static int? ParseContainerCap(string ocrText)
+    {
+        foreach (var rx in ContainerCapRx)
+        {
+            var m = rx.Match(ocrText);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var n) && n > 0)
+                return SnapBoxSize(n);
+        }
+        return null;
+    }
+
+    private static int SnapBoxSize(int n)
+    {
+        int best = StandardBoxSizes[0];
+        foreach (var s in StandardBoxSizes)
+            if (Math.Abs(s - n) < Math.Abs(best - n)) best = s;
+        return best;
     }
 
     // OCR objective checkbox bullets render as stray single letters ("O"/"o") that cling to the end of a

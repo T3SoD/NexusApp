@@ -1,0 +1,1174 @@
+[
+ {
+  "id": "crus-c2-hercules",
+  "name": "C2 Hercules",
+  "manufacturer": "Crusader Industries",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 15,
+    "d": 8,
+    "h": 4,
+    "cap": 32,
+    "px": 0.0,
+    "py": -11.9,
+    "pz": -7.05,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 9,
+    "d": 6,
+    "h": 4,
+    "cap": 32,
+    "px": 0.0,
+    "py": 4.1,
+    "pz": -7.1,
+    "wy": true
+   }
+  ],
+  "priority": 1
+ },
+ {
+  "id": "argo-raft",
+  "name": "RAFT",
+  "manufacturer": "Argo Astronautics",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 12,
+    "d": 8,
+    "h": 2,
+    "cap": 32,
+    "px": 0.0,
+    "py": -1.87,
+    "pz": -2.85,
+    "wy": true
+   }
+  ],
+  "priority": 2
+ },
+ {
+  "id": "rsi-constellation-taurus",
+  "name": "Constellation Taurus",
+  "manufacturer": "Roberts Space Industries",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 4,
+    "px": 0.0,
+    "py": -4.16,
+    "pz": -0.88,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 14,
+    "d": 4,
+    "h": 3,
+    "cap": 32,
+    "px": 0.0,
+    "py": -1.904,
+    "pz": -3.601,
+    "wy": true
+   }
+  ],
+  "priority": 3
+ },
+ {
+  "id": "drak-cutlass-black",
+  "name": "Cutlass Black",
+  "manufacturer": "Drake Interplanetary",
+  "class": "Multi",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 5,
+    "d": 4,
+    "h": 2,
+    "cap": 16,
+    "px": -0.009,
+    "py": 3.781,
+    "pz": -2.125,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -0.009,
+    "py": -1.346,
+    "pz": -2.125,
+    "wy": false
+   }
+  ],
+  "priority": 4
+ },
+ {
+  "id": "crus-c1-spirit",
+  "name": "C1 Spirit",
+  "manufacturer": "Crusader Industries",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 2,
+    "h": 2,
+    "cap": 32,
+    "px": -2.174,
+    "py": -1.372,
+    "pz": -0.4,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 8,
+    "d": 2,
+    "h": 2,
+    "cap": 32,
+    "px": 2.174,
+    "py": -1.372,
+    "pz": -0.4,
+    "wy": true
+   }
+  ],
+  "priority": 5
+ },
+ {
+  "id": "misc-freelancer-max",
+  "name": "Freelancer MAX",
+  "manufacturer": "MISC",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 9,
+    "d": 4,
+    "h": 3,
+    "cap": 32,
+    "px": -0.002,
+    "py": 0.875,
+    "pz": -1.768,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -1.122,
+    "py": 8.598,
+    "pz": -1.728,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": 1.118,
+    "py": 8.598,
+    "pz": -1.748,
+    "wy": false
+   }
+  ],
+  "priority": 6
+ },
+ {
+  "id": "drak-caterpillar",
+  "name": "Caterpillar",
+  "manufacturer": "Drake Interplanetary",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 5,
+    "d": 4,
+    "h": 3,
+    "cap": 16,
+    "px": -0.007,
+    "py": 34.992,
+    "pz": -2.14,
+    "wy": false
+   },
+   {
+    "id": 1,
+    "w": 5,
+    "d": 2,
+    "h": 2,
+    "cap": 16,
+    "px": -0.007,
+    "py": 31.992,
+    "pz": -2.14,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 6,
+    "d": 4,
+    "h": 4,
+    "cap": 24,
+    "px": 0.493,
+    "py": 26.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 3,
+    "w": 4,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -3.007,
+    "py": 26.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 4,
+    "w": 5,
+    "d": 4,
+    "h": 1,
+    "cap": 2,
+    "px": 0.993,
+    "py": 23.592,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 5,
+    "w": 6,
+    "d": 4,
+    "h": 4,
+    "cap": 24,
+    "px": 0.493,
+    "py": 18.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 6,
+    "w": 4,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -3.007,
+    "py": 18.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 7,
+    "w": 5,
+    "d": 4,
+    "h": 1,
+    "cap": 2,
+    "px": 0.993,
+    "py": 15.592,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 8,
+    "w": 6,
+    "d": 4,
+    "h": 4,
+    "cap": 24,
+    "px": 0.493,
+    "py": 10.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 9,
+    "w": 4,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -3.007,
+    "py": 10.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 10,
+    "w": 5,
+    "d": 4,
+    "h": 1,
+    "cap": 2,
+    "px": 0.993,
+    "py": 7.592,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 11,
+    "w": 6,
+    "d": 4,
+    "h": 4,
+    "cap": 24,
+    "px": 0.493,
+    "py": 2.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 12,
+    "w": 4,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -3.007,
+    "py": 2.092,
+    "pz": -2.2,
+    "wy": false
+   },
+   {
+    "id": 13,
+    "w": 5,
+    "d": 4,
+    "h": 1,
+    "cap": 2,
+    "px": 0.993,
+    "py": -0.408,
+    "pz": -2.2,
+    "wy": false
+   }
+  ],
+  "priority": 7
+ },
+ {
+  "id": "misc-starlancer-max",
+  "name": "Starlancer MAX",
+  "manufacturer": "MISC",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 3,
+    "h": 2,
+    "cap": 32,
+    "px": -3.6,
+    "py": -14.4,
+    "pz": -4.007,
+    "wy": false
+   },
+   {
+    "id": 1,
+    "w": 8,
+    "d": 3,
+    "h": 2,
+    "cap": 32,
+    "px": 3.6,
+    "py": -14.4,
+    "pz": -4.007,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 16,
+    "d": 2,
+    "h": 2,
+    "cap": 32,
+    "px": -1.529,
+    "py": 1.825,
+    "pz": -4.333,
+    "wy": true
+   },
+   {
+    "id": 3,
+    "w": 16,
+    "d": 2,
+    "h": 2,
+    "cap": 32,
+    "px": 1.529,
+    "py": 1.825,
+    "pz": -4.333,
+    "wy": true
+   }
+  ],
+  "priority": 8
+ },
+ {
+  "id": "rsi-zeus-mk-ii-cl",
+  "name": "Zeus Mk II CL",
+  "manufacturer": "Roberts Space Industries",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 5,
+    "h": 3,
+    "cap": 32,
+    "px": 0.0,
+    "py": -3.6,
+    "pz": -2.0,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 2,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -3.02,
+    "py": -4.7,
+    "pz": -2.0,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 2,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": 3.02,
+    "py": -4.7,
+    "pz": -2.0,
+    "wy": false
+   }
+  ],
+  "priority": 9
+ },
+ {
+  "id": "misc-hull-c",
+  "name": "Hull C",
+  "manufacturer": "MISC",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 1,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 2,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 3,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 4,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 5,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 6,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 7,
+    "w": 8,
+    "d": 8,
+    "h": 6,
+    "cap": 32
+   },
+   {
+    "id": 8,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 9,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 10,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 11,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 12,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 13,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 14,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 15,
+    "w": 8,
+    "d": 6,
+    "h": 4,
+    "cap": 32
+   }
+  ],
+  "priority": 10
+ },
+ {
+  "id": "misc-freelancer",
+  "name": "Freelancer",
+  "manufacturer": "MISC",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 9,
+    "d": 3,
+    "h": 2,
+    "cap": 32,
+    "px": -0.002,
+    "py": 0.875,
+    "pz": -1.768,
+    "wy": false
+   },
+   {
+    "id": 1,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -1.122,
+    "py": 8.598,
+    "pz": -1.728,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 3,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": 1.118,
+    "py": 8.598,
+    "pz": -1.748,
+    "wy": false
+   }
+  ],
+  "priority": 11
+ },
+ {
+  "id": "drak-ironclad",
+  "name": "Ironclad",
+  "manufacturer": "Drake Interplanetary",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 10,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": -5.2,
+    "py": -0.7,
+    "pz": -4.86,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 10,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": 5.2,
+    "py": -0.7,
+    "pz": -4.86,
+    "wy": true
+   },
+   {
+    "id": 2,
+    "w": 20,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": -5.2,
+    "py": 15.7,
+    "pz": -4.86,
+    "wy": true
+   },
+   {
+    "id": 3,
+    "w": 20,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": 5.2,
+    "py": 15.7,
+    "pz": -4.86,
+    "wy": true
+   },
+   {
+    "id": 4,
+    "w": 2,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": -2.5,
+    "py": 39.6,
+    "pz": -1.5,
+    "wy": false
+   },
+   {
+    "id": 5,
+    "w": 2,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": 0.0,
+    "py": 39.6,
+    "pz": -1.5,
+    "wy": false
+   },
+   {
+    "id": 6,
+    "w": 2,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": 2.5,
+    "py": 39.6,
+    "pz": -1.5,
+    "wy": false
+   },
+   {
+    "id": 7,
+    "w": 2,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": -2.5,
+    "py": 32.5,
+    "pz": -1.5,
+    "wy": false
+   },
+   {
+    "id": 8,
+    "w": 2,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": 2.5,
+    "py": 32.5,
+    "pz": -1.5,
+    "wy": false
+   }
+  ],
+  "priority": 12
+ },
+ {
+  "id": "misc-hull-a",
+  "name": "Hull A",
+  "manufacturer": "MISC",
+  "class": "Industrial",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 4,
+    "d": 2,
+    "h": 2,
+    "cap": 16
+   },
+   {
+    "id": 1,
+    "w": 4,
+    "d": 2,
+    "h": 2,
+    "cap": 16
+   },
+   {
+    "id": 2,
+    "w": 4,
+    "d": 2,
+    "h": 2,
+    "cap": 16
+   },
+   {
+    "id": 3,
+    "w": 4,
+    "d": 2,
+    "h": 2,
+    "cap": 16
+   }
+  ],
+  "priority": 13
+ },
+ {
+  "id": "aegs-avenger-titan",
+  "name": "Avenger Titan",
+  "manufacturer": "Aegis Dynamics",
+  "class": "Transport",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 4,
+    "d": 2,
+    "h": 1,
+    "cap": 4,
+    "px": 0.0,
+    "py": -4.08,
+    "pz": -1.771,
+    "wy": true
+   }
+  ],
+  "priority": 14
+ },
+ {
+  "id": "rsi-constellation-andromeda",
+  "name": "Constellation Andromeda",
+  "manufacturer": "Roberts Space Industries",
+  "class": "Multi",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 4,
+    "h": 3,
+    "cap": 32
+   }
+  ],
+  "priority": 15
+ },
+ {
+  "id": "gama-railen",
+  "name": "Railen",
+  "manufacturer": "Gatac",
+  "class": "Hauler",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 8,
+    "d": 4,
+    "h": 2,
+    "cap": 32
+   },
+   {
+    "id": 1,
+    "w": 8,
+    "d": 4,
+    "h": 2,
+    "cap": 32
+   },
+   {
+    "id": 2,
+    "w": 8,
+    "d": 4,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 3,
+    "w": 8,
+    "d": 4,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 4,
+    "w": 8,
+    "d": 4,
+    "h": 4,
+    "cap": 32
+   },
+   {
+    "id": 5,
+    "w": 8,
+    "d": 4,
+    "h": 4,
+    "cap": 32
+   }
+  ],
+  "priority": 16
+ },
+ {
+  "id": "drak-ironclad-assault",
+  "name": "Ironclad Assault",
+  "manufacturer": "Drake Interplanetary",
+  "class": "Combat",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 20,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": -5.2,
+    "py": 15.7,
+    "pz": -4.86,
+    "wy": true
+   },
+   {
+    "id": 1,
+    "w": 20,
+    "d": 6,
+    "h": 6,
+    "cap": 32,
+    "px": 5.2,
+    "py": 15.7,
+    "pz": -4.86,
+    "wy": true
+   }
+  ],
+  "priority": 17
+ },
+ {
+  "id": "aegs-idris-p",
+  "name": "Idris-P",
+  "manufacturer": "Aegis Dynamics",
+  "class": "Combat",
+  "flyable": true,
+  "grids": [
+   {
+    "id": 0,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": -18.4,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 1,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 5.6,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 2,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 11.2,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 3,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 24.0,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 4,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 29.6,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 5,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 42.4,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 6,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 48.0,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 7,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": -13.6,
+    "py": 55.2,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 8,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": -18.4,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 9,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 5.6,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 10,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 11.2,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 11,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 24.0,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 12,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 29.6,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 13,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 42.4,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 14,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 48.0,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 15,
+    "w": 4,
+    "d": 4,
+    "h": 4,
+    "cap": 16,
+    "px": 13.6,
+    "py": 55.2,
+    "pz": -6.4,
+    "wy": false
+   },
+   {
+    "id": 16,
+    "w": 5,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": 0.0,
+    "py": -10.04,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 17,
+    "w": 2,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": 5.92,
+    "py": -10.04,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 18,
+    "w": 2,
+    "d": 2,
+    "h": 1,
+    "cap": 2,
+    "px": -5.92,
+    "py": -10.04,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 19,
+    "w": 14,
+    "d": 5,
+    "h": 2,
+    "cap": 32,
+    "px": 0.0,
+    "py": -13.2,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 20,
+    "w": 18,
+    "d": 4,
+    "h": 2,
+    "cap": 32,
+    "px": 0.0,
+    "py": -19.52,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 21,
+    "w": 3,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": 1.9,
+    "py": 56.6,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 22,
+    "w": 3,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": -2.0,
+    "py": 56.6,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 23,
+    "w": 3,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": 1.9,
+    "py": 58.8,
+    "pz": 4.8,
+    "wy": false
+   },
+   {
+    "id": 24,
+    "w": 3,
+    "d": 2,
+    "h": 2,
+    "cap": 8,
+    "px": -2.0,
+    "py": 58.8,
+    "pz": 4.8,
+    "wy": false
+   }
+  ],
+  "priority": 18
+ }
+]

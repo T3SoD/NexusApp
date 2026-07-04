@@ -98,7 +98,8 @@ public sealed class ContractScanner : IDisposable
         else if (string.IsNullOrWhiteSpace(text)) { state = "notext";   detail = "region set but capture/OCR returned no text"; }
         else if (d is null)                       { state = "noanchor"; detail = $"text but no contract anchor: {Snippet(text)}"; }
         else { state  = "parsed:" + ContractParser.NormalizeTitle(d.ContractedBy);
-               detail = $"parsed contractor '{d.ContractedBy}' reward {d.Reward} objectives {d.Objectives.Count}"; }
+               detail = $"parsed contractor '{d.ContractedBy}' reward {d.Reward} objectives {d.Objectives.Count} " +
+                        $"containerCap {(d.ContainerCap.HasValue ? d.ContainerCap.Value + " SCU" : "not stated in captured text")}"; }
 
         // Dedup on the COARSE state (not the noisy per-frame text) so a stable panel logs one line per
         // state change, not one per tick - otherwise OCR jitter floods nexus.log past its rotation cap.
