@@ -16,4 +16,7 @@ public sealed class ContractDetails
     public int Reward { get; init; }             // aUEC
     public string ContractedBy { get; init; } = "";
     public List<ContractObjective> Objectives { get; init; } = new();
+    // Max container size the contract delivers in (one of 1/2/4/8/16/24/32 SCU), from the details
+    // prose ("delivered in 16 SCU containers or smaller"). Null when the panel did not state it.
+    public int? ContainerCap { get; init; }
 }

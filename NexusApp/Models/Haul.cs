@@ -34,6 +34,7 @@ public sealed class Haul
     public int Reward { get; set; }                 // aUEC, from OCR (0 = unknown)
     public string ContractedBy { get; set; } = "";  // from OCR (cleaner than the generator)
     public List<ContractObjective> ContractObjectives { get; set; } = new();  // OCR-sourced
+    public int? ContainerCap { get; set; }           // max container SCU from contract OCR (null = unknown)
     public HaulOutcome Outcome { get; set; } = HaulOutcome.Active;
     public DateTime StartedAt { get; init; } = DateTime.Now;
     public List<HaulLeg> Legs { get; } = new();

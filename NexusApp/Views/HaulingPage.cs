@@ -139,6 +139,19 @@ public sealed class HaulingPage : UserControl
             topo.VerticalAlignment = VerticalAlignment.Center;
             nameStack.Children.Add(topo);
         }
+
+        // Max container size the contract delivers in (from the contract OCR). Cyan when detected,
+        // dim placeholder when the panel text has not yielded it yet.
+        bool capDetected = h.ContainerCap.HasValue;
+        var capChip = Hud.Chip(capDetected ? Cyan : Color.FromRgb(0x7C, 0x8A, 0x99),
+                               capDetected ? $"Box ≤ {h.ContainerCap} SCU" : "Box size ?");
+        capChip.Margin = new Thickness(6, 0, 0, 0);
+        capChip.VerticalAlignment = VerticalAlignment.Center;
+        capChip.ToolTip = capDetected
+            ? "Max container size this contract delivers in, read from the contract panel."
+            : "The contract's max container size was not found in the scanned text yet.";
+        nameStack.Children.Add(capChip);
+
         Grid.SetColumn(nameStack, 0); titleRow.Children.Add(nameStack);
 
         if (h.Reward > 0)

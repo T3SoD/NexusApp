@@ -216,6 +216,10 @@ public sealed class HaulTracker : IDisposable
         h.Company = HaulLogParser.CompanyDisplay(m.Generator);
         h.ContractName = m.Contract;
         h.Topology = HaulLogParser.ParseTopology(m.Contract);
+        // Container cap from the datamined contract data (primary source, keyed by the exact contract
+        // token the log records). OCR is only a fallback when a contract is not in the datamined map.
+        var minedCap = ContractCapCatalog.Instance.Lookup(m.Contract);
+        if (minedCap.HasValue) h.ContainerCap = minedCap;
         if (h.LegByObjective(m.ObjectiveId) is null)
             h.Legs.Add(new HaulLeg
             {
@@ -334,6 +338,7 @@ public sealed class HaulTracker : IDisposable
         if (d.Reward > 0) h.Reward = d.Reward;
         if (!string.IsNullOrWhiteSpace(d.ContractedBy)) h.ContractedBy = d.ContractedBy;
         if (d.Objectives.Count > 0) h.ContractObjectives = d.Objectives;
+        if (d.ContainerCap.HasValue && !h.ContainerCap.HasValue) h.ContainerCap = d.ContainerCap;  // OCR fills only when the datamined map has no entry
     }
 
     // When a haul first appears (its company becomes known), apply any contract scanned before it existed.
