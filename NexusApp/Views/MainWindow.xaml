@@ -315,6 +315,32 @@
                                 </Grid>
                             </RadioButton>
 
+                            <RadioButton x:Name="NavPlanner" Tag="planner" Visibility="Collapsed" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="blueprint" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Cargo Planner" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="LOADOUT" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavGridStudio" Tag="gridstudio" Visibility="Collapsed" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="blueprint" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Grid Studio" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="DEV" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
                             <RadioButton x:Name="NavSettings" Tag="settings" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -407,6 +433,8 @@
 
                 <!-- ── CARGO HAULING PAGE (built in code - Views/HaulingPage.cs) ── -->
                 <Grid x:Name="PageHauling" Visibility="Collapsed"/>
+                <Grid x:Name="PagePlanner" Visibility="Collapsed"/>
+                <Grid x:Name="PageGridStudio" Visibility="Collapsed"/>
 
                 <!-- ── SETTINGS PAGE (built in code - Views/SettingsPage.cs) ── -->
                 <Grid x:Name="PageSettings" Visibility="Collapsed"/>
