@@ -13,6 +13,15 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.1.0  -  Jul 03, 2026",
+        [
+            "Mining Codex now shows scan signatures for hand-minable and vehicle-minable ores (RS 3,000 hand, RS 4,000 vehicle); the RS Decoder still matches ship ores only, so rock scans decode exactly as before",
+            "Two new resources in the codex: Carinite (Pure), hand-minable at Hathor Caves in Nyx, and Pressurized Ice, the refined commodity cooler recipes consume",
+            "Event blueprints now show how to unlock them - the XenoThreat 2 reward ladder appears in the blueprint library as six point tiers (18,000 to 120,000 event points) under Foxwell Enforcement, covering all 25 event blueprints including the FR-66 and FR-76 shields and the NDB repeaters",
+            "Blueprint unlock listings refreshed for 4.8: system availability corrected on about 140 listings, 38 outdated listings removed for missions that no longer award those blueprints, and the Citizens For Prosperity sabotage mission now shows its proper title",
+            "Blueprint identification under community localization presets now covers every craftable item (previously ship components only), so renamed blueprints resolve to their official names across weapons, armor, and gear; multitool attachment names corrected",
+            "Fixed: the shard chip could show your previous session's shard as live when Nexus started while the game was closed; shard leave detection also updated for Star Citizen 4.8's session log format",
+        ]),
         ("App  6.0.2  -  Jul 02, 2026",
         [
             "Updated the trademark notice in About > Legal, the README, and the release notes to Star Citizen's official Fan Kit wording",

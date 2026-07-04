@@ -701,7 +701,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(gem, 0); grid.Children.Add(gem);
         var name = new TextBlock { Text = r.Name, FontSize = 13, Foreground = rb, FontFamily = headFont, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
         Grid.SetColumn(name, 1); grid.Children.Add(name);
-        var rs = new TextBlock { Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        var rs = new TextBlock { Text = r.BaseRs > 0 ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(rs, 2); grid.Children.Add(rs);
 
         var host = Hud.CardFrame(grid, out var frame, out _, chamfer: 8, padding: new Thickness(12, 9, 12, 9));
@@ -798,7 +798,7 @@ public partial class MainWindow : Window
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
-        rsStack.Children.Add(new TextBlock { Text = r.Method == "ship" ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = monoFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
+        rsStack.Children.Add(new TextBlock { Text = r.BaseRs > 0 ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = monoFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
         Grid.SetColumn(rsStack, 1); hg.Children.Add(rsStack);
 
         // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).
@@ -920,9 +920,9 @@ public partial class MainWindow : Window
 
         var sig = new TextBlock
         {
-            Text = r.Method == "ship" ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12,
+            Text = r.BaseRs > 0 ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12,
             FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
-            Foreground = r.Method == "ship" ? TierBrush(r.Tier) : (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+            Foreground = r.BaseRs > 0 ? TierBrush(r.Tier) : (System.Windows.Media.Brush)FindResource("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(sig, 1); grid.Children.Add(sig);
