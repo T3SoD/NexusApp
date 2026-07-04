@@ -33,9 +33,10 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionChip(); UpdateBlueprintChip(); });
-            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => UpdateOperatorIdentity(h));
+            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => { UpdateOperatorIdentity(h); RefreshApprovedTools(); });
         }
         UpdateOperatorIdentity();
+        RefreshApprovedTools();
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
         _vm = new MainViewModel();
         DataContext = _vm;
@@ -192,6 +193,8 @@ public partial class MainWindow : Window
         PageWorkOrders.Visibility = page == "workorders" ? Visibility.Visible : Visibility.Collapsed;
         PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
+        PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
+        PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
         PageSettings.Visibility   = page == "settings"   ? Visibility.Visible : Visibility.Collapsed;
 
         NavCommand.IsChecked  = page == "command";
@@ -201,6 +204,8 @@ public partial class MainWindow : Window
         NavWork.IsChecked     = page == "workorders";
         NavNetwork.IsChecked  = page == "network";
         NavHauling.IsChecked  = page == "hauling";
+        NavPlanner.IsChecked  = page == "planner";
+        NavGridStudio.IsChecked = page == "gridstudio";
         NavSettings.IsChecked = page == "settings";
 
         // Viewport (Wrist-OS launched-app window): update the module path readout and replay the boot
@@ -218,6 +223,8 @@ public partial class MainWindow : Window
             "workorders" => "Nexus - Refinery Tracker",
             "network"    => "Nexus - Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
+            "planner"    => "Nexus - Cargo Planner",
+            "gridstudio" => "Nexus - Grid Studio",
             "settings"   => "Nexus - Settings",
             _            => "Nexus",
         };
@@ -228,6 +235,8 @@ public partial class MainWindow : Window
         if (page == "command") InitCommandPage();
         if (page == "network") InitNetworkPage();
         if (page == "hauling") InitHaulingPage();
+        if (page == "planner") InitPlannerPage();
+        if (page == "gridstudio") InitGridStudioPage();
         if (page == "settings") InitSettingsPage();
         UpdateNavBadges();
 
@@ -297,6 +306,8 @@ public partial class MainWindow : Window
         if (NavBlue.IsChecked == true)     return NavBlue;
         if (NavNetwork.IsChecked == true)  return NavNetwork;
         if (NavHauling.IsChecked == true)  return NavHauling;
+        if (NavPlanner.IsChecked == true)  return NavPlanner;
+        if (NavGridStudio.IsChecked == true) return NavGridStudio;
         if (NavSettings.IsChecked == true) return NavSettings;
         return null;
     }
@@ -507,6 +518,38 @@ public partial class MainWindow : Window
             PageHauling.Children.Add(_haulingPage);
         }
         _haulingPage.Refresh();
+    }
+
+    private CargoPlannerPage? _plannerPage;
+    private void InitPlannerPage()
+    {
+        if (_plannerPage == null)
+        {
+            _plannerPage = new CargoPlannerPage();
+            PagePlanner.Children.Add(_plannerPage);
+        }
+        _plannerPage.OnShown();
+    }
+
+    private GridStudioPage? _gridStudioPage;
+    private void InitGridStudioPage()
+    {
+        if (_gridStudioPage == null)
+        {
+            _gridStudioPage = new GridStudioPage();
+            PageGridStudio.Children.Add(_gridStudioPage);
+        }
+        _gridStudioPage.OnShown();
+    }
+
+    // Approved-list gated tabs (Grid Studio dev tool, and the Cargo Planner until it is ship-ready)
+    // show when the detected RSI handle is on the approved contributor list. Re-evaluated at
+    // startup and whenever a handle is detected from Game.log.
+    private void RefreshApprovedTools()
+    {
+        var approved = NexusApp.Services.AccessGate.IsApprovedActive;
+        NavGridStudio.Visibility = approved ? Visibility.Visible : Visibility.Collapsed;
+        NavPlanner.Visibility = approved ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── RS Scan ──────────────────────────────────────────────────────────────
