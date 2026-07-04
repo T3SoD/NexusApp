@@ -1,0 +1,721 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Nexus Cargo Grid</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070A;overflow:hidden;font-family:system-ui,'Segoe UI',sans-serif}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+  .corner{position:absolute;width:30px;height:30px;border:2px solid rgba(255,178,62,0.5)}
+  .c-tl{top:16px;left:16px;border-right:none;border-bottom:none}
+  .c-tr{top:16px;right:16px;border-left:none;border-bottom:none}
+  .c-bl{bottom:16px;left:16px;border-right:none;border-top:none}
+  .c-br{bottom:16px;right:16px;border-left:none;border-top:none}
+  #title{position:absolute;top:24px;left:32px;color:#EAF1F6;letter-spacing:2px}
+  #title .k{font-size:11px;color:#7C8A99;letter-spacing:3px;text-transform:uppercase}
+  #title .n{font-size:18px;font-weight:700;color:#FFB23E;text-shadow:0 0 12px rgba(255,178,62,0.35)}
+  #stats{position:absolute;top:24px;right:32px;text-align:right;color:#EAF1F6}
+  .stat{margin-bottom:9px}
+  .stat .lab{font-size:9px;color:#7C8A99;letter-spacing:2px}
+  .stat .val{font-size:22px;font-weight:700;color:#EAF1F6;line-height:1;font-variant-numeric:tabular-nums}
+  .stat .val small{font-size:11px;color:#7C8A99;font-weight:400;margin-left:3px}
+  #fill .val{color:#66E6A6}
+  #legend{position:absolute;bottom:28px;right:32px;color:#EAF1F6;font-size:10px;letter-spacing:.5px;text-align:right;line-height:1.85}
+  #legend .cap{color:#7C8A99;font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
+  #legend .row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+  #legend .sw{width:12px;height:12px;border-radius:2px;border:1px solid rgba(255,255,255,0.18)}
+  /* Grid Studio only: camera control key */
+  #camhelp{position:absolute;top:70px;left:32px;display:none;color:#EAF1F6;
+    background:rgba(10,14,20,.6);border:1px solid rgba(127,233,224,.25);border-radius:8px;
+    padding:11px 13px;backdrop-filter:blur(6px);pointer-events:none}
+  #camhelp .cap{font-size:9px;letter-spacing:2px;color:#7C8A99;text-transform:uppercase;margin-bottom:8px}
+  #camhelp .ch-row{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:5px}
+  #camhelp .ch-row:last-child{margin-bottom:0}
+  #camhelp .ch-act{display:flex;align-items:center;gap:3px;font:11px/1 ui-monospace,monospace;color:#EAF1F6}
+  #camhelp .ch-desc{font-size:10px;letter-spacing:.5px;color:#7C8A99}
+  #camhelp .kbd{display:inline-block;min-width:16px;text-align:center;padding:3px 4px;
+    font:10px/1 ui-monospace,monospace;color:#7FE9E0;background:rgba(127,233,224,.1);
+    border:1px solid rgba(127,233,224,.35);border-radius:3px;box-shadow:0 1px 0 rgba(127,233,224,.15)}
+  #panel{position:absolute;bottom:28px;left:32px;color:#EAF1F6;pointer-events:auto;
+    background:rgba(10,14,20,.6);border:1px solid rgba(127,233,224,.25);border-radius:8px;
+    padding:12px 14px;backdrop-filter:blur(6px);width:220px}
+  #panel .lab{font-size:10px;letter-spacing:2px;color:#7C8A99;text-transform:uppercase;margin-bottom:7px}
+  #panel .row{display:flex;align-items:center;gap:8px}
+  #slider,#hullslider{-webkit-appearance:none;appearance:none;width:140px;height:4px;border-radius:3px;
+    background:linear-gradient(90deg,#7FE9E0,#FFB23E);outline:none}
+  #slider::-webkit-slider-thumb,#hullslider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#FFD089;border:2px solid #05070A;cursor:pointer;box-shadow:0 0 6px #FFB23E}
+  #val{font-size:12px;color:#FFD089;width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  #hullval{font-size:12px;color:#7FE9E0;width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  #autobtn{margin-top:9px;font-size:10px;letter-spacing:1px;color:#7FE9E0;cursor:pointer;
+    background:rgba(127,233,224,.08);border:1px solid rgba(127,233,224,.3);border-radius:5px;
+    padding:5px 8px;text-transform:uppercase}
+  #autobtn.on{color:#05070A;background:#7FE9E0;font-weight:700}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#54606C;font-size:14px;letter-spacing:1px;pointer-events:none}
+  #editpanel{position:absolute;bottom:28px;right:32px;color:#EAF1F6;pointer-events:auto;
+    background:rgba(10,14,20,.74);border:1px solid rgba(255,178,62,.35);border-radius:8px;
+    padding:12px 14px;backdrop-filter:blur(6px);width:250px;max-height:calc(100vh - 150px);overflow-y:auto}
+  #editpanel .lab{font-size:10px;letter-spacing:2px;color:#FFB23E;text-transform:uppercase;margin-bottom:8px}
+  #editpanel #ep-ship{color:#7C8A99;letter-spacing:1px;margin-left:6px}
+  .ep-grids{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px}
+  .ep-grids button{min-width:24px;height:22px;font:11px/1 ui-monospace,monospace;color:#7FE9E0;
+    background:rgba(127,233,224,.08);border:1px solid rgba(127,233,224,.3);border-radius:4px;cursor:pointer;padding:0 5px}
+  .ep-grids button.sel{color:#05070A;background:#FFB23E;border-color:#FFB23E;font-weight:700}
+  .ep-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+  .ep-fields label{display:flex;flex-direction:column;gap:3px;font-size:9px;letter-spacing:1px;color:#7C8A99;text-transform:uppercase}
+  .ep-fields input{width:100%;background:#0E141C;border:1px solid #1C2836;color:#EAF1F6;border-radius:4px;padding:4px 5px;font:12px ui-monospace,monospace}
+  .ep-wy{display:flex;flex-direction:row;align-items:center;gap:5px;color:#EAF1F6;font-size:10px;white-space:nowrap;margin-bottom:9px}
+  .ep-caprow{margin-bottom:9px}
+  .ep-caplbl{font-size:9px;letter-spacing:1px;color:#7C8A99;text-transform:uppercase;margin-bottom:5px}
+  .ep-caps{display:flex;flex-wrap:wrap;gap:4px}
+  .ep-caps label{display:flex;align-items:center;gap:4px;font:11px ui-monospace,monospace;color:#7C8A99;
+    background:#0E141C;border:1px solid #1C2836;border-radius:4px;padding:3px 7px;cursor:pointer}
+  .ep-caps label.on{border-color:#FFB23E;color:#FFB23E;background:rgba(255,178,62,.08)}
+  .ep-caps input{margin:0;cursor:pointer;accent-color:#FFB23E}
+  .ep-readout{font:11px ui-monospace,monospace;color:#7FE9E0;margin-bottom:9px}
+  .ep-actions{display:flex;gap:6px;margin-bottom:6px}
+  .ep-actions button{flex:1;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+    color:#EAF1F6;background:#141B24;border:1px solid #1C2836;border-radius:5px;padding:6px}
+  .ep-actions button.prim{color:#05070A;background:#FFB23E;border-color:#FFB23E;font-weight:700}
+  .ep-hint{font:10px ui-monospace,monospace;color:#54606C;margin-bottom:8px}
+  .ep-msg{font:10px ui-monospace,monospace;color:#FF8A3D;min-height:12px}
+</style>
+<script type="importmap">{"imports":{"three":"./three.module.js"}}</script>
+</head><body>
+<div id="hud">
+  <div class="corner c-tl"></div><div class="corner c-tr"></div>
+  <div class="corner c-bl"></div><div class="corner c-br"></div>
+  <div id="title"><div class="k">Nexus // Cargo Planner</div><div class="n">CARGO GRID</div></div>
+  <div id="stats">
+    <div class="stat" id="fill"><div class="lab">CAPACITY FILLED</div><div class="val"><span id="v-pct">0</span><small>%</small></div></div>
+    <div class="stat"><div class="lab">TOTAL SCU</div><div class="val"><span id="v-scu">0</span><small>/ <span id="v-cap">0</span></small></div></div>
+    <div class="stat"><div class="lab">CONTAINERS</div><div class="val"><span id="v-box">0</span></div></div>
+  </div>
+  <div id="legend"></div>
+  <div id="camhelp">
+    <div class="cap">Camera</div>
+    <div class="ch-row"><span class="ch-act"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span></span><span class="ch-desc">Pan view</span></div>
+    <div class="ch-row"><span class="ch-act">Left-drag</span><span class="ch-desc">Orbit</span></div>
+    <div class="ch-row"><span class="ch-act">Right-drag</span><span class="ch-desc">Pan view</span></div>
+    <div class="ch-row"><span class="ch-act">Scroll</span><span class="ch-desc">Zoom</span></div>
+  </div>
+  <div id="panel"><div class="lab">Layer Separation</div>
+    <div class="row"><input id="slider" type="range" min="0" max="100" value="0"><span id="val">0%</span></div>
+    <div id="autobtn">Auto Cycle: OFF</div>
+    <div id="hullctl" style="display:none">
+      <div class="lab" style="margin-top:12px;margin-bottom:7px">Hull Hologram</div>
+      <div class="row"><input id="hullslider" type="range" min="0" max="100" value="10"><span id="hullval">10%</span></div>
+    </div></div>
+  <div id="editpanel">
+    <div class="lab">Edit Layout<span id="ep-ship"></span></div>
+    <div class="ep-hint">Click a grid to select. Drag it on the deck to move.</div>
+    <div id="ep-grids" class="ep-grids"></div>
+    <div class="ep-fields">
+      <label>W<input id="ep-w" type="number" min="1" step="1"></label>
+      <label>D<input id="ep-d" type="number" min="1" step="1"></label>
+      <label>H<input id="ep-h" type="number" min="1" step="1"></label>
+      <label>X<input id="ep-x" type="number" step="1"></label>
+      <label>Y<input id="ep-y" type="number" step="1"></label>
+      <label>Z<input id="ep-z" type="number" step="1"></label>
+    </div>
+    <div class="ep-caprow">
+      <div class="ep-caplbl">Accepts container sizes</div>
+      <div id="ep-caps" class="ep-caps"></div>
+    </div>
+    <label class="ep-wy"><input id="ep-wy" type="checkbox">W runs fore-aft</label>
+    <div class="ep-readout"><span id="ep-gridscu">-</span> &nbsp;.&nbsp; <span id="ep-shipscu">-</span></div>
+    <div class="ep-actions">
+      <button id="ep-add">Add grid</button>
+      <button id="ep-del">Delete</button>
+    </div>
+    <div class="ep-actions">
+      <button id="ep-save" class="prim">Save layout</button>
+      <button id="ep-revert">Revert</button>
+    </div>
+    <div id="ep-msg" class="ep-msg"></div>
+  </div>
+</div>
+<div id="empty">No cargo yet. Add a line or import your hauls.</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './OrbitControls.js';
+
+const SIZE_COLOR = { 1:0x7FE9E0, 2:0x66E6A6, 4:0x8FD0E8, 8:0xB9C4D0, 16:0xFFD089, 24:0xFFB23E, 32:0xF08A4B };
+const OUTLINE = 0x05070A, GAP = 2.6;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070A);
+scene.fog = new THREE.Fog(0x05070A, 30, 90);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+renderer.domElement.style.position = 'fixed';
+renderer.domElement.style.inset = '0';
+renderer.domElement.style.zIndex = '1';
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 400);
+camera.position.set(12, 10.5, 14);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 5; controls.maxDistance = 120;
+controls.maxPolarAngle = Math.PI*0.49;
+controls.target.set(0, 1.8, 0);
+
+// Grid Studio only (owner dev tool): W/A/S/D pan the camera up/left/down/right in screen space.
+// Gated on studioMode so the shipped Cargo Planner stays pure mouse-driven.
+let studioMode = false;
+const _panKeys = new Set();
+const _PAN = { w:'w', a:'a', s:'s', d:'d' };
+addEventListener('keydown', e => {
+  if (!studioMode) return;
+  const k = e.key.toLowerCase();
+  if (_PAN[k]){ _panKeys.add(k); e.preventDefault(); }
+});
+addEventListener('keyup', e => { _panKeys.delete(e.key.toLowerCase()); });
+addEventListener('blur', () => _panKeys.clear());   // dropped focus: stop panning
+function panFromKeys(){
+  if (!studioMode || !_panKeys.size) return;
+  const step = camera.position.distanceTo(controls.target) * 0.012;   // scales with zoom
+  const e = camera.matrixWorld.elements;
+  const right = new THREE.Vector3(e[0], e[1], e[2]);
+  const up = new THREE.Vector3(e[4], e[5], e[6]);
+  const move = new THREE.Vector3();
+  if (_panKeys.has('w')) move.add(up);
+  if (_panKeys.has('s')) move.addScaledVector(up, -1);
+  if (_panKeys.has('d')) move.add(right);
+  if (_panKeys.has('a')) move.addScaledVector(right, -1);
+  if (move.lengthSq() > 0){
+    move.normalize().multiplyScalar(step);
+    camera.position.add(move); controls.target.add(move);
+  }
+}
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+const key = new THREE.DirectionalLight(0xffffff, 0.62); key.position.set(6,14,8); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9fb4c8, 0.26); fill.position.set(-8,6,-6); scene.add(fill);
+
+// Everything rebuildable lives under worldGroup so a data update can clear it in one shot.
+let worldGroup = new THREE.Group(); scene.add(worldGroup);
+let root = new THREE.Group(); worldGroup.add(root);
+let tierGroups = {}, tierKeys = [], connectors = [];
+let GW = 8, GD = 4, GH = 4;
+let lastDims = '';
+
+// ---- blueprint backdrop (02): floor grid + faint schematic walls ----
+function bpGrid(size, div, color, op){
+  const g = new THREE.GridHelper(size, div, color, color);
+  g.material.transparent = true; g.material.opacity = op; g.material.depthWrite = false;
+  return g;
+}
+
+function buildBackdrop(){
+  // With a hull hologram the floor must cover the whole ship (not just the cargo grids),
+  // sit just under the belly, and step back so the hologram owns the brightness.
+  let reach = Math.max(GW, GD) + 20;
+  if (window.__holoXZ){
+    const h = window.__holoXZ;
+    const m = Math.max(Math.abs(h.x0 - GW/2), Math.abs(h.x1 - GW/2),
+                       Math.abs(h.z0 - GD/2), Math.abs(h.z1 - GD/2));
+    reach = Math.max(reach, Math.ceil(2*m + 10));
+  }
+  const fy = window.__holoFloorY ?? 0;
+  const fop = window.__holoXZ ? 0.22 : 0.5;
+  const floorMinor = bpGrid(reach, reach*2, 0x123138, fop); floorMinor.position.y = fy; worldGroup.add(floorMinor);
+  const floorMajor = bpGrid(reach, Math.max(4, Math.round(reach/4)), 0x2f6f74, fop); floorMajor.position.y = fy + 0.002; worldGroup.add(floorMajor);
+  // Vertical backdrop grids removed per the approved mock 12 - floor only, open space above.
+}
+
+// ---- 06 pill label (floating billboard sprite) ----
+const labelCache = {};
+function labelTexture(n){
+  if (labelCache[n]) return labelCache[n];
+  const s=256, c=document.createElement('canvas'); c.width=c.height=s;
+  const g=c.getContext('2d'); g.clearRect(0,0,s,s);
+  const pw=150, ph=92, px=(s-pw)/2, py=(s-ph)/2, r=18;
+  g.fillStyle='rgba(5,7,10,0.78)'; g.beginPath();
+  g.moveTo(px+r,py); g.arcTo(px+pw,py,px+pw,py+ph,r); g.arcTo(px+pw,py+ph,px,py+ph,r);
+  g.arcTo(px,py+ph,px,py,r); g.arcTo(px,py,px+pw,py,r); g.closePath(); g.fill();
+  g.strokeStyle='rgba(255,255,255,0.25)'; g.lineWidth=2; g.stroke();
+  g.fillStyle='#EAF1F6'; g.font='700 78px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(String(n), s/2, s/2+4);
+  g.fillStyle='#8A98A6'; g.font='600 22px system-ui,sans-serif'; g.fillText('SCU', s/2, s/2+40);
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4; labelCache[n]=tex; return tex;
+}
+
+function addBox(scu, cx, cz, cy, w, d, h){
+  const tier = cy;
+  if (!tierGroups[tier]) { const gg=new THREE.Group(); tierGroups[tier]=gg; root.add(gg); }
+  const g = tierGroups[tier];
+  const col = SIZE_COLOR[scu] ?? 0xB9C4D0, inset = 0.06;
+  const geo = new THREE.BoxGeometry(w-inset, h-inset, d-inset);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color:col, roughness:0.92, metalness:0, flatShading:true }));
+  const px=cx+w/2, py=cy+h/2, pz=cz+d/2;
+  mesh.position.set(px,py,pz); g.add(mesh);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color:OUTLINE, transparent:true, opacity:0.85 }));
+  edges.position.copy(mesh.position); g.add(edges);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:labelTexture(scu), transparent:true, depthWrite:false, depthTest:true }));
+  const ls = Math.min(1.5, 0.55 + Math.min(w,d)*0.28);
+  spr.scale.set(ls,ls,1); spr.position.set(px, cy+h+0.42, pz); g.add(spr);
+  const cl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(px,0,pz), new THREE.Vector3(px,cy,pz)]),
+    new THREE.LineBasicMaterial({ color:0x7FE9E0, transparent:true, opacity:0 }));
+  root.add(cl); connectors.push({ line:cl, tier, px, pz, baseY:cy });
+}
+
+function disposeGroup(obj){
+  obj.traverse(o=>{
+    if (o.geometry) o.geometry.dispose();
+    if (o.material){ const m=o.material; (Array.isArray(m)?m:[m]).forEach(x=>{ if(x.map) x.map.dispose(); x.dispose(); }); }
+  });
+}
+
+function buildScene(data){
+  data = data || {};
+  const editing = !!editState;
+  // grids: per-grid volumes (min corner x/y/z + size w/d/h) laid out in ship space when the
+  // catalog has datamined positions, else the synthetic strip. In edit mode the frames come
+  // from the live editable state instead. Old single-grid payloads still work.
+  let grids, bounds, boxes;
+  if (editing){
+    grids = editState.grids.map((g,i)=>gridToFrame(g,i));
+    bounds = framesBounds(grids);
+    boxes = [];
+  } else {
+    grids = (data.grids && data.grids.length) ? data.grids
+              : [Object.assign({x:0,y:0,z:0}, data.grid || {w:8,d:4,h:4})];
+    bounds = data.bounds || { w: Math.max(...grids.map(g=>g.x+g.w)),
+                              d: Math.max(...grids.map(g=>g.y+g.d)),
+                              h: Math.max(...grids.map(g=>g.z+g.h)) };
+    boxes = data.boxes || [];
+  }
+  document.getElementById('empty').style.display = (!editing && boxes.length===0) ? 'flex' : 'none';
+
+  // clear previous world (the hull hologram is persistent - detach it before the dispose)
+  if (window.__holoHull && window.__holoHull.parent) window.__holoHull.parent.remove(window.__holoHull);
+  scene.remove(worldGroup); disposeGroup(worldGroup);
+  worldGroup = new THREE.Group(); scene.add(worldGroup);
+  root = new THREE.Group(); worldGroup.add(root);
+  tierGroups = {}; connectors = []; sep = 0; slider.value = 0; valEl.textContent = '0%';
+
+  GW = Math.max(1, bounds.w); GD = Math.max(1, bounds.d); GH = Math.max(1, bounds.h);
+  buildBackdrop();
+  root.position.set(-GW/2, 0, -GD/2);
+
+  if (editing){
+    buildEditGrids(grids);
+  } else {
+    // Per-grid holographic volumes (approved mock 14). In Studio mode the grids are orange (so
+    // they read against the hologram), numbered, and clickable; the test-selected grid is pink.
+    const studio = !!data.studio;
+    const testSel = (data.testSel ?? -1);
+    studioMeshes = [];
+    grids.forEach((g, i) => {
+      const selected = studio && i === testSel;
+      const col = selected ? 0xFF5FBF : 0xFFB23E;   // orange everywhere; pink = studio selection
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(g.w, g.d),
+        new THREE.MeshStandardMaterial({ color:0x0c1219, roughness:1, metalness:0 }));
+      floor.rotation.x = -Math.PI/2;
+      floor.position.set(g.x + g.w/2, g.z - 0.01, g.y + g.d/2); root.add(floor);
+      const vol = new THREE.Mesh(new THREE.BoxGeometry(g.w, g.h, g.d),
+        new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity: selected?0.14:0.05, depthWrite:false, side:THREE.BackSide }));
+      vol.position.set(g.x + g.w/2, g.z + g.h/2, g.y + g.d/2); root.add(vol);
+      const film = new THREE.Mesh(new THREE.BoxGeometry(g.w, g.h, g.d),
+        new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.025, depthWrite:false }));
+      film.position.copy(vol.position); root.add(film);
+      if (studio){ film.userData.index = i; studioMeshes.push(film); }
+      const gb = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(g.w, g.h, g.d)),
+        new THREE.LineBasicMaterial({ color:col, transparent:true, opacity: selected?1:0.65 }));
+      gb.position.copy(vol.position); root.add(gb);
+      if (studio){
+        const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: gridLabelTex(i+1, selected), transparent:true, depthWrite:false }));
+        spr.scale.set(1.3,1.3,1); spr.position.set(g.x + g.w/2, g.z + g.h + 0.55, g.y + g.d/2); root.add(spr);
+      }
+    });
+    for (const b of boxes) addBox(b.scu, b.x, b.y, b.z, b.w, b.d, b.h);
+  }
+  if (window.__holoHull) root.add(window.__holoHull);
+  tierKeys = Object.keys(tierGroups).map(Number).sort((a,b)=>a-b);
+
+  // HUD title: the ship being displayed (falls back to the generic label pre-data)
+  const titleEl = document.querySelector('#title .n');
+  if (titleEl) titleEl.textContent = (data.ship && data.ship.name) ? data.ship.name.toUpperCase() : 'CARGO GRID';
+
+  // stats (in edit mode the HUD reflects the layout being built, not a packed trip)
+  const st = data.stats || {};
+  if (editing){
+    const total = editState.grids.reduce((s,g)=>s + g.w*g.d*g.h, 0);
+    document.getElementById('v-pct').textContent = '--';
+    document.getElementById('v-scu').textContent = total;
+    document.getElementById('v-cap').textContent = total;
+    document.getElementById('v-box').textContent = editState.grids.length;
+  } else {
+    document.getElementById('v-pct').textContent = st.pct ?? 0;
+    document.getElementById('v-scu').textContent = st.scu ?? 0;
+    document.getElementById('v-cap').textContent = st.cap ?? 0;
+    document.getElementById('v-box').textContent = st.boxes ?? boxes.length;
+  }
+
+  // Reframe only when the SHIP changes, not on every geometry tweak. In edit mode a grid's
+  // size/position changes the bounds constantly; reframing there would yank the user's camera
+  // back to default on every edit (looked like the grid reverting). Key on the ship instead.
+  const frameKey = editing ? ('edit:' + (editState.shipId || '')) : ('view:' + GW + 'x' + GD + 'x' + GH);
+  if (frameKey !== lastDims){
+    lastDims = frameKey;
+    const span = Math.max(GW, GD, GH);
+    const k = span / 8;
+    camera.position.set(12*k, 10.5*k, 14*k);
+    // capital hulls extend far beyond the grids; keep the far plane ahead of max zoom-out
+    camera.far = Math.max(400, span*20); camera.updateProjectionMatrix();
+    controls.target.set(0, GH*0.45, 0);
+    controls.minDistance = span*0.6; controls.maxDistance = span*8;
+    controls.update();
+    // Fog scales with the ship so big hulls do not fade to black at normal orbit distances.
+    scene.fog.near = Math.max(30, span*3.5);
+    scene.fog.far  = Math.max(90, span*14);
+  }
+}
+
+// legend
+document.getElementById('legend').innerHTML = '<div class="cap">SCU by size</div>' +
+  [1,2,4,8,16,24,32].map(n=>`<div class="row"><span>${n} SCU</span><span class="sw" style="background:#${SIZE_COLOR[n].toString(16).padStart(6,'0')}"></span></div>`).join('');
+
+// layer separation
+let sep=0, target=0, auto=false;
+const slider=document.getElementById('slider'), valEl=document.getElementById('val'), autobtn=document.getElementById('autobtn');
+slider.addEventListener('input',()=>{ target=slider.value/100; auto=false; setAuto(); });
+autobtn.addEventListener('click',()=>{ auto=!auto; setAuto(); });
+function setAuto(){ autobtn.classList.toggle('on',auto); autobtn.textContent='Auto Cycle: '+(auto?'ON':'OFF'); }
+function applySep(f){
+  tierKeys.forEach((t,i)=>{ if(tierGroups[t]) tierGroups[t].position.y = i*GAP*f; });
+  connectors.forEach(c=>{
+    const i=tierKeys.indexOf(c.tier), lift=i*GAP*f, p=c.line.geometry.attributes.position;
+    p.setXYZ(0,c.px,0,c.pz); p.setXYZ(1,c.px,c.baseY+lift,c.pz); p.needsUpdate=true;
+    c.line.material.opacity=0.28*f;
+  });
+}
+
+// ---- ship hull hologram (local-only) ----
+// Outline buffers are precomputed offline (Float32 xyz segment pairs, node transforms
+// composed) and served from the nexus.hulls virtual host, which maps to a folder on the
+// user's machine. No hull data ships with the app; ships without a buffer render as before.
+// fog off: scene fog would swallow the far half of a capital hull at grazing angles.
+// additive: stacked edges reinforce, so edge-on views glow instead of going flat.
+const HOLO_LINES = new THREE.LineBasicMaterial({
+  color: 0x7FE9E0, transparent: true, opacity: 0.06, depthWrite: false,   // matches the 10% slider default (0.10 * 0.6)
+  fog: false, blending: THREE.AdditiveBlending,
+});
+const hullctl = document.getElementById('hullctl');
+const hullslider = document.getElementById('hullslider'), hullval = document.getElementById('hullval');
+hullslider.addEventListener('input', () => {
+  const v = Number(hullslider.value) / 100;
+  hullval.textContent = hullslider.value + '%';
+  HOLO_LINES.opacity = v * 0.6;   // 50% = the approved 0.3 hologram look
+  if (window.__holoHull) window.__holoHull.visible = v > 0;
+});
+
+let hullKey = null;
+function setHull(data){
+  const want = (data && data.hull && data.origin) ? data.hull : null;
+  if (want === hullKey) return Promise.resolve(false);
+  hullKey = want;
+  if (window.__holoHull){ disposeGroup(window.__holoHull); window.__holoHull = null; }
+  window.__holoFloorY = undefined; window.__holoXZ = undefined;
+  hullctl.style.display = 'none';
+  if (!want) return Promise.resolve(true);
+  const org = data.origin;
+  return fetch('https://nexus.hulls/' + want)
+    .then(r => { if (!r.ok) throw new Error('hull fetch ' + r.status); return r.arrayBuffer(); })
+    .then(ab => {
+      if (hullKey !== want) return false;   // ship changed while the buffer was loading
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ab), 3));
+      const grp = new THREE.Group();
+      grp.add(new THREE.LineSegments(geo, HOLO_LINES));
+      grp.scale.set(0.8, 0.8, -0.8);        // metres -> cells; z sign = bow direction (data-checked)
+      grp.position.set(-org[0], -org[2], -org[1]);
+      grp.visible = Number(hullslider.value) > 0;
+      window.__holoHull = grp;
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      // floor sinks to just under the hull belly; footprint lets the backdrop cover the ship
+      window.__holoFloorY = -org[2] + bb.min.y * 0.8 - 0.2;
+      window.__holoXZ = {
+        x0: bb.min.x*0.8 - org[0], x1: bb.max.x*0.8 - org[0],
+        z0: -0.8*bb.max.z - org[1], z1: -0.8*bb.min.z - org[1],
+      };
+      hullctl.style.display = '';
+      return true;
+    })
+    .catch(err => { console.error(err); return false; });
+}
+
+// hull load is async: draw the grids immediately, rebuild once when the outline lands
+function renderPayload(data){
+  data = data || {};
+  lastPayload = data;
+  studioMode = !!data.studio;
+  document.getElementById('camhelp').style.display = studioMode ? 'block' : 'none';
+  syncEditState(data);
+  const hullChange = setHull(data);
+  buildScene(data);
+  hullChange.then(changed => { if (changed) buildScene(data); });
+}
+
+// ==== Edit Layout mode ========================================================
+// The planner toggles edit mode; the payload then carries data.edit = {on, shipId, grids}.
+// The editor holds a working copy in ship-space cells (grid CENTER at px/py/pz), renders one
+// pickable box per grid, supports cell-snapped drag-to-move plus a numeric panel (size / pos /
+// cap / add / delete), and posts the corrected set back to C# on Save. Origin is a stable
+// ship-space anchor so moving a grid never shifts the hull hologram.
+let editState = null, lastPayload = null, editMeshes = [], studioMeshes = [];
+
+function gridMinCorner(g){
+  const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d;
+  return [g.px - latExt/2, g.py - depExt/2, g.pz - g.h/2];
+}
+function computeOrigin(grids){
+  const mc = grids.map(gridMinCorner);
+  return [Math.min(...mc.map(m=>m[0])), Math.min(...mc.map(m=>m[1])), Math.min(...mc.map(m=>m[2]))];
+}
+function gridToFrame(g, i){
+  const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d, org = editState.origin;
+  return { index:i, cap:g.cap,
+           x:(g.px - latExt/2) - org[0], y:(g.py - depExt/2) - org[1], z:(g.pz - g.h/2) - org[2],
+           w:latExt, d:depExt, h:g.h };
+}
+function framesBounds(frames){
+  return { w: Math.max(1, ...frames.map(f=>f.x+f.w)),
+           d: Math.max(1, ...frames.map(f=>f.y+f.d)),
+           h: Math.max(1, ...frames.map(f=>f.z+f.h)) };
+}
+
+const gridLabelCache = {};
+function gridLabelTex(n, sel){
+  const key = n + (sel?'s':'');
+  if (gridLabelCache[key]) return gridLabelCache[key];
+  const s=128, c=document.createElement('canvas'); c.width=c.height=s;
+  const g=c.getContext('2d');
+  g.fillStyle = sel ? '#FF5FBF' : '#FFB23E';   // selected label pink, others orange
+  g.font='700 72px ui-monospace,monospace'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(String(n), s/2, s/2+4);
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4; gridLabelCache[key]=tex; return tex;
+}
+
+function buildEditGrids(frames){
+  editMeshes = [];
+  frames.forEach(f=>{
+    const grp = new THREE.Group();
+    grp.position.set(f.x + f.w/2, f.z + f.h/2, f.y + f.d/2);
+    const sel = f.index === editState.selected;
+    const col = sel ? 0xFF5FBF : 0xFFB23E;   // selected = pink, all others = orange
+    const fill = new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, f.d),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity: sel?0.16:0.06, depthWrite:false }));
+    fill.userData.index = f.index; grp.add(fill); editMeshes.push(fill);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(f.w, f.h, f.d)),
+      new THREE.LineBasicMaterial({ color:col, transparent:true, opacity: sel?1:0.7 }));
+    grp.add(edges);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(f.w, f.d),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.05, depthWrite:false, side:THREE.DoubleSide }));
+    floor.rotation.x = -Math.PI/2; floor.position.y = -f.h/2 + 0.01; grp.add(floor);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:gridLabelTex(f.index+1, sel), transparent:true, depthWrite:false }));
+    spr.scale.set(1.3,1.3,1); spr.position.y = f.h/2 + 0.55; grp.add(spr);
+    root.add(grp);
+    editState.grids[f.index]._obj = grp;
+  });
+}
+
+function initEditState(e, data){
+  const grids = e.grids.map(g => ({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy, px:g.px, py:g.py, pz:g.pz,
+    accepts: (g.accepts && g.accepts.length) ? g.accepts.slice() : deriveAccepts(g.cap) }));
+  const positioned = grids.every(g => g.px != null && g.py != null && g.pz != null);
+  let org;
+  if (!positioned){
+    // schematic ship: seed a side-by-side strip on the floor so every grid is draggable
+    let cursor = 0;
+    for (const g of grids){
+      const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d;
+      g.px = cursor + latExt/2; g.py = depExt/2; g.pz = g.h/2;
+      cursor += latExt + 1;
+    }
+    org = [0,0,0];
+  } else {
+    org = (data.origin && data.origin.length===3) ? data.origin.slice() : computeOrigin(grids);
+  }
+  return { shipId:e.shipId, rev:e.rev, origin:org, grids, selected:0 };
+}
+
+function syncEditState(data){
+  const e = data.edit;
+  if (e && e.on){
+    // Re-seed when the ship changes or the host bumped the revision (a save/revert reloads the
+    // catalog); otherwise keep the live working copy so in-progress edits survive re-renders.
+    if (!editState || editState.shipId !== e.shipId || editState.rev !== e.rev) editState = initEditState(e, data);
+    showEditUI(true);
+    syncPanel();
+  } else {
+    editState = null;
+    showEditUI(false);
+  }
+}
+
+function showEditUI(on){
+  // The edit controls live bottom-right (over the SCU legend, which is empty while editing) so
+  // the Layer Separation + Hull Hologram panel stays visible bottom-left during editing.
+  document.getElementById('editpanel').style.display = on ? '' : 'none';
+  document.getElementById('panel').style.display = '';
+  document.getElementById('legend').style.display = on ? 'none' : '';
+}
+
+function selectGrid(i){
+  if (!editState) return;
+  editState.selected = i;
+  buildScene(lastPayload);
+  syncPanel();
+}
+function rebuildEdit(){ buildScene(lastPayload); syncPanel(); }
+
+// ---- editor panel wiring ----
+const epw=document.getElementById('ep-w'), epd=document.getElementById('ep-d'), eph=document.getElementById('ep-h'),
+      epx=document.getElementById('ep-x'), epy=document.getElementById('ep-y'), epz=document.getElementById('ep-z'),
+      epwy=document.getElementById('ep-wy'), epmsg=document.getElementById('ep-msg');
+const CAP_SIZES = [1,2,4,8,16,24,32];
+const deriveAccepts = cap => CAP_SIZES.filter(s => s <= cap);
+// a checkbox chip per standard size; a grid's accepted set is exactly the checked ones
+const capBoxes = CAP_SIZES.map(s => {
+  const lab=document.createElement('label');
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.value=s;
+  cb.addEventListener('change', readFields);
+  lab.appendChild(cb); lab.appendChild(document.createTextNode(s));
+  document.getElementById('ep-caps').appendChild(lab);
+  return { size:s, cb, lab };
+});
+const round2 = x => Math.round(x*100)/100;
+function msg(t){ epmsg.textContent = t || ''; }
+
+function syncPanel(){
+  if (!editState) return;
+  const g = editState.grids[editState.selected];
+  document.getElementById('ep-ship').textContent = (lastPayload && lastPayload.ship && lastPayload.ship.name) ? ' . ' + lastPayload.ship.name : '';
+  const gp = document.getElementById('ep-grids'); gp.innerHTML = '';
+  editState.grids.forEach((_,i)=>{
+    const b=document.createElement('button'); b.textContent=i+1;
+    if (i===editState.selected) b.className='sel';
+    b.addEventListener('click',()=>selectGrid(i)); gp.appendChild(b);
+  });
+  if (!g) return;
+  epw.value=g.w; epd.value=g.d; eph.value=g.h;
+  epx.value=round2(g.px); epy.value=round2(g.py); epz.value=round2(g.pz);
+  epwy.checked=!!g.wy;
+  const acc = new Set(g.accepts || []);
+  capBoxes.forEach(c=>{ c.cb.checked = acc.has(c.size); c.lab.classList.toggle('on', c.cb.checked); });
+  document.getElementById('ep-gridscu').textContent = 'grid ' + (g.w*g.d*g.h) + ' SCU';
+  document.getElementById('ep-shipscu').textContent = 'ship ' + editState.grids.reduce((s,x)=>s+x.w*x.d*x.h,0) + ' SCU';
+}
+
+function readFields(){
+  if (!editState) return;
+  const g = editState.grids[editState.selected]; if (!g) return;
+  g.w=Math.max(1,Math.round(+epw.value||1)); g.d=Math.max(1,Math.round(+epd.value||1)); g.h=Math.max(1,Math.round(+eph.value||1));
+  g.px=+epx.value||0; g.py=+epy.value||0; g.pz=+epz.value||0;
+  g.wy=epwy.checked;
+  let acc = capBoxes.filter(c=>c.cb.checked).map(c=>c.size);
+  if (acc.length===0){ acc=[1]; msg('A grid must accept at least one size.'); } else { msg(''); }
+  g.accepts = acc.sort((a,b)=>a-b);
+  g.cap = Math.max(...g.accepts);
+  rebuildEdit();
+}
+[epw,epd,eph,epx,epy,epz,epwy].forEach(el=>el.addEventListener('change', readFields));
+
+document.getElementById('ep-add').addEventListener('click',()=>{
+  const org = editState.origin;
+  editState.grids.push({ w:2, d:2, h:2, cap:8, accepts:[1,2,4,8], wy:false, px:org[0]+2, py:org[1]+2, pz:org[2]+1 });
+  editState.selected = editState.grids.length-1;
+  msg('Grid added. Drag it into place.'); rebuildEdit();
+});
+document.getElementById('ep-del').addEventListener('click',()=>{
+  if (editState.grids.length<=1){ msg('A ship must keep at least one grid.'); return; }
+  editState.grids.splice(editState.selected,1);
+  editState.selected = Math.min(editState.selected, editState.grids.length-1);
+  msg('Grid deleted.'); rebuildEdit();
+});
+document.getElementById('ep-save').addEventListener('click',()=>{
+  const grids = editState.grids.map((g,i)=>({ id:i, w:g.w, d:g.d, h:g.h, cap:g.cap, accepts:g.accepts,
+    px:round2(g.px), py:round2(g.py), pz:round2(g.pz), wy:!!g.wy }));
+  post({ type:'saveGrids', shipId:editState.shipId, grids });
+  msg('Saved. Sign-off cleared for this ship.');
+});
+document.getElementById('ep-revert').addEventListener('click',()=>{
+  post({ type:'revertGrids', shipId:editState.shipId });
+  msg('Reverted to the datamined layout.');
+});
+function post(o){ if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(o)); }
+
+// ---- select + cell-snapped drag on the deck plane ----
+const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _hit = new THREE.Vector3();
+let dragging = false, dragY = 0;
+function toNdc(e){ _ndc.x=(e.clientX/innerWidth)*2-1; _ndc.y=-(e.clientY/innerHeight)*2+1; }
+renderer.domElement.addEventListener('pointerdown', e=>{
+  if (!editState || e.button!==0) return;
+  toNdc(e); _ray.setFromCamera(_ndc, camera);
+  const hit = _ray.intersectObjects(editMeshes, false)[0];
+  if (!hit) return;
+  const idx = hit.object.userData.index;
+  selectGrid(idx);
+  dragging = true; controls.enabled = false;
+  dragY = editState.grids[idx]._obj.position.y;
+});
+renderer.domElement.addEventListener('pointermove', e=>{
+  if (!dragging || !editState) return;
+  toNdc(e); _ray.setFromCamera(_ndc, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0,1,0), -dragY);
+  if (!_ray.ray.intersectPlane(plane, _hit)) return;
+  const g = editState.grids[editState.selected], org = editState.origin;
+  const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d;
+  let px = (_hit.x - root.position.x) + org[0];
+  let py = (_hit.z - root.position.z) + org[1];
+  px = Math.round(px - latExt/2) + latExt/2;   // keep min corner on a whole cell
+  py = Math.round(py - depExt/2) + depExt/2;
+  g.px = px; g.py = py;
+  g._obj.position.x = px - org[0]; g._obj.position.z = py - org[1];
+  epx.value = round2(px); epy.value = round2(py);
+});
+addEventListener('pointerup',()=>{ if (dragging){ dragging=false; controls.enabled=true; } });
+
+// ---- Studio (non-edit) click-to-select a grid for test fill ----
+let _studioDownXY = null;
+renderer.domElement.addEventListener('pointerdown', e=>{
+  _studioDownXY = (!editState && e.button===0) ? [e.clientX, e.clientY] : null;
+});
+renderer.domElement.addEventListener('pointerup', e=>{
+  if (!_studioDownXY || editState || !studioMeshes.length){ _studioDownXY = null; return; }
+  const moved = Math.hypot(e.clientX - _studioDownXY[0], e.clientY - _studioDownXY[1]);
+  _studioDownXY = null;
+  if (moved > 5) return;   // that was an orbit drag, not a click
+  toNdc(e); _ray.setFromCamera(_ndc, camera);
+  const hit = _ray.intersectObjects(studioMeshes, false)[0];
+  if (hit) post({ type:'testGridSelected', index: hit.object.userData.index });
+});
+
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+  if(auto){ target=0.5-0.5*Math.cos(t*0.45); slider.value=Math.round(target*100); }
+  sep+=(target-sep)*0.09; valEl.textContent=Math.round(sep*100)+'%';
+  applySep(sep);
+  panFromKeys();
+  controls.update(); renderer.render(scene, camera);
+}
+
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// data bridge: C# posts the packed trip as JSON; also expose a manual hook for browser testing.
+if (window.chrome && window.chrome.webview) {
+  window.chrome.webview.addEventListener('message', e => { try { renderPayload(e.data); } catch(err){ console.error(err); } });
+}
+window.setCargo = d => renderPayload(d);
+
+buildScene(null);
+animate();
+</script></body></html>

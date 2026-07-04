@@ -39,6 +39,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
   </ItemGroup>
 
   <!-- Let the test project reach internal seams (e.g. Logger.WriteTo). -->
@@ -51,34 +52,47 @@
     <EmbeddedResource Include="Data\seed_data.json" />
     <None Remove="Data\components.ini" />
     <EmbeddedResource Include="Data\components.ini" />
+    <None Remove="Data\cargo_ships.json" />
+    <EmbeddedResource Include="Data\cargo_ships.json" />
+    <None Remove="Data\contract_caps.json" />
+    <EmbeddedResource Include="Data\contract_caps.json" />
     <None Update="README.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 
+  <!-- Cargo Planner 3D scene (Three.js, vendored for offline) served to the WebView2 host. -->
   <ItemGroup>
-    <Resource Include="Assets\nexus_icon_classic.png"/>
-    <Resource Include="Assets\nexus_logo_classic.png"/>
-    <Resource Include="Assets\nexus.ico"/>
-    <Resource Include="Assets\scan_region_example.png"/>
-    <Resource Include="Assets\RS_Signature.png"/>
-    <Resource Include="Assets\Fonts\Outfit-SemiBold.ttf"/>
+    <None Remove="Web\cargo\**\*" />
+    <Content Include="Web\cargo\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\nexus_icon_classic.png" />
+    <Resource Include="Assets\nexus_logo_classic.png" />
+    <Resource Include="Assets\nexus.ico" />
+    <Resource Include="Assets\scan_region_example.png" />
+    <Resource Include="Assets\RS_Signature.png" />
+    <Resource Include="Assets\Fonts\Outfit-SemiBold.ttf" />
     <!-- UI overhaul type system: Rajdhani (display), Geist (body/UI), JetBrains Mono (data) -->
-    <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf"/>
-    <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf"/>
-    <Resource Include="Assets\Fonts\Rajdhani-Bold.ttf"/>
-    <Resource Include="Assets\Fonts\Geist-Regular.ttf"/>
-    <Resource Include="Assets\Fonts\Geist-Medium.ttf"/>
-    <Resource Include="Assets\Fonts\Geist-SemiBold.ttf"/>
-    <Resource Include="Assets\Fonts\Geist-Bold.ttf"/>
-    <Resource Include="Assets\Fonts\JetBrainsMono-Regular.ttf"/>
-    <Resource Include="Assets\Fonts\JetBrainsMono-Medium.ttf"/>
-    <Resource Include="Assets\Fonts\JetBrainsMono-Bold.ttf"/>
+    <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf" />
+    <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf" />
+    <Resource Include="Assets\Fonts\Rajdhani-Bold.ttf" />
+    <Resource Include="Assets\Fonts\Geist-Regular.ttf" />
+    <Resource Include="Assets\Fonts\Geist-Medium.ttf" />
+    <Resource Include="Assets\Fonts\Geist-SemiBold.ttf" />
+    <Resource Include="Assets\Fonts\Geist-Bold.ttf" />
+    <Resource Include="Assets\Fonts\JetBrainsMono-Regular.ttf" />
+    <Resource Include="Assets\Fonts\JetBrainsMono-Medium.ttf" />
+    <Resource Include="Assets\Fonts\JetBrainsMono-Bold.ttf" />
     <!-- MOBIGLAS UI/label face -->
-    <Resource Include="Assets\Fonts\ChakraPetch-Regular.ttf"/>
-    <Resource Include="Assets\Fonts\ChakraPetch-Medium.ttf"/>
-    <Resource Include="Assets\Fonts\ChakraPetch-SemiBold.ttf"/>
-    <Resource Include="Assets\Fonts\ChakraPetch-Bold.ttf"/>
+    <Resource Include="Assets\Fonts\ChakraPetch-Regular.ttf" />
+    <Resource Include="Assets\Fonts\ChakraPetch-Medium.ttf" />
+    <Resource Include="Assets\Fonts\ChakraPetch-SemiBold.ttf" />
+    <Resource Include="Assets\Fonts\ChakraPetch-Bold.ttf" />
   </ItemGroup>
 </Project>
