@@ -47,3 +47,4 @@ __pycache__/
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+gen_contract_caps.py
