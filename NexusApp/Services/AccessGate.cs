@@ -11,7 +11,14 @@ public static class AccessGate
     // Cargo Planner + Grid Studio tabs and the Import tool, but NOT the catalog-patch button.
     private static readonly HashSet<string> BetaTesters = new(StringComparer.OrdinalIgnoreCase)
     {
-        // "SomePilot",
+        "Buck67",
+        "CannonActual",
+        "MangoMike",
+        "RayKyuzo",
+        "St-Myca",
+        "Tenuis",
+        "UnknownGhost",
+        "CupOffKoffee_TV",
     };
 
     // Approved = the owner (single-sourced from OwnerGate) or a beta tester on the list above.
