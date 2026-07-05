@@ -10,9 +10,15 @@ public static class Logger
 {
     private static readonly object _lock = new();
 
-    private static readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "NexusApp", "logs", "nexus.log");
+    // Default is %AppData%\NexusApp\logs\nexus.log. The NEXUS_LOG_PATH env var overrides it so the test
+    // suite (which deliberately exercises error/rollback paths) can point the log at a temp file and never
+    // write to, rotate, or delete the user's real diagnostic log.
+    private static readonly string _path =
+        Environment.GetEnvironmentVariable("NEXUS_LOG_PATH") is { Length: > 0 } custom
+            ? custom
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "NexusApp", "logs", "nexus.log");
 
     /// <summary>Absolute path of the app log file (for the in-app log monitor / diagnostic snapshot).</summary>
     public static string LogPath => _path;
