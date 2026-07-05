@@ -1,4 +1,4 @@
-# Nexus — Star Citizen Companion App
+# Nexus - Star Citizen Companion App
 
 <p align="center">
   <img src="NexusApp/Assets/nexus_logo_classic.png" alt="Nexus logo" width="240">
@@ -28,7 +28,7 @@ Nexus decodes RS scan values into resource type and node count, times your refin
 | **Refinery Tracker** | Track active refinery jobs with live countdown timers and status indicators. |
 | **Mining Codex** | Full reference table of all mineable resources, filterable by system (Stanton / Pyro / Nyx) and method (Ship / ROC / FPS). |
 | **Blueprint Library** | Search ship / weapon / armor / ammo blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
-| **Blueprint Network** | Share which blueprints you own with friends or your org by trading library files, and see who in your group owns what — coverage, gaps to farm, and single-owner risk. Fully offline: you exchange files, nothing syncs. |
+| **Blueprint Network** | Share which blueprints you own with friends or your org by trading library files, and see who in your group owns what - coverage, gaps to farm, and single-owner risk. Fully offline: you exchange files, nothing syncs. |
 | **Cargo Hauling** | Hauling contracts you accept in-game appear automatically from `Game.log`, consolidated into collect and deliver stops per location. Optional screen-scan enriches each haul with reward, contractor, and cargo details. |
 
 **Highlights**
@@ -100,7 +100,7 @@ The same haul plan in-game: totals, consolidated stops, and per-contract progres
 
 Nexus ships two ways; pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings and work orders locally, and run fully offline.
 
-### Option 1 — Installer (`Nexus_Setup.exe`) — *recommended, user friendly*
+### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
 
 A guided setup that installs Nexus like normal Windows software.
 
@@ -109,7 +109,7 @@ A guided setup that installs Nexus like normal Windows software.
 3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
 4. Launch Nexus from the Start menu or desktop.
 
-### Option 2 — Portable (standalone `NexusApp.exe`)
+### Option 2 - Portable (standalone `NexusApp.exe`)
 
 Run the app directly, with no installation.
 
@@ -121,7 +121,7 @@ Run the app directly, with no installation.
 > **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
 
 <details>
-<summary><strong>For developers — tech stack & project layout</strong></summary>
+<summary><strong>For developers - tech stack & project layout</strong></summary>
 
 **Tech stack**
 

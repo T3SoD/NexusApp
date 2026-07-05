@@ -33,4 +33,15 @@ public static class DiagnosticSnapshot
         sb.AppendLine(string.IsNullOrWhiteSpace(logContents) ? "(log is empty)" : logContents.TrimEnd());
         return sb.ToString();
     }
+
+    // Diagnostic snapshots get shared with the maintainer; Star Citizen log paths live under the
+    // Windows user-profile folder, so replace that prefix with %USERPROFILE% to avoid leaking the
+    // OS username (which can be a real name). Paths outside the profile are returned unchanged.
+    public static string RedactUserProfile(string? path, string? home)
+    {
+        if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(home)) return path ?? "";
+        return path.StartsWith(home, StringComparison.OrdinalIgnoreCase)
+            ? "%USERPROFILE%" + path.Substring(home.Length)
+            : path;
+    }
 }

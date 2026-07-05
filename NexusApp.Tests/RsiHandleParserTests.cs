@@ -3,7 +3,7 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Real-format Game.log login lines (handle anonymized to "TestPilot") — confirms handle extraction
+// Real-format Game.log login lines (handle anonymized to "TestPilot") - confirms handle extraction
 // matches the actual tokens and never picks up the accountId/geid on the same line.
 public class RsiHandleParserTests
 {

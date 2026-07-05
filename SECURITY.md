@@ -69,7 +69,7 @@ in the first place:
 
 Nexus keeps its dependency footprint minimal:
 
-- `Microsoft.Data.Sqlite` — local database access.
-- `CommunityToolkit.Mvvm` — UI (MVVM) plumbing.
+- `Microsoft.Data.Sqlite` - local database access.
+- `CommunityToolkit.Mvvm` - UI (MVVM) plumbing.
 
 Both are widely used Microsoft / .NET Foundation packages.

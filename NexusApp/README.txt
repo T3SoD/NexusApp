@@ -1,5 +1,5 @@
 ========================================
-  NEXUS — Star Citizen Mining Assistant
+  NEXUS - Star Citizen Mining Assistant
 ========================================
 
 DISCLAIMER
@@ -38,13 +38,13 @@ WINDOWS SMARTSCREEN WARNING
   When you first run Nexus you may see a blue "Windows protected your
   PC" dialog from Microsoft SmartScreen. This appears because the app
   is unsigned (code signing certificates cost several hundred dollars
-  per year). The app is safe — here is how to proceed:
+  per year). The app is safe - here is how to proceed:
 
-  Option A — Run anyway:
+  Option A - Run anyway:
     1. Click "More info" in the SmartScreen dialog
     2. Click "Run anyway"
 
-  Option B — Unblock before running (recommended if you use ZIP):
+  Option B - Unblock before running (recommended if you use ZIP):
     1. Right-click the downloaded ZIP file
     2. Select "Properties"
     3. At the bottom of the General tab, check "Unblock"
@@ -52,7 +52,7 @@ WINDOWS SMARTSCREEN WARNING
 
   If Windows Defender flags the file as a threat, it is a false
   positive. You can submit the file for analysis at:
-  security.microsoft.com — or add an exclusion for the Nexus folder
+  security.microsoft.com - or add an exclusion for the Nexus folder
   in Windows Security > Virus & threat protection > Exclusions.
 
 
@@ -65,7 +65,7 @@ To use the auto-scan overlay:
   1. Click the overlay button (⧉) in the top-right of the main window
   2. Switch to the SCAN tab in the overlay
   3. Click ⊕ to draw a scan region over the RS value on your game screen
-  4. Click ■ to start scanning — the overlay reads the value automatically
+  4. Click ■ to start scanning - the overlay reads the value automatically
 
 
 PAGES
@@ -106,7 +106,7 @@ TIPS
   - Resources in your shopping list are highlighted with a teal glow
     in scan results and recent scan history
   - Shopping list: add resources or blueprint ingredients with the
-    cart (🛒) button and review them anytime from the main toolbar
+    cart button and review them anytime from the main toolbar
   - Work order timers survive app restarts
 
 

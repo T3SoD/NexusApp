@@ -54,7 +54,7 @@ public class HelpDialog : Window
                 "Scanning pauses on its own while both Nexus and Star Citizen are in the background, and resumes when either returns to the front - the HUB light shows yellow while paused.",
                 "Use the Show/Hide RS detection box switch to see the magenta scan box on screen - it's hidden by default.",
                 "Contract scanning for Cargo Hauling uses its own separate detection box - see Cargo Hauling.",
-                "Use the opacity slider in the overlay header to adjust transparency (20–100%) - it's on every tab and the refinery flyout dims along with it.",
+                "Use the opacity slider in the overlay header to adjust transparency (20-100%) - it's on every tab and the refinery flyout dims along with it.",
                 "◉ Reading… appears while a candidate value is being confirmed.",
             ]),
 

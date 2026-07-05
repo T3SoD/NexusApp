@@ -4,7 +4,7 @@ using Xunit;
 namespace NexusApp.Tests;
 
 // Exercises the headless session logic of GameLogSession (auto-mark gating, dedup, the
-// per-session tally) by feeding lines straight into Ingest with injected ownership fakes —
+// per-session tally) by feeding lines straight into Ingest with injected ownership fakes -
 // no WPF window and no real Game.log file.
 public class GameLogSessionTests
 {
@@ -89,7 +89,7 @@ public class GameLogSessionTests
         s.Marked += _ => fired++;
         s.Ingest(Bp("Bracket Cooler"));
         s.Ingest(Bp("Hellion Cannon"));
-        s.Ingest(Bp("Bracket Cooler"));   // duplicate — should not re-fire
+        s.Ingest(Bp("Bracket Cooler"));   // duplicate - should not re-fire
         Assert.Equal(2, fired);
         Assert.Equal(2, s.Count);
     }

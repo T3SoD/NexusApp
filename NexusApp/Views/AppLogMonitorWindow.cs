@@ -172,7 +172,10 @@ public sealed class AppLogMonitorWindow : Window
         {
             ("Distribution", AppInfo.Distribution),
             ("Scan region set", App.Settings.Current.ScanRegion != null ? "yes" : "no"),
-            ("Game.log path", string.IsNullOrEmpty(App.Settings.Current.GameLogPath) ? "(default / auto-detect)" : App.Settings.Current.GameLogPath),
+            ("Game.log path", string.IsNullOrEmpty(App.Settings.Current.GameLogPath)
+                ? "(default / auto-detect)"
+                : DiagnosticSnapshot.RedactUserProfile(App.Settings.Current.GameLogPath,
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))),
             ("Session Tracking", App.Settings.Current.GameLogTrackSession ? "on" : "off"),
             ("Auto-Track Blueprints", App.Settings.Current.GameLogAutoTrack ? "on" : "off"),
         };

@@ -36,6 +36,22 @@ public class DiagnosticSnapshotTests
     }
 
     [Fact]
+    public void RedactUserProfile_ReplacesProfilePrefixOnly()
+    {
+        var home = @"C:\Users\alice";
+        // the profile prefix (which carries the Windows username) is masked
+        Assert.Equal(@"%USERPROFILE%\AppData\Local\...\Game.log",
+            DiagnosticSnapshot.RedactUserProfile(@"C:\Users\alice\AppData\Local\...\Game.log", home));
+        // prefix match is case-insensitive
+        Assert.Equal(@"%USERPROFILE%\x", DiagnosticSnapshot.RedactUserProfile(@"c:\users\alice\x", home));
+        // a path outside the profile has no username to leak, so it is unchanged
+        Assert.Equal(@"D:\Games\StarCitizen\Game.log",
+            DiagnosticSnapshot.RedactUserProfile(@"D:\Games\StarCitizen\Game.log", home));
+        // empty inputs are safe
+        Assert.Equal("", DiagnosticSnapshot.RedactUserProfile("", home));
+    }
+
+    [Fact]
     public void Build_HandlesEmptyLog()
     {
         var snap = DiagnosticSnapshot.Build(

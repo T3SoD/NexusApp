@@ -6,7 +6,7 @@ namespace NexusApp.Tests;
 
 // Reads the user's own localization file (any mod, any custom format) and joins it to the bundled
 // key -> official-name reference, producing customDisplay -> official. The join is the internal key,
-// so the custom format never matters — verified here with real default (global1) and no-separator
+// so the custom format never matters - verified here with real default (global1) and no-separator
 // custom (global2) value shapes for the same keys.
 public class GlobalIniReaderTests
 {
@@ -35,7 +35,7 @@ public class GlobalIniReaderTests
     [Fact]
     public void BuildCustomToOfficial_NoSeparatorCustomFormat_MapsToOfficial()
     {
-        // global2-style values: "2AFR-76", "1DTundra" — no separators at all, so only the key join works.
+        // global2-style values: "2AFR-76", "1DTundra" - no separators at all, so only the key join works.
         var map = GlobalIniReader.BuildCustomToOfficial(new[]
         {
             "item_Name_SHLD_GODI_S02_FR76=2AFR-76",
