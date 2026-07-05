@@ -71,6 +71,10 @@ To use the auto-scan overlay:
 PAGES
 -----
 
+  OPERATIONS         - At-a-glance dashboard of your last scan, refinery
+                       queue, cargo in transit, session blueprints, and
+                       network coverage, with links into every module
+
   RS SIGNAL DECODER  - Manually enter or auto-scan an RS value to identify
                        the resource and node count
 
@@ -87,6 +91,10 @@ PAGES
 
   REFINERY TRACKER   - Track active refinery jobs with live countdown
                        timers and status indicators
+
+  CARGO HAULING      - Track hauling contracts read from your Game.log,
+                       with a consolidation view of what to load and drop
+                       at each stop across your active hauls
 
 
 TIPS
