@@ -105,11 +105,24 @@ public sealed class CargoShipCatalog
     // Shared, validated construction of one grid (embedded load and overrides both use it). An
     // explicit accepted-size set wins; otherwise a single cap expands to every standard size up
     // to it, preserving the datamined data's meaning.
+    // A real ship's grid is a few cells per axis; these ceilings sit far above any real hull but stop
+    // a hostile .nexusgrid from overflowing Capacity (W*D*H) or allocating a giant GridOccupancy.
+    private const int MaxCellsPerAxis = 512;
+    private const long MaxCellVolume = 200_000;
+    private const double MaxPositionCells = 5_000;
+
     private static GridDef BuildGrid(int id, int w, int d, int h, int cap, List<int>? accepts,
         double? px, double? py, double? pz, bool wy, string shipName)
     {
         if (w <= 0 || d <= 0 || h <= 0)
             throw new InvalidDataException($"{shipName}: grid {id} has a non-positive dimension");
+        if (w > MaxCellsPerAxis || d > MaxCellsPerAxis || h > MaxCellsPerAxis)
+            throw new InvalidDataException($"{shipName}: grid {id} dimension exceeds {MaxCellsPerAxis} cells");
+        if ((long)w * d * h > MaxCellVolume)
+            throw new InvalidDataException($"{shipName}: grid {id} volume exceeds {MaxCellVolume} cells");
+        foreach (var p in new[] { px, py, pz })
+            if (p is { } v && (!double.IsFinite(v) || Math.Abs(v) > MaxPositionCells))
+                throw new InvalidDataException($"{shipName}: grid {id} has an out-of-range position");
         return new GridDef
         {
             Id = id, W = w, D = d, H = h, Name = $"Grid {id + 1}",

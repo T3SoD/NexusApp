@@ -16,6 +16,8 @@ public static class GridShareService
 {
     public const string FormatV1 = "nexus.cargo.grid.v1";
     public const string FileExtension = ".nexusgrid";
+    public const int MaxFileBytes = 1_000_000;   // a real .nexusgrid is a few KB; anything larger is hostile
+    public const int MaxGrids = 64;              // the largest real ship is far below this
 
     private static readonly JsonSerializerOptions Opts = new()
     {
@@ -27,8 +29,15 @@ public static class GridShareService
     public static void Export(GridSharePackage package, string path) =>
         File.WriteAllText(path, JsonSerializer.Serialize(package, Opts));
 
+    // A .nexusgrid is untrusted third-party input. Guard the file size, grid count, and free-text
+    // fields here so a hostile or hand-mangled file cannot exhaust memory or inject nexus.log lines;
+    // grid geometry is validated downstream by BuildPreview/BuildGrid.
     public static GridSharePackage Import(string path)
     {
+        var len = new FileInfo(path).Length;
+        if (len > MaxFileBytes)
+            throw new GridShareException($"File is too large ({len / 1024} KB); a .nexusgrid is only a few KB.");
+
         GridSharePackage? pkg;
         try { pkg = JsonSerializer.Deserialize<GridSharePackage>(File.ReadAllText(path), Opts); }
         catch (JsonException ex) { throw new GridShareException($"Not a valid .nexusgrid file: {ex.Message}"); }
@@ -37,17 +46,47 @@ public static class GridShareService
         if (pkg.Format != FormatV1) throw new GridShareException($"Unknown file format '{pkg.Format}'.");
         if (string.IsNullOrWhiteSpace(pkg.ShipId)) throw new GridShareException("File is missing a ship id.");
         if (pkg.Grids is null || pkg.Grids.Count == 0) throw new GridShareException("File has no cargo grids.");
-        return pkg;
+        if (pkg.Grids.Count > MaxGrids)
+            throw new GridShareException($"File has too many grids ({pkg.Grids.Count}); the limit is {MaxGrids}.");
+
+        return pkg with
+        {
+            RsiHandle = Clean(pkg.RsiHandle, 64, false),
+            ShipName = Clean(pkg.ShipName, 80, false),
+            Summary = Clean(pkg.Summary, 200, false),
+            Notes = Clean(pkg.Notes, 4000, true),
+        };
     }
 
-    // Convert a ship's effective grids (GridDef) to the override/share shape.
+    // Strip control and bidi/format characters (keeping newlines only where allowed) and truncate, so
+    // a handle like "pilot\r\n[SCAN] forged" cannot forge nexus.log lines and notes cannot be multi-MB.
+    private static string Clean(string? s, int max, bool allowNewlines)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(Math.Min(s.Length, max));
+        foreach (var ch in s)
+        {
+            if (sb.Length >= max) break;
+            if (allowNewlines && ch == '\n') { sb.Append('\n'); continue; }
+            // Drop Control (Cc: \r, \t, C0/C1) and Format (Cf: zero-width, bidi overrides, BOM)
+            // characters. Category-based so every invisible/injecting code point is covered.
+            var cat = char.GetUnicodeCategory(ch);
+            if (cat is System.Globalization.UnicodeCategory.Control or System.Globalization.UnicodeCategory.Format)
+                continue;
+            sb.Append(ch);
+        }
+        return sb.ToString();
+    }
+
+    // Convert a ship's effective grids (GridDef) to the override/share shape. Positions round-trip as
+    // null when the ship has no datamined position (never fabricate 0,0,0, which stacks every grid).
     public static List<GridOverride> ToOverrides(IReadOnlyList<GridDef> grids) =>
         grids.Select(g => new GridOverride
         {
             Id = g.Id, W = g.W, D = g.D, H = g.H,
             Cap = g.MaxContainerScu,
             Accepts = g.AcceptedCaps.ToList(),
-            Px = g.PosX ?? 0, Py = g.PosY ?? 0, Pz = g.PosZ ?? 0,
+            Px = g.PosX, Py = g.PosY, Pz = g.PosZ,
             Wy = g.WAlongShipY,
         }).ToList();
 }

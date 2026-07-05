@@ -33,4 +33,37 @@ public class CargoShipCatalogPreviewTests
     public void BuildPreview_NonStandardCap_Throws() =>
         Assert.Throws<InvalidDataException>(() =>
             Catalog.BuildPreview("crus-c1-spirit", new List<GridOverride> { G(cap: 7) }));
+
+    [Fact]
+    public void BuildPreview_OversizeDimension_Throws() =>
+        Assert.Throws<InvalidDataException>(() =>
+            Catalog.BuildPreview("crus-c1-spirit",
+                new List<GridOverride> { new() { Id = 0, W = 9999, D = 2, H = 2, Cap = 8, Px = 0, Py = 0, Pz = 0 } }));
+
+    [Fact]
+    public void BuildPreview_HugeVolume_Throws() =>
+        Assert.Throws<InvalidDataException>(() =>
+            Catalog.BuildPreview("crus-c1-spirit",
+                new List<GridOverride> { new() { Id = 0, W = 100, D = 100, H = 100, Cap = 8, Px = 0, Py = 0, Pz = 0 } }));
+
+    [Fact]
+    public void BuildPreview_NonFinitePosition_Throws() =>
+        Assert.Throws<InvalidDataException>(() =>
+            Catalog.BuildPreview("crus-c1-spirit",
+                new List<GridOverride> { new() { Id = 0, W = 4, D = 2, H = 2, Cap = 8, Px = double.NaN, Py = 0, Pz = 0 } }));
+
+    [Fact]
+    public void BuildPreview_ExtremePosition_Throws() =>
+        Assert.Throws<InvalidDataException>(() =>
+            Catalog.BuildPreview("crus-c1-spirit",
+                new List<GridOverride> { new() { Id = 0, W = 4, D = 2, H = 2, Cap = 8, Px = 1e9, Py = 0, Pz = 0 } }));
+
+    [Fact]
+    public void BuildPreview_NullPositions_BuildsUnpositionedGrid()
+    {
+        var ship = Catalog.BuildPreview("crus-c1-spirit",
+            new List<GridOverride> { new() { Id = 0, W = 4, D = 2, H = 2, Cap = 8, Px = null, Py = null, Pz = null } });
+        Assert.NotNull(ship);
+        Assert.False(ship!.Grids[0].HasPos);
+    }
 }
