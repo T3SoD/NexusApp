@@ -1310,11 +1310,10 @@ public partial class MainWindow : Window
     {
         _bpOwnFilter = filter;
         UpdateOwnedChips();
-        // A filter is a lens, not a mode switch: stay where the user is and just
-        // re-filter the current level. Search results are filter-independent, so
-        // toggling a filter from a search drops back to the (filtered) root.
-        if (_bpLevel == "search") GoRoot();
-        else { RenderBlueprintNav(); ShowBlueprintLanding(); }
+        // A filter is a lens, not a mode switch: stay where the user is (browse level
+        // OR search results) and just re-filter the current level in place.
+        RenderBlueprintNav();
+        ShowBlueprintLanding();
     }
 
     private void UpdateOwnedChips()
@@ -1407,6 +1406,9 @@ public partial class MainWindow : Window
     {
         InteractionLog.Nav("Blueprint Library: Browse (root)");
         _bpLevel = "root"; _bpCat = ""; _bpSub = "";
+        // Leaving search: drop the search term and its clear button so the box reflects browse mode.
+        _vm.BlueprintSearch = "";
+        BlueprintSearchClear.Visibility = Visibility.Collapsed;
         RenderBlueprintNav();
         ShowBlueprintLanding();
     }
@@ -1543,13 +1545,23 @@ public partial class MainWindow : Window
             }
 
             case "search":
+            {
                 BlueprintCrumbHost.Content = Breadcrumb(accent, ("Browse", GoRoot), ("Results", (Action?)null));
-                BlueprintNavPanel.Children.Add(NavHeader("Results", _bpSearchResults.Count, accent));
-                if (_bpSearchResults.Count == 0)
-                    BlueprintNavPanel.Children.Add(new TextBlock { Text = "No matches", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), Margin = new Thickness(6, 8, 0, 0) });
-                foreach (var bp in _bpSearchResults)
+                // Search respects the ownership pill: filter the raw matches by the active lens.
+                var results = _bpSearchResults.Where(MatchesOwnFilter).ToList();
+                BlueprintNavPanel.Children.Add(NavHeader("Results", results.Count, accent));
+                if (results.Count == 0)
+                {
+                    // Distinguish "found nothing" from "the pill filtered everything out".
+                    var empty = _bpSearchResults.Count > 0 && _bpOwnFilter != BpOwnFilter.All
+                        ? (_bpOwnFilter == BpOwnFilter.Owned ? "No owned matches" : "No not-owned matches")
+                        : "No matches";
+                    BlueprintNavPanel.Children.Add(new TextBlock { Text = empty, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), Margin = new Thickness(6, 8, 0, 0) });
+                }
+                foreach (var bp in results)
                     BlueprintNavPanel.Children.Add(BlueprintRow(bp, true));
                 break;
+            }
 
             default: // root
             {
@@ -1997,11 +2009,17 @@ public partial class MainWindow : Window
         var text = (_vm.BlueprintSearch ?? "").Trim();
         if (string.IsNullOrEmpty(text)) { GoRoot(); return; }
         _bpSearchResults = App.Data.SearchBlueprints(text);
-        ClearOwnFilter();
         _bpLevel = "search";
+        BlueprintSearchClear.Visibility = Visibility.Visible;   // keep the term in the box; show the clear affordance
         RenderBlueprintNav();
-        BlueprintSearchBox.Clear();
         ShowBlueprintLanding();
+    }
+
+    private void BlueprintSearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        InteractionLog.Click("Blueprint search: clear", (DependencyObject)sender);
+        BlueprintSuggestPopup.IsOpen = false;
+        GoRoot();   // clears the box, hides this button, and returns to the (filtered) browse root
     }
 
     private void BlueprintSearch_KeyDown(object sender, KeyEventArgs e)
@@ -2038,10 +2056,9 @@ public partial class MainWindow : Window
             _vm.BlueprintSearch = name;
             BlueprintSuggestPopup.IsOpen = false;
             _bpSearchResults = App.Data.SearchBlueprints(name);
-            ClearOwnFilter();
             _bpLevel = "search";
+            BlueprintSearchClear.Visibility = Visibility.Visible;   // the picked name stays in the box
             RenderBlueprintNav();
-            BlueprintSearchBox.Clear();
             _suppressAutocomplete = false;
 
             // Show the chosen blueprint's detail immediately
