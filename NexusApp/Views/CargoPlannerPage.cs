@@ -282,7 +282,9 @@ public sealed class CargoPlannerPage : UserControl
     {
         _shipSelect.SelectionChanged -= OnShipSelected;   // avoid a spurious render while rebuilding
         _shipSelect.Items.Clear();
-        foreach (var ship in _vm.Ships)
+        // Alphabetical for quick scanning; the underlying catalog order (hauling priority) is
+        // untouched, so the default-selected ship still lands on the top hauler.
+        foreach (var ship in _vm.Ships.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase))
             _shipSelect.Items.Add(new ShipRow(ship));
         SyncShipCombo();
         _shipSelect.SelectionChanged += OnShipSelected;

@@ -20,4 +20,8 @@ public sealed record GridOverride
     public double? Py { get; init; }
     public double? Pz { get; init; }
     public bool Wy { get; init; }
+    // Optional orientation quaternion (x, y, z, w) in the renderer's box-local frame, for genuinely
+    // tilted grids. Null = axis-aligned. Carried losslessly through export/import and the edit
+    // round-trip so a save never silently un-tilts a datamined grid; the editor does not change it.
+    public List<double>? Rot { get; init; }
 }

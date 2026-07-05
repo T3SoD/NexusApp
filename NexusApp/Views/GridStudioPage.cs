@@ -482,7 +482,9 @@ public sealed class GridStudioPage : UserControl
     {
         _shipSelect.SelectionChanged -= OnShipSelected;   // avoid re-entrant renders while rebuilding
         _shipSelect.Items.Clear();
-        foreach (var ship in _catalog.Ships)
+        // Display order is alphabetical for quick scanning; the catalog keeps its hauling-priority
+        // order (that still drives the default selection), so we sort only the rows shown here.
+        foreach (var ship in _catalog.Ships.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase))
             _shipSelect.Items.Add(new ShipRow(ship, ReviewMarker(ship.Id)));
         foreach (ShipRow r in _shipSelect.Items)
             if (r.Ship.Id == _selected?.Id) { _shipSelect.SelectedItem = r; break; }

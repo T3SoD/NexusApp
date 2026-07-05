@@ -76,6 +76,21 @@
   .ep-actions button.prim{color:#05070A;background:#FFB23E;border-color:#FFB23E;font-weight:700}
   .ep-hint{font:10px ui-monospace,monospace;color:#54606C;margin-bottom:8px}
   .ep-msg{font:10px ui-monospace,monospace;color:#FF8A3D;min-height:12px}
+  .ep-rot{margin-bottom:9px}
+  .ep-rot .ep-caplbl{display:flex;justify-content:space-between;align-items:baseline}
+  .ep-rotread{color:#7FE9E0;font:9px ui-monospace,monospace;text-transform:none;letter-spacing:0}
+  .ep-rotsteps{display:flex;gap:4px;margin-bottom:6px}
+  .ep-rotsteps button{flex:1;font:10px ui-monospace,monospace;color:#7C8A99;background:#0E141C;
+    border:1px solid #1C2836;border-radius:4px;padding:3px 0;cursor:pointer}
+  .ep-rotsteps button.on{border-color:#FFB23E;color:#FFB23E;background:rgba(255,178,62,.08)}
+  .ep-rotrow{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+  .ep-rotax{flex:1;font-size:10px;letter-spacing:1px;color:#7C8A99;text-transform:uppercase}
+  .ep-rotrow button{width:30px;height:22px;font:14px/1 ui-monospace,monospace;color:#7FE9E0;
+    background:#141B24;border:1px solid #1C2836;border-radius:4px;cursor:pointer}
+  .ep-rotrow button:hover{border-color:#7FE9E0}
+  .ep-rotflat{width:100%;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#7C8A99;
+    background:transparent;border:1px solid #1C2836;border-radius:4px;padding:4px 0;cursor:pointer;margin-top:2px}
+  .ep-rotflat:hover{border-color:#FFB23E;color:#FFB23E}
 </style>
 <script type="importmap">{"imports":{"three":"./three.module.js"}}</script>
 </head><body>
@@ -120,6 +135,18 @@
       <div id="ep-caps" class="ep-caps"></div>
     </div>
     <label class="ep-wy" title="Turns the grid 90 degrees so its width runs fore-aft (nose to tail) instead of side to side"><input id="ep-wy" type="checkbox">Rotate 90 degrees</label>
+    <div class="ep-rot">
+      <div class="ep-caplbl">Tilt / rotate grid<span id="ep-rotread" class="ep-rotread"></span></div>
+      <div class="ep-rotsteps" id="ep-rotstep">
+        <button data-step="5">5&deg;</button>
+        <button data-step="15" class="on">15&deg;</button>
+        <button data-step="45">45&deg;</button>
+      </div>
+      <div class="ep-rotrow"><span class="ep-rotax" title="Lean the grid nose-up / nose-down">Tilt</span><button data-rot="pitch" data-dir="-1">&minus;</button><button data-rot="pitch" data-dir="1">+</button></div>
+      <div class="ep-rotrow"><span class="ep-rotax" title="Bank the grid left / right">Roll</span><button data-rot="roll" data-dir="-1">&minus;</button><button data-rot="roll" data-dir="1">+</button></div>
+      <div class="ep-rotrow"><span class="ep-rotax" title="Spin the grid about vertical">Turn</span><button data-rot="yaw" data-dir="-1">&minus;</button><button data-rot="yaw" data-dir="1">+</button></div>
+      <button id="ep-rotflat" class="ep-rotflat">Reset to flat</button>
+    </div>
     <div class="ep-readout"><span id="ep-gridscu">-</span> &nbsp;.&nbsp; <span id="ep-shipscu">-</span></div>
     <div class="ep-actions">
       <button id="ep-add">Add grid</button>
@@ -304,6 +331,7 @@ function buildScene(data){
   worldGroup = new THREE.Group(); scene.add(worldGroup);
   root = new THREE.Group(); worldGroup.add(root);
   tierGroups = {}; connectors = []; sep = 0; slider.value = 0; valEl.textContent = '0%';
+  gizmoMeshes = [];   // stale ring refs must not survive a rebuild (they would false-hit the raycaster)
 
   GW = Math.max(1, bounds.w); GD = Math.max(1, bounds.d); GH = Math.max(1, bounds.h);
   buildBackdrop();
@@ -320,6 +348,7 @@ function buildScene(data){
 
   if (editing){
     buildEditGrids(grids);
+    buildGizmo();
   } else {
     // Per-grid holographic volumes (approved mock 14). In Studio mode the grids are orange (so
     // they read against the hologram), numbered, and clickable; the test-selected grid is pink.
@@ -329,23 +358,37 @@ function buildScene(data){
     grids.forEach((g, i) => {
       const selected = studio && i === testSel;
       const col = selected ? 0xFF5FBF : 0xFFB23E;   // orange everywhere; pink = studio selection
+      // A tilted grid (rot quaternion) lives under a rotated group at its volume center; an
+      // axis-aligned grid draws straight onto root at its min-corner-derived center (unchanged).
+      // cx/cy/cz is the box center in the parent's frame.
+      const tilted = Array.isArray(g.rot) && g.rot.length === 4;
+      let parent, cx, cy, cz;
+      if (tilted){
+        const grp = new THREE.Group();
+        grp.position.set(g.cx, g.cz, g.cy);   // payload (cx,cy,cz) -> scene (x,z,y)
+        grp.quaternion.set(g.rot[0], g.rot[1], g.rot[2], g.rot[3]);
+        root.add(grp);
+        parent = grp; cx = 0; cy = 0; cz = 0;
+      } else {
+        parent = root; cx = g.x + g.w/2; cy = g.z + g.h/2; cz = g.y + g.d/2;
+      }
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(g.w, g.d),
         new THREE.MeshStandardMaterial({ color:0x0c1219, roughness:1, metalness:0 }));
       floor.rotation.x = -Math.PI/2;
-      floor.position.set(g.x + g.w/2, g.z - 0.01, g.y + g.d/2); root.add(floor);
+      floor.position.set(cx, cy - g.h/2 - 0.01, cz); parent.add(floor);
       const vol = new THREE.Mesh(new THREE.BoxGeometry(g.w, g.h, g.d),
         new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity: selected?0.14:0.05, depthWrite:false, side:THREE.BackSide }));
-      vol.position.set(g.x + g.w/2, g.z + g.h/2, g.y + g.d/2); root.add(vol);
+      vol.position.set(cx, cy, cz); parent.add(vol);
       const film = new THREE.Mesh(new THREE.BoxGeometry(g.w, g.h, g.d),
         new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.025, depthWrite:false }));
-      film.position.copy(vol.position); root.add(film);
+      film.position.copy(vol.position); parent.add(film);
       if (studio){ film.userData.index = i; studioMeshes.push(film); }
       const gb = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(g.w, g.h, g.d)),
         new THREE.LineBasicMaterial({ color:col, transparent:true, opacity: selected?1:0.65 }));
-      gb.position.copy(vol.position); root.add(gb);
+      gb.position.copy(vol.position); parent.add(gb);
       if (studio){
         const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: gridLabelTex(i+1, selected), transparent:true, depthWrite:false }));
-        spr.scale.set(1.3,1.3,1); spr.position.set(g.x + g.w/2, g.z + g.h + 0.55, g.y + g.d/2); root.add(spr);
+        spr.scale.set(1.3,1.3,1); spr.position.set(cx, cy + g.h/2 + 0.55, cz); parent.add(spr);
       }
     });
     for (const b of boxes) addBox(b.scu, b.x, b.y, b.z, b.w, b.d, b.h);
@@ -502,6 +545,34 @@ function renderPayload(data){
 // cap / add / delete), and posts the corrected set back to C# on Save. Origin is a stable
 // ship-space anchor so moving a grid never shifts the hull hologram.
 let editState = null, lastPayload = null, editMeshes = [], studioMeshes = [];
+let gizmoMeshes = [], rotDrag = null, _rotArm = null, rotStep = 15;
+
+// ---- grid orientation model ----------------------------------------------------
+// A grid's orientation is one quaternion in the box-local -> scene frame (X = W lateral,
+// Y = H vertical, Z = D depth). Editing composes rotations about the WORLD/scene axes so the
+// controls read intuitively (Tilt = pitch about lateral X, Roll about fore-aft Z, Turn = yaw
+// about vertical Y). The legacy wy 90-degree yaw is folded into rot the moment the user rotates,
+// so orientation always lives in one place; Reset to flat clears both.
+const ROT_AXIS = { pitch:new THREE.Vector3(1,0,0), roll:new THREE.Vector3(0,0,1), yaw:new THREE.Vector3(0,1,0) };
+const YAW90 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI/2);
+function gridQuat(g){
+  if (Array.isArray(g.rot) && g.rot.length===4) return new THREE.Quaternion(g.rot[0],g.rot[1],g.rot[2],g.rot[3]);
+  if (g.wy) return YAW90.clone();
+  return new THREE.Quaternion();
+}
+function setGridQuat(g, q){
+  q.normalize();
+  if (Math.abs(q.w) > 0.999995){ g.rot = null; g.wy = false; }   // ~identity -> axis-aligned, no yaw
+  else { g.rot = [q.x, q.y, q.z, q.w]; g.wy = false; }
+}
+function applyRot(kind, deg){
+  if (!editState) return;
+  const g = editState.grids[editState.selected]; if (!g) return;
+  disarmRevert();
+  const q = gridQuat(g).premultiply(new THREE.Quaternion().setFromAxisAngle(ROT_AXIS[kind], deg*Math.PI/180));
+  setGridQuat(g, q);
+  rebuildEdit(); syncPanel(); markDirty();
+}
 
 function gridMinCorner(g){
   const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d;
@@ -511,16 +582,39 @@ function computeOrigin(grids){
   const mc = grids.map(gridMinCorner);
   return [Math.min(...mc.map(m=>m[0])), Math.min(...mc.map(m=>m[1])), Math.min(...mc.map(m=>m[2]))];
 }
+// Payload-space AABB full extent [x,y,z] of a box (w,h,d) rotated by a scene-frame quaternion.
+// Mirrors CargoWebView.RotatedAabb so edit-mode framing/anchoring matches the view/payload math.
+function rotAabb(q, w, h, d){
+  const x=q[0], y=q[1], z=q[2], ww=q[3];
+  const m00=1-2*(y*y+z*z), m01=2*(x*y-z*ww), m02=2*(x*z+y*ww);
+  const m10=2*(x*y+z*ww),   m11=1-2*(x*x+z*z), m12=2*(y*z-x*ww);
+  const m20=2*(x*z-y*ww),   m21=2*(y*z+x*ww),  m22=1-2*(x*x+y*y);
+  const hw=w/2, hh=h/2, hd=d/2;
+  const sx=Math.abs(m00)*hw+Math.abs(m01)*hh+Math.abs(m02)*hd;
+  const sy=Math.abs(m10)*hw+Math.abs(m11)*hh+Math.abs(m12)*hd;
+  const sz=Math.abs(m20)*hw+Math.abs(m21)*hh+Math.abs(m22)*hd;
+  return [2*sx, 2*sz, 2*sy];   // scene (x,y,z) -> payload (x, z, y)
+}
 function gridToFrame(g, i){
-  const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d, org = editState.origin;
+  const org = editState.origin;
+  // Tilted grid: carry the raw dims + true center + rotation so edit mode draws the real canted pod
+  // (so it can be dragged onto the hull). x/y/z stays the AABB min corner for bounds/anchoring.
+  if (Array.isArray(g.rot) && g.rot.length===4){
+    const [ax,ay,az] = rotAabb(g.rot, g.w, g.h, g.d);
+    return { index:i, cap:g.cap,
+             x:(g.px - ax/2) - org[0], y:(g.py - ay/2) - org[1], z:(g.pz - az/2) - org[2],
+             w:g.w, d:g.d, h:g.h, ax, ay, az,
+             cx:g.px - org[0], cy:g.py - org[1], cz:g.pz - org[2], rot:g.rot };
+  }
+  const latExt = g.wy ? g.d : g.w, depExt = g.wy ? g.w : g.d;
   return { index:i, cap:g.cap,
            x:(g.px - latExt/2) - org[0], y:(g.py - depExt/2) - org[1], z:(g.pz - g.h/2) - org[2],
-           w:latExt, d:depExt, h:g.h };
+           w:latExt, d:depExt, h:g.h, ax:latExt, ay:depExt, az:g.h };
 }
 function framesBounds(frames){
-  return { w: Math.max(1, ...frames.map(f=>f.x+f.w)),
-           d: Math.max(1, ...frames.map(f=>f.y+f.d)),
-           h: Math.max(1, ...frames.map(f=>f.z+f.h)) };
+  return { w: Math.max(1, ...frames.map(f=>f.x+(f.ax ?? f.w))),
+           d: Math.max(1, ...frames.map(f=>f.y+(f.ay ?? f.d))),
+           h: Math.max(1, ...frames.map(f=>f.z+(f.az ?? f.h))) };
 }
 
 const gridLabelCache = {};
@@ -539,7 +633,14 @@ function buildEditGrids(frames){
   editMeshes = [];
   frames.forEach(f=>{
     const grp = new THREE.Group();
-    grp.position.set(f.x + f.w/2, f.z + f.h/2, f.y + f.d/2);
+    // A tilted grid sits at its true center with its quaternion (so the canted pod is drawn as it
+    // really is, and dragging translates it); axis-aligned grids anchor at the min-corner center.
+    if (f.rot){
+      grp.position.set(f.cx, f.cz, f.cy);
+      grp.quaternion.set(f.rot[0], f.rot[1], f.rot[2], f.rot[3]);
+    } else {
+      grp.position.set(f.x + f.w/2, f.z + f.h/2, f.y + f.d/2);
+    }
     const sel = f.index === editState.selected;
     const col = sel ? 0xFF5FBF : 0xFFB23E;   // selected = pink, all others = orange
     const fill = new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, f.d),
@@ -558,9 +659,30 @@ function buildEditGrids(frames){
   });
 }
 
+// Rotation gizmo: three world-aligned pickable rings around the selected grid (drag a ring to rotate
+// about its axis). The rings stay fixed while the grid turns inside them, so the drag reads as a
+// direct rotation about the ship's lateral (tilt), fore-aft (roll), or vertical (turn) axis.
+function buildGizmo(){
+  gizmoMeshes = [];
+  if (!editState) return;
+  const g = editState.grids[editState.selected]; if (!g || !g._obj) return;
+  const c = g._obj.position, R = Math.max(g.w, g.h, g.d) * 0.7 + 1.6;
+  [ { color:0xFF6B6B, rx:0, ry:Math.PI/2, axis:new THREE.Vector3(1,0,0) },   // tilt  (lateral X)
+    { color:0x8FE06B, rx:Math.PI/2, ry:0, axis:new THREE.Vector3(0,1,0) },   // turn  (vertical Y)
+    { color:0x6BB6FF, rx:0, ry:0,         axis:new THREE.Vector3(0,0,1) },   // roll  (fore-aft Z)
+  ].forEach(d=>{
+    const t = new THREE.Mesh(new THREE.TorusGeometry(R, 0.12, 8, 72),
+      new THREE.MeshBasicMaterial({ color:d.color, transparent:true, opacity:0.8, depthTest:false }));
+    t.renderOrder = 998; t.position.copy(c); t.rotation.set(d.rx, d.ry, 0);
+    t.userData.axis = d.axis;
+    root.add(t); gizmoMeshes.push(t);
+  });
+}
+
 function initEditState(e, data){
   const grids = e.grids.map(g => ({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy, px:g.px, py:g.py, pz:g.pz,
-    accepts: (g.accepts && g.accepts.length) ? g.accepts.slice() : deriveAccepts(g.cap) }));
+    accepts: (g.accepts && g.accepts.length) ? g.accepts.slice() : deriveAccepts(g.cap),
+    rot: (Array.isArray(g.rot) && g.rot.length===4) ? g.rot.slice() : null }));
   const positioned = grids.every(g => g.px != null && g.py != null && g.pz != null);
   let org;
   if (!positioned){
@@ -660,7 +782,14 @@ function syncPanel(){
   if (!g) return;
   epw.value=g.w; epd.value=g.d; eph.value=g.h;
   epx.value=round2(g.px); epy.value=round2(g.py); epz.value=round2(g.pz);
-  epwy.checked=!!g.wy;
+  epwy.checked=!!g.wy; epwy.disabled=!!g.rot;   // a full rotation supersedes the 90-degree yaw
+  const rr = document.getElementById('ep-rotread');
+  if (rr){
+    if (g.rot){
+      const e = new THREE.Euler().setFromQuaternion(gridQuat(g), 'YXZ'), dg = x=>Math.round(x*180/Math.PI);
+      rr.textContent = `tilt ${dg(e.x)}° roll ${dg(e.z)}° turn ${dg(e.y)}°`;
+    } else rr.textContent = g.wy ? 'turned 90°' : 'flat';
+  }
   const acc = new Set(g.accepts || []);
   capBoxes.forEach(c=>{ c.cb.checked = acc.has(c.size); c.lab.classList.toggle('on', c.cb.checked); });
   document.getElementById('ep-gridscu').textContent = 'grid ' + (g.w*g.d*g.h) + ' SCU';
@@ -686,6 +815,23 @@ function readFields(){
   if (after !== before) markDirty();   // only a real change dirties the layout (no false-positive on a no-op edit)
 }
 [epw,epd,eph,epx,epy,epz,epwy].forEach(el=>el.addEventListener('change', readFields));
+
+// ---- tilt / rotate controls ----
+document.getElementById('ep-rotstep').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if (!b) return;
+  rotStep = +b.dataset.step;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b));
+});
+document.querySelectorAll('.ep-rotrow button[data-rot]').forEach(b=>
+  b.addEventListener('click', ()=> applyRot(b.dataset.rot, (+b.dataset.dir)*rotStep)));
+document.getElementById('ep-rotflat').addEventListener('click', ()=>{
+  if (!editState) return;
+  const g = editState.grids[editState.selected]; if (!g) return;
+  disarmRevert();
+  if (!g.rot && !g.wy){ msg('Grid is already flat.'); return; }   // no-op: do not false-dirty / clear sign-off
+  g.rot = null; g.wy = false;
+  rebuildEdit(); syncPanel(); markDirty();
+});
 
 document.getElementById('ep-add').addEventListener('click',()=>{
   if (!editState) return;
@@ -713,7 +859,8 @@ document.getElementById('ep-dup').addEventListener('click',()=>{
   const g = editState.grids[editState.selected]; if (!g) return;
   const latExt = g.wy ? g.d : g.w;   // offset the copy by its own width so it does not sit exactly on top
   editState.grids.push({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy,
-    accepts:(g.accepts||[]).slice(), px:g.px + latExt, py:g.py, pz:g.pz });
+    accepts:(g.accepts||[]).slice(), px:g.px + latExt, py:g.py, pz:g.pz,
+    ...(g.rot ? { rot: g.rot.slice() } : {}) });   // a copied tilted grid keeps its orientation
   editState.selected = editState.grids.length-1;
   hideUndo();   // roster changed: the one-level move-undo index is no longer valid
   msg('Grid duplicated. Drag it into place.'); rebuildEdit(); markDirty();
@@ -733,7 +880,10 @@ document.getElementById('ep-mirror').addEventListener('click',()=>{
     cx = (Math.min(...ext.map(e=>e[0])) + Math.max(...ext.map(e=>e[1]))) / 2;
   }
   editState.grids.push({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy,
-    accepts:(g.accepts||[]).slice(), px: 2*cx - g.px, py:g.py, pz:g.pz });
+    accepts:(g.accepts||[]).slice(), px: 2*cx - g.px, py:g.py, pz:g.pz,
+    // Reflect position only; the tilt quaternion is carried as-is (the editor is not the tilt author,
+    // and the datamined catalog already holds each side's own orientation).
+    ...(g.rot ? { rot: g.rot.slice() } : {}) });
   editState.selected = editState.grids.length-1;
   hideUndo();
   msg('Grid mirrored across X. Drag to adjust.'); rebuildEdit(); markDirty();
@@ -744,7 +894,9 @@ document.getElementById('ep-save').addEventListener('click',()=>{
   if (!editState) return;
   disarmRevert(); hideUndo();
   const grids = editState.grids.map((g,i)=>({ id:i, w:g.w, d:g.d, h:g.h, cap:g.cap, accepts:g.accepts,
-    px:round2(g.px), py:round2(g.py), pz:round2(g.pz), wy:!!g.wy }));
+    px:round2(g.px), py:round2(g.py), pz:round2(g.pz), wy:!!g.wy,
+    // Carry the tilt quaternion through unchanged so saving an edit never un-tilts a datamined grid.
+    ...(g.rot ? { rot: g.rot } : {}) }));
   post({ type:'saveGrids', shipId:editState.shipId, grids });
   msg('Saved. Sign-off cleared for this ship.');
 });
@@ -786,6 +938,13 @@ function toNdc(e){ _ndc.x=(e.clientX/innerWidth)*2-1; _ndc.y=-(e.clientY/innerHe
 renderer.domElement.addEventListener('pointerdown', e=>{
   if (!editState || e.button!==0) return;
   toNdc(e); _ray.setFromCamera(_ndc, camera);
+  // Pressing a gizmo ring ARMS a rotation (see the drag-threshold logic below); it does not commit
+  // to rotating until the pointer actually drags, so a bare click never swallows a select/move.
+  if (gizmoMeshes.length){
+    const gz = _ray.intersectObjects(gizmoMeshes, false)[0];
+    if (gz){ _rotArm = { axis: gz.object.userData.axis.clone().normalize(), sx:e.clientX, sy:e.clientY };
+             controls.enabled = false; return; }
+  }
   const hit = _ray.intersectObjects(editMeshes, false)[0];
   if (!hit) return;
   const idx = hit.object.userData.index;
@@ -811,6 +970,7 @@ renderer.domElement.addEventListener('pointermove', e=>{
   py = Math.round(py - depExt/2) + depExt/2;
   g.px = px; g.py = py;
   g._obj.position.x = px - org[0]; g._obj.position.z = py - org[1];
+  gizmoMeshes.forEach(m => m.position.copy(g._obj.position));   // keep the rotation rings on the grid while it moves
   epx.value = round2(px); epy.value = round2(py);
 });
 addEventListener('pointerup',()=>{
@@ -822,6 +982,62 @@ addEventListener('pointerup',()=>{
     _dragStart = null;
   }
 });
+
+// ---- rotate-drag on a gizmo ring ----
+// A ring press only arms; it becomes a rotation once the pointer passes ROT_ARM_PX. A bare click is a
+// no-op, so it can never swallow a select/move, silently fold a wy grid, or false-dirty the layout.
+const ROT_ARM_PX = 4;
+function armRotDrag(){
+  if (!editState){ _rotArm = null; return; }
+  const g = editState.grids[editState.selected]; if (!g){ _rotArm = null; return; }
+  disarmRevert();
+  // Fold only a real legacy 90-degree yaw into rot so the live drag composes from one orientation;
+  // an axis-aligned grid stays rot=null (its live quaternion starts at identity).
+  if (!g.rot && g.wy){ setGridQuat(g, gridQuat(g)); rebuildEdit(); }
+  const obj = g._obj; if (!obj){ _rotArm = null; return; }
+  const axis = _rotArm.axis, center = obj.getWorldPosition(new THREE.Vector3());
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axis, center);
+  _ndc.x = (_rotArm.sx / innerWidth) * 2 - 1; _ndc.y = -(_rotArm.sy / innerHeight) * 2 + 1;
+  _ray.setFromCamera(_ndc, camera);
+  const hit = new THREE.Vector3();
+  if (!_ray.ray.intersectPlane(plane, hit)){ _rotArm = null; return; }
+  rotDrag = { g, axis, startQuat: gridQuat(g), startVec: hit.sub(center).normalize(), center, plane, live:null };
+  _rotArm = null;
+}
+renderer.domElement.addEventListener('pointermove', e=>{
+  if (rotDrag){
+    if (!editState || !rotDrag.g._obj) return;
+    toNdc(e); _ray.setFromCamera(_ndc, camera);
+    if (Math.abs(_ray.ray.direction.dot(rotDrag.axis)) < 0.12) return;   // ring near edge-on: freeze, do not jump
+    const hit = new THREE.Vector3();
+    if (!_ray.ray.intersectPlane(rotDrag.plane, hit)) return;
+    const cur = hit.sub(rotDrag.center).normalize();
+    let ang = Math.acos(THREE.MathUtils.clamp(rotDrag.startVec.dot(cur), -1, 1));
+    if (new THREE.Vector3().crossVectors(rotDrag.startVec, cur).dot(rotDrag.axis) < 0) ang = -ang;
+    rotDrag.live = rotDrag.startQuat.clone().premultiply(new THREE.Quaternion().setFromAxisAngle(rotDrag.axis, ang));
+    rotDrag.g._obj.quaternion.copy(rotDrag.live);   // re-read _obj so an async rebuild mid-drag cannot freeze it
+    return;
+  }
+  if (_rotArm && Math.hypot(e.clientX - _rotArm.sx, e.clientY - _rotArm.sy) >= ROT_ARM_PX) armRotDrag();
+});
+addEventListener('pointerup',()=>{
+  if (rotDrag){
+    controls.enabled = true;
+    if (rotDrag.live && rotDrag.live.angleTo(rotDrag.startQuat) > 1e-4){ setGridQuat(rotDrag.g, rotDrag.live); markDirty(); }
+    rotDrag = null; rebuildEdit(); syncPanel();
+    return;
+  }
+  if (_rotArm){ controls.enabled = true; _rotArm = null; }   // bare click on a ring: no-op
+});
+// Focus loss / native takeover / touch-cancel fire pointercancel (not pointerup); clear every drag
+// mode so it cannot strand (dead camera + a stale rotate applied on the next click).
+function cancelDrags(){
+  if (rotDrag || _rotArm || dragging) controls.enabled = true;
+  rotDrag = null; _rotArm = null;
+  if (dragging){ dragging = false; _dragStart = null; }
+}
+renderer.domElement.addEventListener('pointercancel', cancelDrags);
+addEventListener('blur', cancelDrags);
 
 // ---- Studio (non-edit) click-to-select a grid for test fill ----
 let _studioDownXY = null;

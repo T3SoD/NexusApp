@@ -9,11 +9,12 @@ public class CargoShipCatalogTests
     private static readonly CargoShipCatalog Catalog = CargoShipCatalog.LoadEmbedded();
 
     // The catalog is the curated hauling set (freight-focus cut, low-relevance ships removed),
-    // rebuilt from game-file data per patch. 18 as of the 2026-07-04 keep/remove pass (MPUV Cargo removed).
+    // rebuilt from game-file data per patch. 15 as of the 2026-07-05 pass: Constellation Andromeda,
+    // Hull A, and Hull C pulled (schematic; Hull A/C cargo only deploys at runtime, not datamine-able).
     [Fact]
     public void Load_HasAllCargoShips()
     {
-        Assert.Equal(18, Catalog.Ships.Count);
+        Assert.Equal(15, Catalog.Ships.Count);
     }
 
     [Fact]
@@ -43,7 +44,7 @@ public class CargoShipCatalogTests
     [Fact]
     public void Load_KnownShipsHaveExpectedCapacity()
     {
-        Assert.Equal(4608, Ship("Hull C").TotalScu);
+        Assert.Equal(576, Ship("Caterpillar").TotalScu);
         Assert.Equal(120, Ship("Freelancer MAX").TotalScu);
     }
 
@@ -63,7 +64,7 @@ public class CargoShipCatalogTests
     [Fact]
     public void Search_MatchesNameAndManufacturer()
     {
-        Assert.Contains(Catalog.Search("hull"), s => s.DisplayName == "Hull C");
+        Assert.Contains(Catalog.Search("caterpillar"), s => s.DisplayName == "Caterpillar");
         Assert.NotEmpty(Catalog.Search("freelancer"));
     }
 
@@ -99,7 +100,7 @@ public class CargoShipCatalogTests
             new GridOverride { Id = 0, W = 1, D = 1, H = 1, Cap = 1 });
 
         var merged = Catalog.WithOverrides(store);
-        Assert.Equal(Ship("Hull C").TotalScu, merged.Ships.First(s => s.DisplayName == "Hull C").TotalScu);
+        Assert.Equal(Ship("Caterpillar").TotalScu, merged.Ships.First(s => s.DisplayName == "Caterpillar").TotalScu);
     }
 
     [Fact]

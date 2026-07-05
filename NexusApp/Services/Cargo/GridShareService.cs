@@ -89,5 +89,6 @@ public static class GridShareService
             Accepts = g.AcceptedCaps.ToList(),
             Px = g.PosX, Py = g.PosY, Pz = g.PosZ,
             Wy = g.WAlongShipY,
+            Rot = g.Rot?.ToList(),   // preserve tilt through export / import / the import-review baseline
         }).ToList();
 }

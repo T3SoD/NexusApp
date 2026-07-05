@@ -18,7 +18,7 @@ public static class AccessGate
         "St-Myca",
         "Tenuis",
         "UnknownGhost",
-        "CupOffKoffee_TV",
+        "CupOfKoffee_TV",
     };
 
     // Approved = the owner (single-sourced from OwnerGate) or a beta tester on the list above.
