@@ -119,15 +119,16 @@
       <div class="ep-caplbl">Accepts container sizes</div>
       <div id="ep-caps" class="ep-caps"></div>
     </div>
-    <label class="ep-wy"><input id="ep-wy" type="checkbox">W runs fore-aft</label>
+    <label class="ep-wy" title="Turns the grid 90 degrees so its width runs fore-aft (nose to tail) instead of side to side"><input id="ep-wy" type="checkbox">Rotate 90 degrees</label>
     <div class="ep-readout"><span id="ep-gridscu">-</span> &nbsp;.&nbsp; <span id="ep-shipscu">-</span></div>
     <div class="ep-actions">
       <button id="ep-add">Add grid</button>
       <button id="ep-del">Delete</button>
+      <button id="ep-undo" style="display:none">Undo move</button>
     </div>
     <div class="ep-actions">
       <button id="ep-save" class="prim">Save layout</button>
-      <button id="ep-revert">Revert</button>
+      <button id="ep-revert" title="Deletes your saved layout for this ship and reloads the datamined baseline">Revert to datamined</button>
     </div>
     <div id="ep-msg" class="ep-msg"></div>
   </div>
@@ -300,7 +301,16 @@ function buildScene(data){
 
   GW = Math.max(1, bounds.w); GD = Math.max(1, bounds.d); GH = Math.max(1, bounds.h);
   buildBackdrop();
-  root.position.set(-GW/2, 0, -GD/2);
+  // Center on the hull footprint when a hologram is present, not the grid bounds. The grid bounds
+  // change when a grid is moved, which would slide the whole ship off center; the hull is the
+  // stable reference, and centering on it makes the origin cancel out so edits move only the grid
+  // being edited. Ships without a hull fall back to grid-bounds centering.
+  if (window.__holoXZ){
+    const h = window.__holoXZ;
+    root.position.set(-(h.x0 + h.x1) / 2, 0, -(h.z0 + h.z1) / 2);
+  } else {
+    root.position.set(-GW/2, 0, -GD/2);
+  }
 
   if (editing){
     buildEditGrids(grids);
@@ -356,10 +366,11 @@ function buildScene(data){
     document.getElementById('v-box').textContent = st.boxes ?? boxes.length;
   }
 
-  // Reframe only when the SHIP changes, not on every geometry tweak. In edit mode a grid's
-  // size/position changes the bounds constantly; reframing there would yank the user's camera
-  // back to default on every edit (looked like the grid reverting). Key on the ship instead.
-  const frameKey = editing ? ('edit:' + (editState.shipId || '')) : ('view:' + GW + 'x' + GD + 'x' + GH);
+  // Reframe only when the SHIP changes, in both edit and view mode. Keying view mode on dimensions
+  // meant every geometry tweak, Test Fill, or import-aspect toggle (an edit->view flip) yanked the
+  // camera back to default; keying on ship identity keeps it steady across all of those.
+  const shipKey = (data.edit && data.edit.shipId) || (data.ship && data.ship.name) || '';
+  const frameKey = 'ship:' + shipKey;
   if (frameKey !== lastDims){
     lastDims = frameKey;
     const span = Math.max(GW, GD, GH);
@@ -415,12 +426,32 @@ hullslider.addEventListener('input', () => {
 });
 
 let hullKey = null;
+// Anchor the loaded hull to a ship-space origin (the grids' min corner) and recompute the
+// floor/backdrop footprint from the cached geometry bounds. Splitting this out of the fetch lets
+// a same-ship re-render re-anchor without refetching.
+function positionHull(org){
+  const grp = window.__holoHull, bb = window.__holoBB;
+  if (!grp || !bb || !org) return;
+  grp.position.set(-org[0], -org[2], -org[1]);
+  window.__holoFloorY = -org[2] + bb.min.y * 0.8 - 0.2;
+  window.__holoXZ = {
+    x0: bb.min.x*0.8 - org[0], x1: bb.max.x*0.8 - org[0],
+    z0: -0.8*bb.max.z - org[1], z1: -0.8*bb.min.z - org[1],
+  };
+}
 function setHull(data){
   const want = (data && data.hull && data.origin) ? data.hull : null;
-  if (want === hullKey) return Promise.resolve(false);
+  if (want === hullKey){
+    // Same hull already loaded: re-anchor it to the CURRENT origin. The origin is the grids' min
+    // corner, which moves when a grid is edited and saved; without re-anchoring here the hull
+    // keeps its stale anchor and drifts off the grids after a save (they realign only on a ship
+    // switch, which forces a rebuild).
+    if (window.__holoHull && data && data.origin) positionHull(data.origin);
+    return Promise.resolve(false);
+  }
   hullKey = want;
   if (window.__holoHull){ disposeGroup(window.__holoHull); window.__holoHull = null; }
-  window.__holoFloorY = undefined; window.__holoXZ = undefined;
+  window.__holoFloorY = undefined; window.__holoXZ = undefined; window.__holoBB = undefined;
   hullctl.style.display = 'none';
   if (!want) return Promise.resolve(true);
   const org = data.origin;
@@ -433,21 +464,15 @@ function setHull(data){
       const grp = new THREE.Group();
       grp.add(new THREE.LineSegments(geo, HOLO_LINES));
       grp.scale.set(0.8, 0.8, -0.8);        // metres -> cells; z sign = bow direction (data-checked)
-      grp.position.set(-org[0], -org[2], -org[1]);
       grp.visible = Number(hullslider.value) > 0;
       window.__holoHull = grp;
       geo.computeBoundingBox();
-      const bb = geo.boundingBox;
-      // floor sinks to just under the hull belly; footprint lets the backdrop cover the ship
-      window.__holoFloorY = -org[2] + bb.min.y * 0.8 - 0.2;
-      window.__holoXZ = {
-        x0: bb.min.x*0.8 - org[0], x1: bb.max.x*0.8 - org[0],
-        z0: -0.8*bb.max.z - org[1], z1: -0.8*bb.min.z - org[1],
-      };
+      window.__holoBB = geo.boundingBox;
+      positionHull(org);   // floor sinks to just under the belly; footprint lets the backdrop cover the ship
       hullctl.style.display = '';
       return true;
     })
-    .catch(err => { console.error(err); return false; });
+    .catch(err => { console.error(err); post({ type:'log', msg:'hull load failed: ' + String(err && err.message || err) }); return false; });
 }
 
 // hull load is async: draw the grids immediately, rebuild once when the outline lands
@@ -459,7 +484,9 @@ function renderPayload(data){
   syncEditState(data);
   const hullChange = setHull(data);
   buildScene(data);
-  hullChange.then(changed => { if (changed) buildScene(data); });
+  // Rebuild from the CURRENT payload when the hull lands, not the one captured when the fetch started,
+  // so a newer render (test fill, aspect toggle) that arrived during the load is not reverted.
+  hullChange.then(changed => { if (changed) buildScene(lastPayload); });
 }
 
 // ==== Edit Layout mode ========================================================
@@ -545,15 +572,29 @@ function initEditState(e, data){
   return { shipId:e.shipId, rev:e.rev, origin:org, grids, selected:0 };
 }
 
+let _stashedEdit = null;
 function syncEditState(data){
+  // Any host-driven render (ship switch, save/revert, test fill, import) resets the transient edit
+  // affordances so an armed two-step revert cannot carry across a ship change and undo cannot target
+  // a stale grid. There is never a render between the two revert clicks, so this does not fight it.
+  disarmRevert(); hideUndo();
   const e = data.edit;
   if (e && e.on){
-    // Re-seed when the ship changes or the host bumped the revision (a save/revert reloads the
-    // catalog); otherwise keep the live working copy so in-progress edits survive re-renders.
-    if (!editState || editState.shipId !== e.shipId || editState.rev !== e.rev) editState = initEditState(e, data);
+    if (editState && editState.shipId === e.shipId && editState.rev === e.rev){
+      // keep the live working copy across re-renders of the same ship/revision
+    } else if (_stashedEdit && _stashedEdit.shipId === e.shipId && _stashedEdit.rev === e.rev){
+      editState = _stashedEdit;   // restore edits that were suspended for a transient view render
+    } else {
+      // ship changed or the host bumped the revision (a save/revert reloaded the catalog): re-seed
+      editState = initEditState(e, data);
+    }
+    _stashedEdit = null;
     showEditUI(true);
     syncPanel();
   } else {
+    // View render (Test Fill / import preview): suspend the working copy rather than discard it, so a
+    // user's in-progress unsaved edits are not lost when they test fill or review a submission.
+    if (editState) _stashedEdit = editState;
     editState = null;
     showEditUI(false);
   }
@@ -567,11 +608,14 @@ function showEditUI(on){
   document.getElementById('legend').style.display = on ? 'none' : '';
 }
 
+function markDirty(){ post({ type:'dirty' }); }   // tell the host there are unsaved edits (blocks export)
 function selectGrid(i){
   if (!editState) return;
+  disarmRevert();
   editState.selected = i;
   buildScene(lastPayload);
   syncPanel();
+  post({ type:'testGridSelected', index:i });   // keep the rail Fill target synced to the editor selection
 }
 function rebuildEdit(){ buildScene(lastPayload); syncPanel(); }
 
@@ -615,6 +659,7 @@ function syncPanel(){
 
 function readFields(){
   if (!editState) return;
+  disarmRevert();
   const g = editState.grids[editState.selected]; if (!g) return;
   g.w=Math.max(1,Math.round(+epw.value||1)); g.d=Math.max(1,Math.round(+epd.value||1)); g.h=Math.max(1,Math.round(+eph.value||1));
   g.px=+epx.value||0; g.py=+epy.value||0; g.pz=+epz.value||0;
@@ -624,36 +669,72 @@ function readFields(){
   g.accepts = acc.sort((a,b)=>a-b);
   g.cap = Math.max(...g.accepts);
   rebuildEdit();
+  markDirty();
 }
 [epw,epd,eph,epx,epy,epz,epwy].forEach(el=>el.addEventListener('change', readFields));
 
 document.getElementById('ep-add').addEventListener('click',()=>{
+  if (!editState) return;
+  disarmRevert();
   const org = editState.origin;
   editState.grids.push({ w:2, d:2, h:2, cap:8, accepts:[1,2,4,8], wy:false, px:org[0]+2, py:org[1]+2, pz:org[2]+1 });
   editState.selected = editState.grids.length-1;
-  msg('Grid added. Drag it into place.'); rebuildEdit();
+  hideUndo();   // roster changed: the one-level move-undo index is no longer valid
+  msg('Grid added. Drag it into place.'); rebuildEdit(); markDirty();
+  post({ type:'testGridSelected', index:editState.selected });
 });
 document.getElementById('ep-del').addEventListener('click',()=>{
+  if (!editState) return;
+  disarmRevert();
   if (editState.grids.length<=1){ msg('A ship must keep at least one grid.'); return; }
   editState.grids.splice(editState.selected,1);
   editState.selected = Math.min(editState.selected, editState.grids.length-1);
-  msg('Grid deleted.'); rebuildEdit();
+  hideUndo();   // roster changed: the one-level move-undo index is no longer valid
+  msg('Grid deleted.'); rebuildEdit(); markDirty();
+  post({ type:'testGridSelected', index:editState.selected });
 });
 document.getElementById('ep-save').addEventListener('click',()=>{
+  if (!editState) return;
+  disarmRevert(); hideUndo();
   const grids = editState.grids.map((g,i)=>({ id:i, w:g.w, d:g.d, h:g.h, cap:g.cap, accepts:g.accepts,
     px:round2(g.px), py:round2(g.py), pz:round2(g.pz), wy:!!g.wy }));
   post({ type:'saveGrids', shipId:editState.shipId, grids });
   msg('Saved. Sign-off cleared for this ship.');
 });
-document.getElementById('ep-revert').addEventListener('click',()=>{
+// Revert deletes the SAVED override (back to the datamined baseline), so it takes a second click to
+// confirm. Any other edit action disarms it.
+let _revertArmed = false;
+const _revBtn = document.getElementById('ep-revert');
+_revBtn.addEventListener('click',()=>{
+  if (!editState) return;
+  if (!_revertArmed){
+    _revertArmed = true; _revBtn.textContent = 'Confirm: discard saved layout';
+    msg('Revert deletes your saved layout for this ship. Click again to confirm.');
+    return;
+  }
+  disarmRevert();
   post({ type:'revertGrids', shipId:editState.shipId });
   msg('Reverted to the datamined layout.');
 });
+function disarmRevert(){ if (_revertArmed){ _revertArmed = false; _revBtn.textContent = 'Revert to datamined'; } }
 function post(o){ if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(o)); }
+
+// One-level undo for the last grid move.
+let _lastMove = null;
+const _undoBtn = document.getElementById('ep-undo');
+function showUndo(m){ _lastMove = m; _undoBtn.style.display = ''; }
+function hideUndo(){ _lastMove = null; _undoBtn.style.display = 'none'; }
+_undoBtn.addEventListener('click',()=>{
+  if (!editState || !_lastMove) return;
+  disarmRevert();
+  const g = editState.grids[_lastMove.idx];
+  if (g){ g.px = _lastMove.px; g.py = _lastMove.py; rebuildEdit(); markDirty(); }
+  hideUndo(); msg('Move undone.');
+});
 
 // ---- select + cell-snapped drag on the deck plane ----
 const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _hit = new THREE.Vector3();
-let dragging = false, dragY = 0;
+let dragging = false, dragY = 0, _dragStart = null;
 function toNdc(e){ _ndc.x=(e.clientX/innerWidth)*2-1; _ndc.y=-(e.clientY/innerHeight)*2+1; }
 renderer.domElement.addEventListener('pointerdown', e=>{
   if (!editState || e.button!==0) return;
@@ -661,9 +742,13 @@ renderer.domElement.addEventListener('pointerdown', e=>{
   const hit = _ray.intersectObjects(editMeshes, false)[0];
   if (!hit) return;
   const idx = hit.object.userData.index;
-  selectGrid(idx);
+  // First click selects the grid; it does not move. Only a drag that starts on the already-selected
+  // (pink) grid moves it, so orbiting past a grid can no longer nudge it by accident.
+  if (idx !== editState.selected){ selectGrid(idx); return; }
   dragging = true; controls.enabled = false;
-  dragY = editState.grids[idx]._obj.position.y;
+  const g = editState.grids[idx];
+  dragY = g._obj.position.y;
+  _dragStart = { idx, px:g.px, py:g.py };
 });
 renderer.domElement.addEventListener('pointermove', e=>{
   if (!dragging || !editState) return;
@@ -680,7 +765,15 @@ renderer.domElement.addEventListener('pointermove', e=>{
   g._obj.position.x = px - org[0]; g._obj.position.z = py - org[1];
   epx.value = round2(px); epy.value = round2(py);
 });
-addEventListener('pointerup',()=>{ if (dragging){ dragging=false; controls.enabled=true; } });
+addEventListener('pointerup',()=>{
+  if (!dragging) return;
+  dragging = false; controls.enabled = true;
+  if (_dragStart){
+    const g = editState && editState.grids[_dragStart.idx];
+    if (g && (g.px !== _dragStart.px || g.py !== _dragStart.py)){ disarmRevert(); markDirty(); showUndo(_dragStart); msg('Grid moved.'); }
+    _dragStart = null;
+  }
+});
 
 // ---- Studio (non-edit) click-to-select a grid for test fill ----
 let _studioDownXY = null;
@@ -712,7 +805,10 @@ addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.upd
 
 // data bridge: C# posts the packed trip as JSON; also expose a manual hook for browser testing.
 if (window.chrome && window.chrome.webview) {
-  window.chrome.webview.addEventListener('message', e => { try { renderPayload(e.data); } catch(err){ console.error(err); } });
+  window.chrome.webview.addEventListener('message', e => {
+    try { renderPayload(e.data); }
+    catch(err){ console.error(err); post({ type:'log', msg:'render failed: ' + String(err && err.stack || err) }); }
+  });
 }
 window.setCargo = d => renderPayload(d);
 

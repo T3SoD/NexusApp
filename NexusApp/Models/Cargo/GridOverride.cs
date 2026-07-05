@@ -13,8 +13,11 @@ public sealed record GridOverride
     public int H { get; init; }
     public int Cap { get; init; }                 // largest accepted; kept for back-compat
     public List<int>? Accepts { get; init; }      // exact accepted-size set (null = derive from Cap)
-    public double Px { get; init; }
-    public double Py { get; init; }
-    public double Pz { get; init; }
+    // Ship-space grid CENTER, cells. Null means "no datamined position" (schematic ship); it must
+    // round-trip as null through export/import so an unpositioned ship is not silently pinned to
+    // (0,0,0) and stacked at the origin.
+    public double? Px { get; init; }
+    public double? Py { get; init; }
+    public double? Pz { get; init; }
     public bool Wy { get; init; }
 }

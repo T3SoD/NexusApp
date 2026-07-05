@@ -102,23 +102,14 @@ public sealed class CargoSignoffStore
         Save();
     }
 
-    private static Dictionary<string, Entry> Load(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                return JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(path))
-                       ?? new Dictionary<string, Entry>();
-        }
-        catch (Exception ex) { Logger.Error("Failed to load cargo review state", ex); }
-        return new Dictionary<string, Entry>();
-    }
+    private static Dictionary<string, Entry> Load(string path) =>
+        JsonFile.LoadOrRecover(path, () => new Dictionary<string, Entry>(), "cargo review state");
 
     private void Save()
     {
         try
         {
-            File.WriteAllText(_path, JsonSerializer.Serialize(_entries,
+            JsonFile.AtomicWrite(_path, JsonSerializer.Serialize(_entries,
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception ex) { Logger.Error("Failed to save cargo review state", ex); }

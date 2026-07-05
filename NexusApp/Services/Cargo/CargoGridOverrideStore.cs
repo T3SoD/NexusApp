@@ -54,23 +54,15 @@ public sealed class CargoGridOverrideStore
         }
     }
 
-    private static Dictionary<string, List<GridOverride>> Load(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                return JsonSerializer.Deserialize<Dictionary<string, List<GridOverride>>>(File.ReadAllText(path))
-                       ?? new Dictionary<string, List<GridOverride>>();
-        }
-        catch (Exception ex) { Logger.Error("Failed to load cargo grid overrides", ex); }
-        return new Dictionary<string, List<GridOverride>>();
-    }
+    private static Dictionary<string, List<GridOverride>> Load(string path) =>
+        JsonFile.LoadOrRecover(path,
+            () => new Dictionary<string, List<GridOverride>>(), "cargo grid overrides");
 
     private void Save()
     {
         try
         {
-            File.WriteAllText(_path, JsonSerializer.Serialize(_entries,
+            JsonFile.AtomicWrite(_path, JsonSerializer.Serialize(_entries,
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception ex) { Logger.Error("Failed to save cargo grid overrides", ex); }

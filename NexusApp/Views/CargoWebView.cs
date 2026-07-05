@@ -34,16 +34,18 @@ public sealed class CargoWebView : UserControl
     private readonly WebView2 _web = new();
     private bool _ready;
     private string? _pending;
-    private bool _editMode;
     private int _editRev;   // bumped on save/revert so the page re-seeds its working copy
+    private string? _lastShipId;
 
-    // Edit Layout mode: when on, the payload carries the raw editable grid list and the page
-    // renders the interactive editor. The planner page toggles this and owns persistence.
-    public bool EditMode
-    {
-        get => _editMode;
-        set => _editMode = value;
-    }
+    // How the next render presents the scene. Edit renders the interactive layout editor; View renders
+    // read-only grids/boxes (test fill and import preview). Passed explicitly per render rather than via
+    // a mutable flag, so every call site states its intent and there is no order-dependent protocol.
+    public enum CargoViewMode { View, Edit }
+
+    // True while the in-page editor holds unsaved edits. Set from the page's dirty message, cleared on
+    // save/revert and when the rendered ship changes. Grid Studio blocks export while dirty so a
+    // contributor never shares a stale saved layout instead of what is on screen.
+    public bool HasUnsavedEdits { get; private set; }
 
     // Grid Studio mode: renders grid volumes orange (to read against the hologram) and numbers
     // every grid, even outside edit mode. The shippable planner leaves this off (approved cyan,
@@ -65,9 +67,10 @@ public sealed class CargoWebView : UserControl
     public event Action<string, List<GridOverride>>? GridsSaved;
     public event Action<string>? GridsReverted;
 
-    // The planner calls this after applying a save/revert so the next render tells the page to
-    // re-seed its working copy from the reloaded catalog (a revert must discard in-page edits).
-    public void BumpEditRev() => _editRev++;
+    // Grid Studio calls this after applying a save/revert/import so the next render tells the page to
+    // re-seed its working copy from the reloaded catalog (which discards any in-page edits). Since the
+    // page edits are dropped, the unsaved-edits flag is cleared here too.
+    public void BumpEditRev() { _editRev++; HasUnsavedEdits = false; }
 
     public CargoWebView()
     {
@@ -97,30 +100,50 @@ public sealed class CargoWebView : UserControl
     {
         if (_web.CoreWebView2 != null) return;
 
-        await _web.EnsureCoreWebView2Async(await SharedEnvAsync());
-
-        var core = _web.CoreWebView2!;
-        var siteFolder = Path.Combine(AppContext.BaseDirectory, "Web", "cargo");
-        core.SetVirtualHostNameToFolderMapping("nexus.cargo", siteFolder, CoreWebView2HostResourceAccessKind.Allow);
-        Directory.CreateDirectory(HullsDir);
-        core.SetVirtualHostNameToFolderMapping("nexus.hulls", HullsDir, CoreWebView2HostResourceAccessKind.Allow);
-        Logger.Info($"[UI] cargo hologram: hulls folder mapped, {Directory.GetFiles(HullsDir, "*.bin").Length} outline file(s) present");
-        core.Settings.AreDefaultContextMenusEnabled = false;
-        core.Settings.IsStatusBarEnabled = false;
-        core.Settings.AreDevToolsEnabled = true;   // dev trial; gate off before any release
-        core.NavigationCompleted += (_, _) =>
+        try
         {
-            _ready = true;
-            if (_pending != null) { core.PostWebMessageAsJson(_pending); _pending = null; }
-        };
-        core.WebMessageReceived += OnWebMessage;
-        core.Navigate("https://nexus.cargo/index.html");
+            await _web.EnsureCoreWebView2Async(await SharedEnvAsync());
+
+            var core = _web.CoreWebView2!;
+            var siteFolder = Path.Combine(AppContext.BaseDirectory, "Web", "cargo");
+            core.SetVirtualHostNameToFolderMapping("nexus.cargo", siteFolder, CoreWebView2HostResourceAccessKind.Allow);
+            Directory.CreateDirectory(HullsDir);
+            core.SetVirtualHostNameToFolderMapping("nexus.hulls", HullsDir, CoreWebView2HostResourceAccessKind.Allow);
+            Logger.Info($"[UI] cargo hologram: hulls folder mapped, {Directory.GetFiles(HullsDir, "*.bin").Length} outline file(s) present");
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.AreDevToolsEnabled = _studio;   // dev tooling only; the shippable planner gets none
+            core.NavigationCompleted += (_, _) =>
+            {
+                _ready = true;
+                if (_pending != null) { core.PostWebMessageAsJson(_pending); _pending = null; }
+            };
+            core.WebMessageReceived += OnWebMessage;
+            core.Navigate("https://nexus.cargo/index.html");
+        }
+        catch (Exception ex)
+        {
+            // WebView2 runtime missing, or the shared user-data folder is locked/corrupt. Do not let an
+            // async-void Loaded handler take the whole app down; show a fallback and let a later view retry.
+            Logger.Error("[UI] cargo 3D view failed to start; WebView2 could not initialize", ex);
+            _sharedEnv = null;
+            Content = new System.Windows.Controls.TextBlock
+            {
+                Text = "3D view unavailable. The WebView2 runtime could not be started. See nexus.log.",
+                Foreground = System.Windows.Media.Brushes.Gainsboro,
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+                Margin = new System.Windows.Thickness(24),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            };
+        }
     }
 
-    // Push one packed trip to the scene. Queues until the page has loaded.
-    public void RenderTrip(PackResult? trip, ShipCargoDef? ship)
+    // Push one packed trip to the scene in the given mode. Queues until the page has loaded.
+    public void RenderTrip(PackResult? trip, ShipCargoDef? ship, CargoViewMode mode = CargoViewMode.View)
     {
-        var json = BuildPayload(trip, ship, _editMode, _editRev, _studio, TestSelectedGrid);
+        if (ship?.Id != _lastShipId) { HasUnsavedEdits = false; _lastShipId = ship?.Id; }
+        var json = BuildPayload(trip, ship, mode == CargoViewMode.Edit, _editRev, _studio, TestSelectedGrid);
         if (_ready && _web.CoreWebView2 != null) _web.CoreWebView2.PostWebMessageAsJson(json);
         else _pending = json;
     }
@@ -141,10 +164,20 @@ public sealed class CargoWebView : UserControl
             {
                 case "saveGrids":
                     if (!string.IsNullOrEmpty(shipId) && root.TryGetProperty("grids", out var g) && g.ValueKind == JsonValueKind.Array)
+                    {
+                        HasUnsavedEdits = false;
                         GridsSaved?.Invoke(shipId, ParseGrids(g));
+                    }
                     break;
                 case "revertGrids":
-                    if (!string.IsNullOrEmpty(shipId)) GridsReverted?.Invoke(shipId);
+                    if (!string.IsNullOrEmpty(shipId)) { HasUnsavedEdits = false; GridsReverted?.Invoke(shipId); }
+                    break;
+                case "dirty":   // the editor changed a grid; unsaved edits now exist
+                    HasUnsavedEdits = true;
+                    break;
+                case "log":     // surface a page-side error/warning into nexus.log (App Log Monitor)
+                    if (root.TryGetProperty("msg", out var lm) && lm.ValueKind == JsonValueKind.String)
+                        Logger.Info($"[UI] cargo view: {lm.GetString()}");
                     break;
                 case "testGridSelected":
                     if (root.TryGetProperty("index", out var gi) && gi.ValueKind == JsonValueKind.Number)
@@ -206,15 +239,16 @@ public sealed class CargoWebView : UserControl
                     int sy = g.WAlongShipY ? g.W : g.D;
                     frames[g.Id] = new GridFrame(
                         g.PosX!.Value - sx / 2.0, g.PosY!.Value - sy / 2.0,
-                        Math.Round(g.PosZ!.Value - g.H / 2.0), sx, sy, g.H, g.WAlongShipY);
+                        Math.Round(g.PosZ!.Value - g.H / 2.0, 2), sx, sy, g.H, g.WAlongShipY);
                 }
-                // Normalize so the layout's min corner sits at the origin.
+                // Normalize so the layout's min corner sits at the origin. Round Z the same way as X and
+                // Y (2 decimals) so the view frames match the edit scene, which uses the raw pz.
                 double minX = frames.Values.Min(f => f.X);
                 double minY = frames.Values.Min(f => f.Y);
                 double minZ = frames.Values.Min(f => f.Z);
                 foreach (var (id, f) in frames.ToList())
-                    frames[id] = f with { X = Math.Round(f.X - minX, 2), Y = Math.Round(f.Y - minY, 2), Z = f.Z - minZ };
-                origin = new[] { Math.Round(minX, 2), Math.Round(minY, 2), minZ };
+                    frames[id] = f with { X = Math.Round(f.X - minX, 2), Y = Math.Round(f.Y - minY, 2), Z = Math.Round(f.Z - minZ, 2) };
+                origin = new[] { Math.Round(minX, 2), Math.Round(minY, 2), Math.Round(minZ, 2) };
             }
             else
             {
