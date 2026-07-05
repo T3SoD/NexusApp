@@ -1416,7 +1416,7 @@ public partial class OverlayWindow : Window
 
             row.Children.Add(new TextBlock
             {
-                Text = $"{item.ResourceName}  ×{item.Quantity:0.##} {item.Unit}",
+                Text = $"{item.ResourceName}  ×{CraftAmount.Format(item.Quantity, item.Unit)}",
                 Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
                 FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
             });
