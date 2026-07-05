@@ -36,7 +36,7 @@ public class ComponentStringReferenceTests
     [Fact]
     public void BuildMap_QuantumDrive_NameOnlyInValue()
     {
-        // The key (JUMP_TARS_S1_C) does not contain the model name — it comes from the value.
+        // The key (JUMP_TARS_S1_C) does not contain the model name - it comes from the value.
         var map = ComponentStringReference.BuildMap(new[] { "item_NameJUMP_TARS_S1_C=Civ/1/C Explorer" });
         Assert.Equal("Explorer", map[ComponentStringReference.NormalizeKey("item_NameJUMP_TARS_S1_C")]);
     }

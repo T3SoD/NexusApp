@@ -202,7 +202,7 @@ public class AboutDialog : Window
         ("App  4.1.0  -  May 31, 2026",
         [
             "Auto-scan - reads RS values directly from the screen while you play; draw a region once and it updates every ~0.5 seconds automatically",
-            "Fixed OCR misses on RS values in the 2,000–9,999 range where the thousands comma was read as a space",
+            "Fixed OCR misses on RS values in the 2,000-9,999 range where the thousands comma was read as a space",
             "Shopping cart highlights - scan result cards and history entries now show a teal IN CART / CART badge and background tint when the resource is in your shopping list",
             "Overlay redesigned with a SCAN / ORDERS / SHOPPING tab strip replacing the crowded button row",
             "Recent scan history redesigned as a clean text log - colored diamond, resource name, RS value",
@@ -215,7 +215,7 @@ public class AboutDialog : Window
             "Full rewrite in C# + WPF - native Windows app, no Python runtime required",
             "SQLite database backend - all resource, blueprint, location, and refinery data stored locally",
             "Windows.Media.Ocr - native WinRT OCR engine replaces Python winsdk wrapper",
-            "RS multi-node matching - correctly identifies 1–6 node readings (e.g. 6800 → Lindinium ×2)",
+            "RS multi-node matching - correctly identifies 1-6 node readings (e.g. 6800 → Lindinium ×2)",
             "Blueprint detail panel - search blueprints and view full ingredient lists with rarity-colored cards",
             "Reference tree blueprints - expand any resource to see all blueprints that use it, grouped by category",
             "Lazy-loaded blueprint subtrees - blueprint data loads on first expand, keeping navigation fast",

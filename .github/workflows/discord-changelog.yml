@@ -4,7 +4,7 @@ name: Discord changelog notify (manual)
 # notify-discord job in release.yml (which runs in the same workflow run as the
 # release, so it isn't blocked by GitHub's GITHUB_TOKEN no-trigger rule).
 #
-# Use this to post the current top changelog entry on demand — e.g. to catch up
+# Use this to post the current top changelog entry on demand - e.g. to catch up
 # a release whose notification was missed. Run it from the Actions tab.
 
 on:

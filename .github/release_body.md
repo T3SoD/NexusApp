@@ -1,4 +1,4 @@
-**Nexus __VERSION__** — an unofficial, fan-made mining assistant for Star Citizen.
+**Nexus __VERSION__** - an unofficial, fan-made mining assistant for Star Citizen.
 
 Both downloads are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline. Pick whichever suits you.
 
@@ -7,13 +7,13 @@ Both downloads are self-contained (the .NET runtime is bundled), need **no admin
 | | |
 |:--:|:--:|
 | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png) |
-| **Auto-scan overlay** — decodes RS values live over the game | **Blueprint Library** — recipes, ingredients, and unlock missions |
+| **Auto-scan overlay** - decodes RS values live over the game | **Blueprint Library** - recipes, ingredients, and unlock missions |
 | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png) |
-| **Mining Codex** — full resource reference, filterable | **Refinery Tracker** — live countdown timers for jobs |
+| **Mining Codex** - full resource reference, filterable | **Refinery Tracker** - live countdown timers for jobs |
 
 ---
 
-### Option 1 — Installer (`Nexus_Setup.exe`) — *recommended, user friendly*
+### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
 A guided setup that installs Nexus like normal Windows software.
 
 1. Download **`Nexus_Setup.exe`** below.
@@ -23,9 +23,9 @@ A guided setup that installs Nexus like normal Windows software.
 
 - Creates Start-menu / optional desktop shortcuts
 - Clean uninstall from *Add or remove programs*
-- Installs per-user under `%LOCALAPPDATA%` — still no admin rights
+- Installs per-user under `%LOCALAPPDATA%` - still no admin rights
 
-### Option 2 — Portable (`NexusApp_portable.zip`)
+### Option 2 - Portable (`NexusApp_portable.zip`)
 Run the app directly, with no installation.
 
 1. Download **`NexusApp_portable.zip`** below.
@@ -42,10 +42,10 @@ Run the app directly, with no installation.
 > **Windows SmartScreen note (both options):** the app is unsigned, so Windows may show a *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. Any Defender flag is a false positive for an unsigned app.
 
 ### Features
-- **RS Signal Decoder** — manual entry or auto-scan to identify resource + node count
-- **Blueprint Library** — search blueprints and see required raw resources
-- **Mining Codex** — full resource reference, filterable by system and method
-- **Refinery Tracker** — live countdown timers for refinery jobs
+- **RS Signal Decoder** - manual entry or auto-scan to identify resource + node count
+- **Blueprint Library** - search blueprints and see required raw resources
+- **Mining Codex** - full resource reference, filterable by system and method
+- **Refinery Tracker** - live countdown timers for refinery jobs
 
 ---
 *Nexus is not affiliated with, endorsed by, or sponsored by Cloud Imperium Games or Roberts Space Industries. Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.*

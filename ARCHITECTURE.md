@@ -55,25 +55,25 @@ same view model and therefore stay consistent everywhere.
 ### Services (`Services/`)
 Stateless-ish helpers that the view model orchestrates:
 
-- **DataService** — loads reference data (resources, blueprints) and persists
+- **DataService** - loads reference data (resources, blueprints) and persists
   user data via SQLite and JSON.
-- **OcrService** — captures a screen region and runs the native Windows OCR
+- **OcrService** - captures a screen region and runs the native Windows OCR
   engine. Handles the image preprocessing (invert, contrast, upscale) and parses
   the RS value out of the recognized text.
-- **ScannerService** — drives the opt-in auto-scan loop and reports readings.
-- **SettingsService** — loads/saves `AppSettings`, including app-data migration
+- **ScannerService** - drives the opt-in auto-scan loop and reports readings.
+- **SettingsService** - loads/saves `AppSettings`, including app-data migration
   from the legacy folder name.
-- **ThemeService** — provides the app's single theme resources (merged palette,
+- **ThemeService** - provides the app's single theme resources (merged palette,
   icon and logo URIs); the luxury/classic theme picker was removed in v6.0.0.
 - **GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
-  RsiHandleParser** — the read-only `Game.log` subsystem (see below).
-- **ComponentStringReference / GlobalIniReader** — translate mod-renamed
+  RsiHandleParser** - the read-only `Game.log` subsystem (see below).
+- **ComponentStringReference / GlobalIniReader** - translate mod-renamed
   blueprint names back to their official names by joining the user's read-only
   `global.ini` to the bundled `components.ini` reference; used by the `Game.log`
   import path.
-- **Network (NetworkFileService / NetworkStore / NetworkScope)** — the offline
+- **Network (NetworkFileService / NetworkStore / NetworkScope)** - the offline
   Blueprint Network file-exchange subsystem (see below).
-- **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** —
+- **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** -
   diagnostics: a self-rotating event log, UI-interaction breadcrumbs, foreground
   window/process tracking (process name only, never window titles), and the
   copy/save diagnostic bundle.

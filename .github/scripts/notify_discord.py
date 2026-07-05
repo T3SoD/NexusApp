@@ -7,7 +7,7 @@ provided it only posts when the version differs from that copy; on release
 events PREVIOUS_FILE is empty, so it always posts the current top entry (the
 release event is itself the signal that this is a new version).
 
-No third-party dependencies — uses only the Python standard library so it
+No third-party dependencies - uses only the Python standard library so it
 runs on a bare ubuntu-latest runner with no pip install.
 
 Environment variables:
@@ -83,7 +83,7 @@ def get_version(label):
 
 
 def get_date(label):
-    return label.split("—")[-1].strip() if "—" in label else ""
+    return label.split("-")[-1].strip() if "-" in label else ""
 
 
 def read(path):
@@ -130,7 +130,7 @@ def main():
         bullets = bullets[:3990].rstrip() + "\n…"
 
     embed = {
-        "title": f"\U0001faa8 Nexus {cur_ver} released",
+        "title": f"Nexus {cur_ver} released",
         "url": f"{REPO_URL}/releases",
         "description": bullets,
         "color": ACCENT_BLUE,

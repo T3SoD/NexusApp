@@ -27,7 +27,7 @@ PrivilegesRequired=lowest
 CloseApplications=yes
 UninstallDisplayName={#AppName}
 ; Teal app icon for the "Installed apps" / uninstall entry (Inno does not set this
-; automatically — without it Windows shows a generic icon). Points at the icon we
+; automatically - without it Windows shows a generic icon). Points at the icon we
 ; ship below, not the exe, so it's a clean teal regardless of exe embedding.
 UninstallDisplayIcon={app}\nexus.ico
 

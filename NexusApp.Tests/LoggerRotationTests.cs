@@ -8,7 +8,7 @@ namespace NexusApp.Tests;
 // Regression guard for Issue #9 ("App log monitor only shows 1 line"). Root cause: the 72h
 // age-based rotation in Logger deleted + recreated nexus.log, but NTFS file-system tunneling
 // re-applies a deleted file's ORIGINAL creation time when a same-named file is recreated within
-// ~15s — so once the log first aged past 72h, every write rotated again, pinning the file to a
+// ~15s - so once the log first aged past 72h, every write rotated again, pinning the file to a
 // single, ever-overwritten line. The fix stamps the recreated file's creation time so the window
 // genuinely restarts. (The test project targets a Windows TFM, so these run on the OS where the
 // bug actually occurs and where SetCreationTimeUtc takes effect.)
@@ -42,7 +42,7 @@ public class LoggerRotationTests
             Logger.WriteTo(path, "INFO", "third", null, aged.AddSeconds(1));
 
             var lines = File.ReadAllLines(path);
-            Assert.Equal(2, lines.Length);            // "second" + "third" — not pinned to a single line
+            Assert.Equal(2, lines.Length);            // "second" + "third" - not pinned to a single line
             Assert.Contains("second", lines[0]);
             Assert.Contains("third", lines[1]);
         }
