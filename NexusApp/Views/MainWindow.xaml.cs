@@ -2128,7 +2128,7 @@ public partial class MainWindow : Window
         heroRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         specs.Children.Add(HeroSpec("INGREDIENTS", full.Ingredients.Count.ToString(), fgB, dimB, monoFont));
-        specs.Children.Add(HeroSpec("TOTAL COST", $"{totalScu:0.##} SCU", fgB, dimB, monoFont));
+        specs.Children.Add(HeroSpec("TOTAL COST", CraftAmount.Format(totalScu, "SCU"), fgB, dimB, monoFont));
         Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
         var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         heroActions.Children.Add(OwnedToggle(full.Name));
@@ -2294,8 +2294,8 @@ public partial class MainWindow : Window
             Grid.SetColumn(nameWrap, 1); g.Children.Add(nameWrap);
 
             var qtyWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-            qtyWrap.Children.Add(new TextBlock { Text = $"{ing.Quantity:0.##}", FontFamily = monoFont, FontSize = 13, Foreground = fgB, Width = 50, TextAlignment = System.Windows.TextAlignment.Right });
-            qtyWrap.Children.Add(new TextBlock { Text = " " + ing.Unit, FontFamily = monoFont, FontSize = 11, Foreground = dimB, Width = 38, TextAlignment = System.Windows.TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
+            qtyWrap.Children.Add(new TextBlock { Text = CraftAmount.Value(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 13, Foreground = fgB, Width = 50, TextAlignment = System.Windows.TextAlignment.Right });
+            qtyWrap.Children.Add(new TextBlock { Text = " " + CraftAmount.Unit(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 11, Foreground = dimB, Width = 38, TextAlignment = System.Windows.TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
             Grid.SetColumn(qtyWrap, 2); g.Children.Add(qtyWrap);
 
             var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ingCopy, VerticalAlignment = VerticalAlignment.Center };
@@ -2323,7 +2323,7 @@ public partial class MainWindow : Window
         totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         totalGrid.Children.Add(new TextBlock { Text = "TOTAL", FontFamily = monoFont, FontSize = 11, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
-        var totalVal = new TextBlock { Text = $"{bomTotal:0.##} SCU", FontFamily = monoFont, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = heroAccent, VerticalAlignment = VerticalAlignment.Center };
+        var totalVal = new TextBlock { Text = CraftAmount.Format(bomTotal, "SCU"), FontFamily = monoFont, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = heroAccent, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(totalVal, 1); totalGrid.Children.Add(totalVal);
         host.Children.Add(new Border { Child = totalGrid, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 10, 0, 0), Margin = new Thickness(0, 2, 0, 0) });
 

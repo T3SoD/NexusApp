@@ -63,7 +63,7 @@ public class ShoppingDialog : Window
 
             var qty = new TextBlock
             {
-                Text = $"{item.Quantity:0.##} {item.Unit}",
+                Text = NexusApp.Services.CraftAmount.Format(item.Quantity, item.Unit),
                 FontSize = 12,
                 Foreground = (System.Windows.Media.Brush)Application.Current.FindResource("FgDimBrush"),
                 Margin = new Thickness(8, 0, 8, 0),
@@ -98,9 +98,10 @@ public class ShoppingDialog : Window
             Height = 1, Background = (System.Windows.Media.Brush)Application.Current.FindResource("BorderBrush"),
             Margin = new Thickness(0, 12, 0, 8),
         });
+        var shipTotalText = NexusApp.Services.CraftAmount.Format(shipTotal, "SCU");
         _list.Children.Add(new TextBlock
         {
-            Text = $"Total: {shipTotal:0.##} SCU ship resources" + (itemCount > 0 ? $"  ·  {itemCount}× items" : ""),
+            Text = $"Total: {shipTotalText} ship resources" + (itemCount > 0 ? $"  ·  {itemCount}× items" : ""),
             FontSize = 12, FontWeight = FontWeights.SemiBold,
         });
     }
