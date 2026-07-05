@@ -45,6 +45,9 @@ __pycache__/
 # Visual brainstorming companion
 .superpowers/
 
+# Superpowers process docs (plans/specs/reviews): local-only, may reference local paths
+docs/superpowers/
+
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
 gen_contract_caps.py
