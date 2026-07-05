@@ -148,6 +148,17 @@ public sealed class CargoWebView : UserControl
         else _pending = json;
     }
 
+    // Acknowledge a saveGrids submission the host tried to persist. On success the host calls BumpEditRev
+    // (which re-seeds the page and clears HasUnsavedEdits); this only needs to handle failure: tell the
+    // page the save was rejected so the editor surfaces it and stays dirty. The on-screen edits are
+    // untouched, so the user can fix and retry.
+    public void AckSave(bool ok, string? message = null)
+    {
+        if (ok) return;
+        var json = JsonSerializer.Serialize(new { type = "saveResult", ok = false, message = message ?? "Save failed - not saved." });
+        if (_ready && _web.CoreWebView2 != null) _web.CoreWebView2.PostWebMessageAsJson(json);
+    }
+
     // Inbound editor messages (the page posts a JSON string): save or revert a ship's grids.
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -163,11 +174,11 @@ public sealed class CargoWebView : UserControl
             switch (t.GetString())
             {
                 case "saveGrids":
+                    // Do NOT clear HasUnsavedEdits here: the host may reject the save (validation or a
+                    // failed disk write). The dirty flag is cleared only on a confirmed save, via
+                    // BumpEditRev; a rejected save calls AckSave(false) and the edits stay on screen.
                     if (!string.IsNullOrEmpty(shipId) && root.TryGetProperty("grids", out var g) && g.ValueKind == JsonValueKind.Array)
-                    {
-                        HasUnsavedEdits = false;
                         GridsSaved?.Invoke(shipId, ParseGrids(g));
-                    }
                     break;
                 case "revertGrids":
                     if (!string.IsNullOrEmpty(shipId)) { HasUnsavedEdits = false; GridsReverted?.Invoke(shipId); }
@@ -221,45 +232,55 @@ public sealed class CargoWebView : UserControl
     // as its own volume (min corner + size). When the catalog carries datamined ship-space positions
     // for every grid, the layout matches the real hull arrangement; otherwise grids fall back to the
     // old synthetic side-by-side strip. Boxes are absolute in the same frame.
-    private sealed record GridFrame(double X, double Y, double Z, int SizeX, int SizeY, int H, bool Wy);
+    internal sealed record GridFrame(double X, double Y, double Z, int SizeX, int SizeY, int H, bool Wy);
+
+    // Lay a ship's grids into scene cells: each grid becomes a min-corner + size frame. Positioned
+    // ships (every grid HasPos) use the datamined centers normalized so the layout's min corner sits at
+    // the origin (returned so the hull hologram can anchor to it); Z is rounded to 2dp so the view
+    // frames match the edit scene, which uses the raw pz. Schematic ships fall back to a synthetic
+    // side-by-side strip with a null origin. Pure (no I/O) so the origin math is unit-testable.
+    internal static (Dictionary<int, GridFrame> Frames, double[]? Origin) ComputeLayout(ShipCargoDef? ship)
+    {
+        var frames = new Dictionary<int, GridFrame>();
+        double[]? origin = null;   // ship-space min corner (cells); anchors the hull hologram
+        if (ship == null) return (frames, origin);
+
+        if (ship.Grids.Count > 0 && ship.Grids.All(g => g.HasPos))
+        {
+            // Real layout: grid centers from hull geometry; W may run fore-aft (Wy).
+            foreach (var g in ship.Grids)
+            {
+                int sx = g.WAlongShipY ? g.D : g.W;
+                int sy = g.WAlongShipY ? g.W : g.D;
+                frames[g.Id] = new GridFrame(
+                    g.PosX!.Value - sx / 2.0, g.PosY!.Value - sy / 2.0,
+                    Math.Round(g.PosZ!.Value - g.H / 2.0, 2), sx, sy, g.H, g.WAlongShipY);
+            }
+            // Normalize so the layout's min corner sits at the origin. Round Z the same way as X and
+            // Y (2 decimals) so the view frames match the edit scene, which uses the raw pz.
+            double minX = frames.Values.Min(f => f.X);
+            double minY = frames.Values.Min(f => f.Y);
+            double minZ = frames.Values.Min(f => f.Z);
+            foreach (var (id, f) in frames.ToList())
+                frames[id] = f with { X = Math.Round(f.X - minX, 2), Y = Math.Round(f.Y - minY, 2), Z = Math.Round(f.Z - minZ, 2) };
+            origin = new[] { Math.Round(minX, 2), Math.Round(minY, 2), Math.Round(minZ, 2) };
+        }
+        else
+        {
+            int cursor = 0;
+            foreach (var g in ship.Grids)
+            {
+                frames[g.Id] = new GridFrame(cursor, 0, 0, g.W, g.D, g.H, false);
+                cursor += g.W + GapCells;
+            }
+        }
+        return (frames, origin);
+    }
 
     private static string BuildPayload(PackResult? trip, ShipCargoDef? ship, bool editMode, int editRev,
         bool studio, int testSel)
     {
-        var frames = new Dictionary<int, GridFrame>();
-        double[]? origin = null;   // ship-space min corner (cells); anchors the hull hologram
-        if (ship != null)
-        {
-            if (ship.Grids.Count > 0 && ship.Grids.All(g => g.HasPos))
-            {
-                // Real layout: grid centers from hull geometry; W may run fore-aft (Wy).
-                foreach (var g in ship.Grids)
-                {
-                    int sx = g.WAlongShipY ? g.D : g.W;
-                    int sy = g.WAlongShipY ? g.W : g.D;
-                    frames[g.Id] = new GridFrame(
-                        g.PosX!.Value - sx / 2.0, g.PosY!.Value - sy / 2.0,
-                        Math.Round(g.PosZ!.Value - g.H / 2.0, 2), sx, sy, g.H, g.WAlongShipY);
-                }
-                // Normalize so the layout's min corner sits at the origin. Round Z the same way as X and
-                // Y (2 decimals) so the view frames match the edit scene, which uses the raw pz.
-                double minX = frames.Values.Min(f => f.X);
-                double minY = frames.Values.Min(f => f.Y);
-                double minZ = frames.Values.Min(f => f.Z);
-                foreach (var (id, f) in frames.ToList())
-                    frames[id] = f with { X = Math.Round(f.X - minX, 2), Y = Math.Round(f.Y - minY, 2), Z = Math.Round(f.Z - minZ, 2) };
-                origin = new[] { Math.Round(minX, 2), Math.Round(minY, 2), Math.Round(minZ, 2) };
-            }
-            else
-            {
-                int cursor = 0;
-                foreach (var g in ship.Grids)
-                {
-                    frames[g.Id] = new GridFrame(cursor, 0, 0, g.W, g.D, g.H, false);
-                    cursor += g.W + GapCells;
-                }
-            }
-        }
+        var (frames, origin) = ComputeLayout(ship);
 
         var grids = frames.Values
             .Select(f => new { x = f.X, y = f.Y, z = f.Z, w = f.SizeX, d = f.SizeY, h = f.H })
@@ -328,7 +349,6 @@ public sealed class CargoWebView : UserControl
 
         var payload = new
         {
-            cell = 1.25,
             ship = new { name = ship?.DisplayName ?? "", totalScu = cap },
             bounds = new { w = boundsW, d = boundsD, h = boundsH },
             origin,

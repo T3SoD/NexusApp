@@ -4,6 +4,7 @@ using System.Windows.Media;
 using NexusApp.Models.Cargo;
 using NexusApp.Services;
 using NexusApp.Services.Cargo;
+using static NexusApp.Views.CargoUiKit;
 
 namespace NexusApp.Views;
 
@@ -14,43 +15,27 @@ namespace NexusApp.Views;
 // .nexusgrid submission and selectively merge it. Mouse-driven.
 public sealed class GridStudioPage : UserControl
 {
-    private static readonly Color Void = Color.FromRgb(0x05, 0x07, 0x0A);
-    private static readonly Color Panel = Color.FromRgb(0x0B, 0x10, 0x17);
-    private static readonly Color Line = Color.FromRgb(0x1C, 0x28, 0x36);
-    private static readonly Color Amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
-    private static readonly Color Cyan = Color.FromRgb(0x7F, 0xE9, 0xE0);
-    private static readonly Color Fg = Color.FromRgb(0xEA, 0xF1, 0xF6);
-    private static readonly Color Dim = Color.FromRgb(0x7C, 0x8A, 0x99);
-    private static readonly Color Warn = Color.FromRgb(0xFF, 0x8A, 0x3D);
-
     private readonly CargoWebView _viewport = new();
     private readonly ComboBox _shipSelect = new();
     private readonly CargoSignoffStore _signoff = CargoSignoffStore.LoadDefault();
     private readonly CargoGridOverrideStore _overrides = CargoGridOverrideStore.LoadDefault();
+    private readonly CargoOverrideProvenanceStore _provenance = CargoOverrideProvenanceStore.LoadDefault();
     private readonly Dictionary<CargoSignoffStore.ReviewItem, Button> _checkBtns = new();
     private readonly TextBlock _reviewStatus = new();
+    private readonly TextBlock _provLine = new();   // "applied: handle, date, aspects" for an applied override
+    private readonly TextBlock _statusLine = new(); // export / import / apply feedback (top of the rail)
     private Button _flagBtn = null!;
 
-    // Owner-only: load a contributor's .nexusgrid submission, preview it in the 3D view, and
-    // show a summary/diff so the owner can keep (persist as override) or discard (no change).
+    // Owner-only: load a contributor's .nexusgrid submission, preview it in the 3D view, pick aspects,
+    // then keep (persist as override) or discard. The panel is a thin view; this page does the
+    // persistence in OnImportApplied.
     private Button _importBtn = null!;
-    private readonly StackPanel _importPanel = new();
-    private readonly TextBlock _importMeta = new();
-    private readonly TextBlock _importDiff = new();
-    // Only the submission (Incoming) is held; the owner's Current grids are recomputed at preview and
-    // apply time so a save made while the review panel is open cannot be silently overwritten.
-    private (string ShipId, string ShipName, List<GridOverride> Incoming)? _pendingImport;
-    private GridMergeAspect _importAspects = GridMergeAspect.All;
-    private readonly Dictionary<GridMergeAspect, Button> _aspectBtns = new();
+    private readonly GridImportReviewPanel _importPanel;
 
-    // The submission aspects the owner can independently bring in, shown as toggles in the review panel.
-    private static readonly (GridMergeAspect Aspect, string Label)[] ImportAspectRows =
-    {
-        (GridMergeAspect.Positions, "Grid positions"),
-        (GridMergeAspect.Sizes, "Grid sizes"),
-        (GridMergeAspect.Caps, "Container caps"),
-        (GridMergeAspect.GridSet, "Added / removed grids"),
-    };
+    // Batch import: the owner can select several .nexusgrid files at once; they are reviewed one at a
+    // time (each with the same aspect selection + preview), and a summary is shown when the queue drains.
+    private readonly Queue<string> _importQueue = new();
+    private int _batchTotal, _batchApplied, _batchDiscarded, _batchSkipped;
 
     // Test-fill: drop N generic containers of one SCU size into a single grid to check it.
     private readonly ComboBox _testGrid = new();
@@ -61,9 +46,6 @@ public sealed class GridStudioPage : UserControl
     private CargoShipCatalog _catalog;
     private ShipCargoDef? _selected;
 
-    private FontFamily Mono => (FontFamily)Application.Current.FindResource("MonoFont");
-    private FontFamily Head => (FontFamily)Application.Current.FindResource("HeadFont");
-
     public GridStudioPage()
     {
         _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
@@ -71,6 +53,15 @@ public sealed class GridStudioPage : UserControl
         _viewport.GridsSaved += OnGridsSaved;
         _viewport.GridsReverted += OnGridsReverted;
         _viewport.TestGridClicked += OnTestGridClicked;
+
+        // The review panel owns no stores/catalog: it merges via these delegates (evaluated lazily so
+        // they always read the current catalog/overrides) and this page persists in OnImportApplied.
+        _importPanel = new GridImportReviewPanel(CurrentFor, (id, grids) => _catalog.BuildPreview(id, grids));
+        _importPanel.Applied += OnImportApplied;
+        _importPanel.Discarded += OnImportDiscarded;
+        _importPanel.PreviewRequested += OnImportPreview;
+        _importPanel.Status += (m, warn) => SetStatus(m, warn ? Warn : Cyan);
+
         Build();
         InteractionLog.Nav("Grid Studio");
         _selected = _catalog.Ships.FirstOrDefault();
@@ -78,11 +69,14 @@ public sealed class GridStudioPage : UserControl
         Render();
     }
 
-    // Re-shown from the dock: pick up overrides changed elsewhere and re-render.
+    // Re-shown from the dock: pick up overrides/sign-offs changed elsewhere (or by another process)
+    // and re-render.
     public void OnShown()
     {
-        _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
-        _selected = (_selected != null ? _catalog.ById(_selected.Id) : null) ?? _catalog.Ships.FirstOrDefault();
+        _overrides.Reload();
+        _signoff.Reload();
+        _provenance.Reload();
+        ReloadCatalog(_selected?.Id);
         RefreshShips();
         Render();
     }
@@ -91,7 +85,7 @@ public sealed class GridStudioPage : UserControl
 
     private void Build()
     {
-        Background = new SolidColorBrush(Void);
+        Background = new SolidColorBrush(Bg);
         var root = new Grid();
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(320) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -124,6 +118,15 @@ public sealed class GridStudioPage : UserControl
         // selection is wired in RefreshShips (OnShipSelected) so it can be detached during rebuilds
         stack.Children.Add(_shipSelect);
 
+        // Dedicated feedback line for export / import / apply / batch actions, so they no longer land on
+        // the Test Fill result line at the bottom of the rail.
+        _statusLine.FontFamily = Mono; _statusLine.FontSize = 11;
+        _statusLine.TextWrapping = TextWrapping.Wrap;
+        _statusLine.Foreground = new SolidColorBrush(Dim);
+        _statusLine.Margin = new Thickness(0, 0, 0, 10);
+        _statusLine.Visibility = Visibility.Collapsed;
+        stack.Children.Add(_statusLine);
+
         var exportBtn = Btn("Export layout", (_, _) => OnExport());
         exportBtn.ToolTip = "Save this ship's cargo grid layout to a .nexusgrid file to share";
         exportBtn.Margin = new Thickness(0, 0, 6, 16);
@@ -135,32 +138,12 @@ public sealed class GridStudioPage : UserControl
         _importBtn.Visibility = OwnerGate.IsOwnerActive ? Visibility.Visible : Visibility.Collapsed;
         stack.Children.Add(_importBtn);
 
-        _importPanel.Visibility = Visibility.Collapsed;
-        _importPanel.Margin = new Thickness(0, 0, 0, 14);
-        _importPanel.Children.Add(Eyebrow("IMPORT REVIEW"));
-        _importMeta.FontFamily = Mono; _importMeta.FontSize = 11; _importMeta.TextWrapping = TextWrapping.Wrap;
-        _importMeta.Foreground = new SolidColorBrush(Fg); _importMeta.Margin = new Thickness(0, 6, 0, 6);
-        _importPanel.Children.Add(_importMeta);
-        _importDiff.FontFamily = Mono; _importDiff.FontSize = 11; _importDiff.TextWrapping = TextWrapping.Wrap;
-        _importDiff.Foreground = new SolidColorBrush(Dim); _importDiff.Margin = new Thickness(0, 0, 0, 8);
-        _importPanel.Children.Add(_importDiff);
-        // Per-aspect selection: pick which parts of the submission to bring in (vs keep current).
-        // The 3D preview updates live to show the merged result as toggles change.
-        _importPanel.Children.Add(new TextBlock
-        {
-            Text = "Bring in:", Foreground = new SolidColorBrush(Dim), FontFamily = Mono, FontSize = 10.5,
-            Margin = new Thickness(0, 2, 0, 4),
-        });
-        foreach (var (aspect, label) in ImportAspectRows)
-        {
-            var b = AspectBtn(aspect, label);
-            _aspectBtns[aspect] = b;
-            _importPanel.Children.Add(b);
-        }
-        var importBtns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        importBtns.Children.Add(Btn("Apply selected", (_, _) => ApplyImport(), primary: true));
-        importBtns.Children.Add(Btn("Discard", (_, _) => DiscardImport()));
-        _importPanel.Children.Add(importBtns);
+        var patchBtn = Btn("Export to catalog patch", (_, _) => OnExportCatalogPatch());
+        patchBtn.ToolTip = "Write this ship's grids as a cargo_ships.json patch to promote into the embedded catalog";
+        patchBtn.Margin = new Thickness(0, 0, 6, 12);
+        patchBtn.Visibility = OwnerGate.IsOwnerActive ? Visibility.Visible : Visibility.Collapsed;
+        stack.Children.Add(patchBtn);
+
         stack.Children.Add(_importPanel);
 
         stack.Children.Add(Eyebrow("LAYOUT REVIEW"));
@@ -177,10 +160,18 @@ public sealed class GridStudioPage : UserControl
         stack.Children.Add(_flagBtn);
         _reviewStatus.FontFamily = Mono;
         _reviewStatus.FontSize = 11.5;
-        _reviewStatus.Margin = new Thickness(0, 4, 0, 16);
+        _reviewStatus.Margin = new Thickness(0, 4, 0, 6);
         _reviewStatus.TextWrapping = TextWrapping.Wrap;
         _reviewStatus.Foreground = new SolidColorBrush(Dim);
         stack.Children.Add(_reviewStatus);
+
+        _provLine.FontFamily = Mono;
+        _provLine.FontSize = 10.5;
+        _provLine.Margin = new Thickness(0, 0, 0, 12);
+        _provLine.TextWrapping = TextWrapping.Wrap;
+        _provLine.Foreground = new SolidColorBrush(Dim);
+        _provLine.Visibility = Visibility.Collapsed;
+        stack.Children.Add(_provLine);
 
         // Test fill: drop generic containers into one grid to check capacity and size limits.
         stack.Children.Add(Eyebrow("TEST FILL"));
@@ -205,7 +196,7 @@ public sealed class GridStudioPage : UserControl
 
         var testBtns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
         testBtns.Children.Add(Btn("Fill grid", (_, _) => TestFill(), primary: true));
-        testBtns.Children.Add(Btn("Clear", (_, _) => { _testResult.Text = ""; Render(); }));
+        testBtns.Children.Add(Btn("Back to editing", (_, _) => { _testResult.Text = ""; Render(); }));
         stack.Children.Add(testBtns);
 
         _testResult.FontFamily = Mono;
@@ -214,13 +205,7 @@ public sealed class GridStudioPage : UserControl
         _testResult.Foreground = new SolidColorBrush(Dim);
         stack.Children.Add(_testResult);
 
-        return new Border
-        {
-            Background = new SolidColorBrush(Panel),
-            BorderBrush = new SolidColorBrush(Line),
-            BorderThickness = new Thickness(1),
-            Child = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-        };
+        return RailBorder(new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
     }
 
     // -- rendering + interactions --------------------------------------------------
@@ -229,7 +214,7 @@ public sealed class GridStudioPage : UserControl
     {
         // While an import review is open the viewport is locked to the merged preview; keep it there
         // instead of re-entering the editor, so nothing silently replaces what the owner is judging.
-        if (_pendingImport != null) { RefreshImportPreview(); return; }
+        if (_importPanel.IsActive) { _importPanel.RefreshPreview(); return; }
 
         // Grid Studio is always in layout-editing mode (no toggle). Test Fill flips to a view render
         // transiently; the next Render restores editing.
@@ -246,14 +231,22 @@ public sealed class GridStudioPage : UserControl
             ? _overrides.Get(shipId)!.ToList()
             : GridShareService.ToOverrides(_catalog.ById(shipId)?.Grids ?? (IReadOnlyList<GridDef>)Array.Empty<GridDef>());
 
+    // Rebuild the catalog with the current overrides and re-select the kept ship (or the first). Used
+    // after every save / revert / apply and on show, so that reload-reselect idiom lives in one place.
+    private void ReloadCatalog(string? keepSelectedId)
+    {
+        _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
+        _selected = (keepSelectedId != null ? _catalog.ById(keepSelectedId) : null) ?? _catalog.Ships.FirstOrDefault();
+    }
+
     private void OnExport()
     {
         var ship = _selected;
         if (ship == null) return;
-        if (_pendingImport != null) { SetResult("Finish the import review first (Apply or Discard).", Warn); return; }
+        if (_importPanel.IsActive) { SetStatus("Finish the import review first (Apply or Discard).", Warn); return; }
         if (_viewport.HasUnsavedEdits)
         {
-            SetResult("Save the layout first. Export shares the saved version, not unsaved edits.", Warn);
+            SetStatus("Save the layout first. Export shares the saved version, not unsaved edits.", Warn);
             return;
         }
 
@@ -276,6 +269,7 @@ public sealed class GridStudioPage : UserControl
         {
             ShipId = ship.Id, ShipName = ship.DisplayName, RsiHandle = dlg.Handle,
             Summary = dlg.Summary, Notes = dlg.Notes,
+            Flagged = dlg.Flagged, FlagNote = dlg.FlagNote,
             CreatedUtc = DateTime.UtcNow.ToString("o"), AppVersion = AppInfo.Version,
             Grids = grids,
         };
@@ -283,12 +277,38 @@ public sealed class GridStudioPage : UserControl
         {
             GridShareService.Export(pkg, save.FileName);
             Logger.Info($"[UI] cargo grid export saved ship={ship.Id} handle={dlg.Handle} grids={grids.Count}");
-            SetResult($"Exported {ship.DisplayName} layout ({grids.Count} grids).", Cyan);
+            SetStatus($"Exported {ship.DisplayName} layout ({grids.Count} grids).", Cyan);
         }
         catch (Exception ex)
         {
             Logger.Error("Cargo grid export failed", ex);
-            SetResult($"Export failed: {ex.Message}", Warn);
+            SetStatus($"Export failed: {ex.Message}", Warn);
+        }
+    }
+
+    // Owner-only: promote this ship's effective grids into the embedded catalog by writing a
+    // cargo_ships.json-shaped patch to a file, for the owner to paste-merge and commit. No pipeline.
+    private void OnExportCatalogPatch()
+    {
+        var ship = _selected;
+        if (ship == null) return;
+        if (_importPanel.IsActive) { SetStatus("Finish the import review first (Apply or Discard).", Warn); return; }
+        var save = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "Cargo catalog patch (*.grids.json)|*.grids.json|JSON (*.json)|*.json",
+            FileName = $"{ship.Id}.grids.json",
+        };
+        if (save.ShowDialog() != true) return;
+        try
+        {
+            System.IO.File.WriteAllText(save.FileName, CatalogPatchExport.ToPatchJson(ship));
+            Logger.Info($"[UI] cargo grid catalog patch exported ship={ship.Id}");
+            SetStatus($"Exported catalog patch for {ship.DisplayName}.", Cyan);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Cargo catalog patch export failed", ex);
+            SetStatus($"Export failed: {ex.Message}", Warn);
         }
     }
 
@@ -303,231 +323,154 @@ public sealed class GridStudioPage : UserControl
         var open = new Microsoft.Win32.OpenFileDialog
         {
             Filter = $"Nexus grid (*{GridShareService.FileExtension})|*{GridShareService.FileExtension}|All files (*.*)|*.*",
+            Multiselect = true,
         };
         if (open.ShowDialog() != true) return;
 
-        GridSharePackage pkg;
-        try { pkg = GridShareService.Import(open.FileName); }
-        catch (Exception ex)
+        _importQueue.Clear();
+        foreach (var f in open.FileNames) _importQueue.Enqueue(f);
+        _batchTotal = _importQueue.Count;
+        _batchApplied = _batchDiscarded = _batchSkipped = 0;
+        if (_batchTotal > 1) Logger.Info($"[UI] cargo grid batch import: {_batchTotal} files queued");
+        PumpImportQueue();
+    }
+
+    // Open the next queued submission for review; a file that fails validation is logged, counted, and
+    // skipped so one bad file does not abort the batch. When the queue drains, show the batch summary.
+    // Single-file import runs through this same path as a one-element queue.
+    private void PumpImportQueue()
+    {
+        while (_importQueue.Count > 0)
         {
-            Logger.Info($"[UI] cargo grid import rejected: {ex.Message}");
-            SetResult($"Import rejected: {ex.Message}", Warn);
-            return;
+            if (TryBeginImport(_importQueue.Dequeue())) return;   // opened; Applied/Discarded pumps the next
+            _batchSkipped++;
         }
+        if (_batchTotal > 1)
+            SetStatus($"Batch complete: {_batchApplied} applied, {_batchDiscarded} discarded, {_batchSkipped} skipped.", Cyan);
+    }
+
+    // Validate one .nexusgrid and hand it to the review panel. Returns false (with a logged reason and a
+    // status line) if the file is rejected, so the queue can skip it. A hand-edited file can carry
+    // duplicate grid Ids, which GridDiff.Compute rejects; that is caught here too.
+    private bool TryBeginImport(string path)
+    {
+        var file = System.IO.Path.GetFileName(path);
+        GridSharePackage pkg;
+        try { pkg = GridShareService.Import(path); }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
         ShipCargoDef? preview;
         try { preview = _catalog.BuildPreview(pkg.ShipId, pkg.Grids); }
-        catch (Exception ex)
-        {
-            Logger.Info($"[UI] cargo grid import rejected: {ex.Message}");
-            SetResult($"Import rejected: {ex.Message}", Warn);
-            return;
-        }
-        if (preview == null)
-        {
-            Logger.Info($"[UI] cargo grid import rejected: ship '{pkg.ShipId}' not in catalog");
-            SetResult($"Import rejected: ship '{pkg.ShipId}' is not in the catalog.", Warn);
-            return;
-        }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        if (preview == null) { Logger.Info($"[UI] cargo grid import rejected ({file}): ship '{pkg.ShipId}' not in catalog"); SetStatus($"Skipped {file}: ship '{pkg.ShipId}' is not in the catalog.", Warn); return false; }
 
-        // Validate the diff BEFORE touching any UI state (viewport, panel). A hand-edited file can
-        // carry duplicate grid Ids, which GridDiff.Compute rejects; catch that here so a bad file is
-        // cleanly refused with nothing changed, instead of rendering a preview and then crashing.
         var targetShip = _catalog.ById(pkg.ShipId)!;
-        var current = _overrides.Has(pkg.ShipId)
-            ? _overrides.Get(pkg.ShipId)!.ToList()
-            : GridShareService.ToOverrides(targetShip.Grids);
+        var current = CurrentFor(pkg.ShipId);
         GridDiffResult diff;
         try { diff = GridDiff.Compute(current, pkg.Grids); }
-        catch (Exception ex)
-        {
-            Logger.Info($"[UI] cargo grid import rejected: {ex.Message}");
-            SetResult($"Import rejected: {ex.Message}", Warn);
-            return;
-        }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
-        // Validated: select the ship for context and open the review panel. The 3D preview shows the
-        // merged result for the selected aspects (all on by default = the whole submission).
         _selected = targetShip;
         RefreshShips();
-
-        _pendingImport = (pkg.ShipId, targetShip.DisplayName, pkg.Grids);
-
-        // Grid ids are positional (reassigned to array indices on save), so a submission that added or
-        // removed a grid renumbers the rest: per-field merges would then land on the wrong physical
-        // grid. When the rosters differ, force whole-roster (GridSet) and lock the field toggles.
-        bool rosterDiffers = !current.Select(g => g.Id).OrderBy(i => i)
-            .SequenceEqual(pkg.Grids.Select(g => g.Id).OrderBy(i => i));
-        _importAspects = rosterDiffers ? GridMergeAspect.GridSet : GridMergeAspect.All;
-        ConfigureAspectAvailability(rosterDiffers);
-        UpdateAspectButtons();
-
-        var handle = string.IsNullOrWhiteSpace(pkg.RsiHandle) ? "(no handle)" : pkg.RsiHandle;
-        var nameNote = string.Equals(pkg.ShipName, targetShip.DisplayName, StringComparison.OrdinalIgnoreCase)
-            ? "" : $"\nWARNING: the file calls this '{pkg.ShipName}'";
-        _importMeta.Text = $"From: {handle}\nShip: {targetShip.DisplayName}{nameNote}\nSummary: {pkg.Summary}\nNotes: {pkg.Notes}";
-        _importDiff.Text = "Changes vs your version:\n  " + string.Join("\n  ", diff.Lines)
-            + (rosterDiffers
-                ? "\n(grid roster differs; bringing in the whole set)"
-                : diff.HasChanges ? "\n(per-grid aspects match by grid number; verify against the preview)" : "");
-        _importPanel.Visibility = Visibility.Visible;
-        RefreshImportPreview();
-        SetResult($"Reviewing submission for {targetShip.DisplayName}. Pick aspects, then Apply selected.", Cyan);
-        Logger.Info($"[UI] cargo grid import loaded ship={pkg.ShipId} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges}");
+        _importPanel.Begin(pkg, targetShip, current, diff);
+        var more = _importQueue.Count > 0 ? $" ({_importQueue.Count} more queued)" : "";
+        SetStatus($"Reviewing submission for {targetShip.DisplayName}. Pick aspects, then Apply selected.{more}", Cyan);
+        Logger.Info($"[UI] cargo grid import loaded ship={pkg.ShipId} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges} flagged={pkg.Flagged}");
+        return true;
     }
 
-    // Toggle one merge aspect and re-render the merged preview.
-    private void ToggleAspect(GridMergeAspect aspect)
-    {
-        _importAspects ^= aspect;
-        UpdateAspectButtons();
-        RefreshImportPreview();
-    }
+    // -- import review panel handlers ----------------------------------------------
 
-    private void UpdateAspectButtons()
+    // The owner accepted a merge: persist it as this ship's override, reload the catalog, and clear the
+    // position + properties sign-offs (edited geometry invalidates that review; the hologram is
+    // independent). BumpEditRev re-seeds the editor from the reloaded catalog.
+    private void OnImportApplied(string shipId, string shipName, List<GridOverride> merged, GridMergeAspect aspects, GridSharePackage pkg)
     {
-        foreach (var (aspect, label) in ImportAspectRows)
+        if (!_overrides.Set(shipId, shipName, merged))
         {
-            if (!_aspectBtns.TryGetValue(aspect, out var b)) continue;
-            bool on = _importAspects.HasFlag(aspect);
-            b.Content = (on ? "[x]  " : "[  ]  ") + label;
-            b.Foreground = new SolidColorBrush(!b.IsEnabled ? Line : on ? Cyan : Dim);
-            b.Background = new SolidColorBrush(on ? Color.FromRgb(0x0D, 0x24, 0x22) : Color.FromRgb(0x14, 0x1B, 0x24));
-            b.BorderBrush = new SolidColorBrush(on ? Cyan : Line);
-        }
-    }
-
-    // Enable only the whole-roster toggle when the submission's grid roster differs from the owner's
-    // (per-field selection is positional and would misapply); otherwise all toggles are available.
-    private void ConfigureAspectAvailability(bool rosterDiffers)
-    {
-        foreach (var (aspect, _) in ImportAspectRows)
-            if (_aspectBtns.TryGetValue(aspect, out var b))
-                b.IsEnabled = !rosterDiffers || aspect == GridMergeAspect.GridSet;
-    }
-
-    // Render the merged (current + selected submission aspects) layout as a non-destructive preview.
-    private void RefreshImportPreview()
-    {
-        if (_pendingImport is not { } imp) return;
-        var merged = GridMerge.Apply(CurrentFor(imp.ShipId), imp.Incoming, _importAspects);
-        ShipCargoDef? preview = null;
-        try { preview = _catalog.BuildPreview(imp.ShipId, merged); }
-        catch (Exception ex) { Logger.Error("Cargo grid import preview failed", ex); }
-        if (preview == null) return;
-        _viewport.TestSelectedGrid = -1;
-        _viewport.RenderTrip(null, preview, CargoWebView.CargoViewMode.View);
-    }
-
-    private Button AspectBtn(GridMergeAspect aspect, string label)
-    {
-        var b = new Button
-        {
-            Padding = new Thickness(9, 4, 9, 4),
-            Margin = new Thickness(0, 0, 0, 3),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            Cursor = System.Windows.Input.Cursors.Hand,
-            FontFamily = Mono, FontSize = 11,
-            BorderThickness = new Thickness(1),
-        };
-        b.Click += (_, _) => ToggleAspect(aspect);
-        return b;
-    }
-
-    private void ApplyImport()
-    {
-        if (_pendingImport is not { } imp) return;
-        var current = CurrentFor(imp.ShipId);
-        var merged = GridMerge.Apply(current, imp.Incoming, _importAspects);
-
-        // Nothing selected, or the merge equals what you already have: do not create an override (which
-        // would freeze the ship against future embedded refreshes) or clear the sign-off.
-        if (_importAspects == GridMergeAspect.None || GridsEqual(merged, current))
-        {
-            SetResult("No changes selected; nothing applied.", Warn);
+            SetStatus($"Not applied: could not write {shipName} to disk. See nexus.log.", Warn);
             return;
         }
-
-        // Never persist a physically impossible grid (a caps-only merge can accept a container the kept
-        // dimensions cannot hold). Build validates dimensions/positions; this adds the fit check.
-        ShipCargoDef? built;
-        try { built = _catalog.BuildPreview(imp.ShipId, merged); }
-        catch (Exception ex) { SetResult($"Cannot apply: {ex.Message}", Warn); return; }
-        if (built == null) { SetResult("Cannot apply: ship is not in the catalog.", Warn); return; }
-        var problem = GridValidation.FirstProblem(built.Grids);
-        if (problem != null) { SetResult($"Cannot apply: {problem}.", Warn); return; }
-
-        _overrides.Set(imp.ShipId, imp.ShipName, merged);
-        _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
-        _selected = _catalog.ById(imp.ShipId) ?? _selected;
-        _signoff.ClearChecks(imp.ShipId, imp.ShipName,
+        _provenance.Set(shipId, new OverrideProvenance
+        {
+            Handle = pkg.RsiHandle, Summary = pkg.Summary, Notes = pkg.Notes,
+            CreatedUtc = pkg.CreatedUtc, AppliedUtc = DateTime.UtcNow.ToString("o"), Aspects = aspects.ToString(),
+        });
+        ReloadCatalog(shipId);
+        _signoff.ClearChecks(shipId, shipName,
             CargoSignoffStore.ReviewItem.GridPosition, CargoSignoffStore.ReviewItem.GridProperties);
         _viewport.BumpEditRev();
-        _pendingImport = null;
-        _importPanel.Visibility = Visibility.Collapsed;
         RefreshShips();
         Render();
-        Logger.Info($"[UI] cargo grid import applied ship={imp.ShipId} aspects={_importAspects} grids={merged.Count}");
-        SetResult($"Applied submission aspects ({_importAspects}) to {imp.ShipName}.", Cyan);
+        Logger.Info($"[UI] cargo grid import applied ship={shipId} aspects={aspects} grids={merged.Count}");
+        SetStatus($"Applied submission aspects ({aspects}) to {shipName}.", Cyan);
+        _batchApplied++;
+        PumpImportQueue();
     }
 
-    private void DiscardImport()
+    private void OnImportDiscarded(string shipName)
     {
-        var name = _pendingImport?.ShipName ?? "";
-        _pendingImport = null;
-        _importPanel.Visibility = Visibility.Collapsed;
         Render();
-        Logger.Info($"[UI] cargo grid import discarded ship={name}");
-        SetResult(string.IsNullOrEmpty(name) ? "" : $"Discarded submission for {name}.", Dim);
+        Logger.Info($"[UI] cargo grid import discarded ship={shipName}");
+        SetStatus(string.IsNullOrEmpty(shipName) ? "" : $"Discarded submission for {shipName}.", Dim);
+        _batchDiscarded++;
+        PumpImportQueue();
     }
 
-    // Value equality of two grid sets, matched by Id, order-insensitive (Accepts compared by contents).
-    private static bool GridsEqual(List<GridOverride> a, List<GridOverride> b)
+    // The panel asks for a non-destructive render of the merged preview.
+    private void OnImportPreview(ShipCargoDef preview)
     {
-        if (a.Count != b.Count) return false;
-        var sa = a.OrderBy(g => g.Id).ToList();
-        var sb = b.OrderBy(g => g.Id).ToList();
-        for (int i = 0; i < sa.Count; i++)
-        {
-            var x = sa[i]; var y = sb[i];
-            if (x.Id != y.Id || x.W != y.W || x.D != y.D || x.H != y.H || x.Cap != y.Cap ||
-                x.Px != y.Px || x.Py != y.Py || x.Pz != y.Pz || x.Wy != y.Wy) return false;
-            var ax = (x.Accepts ?? new List<int>()).OrderBy(v => v);
-            var ay = (y.Accepts ?? new List<int>()).OrderBy(v => v);
-            if (!ax.SequenceEqual(ay)) return false;
-        }
-        return true;
+        _viewport.TestSelectedGrid = -1;
+        _viewport.RenderTrip(null, preview, CargoWebView.CargoViewMode.View);
     }
 
     private void OnGridsSaved(string shipId, List<GridOverride> grids)
     {
         var name = _catalog.Ships.FirstOrDefault(s => s.Id == shipId)?.DisplayName ?? shipId;
-        // Same physical-consistency gate as ApplyImport: the editor lets caps and dimensions be set
+
+        // The editor does not cap grid count; enforce the same ceiling as an imported file so a runaway
+        // add cannot bloat the override.
+        if (grids.Count > GridShareService.MaxGrids)
+        {
+            SetStatus($"Not saved: too many grids ({grids.Count}); the limit is {GridShareService.MaxGrids}.", Warn);
+            _viewport.AckSave(false, $"Not saved: too many grids (limit {GridShareService.MaxGrids}).");
+            return;
+        }
+
+        // Same physical-consistency gate as an applied import: the editor lets caps and dimensions be set
         // independently, so refuse to persist a grid that accepts a container it cannot hold.
         ShipCargoDef? built;
         try { built = _catalog.BuildPreview(shipId, grids); }
-        catch (Exception ex) { SetResult($"Not saved: {ex.Message}", Warn); return; }
+        catch (Exception ex) { SetStatus($"Not saved: {ex.Message}", Warn); _viewport.AckSave(false, $"Not saved: {ex.Message}"); return; }
         var problem = built != null ? GridValidation.FirstProblem(built.Grids) : null;
-        if (problem != null) { SetResult($"Not saved: {problem}.", Warn); return; }
+        if (problem != null) { SetStatus($"Not saved: {problem}.", Warn); _viewport.AckSave(false, $"Not saved: {problem}."); return; }
 
-        _overrides.Set(shipId, name, grids);
-        _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
-        _selected = _catalog.ById(shipId) ?? _selected;
+        // A schematic ship (no datamined positions) becomes positioned once saved from the editor; note it.
+        bool wasSchematic = _catalog.ById(shipId)?.Grids.Any(g => !g.HasPos) ?? false;
+
+        if (!_overrides.Set(shipId, name, grids))
+        {
+            SetStatus($"Not saved: could not write {name} to disk. See nexus.log.", Warn);
+            _viewport.AckSave(false, "Save failed: could not write to disk.");
+            return;
+        }
+        _provenance.Clear(shipId);   // owner-authored edit: no contributor provenance
+        ReloadCatalog(shipId);
         // Edited geometry invalidates the position and properties review; the hologram is independent.
         _signoff.ClearChecks(shipId, name,
             CargoSignoffStore.ReviewItem.GridPosition, CargoSignoffStore.ReviewItem.GridProperties);
         _viewport.BumpEditRev();
         RefreshShips();
         Render();
+        if (wasSchematic) SetStatus($"Saved {name}. Positions are now set for this ship.", Cyan);
         Logger.Info($"[UI] grid studio layout saved for {name} grids={grids.Count}");
     }
 
     private void OnGridsReverted(string shipId)
     {
         _overrides.Clear(shipId);
-        _catalog = CargoShipCatalog.LoadEmbedded().WithOverrides(_overrides);
-        _selected = _catalog.ById(shipId) ?? _selected;
+        _provenance.Clear(shipId);
+        ReloadCatalog(shipId);
         _viewport.BumpEditRev();
         RefreshShips();
         Render();
@@ -550,12 +493,16 @@ public sealed class GridStudioPage : UserControl
     private void OnShipSelected(object sender, SelectionChangedEventArgs e)
     {
         if (_shipSelect.SelectedItem is not ShipRow r) return;
-        // Changing ships abandons any open import review (the preview was for the other ship).
-        if (_pendingImport is { } imp && imp.ShipId != r.Ship.Id)
+        // Changing ships abandons any open import review (the preview was for the other ship). If a batch
+        // was queued behind it, drop the rest and say so, rather than silently stranding the queue.
+        if (_importPanel.IsActive && _importPanel.ActiveShipId != r.Ship.Id)
         {
-            _pendingImport = null;
-            _importPanel.Visibility = Visibility.Collapsed;
-            SetResult("Import review cancelled (ship changed).", Dim);
+            _importPanel.Cancel();
+            int remaining = _importQueue.Count;
+            _importQueue.Clear();
+            SetStatus(remaining > 0
+                ? $"Import review cancelled (ship changed); {remaining} queued file(s) not reviewed."
+                : "Import review cancelled (ship changed).", Dim);
         }
         _selected = r.Ship;
         Render();
@@ -563,10 +510,22 @@ public sealed class GridStudioPage : UserControl
 
     private string ReviewMarker(string shipId)
     {
-        if (_signoff.IsFlagged(shipId)) return "[!] ";
-        if (_signoff.IsFullySignedOff(shipId)) return "[OK] ";
-        int n = _signoff.CheckedCount(shipId);
-        return n > 0 ? $"[{n}/{CargoSignoffStore.Items.Count}] " : "";
+        string review;
+        if (_signoff.IsFlagged(shipId)) review = "[!] ";
+        else if (_signoff.IsFullySignedOff(shipId))
+        {
+            // "[OK~]" marks a sign-off whose reviewed geometry has since changed (drift).
+            var ship = _catalog.ById(shipId);
+            bool stale = ship != null && _signoff.IsStale(shipId, GridFingerprint.Of(ship.Grids));
+            review = stale ? "[OK~] " : "[OK] ";
+        }
+        else
+        {
+            int n = _signoff.CheckedCount(shipId);
+            review = n > 0 ? $"[{n}/{CargoSignoffStore.Items.Count}] " : "";
+        }
+        // Prefix "*" when the ship carries a local override (an applied submission or a hand edit).
+        return _overrides.Has(shipId) ? "*" + (review.Length > 0 ? review : " ") : review;
     }
 
     private Button ChecklistBtn(CargoSignoffStore.ReviewItem item)
@@ -588,14 +547,20 @@ public sealed class GridStudioPage : UserControl
     private void ToggleCheck(CargoSignoffStore.ReviewItem item)
     {
         if (_selected == null) return;
-        _signoff.SetCheck(_selected.Id, _selected.DisplayName, item, !_signoff.IsChecked(_selected.Id, item));
+        // Only the geometry-related checks fingerprint the grids; the hologram check is geometry-
+        // independent and must NOT reset the fingerprint (that would mask drift on the geometry aspects
+        // when a sign-off is completed incrementally across a grid change).
+        var fp = item == CargoSignoffStore.ReviewItem.Hologram ? "" : GridFingerprint.Of(_selected.Grids);
+        if (!_signoff.SetCheck(_selected.Id, _selected.DisplayName, item, !_signoff.IsChecked(_selected.Id, item), fp))
+            SetStatus("Could not save review state to disk. See nexus.log.", Warn);
         RefreshShips();
     }
 
     private void ToggleFlag()
     {
         if (_selected == null) return;
-        _signoff.SetFlagged(_selected.Id, _selected.DisplayName, !_signoff.IsFlagged(_selected.Id));
+        if (!_signoff.SetFlagged(_selected.Id, _selected.DisplayName, !_signoff.IsFlagged(_selected.Id)))
+            SetStatus("Could not save review state to disk. See nexus.log.", Warn);
         RefreshShips();
     }
 
@@ -621,6 +586,17 @@ public sealed class GridStudioPage : UserControl
         bool isFlagged = ship != null && _signoff.IsFlagged(ship.Id);
         _flagBtn.Content = isFlagged ? "Clear flag" : "Flag issue";
 
+        // Provenance line: who a currently-applied override came from (empty for owner-authored edits).
+        var prov = ship != null ? _provenance.Get(ship.Id) : null;
+        if (prov != null)
+        {
+            var date = prov.AppliedUtc.Length >= 10 ? prov.AppliedUtc[..10] : prov.AppliedUtc;
+            var who = string.IsNullOrWhiteSpace(prov.Handle) ? "(no handle)" : prov.Handle;
+            _provLine.Text = $"applied: {who}{(date.Length > 0 ? "  " + date : "")}  [{prov.Aspects}]";
+            _provLine.Visibility = Visibility.Visible;
+        }
+        else _provLine.Visibility = Visibility.Collapsed;
+
         if (ship == null) { _reviewStatus.Text = tally; _reviewStatus.Foreground = new SolidColorBrush(Dim); return; }
         int checkedCount = _signoff.CheckedCount(ship.Id);
         if (isFlagged)
@@ -630,8 +606,11 @@ public sealed class GridStudioPage : UserControl
         }
         else if (_signoff.IsFullySignedOff(ship.Id))
         {
-            _reviewStatus.Text = $"SIGNED OFF  {_signoff.When(ship.Id)}   -   {tally}";
-            _reviewStatus.Foreground = new SolidColorBrush(Cyan);
+            bool stale = _signoff.IsStale(ship.Id, GridFingerprint.Of(ship.Grids));
+            _reviewStatus.Text = stale
+                ? $"SIGNED OFF (reviewed against older data)  {_signoff.When(ship.Id)}   -   {tally}"
+                : $"SIGNED OFF  {_signoff.When(ship.Id)}   -   {tally}";
+            _reviewStatus.Foreground = new SolidColorBrush(stale ? Warn : Cyan);
         }
         else
         {
@@ -677,7 +656,7 @@ public sealed class GridStudioPage : UserControl
     // violates: the grid's accepted-size set, the grid's cell dimensions, or its capacity.
     private void TestFill()
     {
-        if (_pendingImport != null) { SetResult("Finish the import review first (Apply or Discard).", Warn); return; }
+        if (_importPanel.IsActive) { SetResult("Finish the import review first (Apply or Discard).", Warn); return; }
         var ship = _selected;
         if (ship == null || _testGrid.SelectedIndex < 0 || _testGrid.SelectedIndex >= ship.Grids.Count) return;
         if (_testSize.SelectedItem is not SizeRow sr) return;
@@ -738,54 +717,16 @@ public sealed class GridStudioPage : UserControl
         _testResult.Foreground = new SolidColorBrush(color);
     }
 
+    // Top-of-rail feedback for export / import / apply / batch actions (kept separate from the Test Fill
+    // result line so the two do not overwrite each other).
+    private void SetStatus(string text, Color color)
+    {
+        _statusLine.Text = text;
+        _statusLine.Foreground = new SolidColorBrush(color);
+        _statusLine.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     // -- small styled builders -----------------------------------------------------
-
-    private TextBlock Eyebrow(string t) => new()
-    {
-        Text = t, Foreground = new SolidColorBrush(Amber), FontFamily = Head, FontSize = 10.5,
-        FontWeight = FontWeights.SemiBold,
-    };
-
-    private Button Btn(string text, RoutedEventHandler onClick, bool primary = false)
-    {
-        var b = new Button
-        {
-            Content = text, Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 0),
-            Cursor = System.Windows.Input.Cursors.Hand, FontFamily = Mono, FontSize = 11,
-            Foreground = new SolidColorBrush(primary ? Void : Fg),
-            Background = new SolidColorBrush(primary ? Amber : Color.FromRgb(0x14, 0x1B, 0x24)),
-            BorderBrush = new SolidColorBrush(primary ? Amber : Line),
-            BorderThickness = new Thickness(1),
-        };
-        b.Click += onClick;
-        return b;
-    }
-
-    private void StyleCombo(ComboBox c)
-    {
-        if (Application.Current.TryFindResource("NexusComboBox") is Style s) c.Style = s;
-        c.FontFamily = Mono;
-        c.FontSize = 11.5;
-    }
-
-    private void StyleBox(TextBox t)
-    {
-        t.Foreground = new SolidColorBrush(Fg);
-        t.Background = new SolidColorBrush(Color.FromRgb(0x0E, 0x14, 0x1C));
-        t.BorderBrush = new SolidColorBrush(Line);
-        t.BorderThickness = new Thickness(1);
-        t.Padding = new Thickness(6, 4, 6, 4);
-        t.FontFamily = Mono; t.FontSize = 11.5;
-        t.CaretBrush = new SolidColorBrush(Cyan);
-    }
-
-    private sealed class ShipRow
-    {
-        public ShipCargoDef Ship { get; }
-        private readonly string _marker;
-        public ShipRow(ShipCargoDef ship, string marker = "") { Ship = ship; _marker = marker; }
-        public override string ToString() => $"{_marker}{Ship.DisplayName}  ({Ship.TotalScu} SCU)";
-    }
 
     private sealed class SizeRow
     {

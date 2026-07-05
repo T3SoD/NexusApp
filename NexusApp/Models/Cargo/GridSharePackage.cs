@@ -15,5 +15,10 @@ public sealed record GridSharePackage
     public string Notes { get; init; } = "";
     public string CreatedUtc { get; init; } = "";
     public string AppVersion { get; init; } = "";
+    // A contributor can flag a ship as having a problem, with an optional note saying what. The owner
+    // sees both in the import review. The app is offline, so this file is the only channel a flag has to
+    // reach the owner - it rides in the shared .nexusgrid.
+    public bool Flagged { get; init; }
+    public string FlagNote { get; init; } = "";
     public List<GridOverride> Grids { get; init; } = new();
 }

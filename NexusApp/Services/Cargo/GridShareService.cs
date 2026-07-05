@@ -55,6 +55,7 @@ public static class GridShareService
             ShipName = Clean(pkg.ShipName, 80, false),
             Summary = Clean(pkg.Summary, 200, false),
             Notes = Clean(pkg.Notes, 4000, true),
+            FlagNote = Clean(pkg.FlagNote, 500, true),
         };
     }
 

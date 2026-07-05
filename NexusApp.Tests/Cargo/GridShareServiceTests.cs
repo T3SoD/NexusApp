@@ -168,4 +168,22 @@ public class GridShareServiceTests
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void Import_PreservesFlagAndSanitizesFlagNote()
+    {
+        var path = TempFile();
+        try
+        {
+            var bidi = ((char)0x202E).ToString();
+            var pkg = Sample() with { Flagged = true, FlagNote = "rear grid too deep\r\n[SCAN] forged" + bidi + "y" };
+            GridShareService.Export(pkg, path);
+            var back = GridShareService.Import(path);
+            Assert.True(back.Flagged);
+            Assert.False(back.FlagNote.Contains('\r'));
+            Assert.False(back.FlagNote.Contains(bidi, StringComparison.Ordinal));
+            Assert.Contains("rear grid too deep", back.FlagNote);
+        }
+        finally { File.Delete(path); }
+    }
 }
