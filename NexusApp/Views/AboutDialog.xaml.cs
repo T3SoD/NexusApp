@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.2.0  -  Jul 04, 2026",
+        [
+            "Added beta features, currently in limited testing",
+        ]),
         ("App  6.1.0  -  Jul 03, 2026",
         [
             "Mining Codex now shows scan signatures for hand-minable and vehicle-minable ores (RS 3,000 hand, RS 4,000 vehicle); the RS Decoder still matches ship ores only, so rock scans decode exactly as before",
