@@ -63,7 +63,8 @@ Stateless-ish helpers that the view model orchestrates:
 - **ScannerService** — drives the opt-in auto-scan loop and reports readings.
 - **SettingsService** — loads/saves `AppSettings`, including app-data migration
   from the legacy folder name.
-- **ThemeService** — switches between the luxury and classic themes.
+- **ThemeService** — provides the app's single theme resources (merged palette,
+  icon and logo URIs); the luxury/classic theme picker was removed in v6.0.0.
 - **GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
   RsiHandleParser** — the read-only `Game.log` subsystem (see below).
 - **ComponentStringReference / GlobalIniReader** — translate mod-renamed
@@ -128,6 +129,7 @@ and can filter the whole app to a single member. No server is involved.
   (blueprint ownership, Game.log import, network file/store/scope/identity, RSI
   handle parsing, diagnostics).
 - **CI:** GitHub Actions verify a clean Release build on every push / PR to
-  `main` (`build.yml`), run CodeQL static analysis (`codeql.yml`), and publish
-  the installer and portable zip on a version tag (`release.yml`). Dependabot
-  keeps NuGet packages and Actions current.
+  `main` (`build.yml`) and publish the installer and portable zip on a version
+  tag (`release.yml`, which also posts the changelog to Discord). CodeQL static
+  analysis runs via GitHub's default code-scanning setup (no workflow file), and
+  Dependabot keeps NuGet packages and Actions current.
