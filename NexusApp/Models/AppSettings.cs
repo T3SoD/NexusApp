@@ -51,6 +51,11 @@ public class AppSettings
 
     // Top-bar clock format: true = 24-hour (HH:mm:ss), false = 12-hour with AM/PM. Default 24-hour.
     public bool Clock24Hour { get; set; } = true;
+
+    // Overlay input (issue #7): when on, the overlay passes the mouse straight through (click-through)
+    // while the game hides the OS cursor (FPS / flight), so a stray click can't land on it or steal
+    // focus. It becomes interactive again the moment the cursor is shown. Default on.
+    public bool OverlayPassThroughWhenCursorHidden { get; set; } = true;
 }
 
 public class ScanRegion

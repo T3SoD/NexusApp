@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -121,6 +122,65 @@ public partial class OverlayWindow : Window
             else Hidden?.Invoke();
         };
     }
+
+    // ── Issue #7: click-through the overlay while the game hides the cursor (FPS / flight) ──────────
+    // The overlay is a Topmost interactive window, so when the game hides the OS cursor the physical
+    // mouse can still land on it and steal focus. While the overlay is visible we poll the cursor state
+    // and pass the mouse straight through (WS_EX_TRANSPARENT) whenever the cursor is hidden. Gated by a
+    // Settings toggle (default on); it becomes interactive again the instant the cursor is shown.
+    private IntPtr _overlayHwnd;
+    private System.Windows.Threading.DispatcherTimer? _cursorPoll;
+    private bool _passThrough;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        _overlayHwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        _cursorPoll = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _cursorPoll.Tick += (_, _) => UpdateCursorPassThrough();
+        IsVisibleChanged += (_, ev) =>
+        {
+            if ((bool)ev.NewValue) { _cursorPoll.Start(); UpdateCursorPassThrough(); }
+            else { _cursorPoll.Stop(); SetPassThrough(false); }   // never leave it click-through while hidden
+        };
+        if (IsVisible) { _cursorPoll.Start(); UpdateCursorPassThrough(); }
+    }
+
+    private void UpdateCursorPassThrough() =>
+        SetPassThrough(App.Settings.Current.OverlayPassThroughWhenCursorHidden && IsCursorHidden());
+
+    // Toggle WS_EX_TRANSPARENT so the OS routes the mouse to the game below when true. No-op when the
+    // desired state already matches, so the [WIN] log records only real transitions.
+    private void SetPassThrough(bool on)
+    {
+        if (on == _passThrough || _overlayHwnd == IntPtr.Zero) return;
+        _passThrough = on;
+        int ex = GetWindowLong(_overlayHwnd, GWL_EXSTYLE);
+        SetWindowLong(_overlayHwnd, GWL_EXSTYLE, on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT);
+        Logger.Info(on
+            ? "[WIN] overlay input: pass-through (game cursor hidden)"
+            : "[WIN] overlay input: interactive (game cursor shown)");
+    }
+
+    // True when the OS cursor is currently hidden (Star Citizen hides it in FPS / flight / vehicle).
+    private static bool IsCursorHidden()
+    {
+        var ci = new CURSORINFO { cbSize = Marshal.SizeOf<CURSORINFO>() };
+        return GetCursorInfo(ref ci) && (ci.flags & CURSOR_SHOWING) == 0;
+    }
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int CURSOR_SHOWING = 0x00000001;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CURSORINFO { public int cbSize; public int flags; public IntPtr hCursor; public POINT ptScreenPos; }
+
+    [DllImport("user32.dll")] private static extern bool GetCursorInfo(ref CURSORINFO pci);
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     // Paint the chamfered shell: the FramePath silhouette (bevelled fill + 1px border) and the matching
     // clip on ContentRoot so inner content stays inside the TL + BR bevels. 16px chamfer = the mock frame.
