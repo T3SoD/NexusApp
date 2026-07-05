@@ -124,6 +124,8 @@
     <div class="ep-actions">
       <button id="ep-add">Add grid</button>
       <button id="ep-del">Delete</button>
+      <button id="ep-dup">Duplicate</button>
+      <button id="ep-mirror">Mirror X</button>
       <button id="ep-undo" style="display:none">Undo move</button>
     </div>
     <div class="ep-actions">
@@ -276,7 +278,7 @@ function buildScene(data){
   const editing = !!editState;
   // grids: per-grid volumes (min corner x/y/z + size w/d/h) laid out in ship space when the
   // catalog has datamined positions, else the synthetic strip. In edit mode the frames come
-  // from the live editable state instead. Old single-grid payloads still work.
+  // from the live editable state instead.
   let grids, bounds, boxes;
   if (editing){
     grids = editState.grids.map((g,i)=>gridToFrame(g,i));
@@ -284,7 +286,7 @@ function buildScene(data){
     boxes = [];
   } else {
     grids = (data.grids && data.grids.length) ? data.grids
-              : [Object.assign({x:0,y:0,z:0}, data.grid || {w:8,d:4,h:4})];
+              : [{ x:0, y:0, z:0, w:8, d:4, h:4 }];   // empty-state placeholder (no ship selected)
     bounds = data.bounds || { w: Math.max(...grids.map(g=>g.x+g.w)),
                               d: Math.max(...grids.map(g=>g.y+g.d)),
                               h: Math.max(...grids.map(g=>g.z+g.h)) };
@@ -569,7 +571,7 @@ function initEditState(e, data){
   } else {
     org = (data.origin && data.origin.length===3) ? data.origin.slice() : computeOrigin(grids);
   }
-  return { shipId:e.shipId, rev:e.rev, origin:org, grids, selected:0 };
+  return { shipId:e.shipId, rev:e.rev, origin:org, grids, selected:0, positioned };
 }
 
 let _stashedEdit = null;
@@ -636,6 +638,10 @@ const capBoxes = CAP_SIZES.map(s => {
 });
 const round2 = x => Math.round(x*100)/100;
 function msg(t){ epmsg.textContent = t || ''; }
+// The host rejected a save (validation or a failed disk write). Keep the editor dirty and show the
+// reason; the on-screen edits are untouched so the user can fix and retry. A successful save comes back
+// as a rev bump (renderPayload) that re-seeds the working copy instead.
+function onSaveResult(d){ if (d && d.ok === false) msg(d.message || 'Save failed - not saved.'); }
 
 function syncPanel(){
   if (!editState) return;
@@ -661,6 +667,9 @@ function readFields(){
   if (!editState) return;
   disarmRevert();
   const g = editState.grids[editState.selected]; if (!g) return;
+  // Compare at the same 2dp precision the position inputs display (syncPanel seeds round2(px)); a >2dp
+  // datamined position would otherwise always differ from its rounded input and false-trip the guard.
+  const before = JSON.stringify([g.w,g.d,g.h,round2(g.px),round2(g.py),round2(g.pz),!!g.wy,(g.accepts||[]).slice().sort((a,b)=>a-b)]);
   g.w=Math.max(1,Math.round(+epw.value||1)); g.d=Math.max(1,Math.round(+epd.value||1)); g.h=Math.max(1,Math.round(+eph.value||1));
   g.px=+epx.value||0; g.py=+epy.value||0; g.pz=+epz.value||0;
   g.wy=epwy.checked;
@@ -669,7 +678,8 @@ function readFields(){
   g.accepts = acc.sort((a,b)=>a-b);
   g.cap = Math.max(...g.accepts);
   rebuildEdit();
-  markDirty();
+  const after = JSON.stringify([g.w,g.d,g.h,round2(g.px),round2(g.py),round2(g.pz),!!g.wy,g.accepts.slice()]);
+  if (after !== before) markDirty();   // only a real change dirties the layout (no false-positive on a no-op edit)
 }
 [epw,epd,eph,epx,epy,epz,epwy].forEach(el=>el.addEventListener('change', readFields));
 
@@ -692,6 +702,39 @@ document.getElementById('ep-del').addEventListener('click',()=>{
   hideUndo();   // roster changed: the one-level move-undo index is no longer valid
   msg('Grid deleted.'); rebuildEdit(); markDirty();
   post({ type:'testGridSelected', index:editState.selected });
+});
+document.getElementById('ep-dup').addEventListener('click',()=>{
+  if (!editState) return;
+  disarmRevert();
+  const g = editState.grids[editState.selected]; if (!g) return;
+  const latExt = g.wy ? g.d : g.w;   // offset the copy by its own width so it does not sit exactly on top
+  editState.grids.push({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy,
+    accepts:(g.accepts||[]).slice(), px:g.px + latExt, py:g.py, pz:g.pz });
+  editState.selected = editState.grids.length-1;
+  hideUndo();   // roster changed: the one-level move-undo index is no longer valid
+  msg('Grid duplicated. Drag it into place.'); rebuildEdit(); markDirty();
+  post({ type:'testGridSelected', index:editState.selected });
+  post({ type:'log', msg:'grid duplicated' });
+});
+document.getElementById('ep-mirror').addEventListener('click',()=>{
+  if (!editState) return;
+  disarmRevert();
+  const g = editState.grids[editState.selected]; if (!g) return;
+  // Reflect across the ship's lateral centerline. For a datamined ship that is ship-space X = 0. A fully
+  // schematic ship has no real centerline (its grids were seeded on a strip from X = 0), so reflect
+  // across the current footprint's lateral center instead. Size / cap / orientation are unchanged.
+  let cx = 0;
+  if (!editState.positioned){
+    const ext = editState.grids.map(x => { const le = x.wy ? x.d : x.w; return [x.px - le/2, x.px + le/2]; });
+    cx = (Math.min(...ext.map(e=>e[0])) + Math.max(...ext.map(e=>e[1]))) / 2;
+  }
+  editState.grids.push({ w:g.w, d:g.d, h:g.h, cap:g.cap, wy:!!g.wy,
+    accepts:(g.accepts||[]).slice(), px: 2*cx - g.px, py:g.py, pz:g.pz });
+  editState.selected = editState.grids.length-1;
+  hideUndo();
+  msg('Grid mirrored across X. Drag to adjust.'); rebuildEdit(); markDirty();
+  post({ type:'testGridSelected', index:editState.selected });
+  post({ type:'log', msg:'grid mirrored across X' });
 });
 document.getElementById('ep-save').addEventListener('click',()=>{
   if (!editState) return;
@@ -745,6 +788,7 @@ renderer.domElement.addEventListener('pointerdown', e=>{
   // First click selects the grid; it does not move. Only a drag that starts on the already-selected
   // (pink) grid moves it, so orbiting past a grid can no longer nudge it by accident.
   if (idx !== editState.selected){ selectGrid(idx); return; }
+  post({ type:'testGridSelected', index:idx });   // re-sync the rail Fill target even when already selected
   dragging = true; controls.enabled = false;
   const g = editState.grids[idx];
   dragY = g._obj.position.y;
@@ -806,7 +850,11 @@ addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.upd
 // data bridge: C# posts the packed trip as JSON; also expose a manual hook for browser testing.
 if (window.chrome && window.chrome.webview) {
   window.chrome.webview.addEventListener('message', e => {
-    try { renderPayload(e.data); }
+    try {
+      const d = e.data || {};
+      if (d.type === 'saveResult'){ onSaveResult(d); return; }
+      renderPayload(d);
+    }
     catch(err){ console.error(err); post({ type:'log', msg:'render failed: ' + String(err && err.stack || err) }); }
   });
 }

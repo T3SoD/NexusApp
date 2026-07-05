@@ -21,12 +21,26 @@ public sealed class CargoGridOverrideStore
         _entries = Load(path);
     }
 
+    // The Cargo Planner and Grid Studio both hold this store; they share ONE process-wide instance for
+    // the default path so a save made in one view is visible to the other in the same session (each page
+    // formerly held its own load-once snapshot). Tests use the public path constructor for isolation.
+    private static CargoGridOverrideStore? _default;
     public static CargoGridOverrideStore LoadDefault()
     {
+        if (_default != null) return _default;
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp");
         Directory.CreateDirectory(dir);
-        return new CargoGridOverrideStore(Path.Combine(dir, "cargo_grid_overrides.json"));
+        return _default = new CargoGridOverrideStore(Path.Combine(dir, "cargo_grid_overrides.json"));
+    }
+
+    // Re-read the file into the in-memory set. Pages call this on show so a change written by another
+    // process (or another view) is reflected. WPF is single-threaded, so no locking is needed.
+    public void Reload()
+    {
+        var fresh = Load(_path);
+        _entries.Clear();
+        foreach (var kv in fresh) _entries[kv.Key] = kv.Value;
     }
 
     public bool Has(string shipId) => _entries.ContainsKey(shipId);
@@ -36,12 +50,20 @@ public sealed class CargoGridOverrideStore
 
     public IReadOnlyCollection<string> EditedShipIds => _entries.Keys;
 
-    /// <summary>Replace a ship's grid set with the corrected one. Persists immediately.</summary>
-    public void Set(string shipId, string shipName, IReadOnlyList<GridOverride> grids)
+    /// <summary>Replace a ship's grid set with the corrected one. Persists immediately. Returns false if
+    /// the disk write failed (the in-memory state is rolled back so it matches disk and the caller can
+    /// keep the edit rather than report a phantom save).</summary>
+    public bool Set(string shipId, string shipName, IReadOnlyList<GridOverride> grids)
     {
+        var prev = _entries.TryGetValue(shipId, out var p) ? p : null;
         _entries[shipId] = grids.ToList();
-        Save();
+        if (!Save())
+        {
+            if (prev != null) _entries[shipId] = prev; else _entries.Remove(shipId);
+            return false;
+        }
         Logger.Info($"[CARGO] grid override saved: {shipName} ({shipId}) grids={grids.Count}");
+        return true;
     }
 
     /// <summary>Drop a ship's override so it reverts to the embedded layout. Persists immediately.</summary>
@@ -58,13 +80,14 @@ public sealed class CargoGridOverrideStore
         JsonFile.LoadOrRecover(path,
             () => new Dictionary<string, List<GridOverride>>(), "cargo grid overrides");
 
-    private void Save()
+    private bool Save()
     {
         try
         {
             JsonFile.AtomicWrite(_path, JsonSerializer.Serialize(_entries,
                 new JsonSerializerOptions { WriteIndented = true }));
+            return true;
         }
-        catch (Exception ex) { Logger.Error("Failed to save cargo grid overrides", ex); }
+        catch (Exception ex) { Logger.Error("Failed to save cargo grid overrides", ex); return false; }
     }
 }

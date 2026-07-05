@@ -5,6 +5,7 @@ using NexusApp.Models.Cargo;
 using NexusApp.Services;
 using NexusApp.Services.Cargo;
 using NexusApp.ViewModels;
+using static NexusApp.Views.CargoUiKit;
 
 namespace NexusApp.Views;
 
@@ -13,18 +14,8 @@ namespace NexusApp.Views;
 // trips, and rank ships by real footprint fit. Drag-to-adjust is layered on in a later pass.
 public sealed class CargoPlannerPage : UserControl
 {
-    private static readonly Color Void = Color.FromRgb(0x05, 0x07, 0x0A);
-    private static readonly Color Panel = Color.FromRgb(0x0B, 0x10, 0x17);
-    private static readonly Color Line = Color.FromRgb(0x1C, 0x28, 0x36);
-    private static readonly Color Amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
-    private static readonly Color Cyan = Color.FromRgb(0x7F, 0xE9, 0xE0);
-    private static readonly Color Fg = Color.FromRgb(0xEA, 0xF1, 0xF6);
-    private static readonly Color Dim = Color.FromRgb(0x7C, 0x8A, 0x99);
-    private static readonly Color Warn = Color.FromRgb(0xFF, 0x8A, 0x3D);
-
     private readonly CargoPlannerViewModel _vm;
-    // Cargo 3D view now runs the Three.js mockup in a WebView2 (the WPF CargoViewport is kept as a
-    // fallback). Both expose RenderTrip(PackResult?, ShipCargoDef?).
+    // Cargo 3D view runs the Three.js scene in a WebView2 (RenderTrip posts the packed trip as JSON).
     private readonly CargoWebView _viewport = new();
     private readonly ComboBox _shipSelect = new();
     private readonly TextBox _labelBox = new();
@@ -43,9 +34,6 @@ public sealed class CargoPlannerPage : UserControl
     private Border _leftRail = null!;
     private Button _expandBtn = null!;
 
-    private FontFamily Mono => (FontFamily)Application.Current.FindResource("MonoFont");
-    private FontFamily Head => (FontFamily)Application.Current.FindResource("HeadFont");
-
     public CargoPlannerPage()
     {
         _vm = new CargoPlannerViewModel(LoadVisibleCatalog());
@@ -60,6 +48,8 @@ public sealed class CargoPlannerPage : UserControl
     // and any Grid Studio layout/property edits (saved as overrides) are applied to the model here.
     public void OnShown()
     {
+        _overrides.Reload();
+        _signoff.Reload();
         _vm.ReloadCatalog(LoadVisibleCatalog());
         RefreshShips();
         Render();
@@ -77,7 +67,7 @@ public sealed class CargoPlannerPage : UserControl
 
     private void Build()
     {
-        Background = new SolidColorBrush(Void);
+        Background = new SolidColorBrush(Bg);
         var root = new Grid { Margin = new Thickness(0) };
         _leftCol = new ColumnDefinition { Width = new GridLength(310) };
         root.ColumnDefinitions.Add(_leftCol);
@@ -136,10 +126,9 @@ public sealed class CargoPlannerPage : UserControl
 
         _shipSelect.Margin = new Thickness(0, 6, 0, 14);
         StyleCombo(_shipSelect);
-        _shipSelect.SelectionChanged += (_, _) =>
-        {
-            if (_shipSelect.SelectedItem is ShipRow r) { _vm.SelectShip(r.Ship); Render(); }
-        };
+        // Wired here (and detached during rebuilds in RefreshShips) so repopulating the list cannot
+        // fire a spurious selection change and double-render per OnShown.
+        _shipSelect.SelectionChanged += OnShipSelected;
         stack.Children.Add(_shipSelect);
 
         _noShipsMsg.Text = "No ships available yet. Sign off a ship's full checklist in Grid Studio to add it here.";
@@ -291,13 +280,20 @@ public sealed class CargoPlannerPage : UserControl
 
     private void RefreshShips()
     {
+        _shipSelect.SelectionChanged -= OnShipSelected;   // avoid a spurious render while rebuilding
         _shipSelect.Items.Clear();
         foreach (var ship in _vm.Ships)
             _shipSelect.Items.Add(new ShipRow(ship));
         SyncShipCombo();
+        _shipSelect.SelectionChanged += OnShipSelected;
         bool any = _vm.Ships.Count > 0;
         _shipSelect.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
         _noShipsMsg.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnShipSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (_shipSelect.SelectedItem is ShipRow r) { _vm.SelectShip(r.Ship); Render(); }
     }
 
     private void SyncShipCombo()
@@ -308,61 +304,11 @@ public sealed class CargoPlannerPage : UserControl
 
     // -- small styled builders -----------------------------------------------------
 
-    private TextBlock Eyebrow(string t) => new()
-    {
-        Text = t, Foreground = new SolidColorBrush(Amber), FontFamily = Head, FontSize = 10.5,
-        FontWeight = FontWeights.SemiBold,
-    };
-
     private TextBlock Muted(string t) => new()
     {
         Text = t, Foreground = new SolidColorBrush(Dim), FontFamily = Mono, FontSize = 11,
         TextWrapping = TextWrapping.Wrap,
     };
-
-    private Button Btn(string text, RoutedEventHandler onClick, bool primary = false)
-    {
-        var b = new Button
-        {
-            Content = text, Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 0),
-            Cursor = System.Windows.Input.Cursors.Hand, FontFamily = Mono, FontSize = 11,
-            Foreground = new SolidColorBrush(primary ? Void : Fg),
-            Background = new SolidColorBrush(primary ? Amber : Color.FromRgb(0x14, 0x1B, 0x24)),
-            BorderBrush = new SolidColorBrush(primary ? Amber : Line),
-            BorderThickness = new Thickness(1),
-        };
-        b.Click += onClick;
-        return b;
-    }
-
-    private void StyleGhost(Button b)
-    {
-        b.Foreground = new SolidColorBrush(Dim);
-        b.Background = Brushes.Transparent;
-        b.BorderBrush = new SolidColorBrush(Line);
-        b.BorderThickness = new Thickness(1);
-        b.FontFamily = Mono; b.FontSize = 10;
-    }
-
-    private void StyleBox(TextBox t)
-    {
-        t.Foreground = new SolidColorBrush(Fg);
-        t.Background = new SolidColorBrush(Color.FromRgb(0x0E, 0x14, 0x1C));
-        t.BorderBrush = new SolidColorBrush(Line);
-        t.BorderThickness = new Thickness(1);
-        t.Padding = new Thickness(6, 4, 6, 4);
-        t.FontFamily = Mono; t.FontSize = 11.5;
-        t.CaretBrush = new SolidColorBrush(Cyan);
-    }
-
-    private void StyleCombo(ComboBox c)
-    {
-        // Use the app's themed dark ComboBox (fully templated popup + readable items); the default
-        // WPF template ignores a plain Background, which is why raw styling was invisible.
-        if (Application.Current.TryFindResource("NexusComboBox") is Style s) c.Style = s;
-        c.FontFamily = Mono;
-        c.FontSize = 11.5;
-    }
 
     private static void AddPlaceholder(TextBox box, string hint)
     {
@@ -372,23 +318,6 @@ public sealed class CargoPlannerPage : UserControl
         bool cleared = false;
         box.GotFocus += (_, _) => { if (!cleared) { box.Text = ""; box.Foreground = new SolidColorBrush(Fg); cleared = true; } };
         box.LostFocus += (_, _) => { if (string.IsNullOrWhiteSpace(box.Text)) { box.Text = hint; box.Foreground = new SolidColorBrush(Color.FromRgb(0x54, 0x60, 0x6C)); cleared = false; } };
-    }
-
-    private Border RailBorder(UIElement child) => new()
-    {
-        Background = new SolidColorBrush(Panel),
-        BorderBrush = new SolidColorBrush(Line),
-        BorderThickness = new Thickness(1),
-        Child = child,
-    };
-
-
-    private sealed class ShipRow
-    {
-        public ShipCargoDef Ship { get; }
-        private readonly string _marker;   // "[OK] " signed off, "[!] " flagged, "" unreviewed
-        public ShipRow(ShipCargoDef ship, string marker = "") { Ship = ship; _marker = marker; }
-        public override string ToString() => $"{_marker}{Ship.DisplayName}  ({Ship.TotalScu} SCU)";
     }
 
     private sealed class CapRow
