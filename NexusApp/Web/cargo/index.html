@@ -72,7 +72,7 @@
   .ep-readout{font:11px ui-monospace,monospace;color:#7FE9E0;margin-bottom:9px}
   .ep-actions{display:flex;gap:6px;margin-bottom:6px}
   .ep-actions button{flex:1;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;
-    color:#EAF1F6;background:#141B24;border:1px solid #1C2836;border-radius:5px;padding:6px}
+    color:#EAF1F6;background:#141B24;border:1px solid #1C2836;border-radius:5px;padding:6px;white-space:nowrap}
   .ep-actions button.prim{color:#05070A;background:#FFB23E;border-color:#FFB23E;font-weight:700}
   .ep-hint{font:10px ui-monospace,monospace;color:#54606C;margin-bottom:8px}
   .ep-msg{font:10px ui-monospace,monospace;color:#FF8A3D;min-height:12px}
@@ -124,8 +124,12 @@
     <div class="ep-actions">
       <button id="ep-add">Add grid</button>
       <button id="ep-del">Delete</button>
+    </div>
+    <div class="ep-actions">
       <button id="ep-dup">Duplicate</button>
       <button id="ep-mirror">Mirror X</button>
+    </div>
+    <div class="ep-actions">
       <button id="ep-undo" style="display:none">Undo move</button>
     </div>
     <div class="ep-actions">

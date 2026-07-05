@@ -26,9 +26,9 @@ public sealed class GridStudioPage : UserControl
     private readonly TextBlock _statusLine = new(); // export / import / apply feedback (top of the rail)
     private Button _flagBtn = null!;
 
-    // Owner-only: load a contributor's .nexusgrid submission, preview it in the 3D view, pick aspects,
-    // then keep (persist as override) or discard. The panel is a thin view; this page does the
-    // persistence in OnImportApplied.
+    // Approved contributors (owner + beta testers): load a contributor's .nexusgrid submission, preview
+    // it in the 3D view, pick aspects, then keep (persist as override) or discard. The panel is a thin
+    // view; this page does the persistence in OnImportApplied.
     private Button _importBtn = null!;
     private readonly GridImportReviewPanel _importPanel;
 
@@ -135,7 +135,7 @@ public sealed class GridStudioPage : UserControl
         _importBtn = Btn("Import submission", (_, _) => OnImport());
         _importBtn.ToolTip = "Load a contributor's .nexusgrid file to compare and keep or discard";
         _importBtn.Margin = new Thickness(0, 0, 6, 12);
-        _importBtn.Visibility = OwnerGate.IsOwnerActive ? Visibility.Visible : Visibility.Collapsed;
+        _importBtn.Visibility = AccessGate.IsApprovedActive ? Visibility.Visible : Visibility.Collapsed;
         stack.Children.Add(_importBtn);
 
         var patchBtn = Btn("Export to catalog patch", (_, _) => OnExportCatalogPatch());

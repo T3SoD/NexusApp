@@ -1,20 +1,23 @@
 namespace NexusApp.Services;
 
-// Visibility gate (NOT security) for the contributor-facing cargo tools. Approved RSI handles
-// see the Cargo Planner and Grid Studio tabs; everyone else does not. The list is embedded and
-// maintained by the owner, shipped with each release (the app is fully offline, no OTA). The
-// owner handle is always a member. Import/Compare stays on OwnerGate (owner only).
+// Visibility gate (NOT security) for the contributor-facing cargo tools. The OWNER (OwnerGate) and any
+// BETA TESTER on the list below see the Cargo Planner and Grid Studio tabs and the Import-submission
+// tool. The owner-only "Export to catalog patch" (promote a layout into the embedded catalog) stays on
+// OwnerGate. The list is embedded and maintained by the owner, shipped with each release (the app is
+// fully offline, no OTA), so onboarding a tester means adding a handle here and cutting a release.
 public static class AccessGate
 {
-    // Approved contributor handles (owner included). Add a handle here and cut a release to
-    // onboard a contributor. Case-insensitive.
-    private static readonly HashSet<string> ApprovedHandles = new(StringComparer.OrdinalIgnoreCase)
+    // Beta-tester RSI handles (case-insensitive). Add one per line to onboard a tester: they get the
+    // Cargo Planner + Grid Studio tabs and the Import tool, but NOT the catalog-patch button.
+    private static readonly HashSet<string> BetaTesters = new(StringComparer.OrdinalIgnoreCase)
     {
-        "TurboV1RG1N",
+        // "SomePilot",
     };
 
+    // Approved = the owner (single-sourced from OwnerGate) or a beta tester on the list above.
     public static bool IsApproved(string? handle) =>
-        !string.IsNullOrWhiteSpace(handle) && ApprovedHandles.Contains(handle.Trim());
+        OwnerGate.IsOwner(handle) ||
+        (!string.IsNullOrWhiteSpace(handle) && BetaTesters.Contains(handle.Trim()));
 
     // The handle last detected from Game.log (cached in settings). Empty until a login line is
     // seen, so the gate stays closed by default.
