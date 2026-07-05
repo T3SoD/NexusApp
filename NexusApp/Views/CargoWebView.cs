@@ -209,6 +209,7 @@ public sealed class CargoWebView : UserControl
                 Accepts = IntArray(g, "accepts"),
                 Px = Dbl(g, "px"), Py = Dbl(g, "py"), Pz = Dbl(g, "pz"),
                 Wy = g.TryGetProperty("wy", out var wy) && wy.ValueKind == JsonValueKind.True,
+                Rot = DblArray(g, "rot"),   // preserved across the edit round-trip (validated on apply)
             });
         return list;
     }
@@ -228,11 +229,44 @@ public sealed class CargoWebView : UserControl
         return list.Count > 0 ? list : null;
     }
 
+    private static List<double>? DblArray(JsonElement o, string k)
+    {
+        if (!o.TryGetProperty(k, out var v) || v.ValueKind != JsonValueKind.Array) return null;
+        var list = new List<double>();
+        foreach (var e in v.EnumerateArray())
+            if (e.ValueKind == JsonValueKind.Number) list.Add(e.GetDouble());
+        return list.Count > 0 ? list : null;
+    }
+
     // Cell coords in the payload: x = lateral, y = depth (fore-aft), z = vertical. Each grid is sent
     // as its own volume (min corner + size). When the catalog carries datamined ship-space positions
     // for every grid, the layout matches the real hull arrangement; otherwise grids fall back to the
     // old synthetic side-by-side strip. Boxes are absolute in the same frame.
-    internal sealed record GridFrame(double X, double Y, double Z, int SizeX, int SizeY, int H, bool Wy);
+    //
+    // X/Y/Z is the grid's axis-aligned bounding-box (AABB) min corner; Ax/Ay/Az is its AABB full
+    // extent. For an axis-aligned grid the AABB equals its footprint (Ax = SizeX, Ay = SizeY, Az = H);
+    // for a tilted grid (Rot set) the AABB is the enclosing box of the rotated volume, so bounds,
+    // centering, and the hull anchor stay correct. Rot is the orientation quaternion (x,y,z,w) in the
+    // renderer's box-local frame, or null for the common axis-aligned case.
+    internal sealed record GridFrame(double X, double Y, double Z, int SizeX, int SizeY, int H, bool Wy,
+        double[]? Rot = null, double Ax = 0, double Ay = 0, double Az = 0);
+
+    // Payload-space AABB full-extent (x, y, z cells) of a box with dims (w, h, d) along its local
+    // X/Y/Z, oriented by a scene-frame quaternion (x, y, z, w). The renderer maps payload (x, y, z)
+    // to scene (x, z, y), so the scene AABB's Y and Z swap back to payload. Kept internal so the
+    // layout math is unit-testable against the datamine's own AABB.
+    internal static (double X, double Y, double Z) RotatedAabb(IReadOnlyList<double> q, int w, int h, int d)
+    {
+        double x = q[0], y = q[1], z = q[2], ww = q[3];
+        double m00 = 1 - 2 * (y * y + z * z), m01 = 2 * (x * y - z * ww), m02 = 2 * (x * z + y * ww);
+        double m10 = 2 * (x * y + z * ww),    m11 = 1 - 2 * (x * x + z * z), m12 = 2 * (y * z - x * ww);
+        double m20 = 2 * (x * z - y * ww),    m21 = 2 * (y * z + x * ww),    m22 = 1 - 2 * (x * x + y * y);
+        double hw = w / 2.0, hh = h / 2.0, hd = d / 2.0;
+        double sx = Math.Abs(m00) * hw + Math.Abs(m01) * hh + Math.Abs(m02) * hd;
+        double sy = Math.Abs(m10) * hw + Math.Abs(m11) * hh + Math.Abs(m12) * hd;
+        double sz = Math.Abs(m20) * hw + Math.Abs(m21) * hh + Math.Abs(m22) * hd;
+        return (2 * sx, 2 * sz, 2 * sy);   // scene (x,y,z) -> payload (x, z, y)
+    }
 
     // Lay a ship's grids into scene cells: each grid becomes a min-corner + size frame. Positioned
     // ships (every grid HasPos) use the datamined centers normalized so the layout's min corner sits at
@@ -247,14 +281,28 @@ public sealed class CargoWebView : UserControl
 
         if (ship.Grids.Count > 0 && ship.Grids.All(g => g.HasPos))
         {
-            // Real layout: grid centers from hull geometry; W may run fore-aft (Wy).
+            // Real layout: grid centers from hull geometry. An axis-aligned grid's footprint may run
+            // fore-aft (Wy); a tilted grid (Rot) keeps its raw dims and rotates, and its AABB is the
+            // enclosing box of the rotated volume so the hull anchor and centering stay right.
             foreach (var g in ship.Grids)
             {
-                int sx = g.WAlongShipY ? g.D : g.W;
-                int sy = g.WAlongShipY ? g.W : g.D;
+                int sx, sy;
+                double ax, ay, az;
+                if (g.HasRot)
+                {
+                    sx = g.W; sy = g.D;                                   // raw dims; the renderer rotates
+                    (ax, ay, az) = RotatedAabb(g.Rot!, g.W, g.H, g.D);   // enclosing AABB extent
+                }
+                else
+                {
+                    sx = g.WAlongShipY ? g.D : g.W;
+                    sy = g.WAlongShipY ? g.W : g.D;
+                    ax = sx; ay = sy; az = g.H;
+                }
                 frames[g.Id] = new GridFrame(
-                    g.PosX!.Value - sx / 2.0, g.PosY!.Value - sy / 2.0,
-                    Math.Round(g.PosZ!.Value - g.H / 2.0, 2), sx, sy, g.H, g.WAlongShipY);
+                    g.PosX!.Value - ax / 2.0, g.PosY!.Value - ay / 2.0,
+                    Math.Round(g.PosZ!.Value - az / 2.0, 2), sx, sy, g.H, g.WAlongShipY,
+                    g.HasRot ? g.Rot!.ToArray() : null, ax, ay, az);
             }
             // Normalize so the layout's min corner sits at the origin. Round Z the same way as X and
             // Y (2 decimals) so the view frames match the edit scene, which uses the raw pz.
@@ -270,7 +318,7 @@ public sealed class CargoWebView : UserControl
             int cursor = 0;
             foreach (var g in ship.Grids)
             {
-                frames[g.Id] = new GridFrame(cursor, 0, 0, g.W, g.D, g.H, false);
+                frames[g.Id] = new GridFrame(cursor, 0, 0, g.W, g.D, g.H, false, null, g.W, g.D, g.H);
                 cursor += g.W + GapCells;
             }
         }
@@ -282,12 +330,20 @@ public sealed class CargoWebView : UserControl
     {
         var (frames, origin) = ComputeLayout(ship);
 
+        // Each grid carries its AABB min corner (x/y/z) + footprint (w/d/h) as before, plus its volume
+        // center (cx/cy/cz) and orientation (rot). A tilted grid is drawn as a box of its raw dims,
+        // centered and rotated by rot; axis-aligned grids leave rot null and render exactly as before.
         var grids = frames.Values
-            .Select(f => new { x = f.X, y = f.Y, z = f.Z, w = f.SizeX, d = f.SizeY, h = f.H })
+            .Select(f => new
+            {
+                x = f.X, y = f.Y, z = f.Z, w = f.SizeX, d = f.SizeY, h = f.H,
+                cx = f.X + f.Ax / 2, cy = f.Y + f.Ay / 2, cz = f.Z + f.Az / 2,
+                rot = f.Rot,
+            })
             .ToList();
-        double boundsW = grids.Count > 0 ? grids.Max(g => g.x + g.w) : 8;
-        double boundsD = grids.Count > 0 ? grids.Max(g => g.y + g.d) : 4;
-        double boundsH = grids.Count > 0 ? grids.Max(g => g.z + g.h) : 4;
+        double boundsW = frames.Count > 0 ? frames.Values.Max(f => f.X + f.Ax) : 8;
+        double boundsD = frames.Count > 0 ? frames.Values.Max(f => f.Y + f.Ay) : 4;
+        double boundsH = frames.Count > 0 ? frames.Values.Max(f => f.Z + f.Az) : 4;
 
         var boxes = new List<object>();
         if (trip != null)
@@ -321,6 +377,7 @@ public sealed class CargoWebView : UserControl
                     id = g.Id, w = g.W, d = g.D, h = g.H, cap = g.MaxContainerScu,
                     accepts = g.AcceptedCaps,
                     px = g.PosX, py = g.PosY, pz = g.PosZ, wy = g.WAlongShipY,
+                    rot = g.Rot,   // carried so an edit-save round-trips it and never silently un-tilts
                 }).ToList(),
             };
 

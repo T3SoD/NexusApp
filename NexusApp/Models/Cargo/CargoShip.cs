@@ -23,6 +23,14 @@ public sealed class GridDef
     public double? PosZ { get; init; }
     public bool WAlongShipY { get; init; }   // the grid's W axis runs fore-aft, not lateral
 
+    // Optional grid orientation as a quaternion (x, y, z, w) in the renderer's box-local frame
+    // (box X = W lateral, Y = H vertical, Z = D depth). Set only for genuinely tilted grids (e.g.
+    // the Railen's canted side and top racks); null means axis-aligned, the common case. When set it
+    // fully specifies orientation and supersedes WAlongShipY. Packing stays in grid-local cells; the
+    // rotation is applied only when the grid is drawn.
+    public IReadOnlyList<double>? Rot { get; init; }
+    public bool HasRot => Rot is { Count: 4 };
+
     public bool HasPos => PosX.HasValue && PosY.HasValue && PosZ.HasValue;
 
     public int Capacity => W * D * H;        // == SCU capacity (validated on load)

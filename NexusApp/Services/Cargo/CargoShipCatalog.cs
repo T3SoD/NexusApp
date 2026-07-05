@@ -58,7 +58,7 @@ public sealed class CargoShipCatalog
             try
             {
                 var grids = ov.Select(o =>
-                    BuildGrid(o.Id, o.W, o.D, o.H, o.Cap, o.Accepts, o.Px, o.Py, o.Pz, o.Wy, s.DisplayName)).ToList();
+                    BuildGrid(o.Id, o.W, o.D, o.H, o.Cap, o.Accepts, o.Px, o.Py, o.Pz, o.Wy, o.Rot, s.DisplayName)).ToList();
                 return new ShipCargoDef
                 {
                     Id = s.Id, DisplayName = s.DisplayName, Manufacturer = s.Manufacturer,
@@ -82,7 +82,7 @@ public sealed class CargoShipCatalog
         var baseShip = ById(shipId);
         if (baseShip == null) return null;
         var built = grids.Select(o =>
-            BuildGrid(o.Id, o.W, o.D, o.H, o.Cap, o.Accepts, o.Px, o.Py, o.Pz, o.Wy, baseShip.DisplayName)).ToList();
+            BuildGrid(o.Id, o.W, o.D, o.H, o.Cap, o.Accepts, o.Px, o.Py, o.Pz, o.Wy, o.Rot, baseShip.DisplayName)).ToList();
         return new ShipCargoDef
         {
             Id = baseShip.Id, DisplayName = baseShip.DisplayName, Manufacturer = baseShip.Manufacturer,
@@ -94,7 +94,7 @@ public sealed class CargoShipCatalog
     {
         var grids = new List<GridDef>(r.Grids.Count);
         foreach (var g in r.Grids)
-            grids.Add(BuildGrid(g.Id, g.W, g.D, g.H, g.Cap, g.Accepts, g.Px, g.Py, g.Pz, g.Wy, r.Name));
+            grids.Add(BuildGrid(g.Id, g.W, g.D, g.H, g.Cap, g.Accepts, g.Px, g.Py, g.Pz, g.Wy, g.Rot, r.Name));
         return new ShipCargoDef
         {
             Id = r.Id, DisplayName = r.Name, Manufacturer = r.Manufacturer,
@@ -112,7 +112,7 @@ public sealed class CargoShipCatalog
     private const double MaxPositionCells = 5_000;
 
     private static GridDef BuildGrid(int id, int w, int d, int h, int cap, List<int>? accepts,
-        double? px, double? py, double? pz, bool wy, string shipName)
+        double? px, double? py, double? pz, bool wy, List<double>? rot, string shipName)
     {
         if (w <= 0 || d <= 0 || h <= 0)
             throw new InvalidDataException($"{shipName}: grid {id} has a non-positive dimension");
@@ -128,7 +128,22 @@ public sealed class CargoShipCatalog
             Id = id, W = w, D = d, H = h, Name = $"Grid {id + 1}",
             AcceptedCaps = ResolveAccepts(accepts, cap, id, shipName),
             PosX = px, PosY = py, PosZ = pz, WAlongShipY = wy,
+            Rot = ValidateRot(rot, id, shipName),
         };
+    }
+
+    // A grid orientation quaternion must be exactly 4 finite components forming a unit rotation
+    // (norm ~= 1). Anything else (wrong length, NaN, or a non-unit vector that would shear the box)
+    // is rejected so a hostile .nexusgrid cannot skew a grid. Null (the common case) passes through.
+    private static IReadOnlyList<double>? ValidateRot(List<double>? rot, int id, string shipName)
+    {
+        if (rot == null) return null;
+        if (rot.Count != 4 || rot.Any(v => !double.IsFinite(v)))
+            throw new InvalidDataException($"{shipName}: grid {id} rotation must be 4 finite numbers");
+        double norm = Math.Sqrt(rot.Sum(v => v * v));
+        if (Math.Abs(norm - 1.0) > 0.02)
+            throw new InvalidDataException($"{shipName}: grid {id} rotation is not a unit quaternion");
+        return rot.ToList();
     }
 
     private static IReadOnlyList<int> ResolveAccepts(List<int>? accepts, int cap, int id, string shipName)
@@ -170,5 +185,6 @@ public sealed class CargoShipCatalog
         public double? Py { get; set; }
         public double? Pz { get; set; }
         public bool Wy { get; set; }      // W axis runs fore-aft
+        public List<double>? Rot { get; set; }   // orientation quaternion (x,y,z,w), tilted grids only
     }
 }

@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.2.1  -  Jul 05, 2026",
+        [
+            "Beta feature improvements - Railen and Constellation Taurus, cargo tilt/rotation",
+        ]),
         ("App  6.2.0  -  Jul 04, 2026",
         [
             "Added beta features, currently in limited testing",
