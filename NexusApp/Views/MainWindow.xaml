@@ -755,6 +755,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Grid Grid.Column="0">
                             <TextBox x:Name="BlueprintSearchBox"
@@ -798,7 +799,12 @@
                                 </Border>
                             </Popup>
                         </Grid>
-                        <Button Grid.Column="1" Content="SEARCH"
+                        <Button x:Name="BlueprintSearchClear" Grid.Column="1" Content="✕"
+                                Style="{StaticResource NexusButton}"
+                                Height="44" Width="44" Margin="6,0,0,0"
+                                Visibility="Collapsed" ToolTip="Clear search"
+                                Click="BlueprintSearchClear_Click"/>
+                        <Button Grid.Column="2" Content="SEARCH"
                                 Style="{StaticResource AccentButton}"
                                 Margin="8,0,0,0" Height="44" Padding="20,0" FontSize="12"
                                 Click="BlueprintSearchRun_Click"/>
