@@ -89,6 +89,23 @@ public sealed class SettingsPage : UserControl
                 "github.com/T3SoD/NexusApp/issues.",
                 openAppLogBtn, last: true)));
 
+        // ── Overlay ─────────────────────────────────────────────────────────────
+        var overlayPassToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
+        {
+            OnToggled = on =>
+            {
+                App.Settings.Current.OverlayPassThroughWhenCursorHidden = on;
+                App.Settings.Save();
+                Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")}");
+            },
+        };
+        panel.Children.Add(SectionPanel("Overlay", false,
+            SettingRow("Click-through in FPS and flight",
+                "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
+                "but lets the mouse pass straight through, so a stray click can't land on it or pull focus " +
+                "from the game. It becomes clickable again the moment the game shows the cursor.",
+                overlayPassToggle, last: true)));
+
         // ── Appearance ──────────────────────────────────────────────────────────
         var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
         {
