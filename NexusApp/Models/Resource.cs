@@ -35,3 +35,10 @@ public class Resource
 }
 
 public record RefineryYield(string Station, string System, int ModifierPct);
+
+// A deposit belonging to another ore that also yields this resource as a byproduct.
+// Ore = the host deposit's primary ore; MinPct/MaxPct = the % band this resource occupies
+// in that rock; Probability = best spawn chance across the host's rock-type variants (0-1);
+// Variants = how many rock-type variants of that host carry it. Datamined from SC
+// MineableComposition; reference data only.
+public record FoundInSource(string Ore, double MinPct, double MaxPct, double Probability, int Variants);

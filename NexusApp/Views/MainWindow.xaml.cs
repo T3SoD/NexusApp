@@ -797,6 +797,67 @@ public partial class MainWindow : Window
         Margin = new Thickness(0, 0, 0, 5), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
     };
 
+    // A byproduct-source row: another ore's deposit that also yields the current resource. The
+    // proportional bar + band text show the % of that rock this resource makes up; the right value
+    // is the best spawn chance across the host's rock-type variants. Clicking opens the host ore.
+    private Border FoundInRow(NexusApp.Models.FoundInSource f)
+    {
+        var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
+        var cyan = BrushFromHex("#7FE9E0");
+
+        var host = _vm.AllResources.FirstOrDefault(x => x.Name.Equals(f.Ore, StringComparison.OrdinalIgnoreCase));
+        var dotBrush = RarityBrush(host?.Rarity ?? "common");
+
+        var row = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 7, 12, 7),
+            CornerRadius = new CornerRadius(6),
+            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = $"Open {f.Ore} in the Codex  ·  carried by {f.Variants} {f.Ore} rock type{(f.Variants == 1 ? "" : "s")}",
+        };
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // ore name
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });                   // band bar
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });                   // band %
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(66) });                   // probability
+
+        var nameStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        nameStack.Children.Add(new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(3), Background = dotBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0) });
+        nameStack.Children.Add(new TextBlock { Text = f.Ore, FontSize = 13, FontWeight = FontWeights.SemiBold, FontFamily = headFont, Foreground = fg, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
+        g.Children.Add(nameStack);
+
+        // proportional band bar: [min gap][occupied band][rest] as star columns, a cyan fill over a faint track
+        double min = System.Math.Max(0, System.Math.Min(100, f.MinPct));
+        double max = System.Math.Max(min, System.Math.Min(100, f.MaxPct));
+        var bar = new Grid { Height = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(min, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(1, max - min), GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0, 100 - max), GridUnitType.Star) });
+        var track = new Border { CornerRadius = new CornerRadius(5), Background = BrushFromHex("#147FE9E0"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1) };
+        Grid.SetColumnSpan(track, 3); bar.Children.Add(track);
+        var fill = new Border { CornerRadius = new CornerRadius(4), Background = cyan, Margin = new Thickness(0, 1.5, 0, 1.5) };
+        Grid.SetColumn(fill, 1); bar.Children.Add(fill);
+        Grid.SetColumn(bar, 1); g.Children.Add(bar);
+
+        static string Pc(double v) => ((int)System.Math.Round(v)).ToString();
+        var pct = new TextBlock { Text = $"{Pc(f.MinPct)}-{Pc(f.MaxPct)}%", FontSize = 12, FontFamily = monoFont, Foreground = cyan, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(pct, 2); g.Children.Add(pct);
+
+        var probTxt = f.Probability >= 0.995 ? "always" : $"up to {(int)System.Math.Round(f.Probability * 100)}%";
+        var prob = new TextBlock { Text = probTxt, FontSize = 11, FontFamily = monoFont, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(prob, 3); g.Children.Add(prob);
+
+        row.Child = g;
+        row.MouseLeftButtonDown += (s, e) => NavigateToResource(f.Ore);
+        return row;
+    }
+
     private Border ToggleLink(string showText, string hideText, System.Windows.FrameworkElement target)
     {
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
@@ -837,7 +898,7 @@ public partial class MainWindow : Window
         nameRow.Children.Add(new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
         nameRow.Children.Add(new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
         ht.Children.Add(nameRow);
-        ht.Children.Add(new TextBlock { Text = $"{CapFirst(r.Rarity)}  ·  Tier {r.Tier}  ·  {MethodLabel(r.Method)}", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0) });
+        ht.Children.Add(new TextBlock { Text = $"{CapFirst(r.Rarity)}  ·  {MethodLabel(r.Method)}", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0) });
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
@@ -852,20 +913,27 @@ public partial class MainWindow : Window
         hero.Margin = new Thickness(0, 0, 0, 12);
         ReferenceDetailPanel.Children.Add(hero);
 
-        // refinery yields - best first, top 5 + show all
-        if (r.Refineries.Count > 0)
+        // found in other deposits - byproduct sourcing (datamined). Only shown when this ore
+        // actually appears in another ore's rock; headline-only ores and hand/vehicle gems have none.
+        var found = App.Data.GetFoundInForResource(r.Name);
+        if (found.Count > 0)
         {
-            ReferenceDetailPanel.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {r.Refineries.Count}"));
-            var sorted = r.Refineries.OrderByDescending(x => x.ModifierPct).ToList();
-            const int show = 5;
-            for (int i = 0; i < System.Math.Min(show, sorted.Count); i++)
-                ReferenceDetailPanel.Children.Add(YieldRow(sorted[i]));
-            if (sorted.Count > show)
+            ReferenceDetailPanel.Children.Add(RefSectionLabel($"FOUND IN OTHER DEPOSITS  ·  {found.Count}"));
+            ReferenceDetailPanel.Children.Add(new TextBlock
             {
-                var more = new StackPanel { Visibility = Visibility.Collapsed };
-                for (int i = show; i < sorted.Count; i++) more.Children.Add(YieldRow(sorted[i]));
-                ReferenceDetailPanel.Children.Add(more);
-                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {sorted.Count}", "Show fewer", more));
+                Text = $"Other ores whose rock also yields {r.Name} - its share of that rock, and how often the rock carries it.",
+                FontSize = 11, Foreground = dim, TextWrapping = System.Windows.TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8),
+            });
+            const int fShow = 6;
+            for (int i = 0; i < System.Math.Min(fShow, found.Count); i++)
+                ReferenceDetailPanel.Children.Add(FoundInRow(found[i]));
+            if (found.Count > fShow)
+            {
+                var moreF = new StackPanel { Visibility = Visibility.Collapsed };
+                for (int i = fShow; i < found.Count; i++) moreF.Children.Add(FoundInRow(found[i]));
+                ReferenceDetailPanel.Children.Add(moreF);
+                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {found.Count}", "Show fewer", moreF));
             }
         }
 
@@ -914,6 +982,23 @@ public partial class MainWindow : Window
                 for (int i = bpShow; i < bpList.Count; i++) moreBp.Children.Add(BpRow(bpList[i].Name));
                 ReferenceDetailPanel.Children.Add(moreBp);
                 ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {bpList.Count}", "Show fewer", moreBp));
+            }
+        }
+
+        // refinery yields - best first, top 5 + show all (moved below blueprints)
+        if (r.Refineries.Count > 0)
+        {
+            ReferenceDetailPanel.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {r.Refineries.Count}"));
+            var sorted = r.Refineries.OrderByDescending(x => x.ModifierPct).ToList();
+            const int show = 5;
+            for (int i = 0; i < System.Math.Min(show, sorted.Count); i++)
+                ReferenceDetailPanel.Children.Add(YieldRow(sorted[i]));
+            if (sorted.Count > show)
+            {
+                var more = new StackPanel { Visibility = Visibility.Collapsed };
+                for (int i = show; i < sorted.Count; i++) more.Children.Add(YieldRow(sorted[i]));
+                ReferenceDetailPanel.Children.Add(more);
+                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {sorted.Count}", "Show fewer", more));
             }
         }
     }
