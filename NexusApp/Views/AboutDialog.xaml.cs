@@ -13,6 +13,15 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.3.0  -  Jul 05, 2026",
+        [
+            "Mining Codex now shows, for each ore, where else it turns up as a byproduct (which other ores' rocks also yield it, with the percentage band and spawn chance) and what its own rock yields when you mine it",
+            "New Mining Profile in the Mining Codex: the optimal charge window plus instability, resistance, explosion risk, and cluster density for every ship ore, and a metal, mineral, or gem class on each resource",
+            "The scan overlay now passes clicks through to the game while the cursor is hidden in FPS and flight, so it no longer blocks interaction; toggle it in Settings",
+            "Blueprint Library search now keeps your term visible with a clear button, and results respect the owner filter",
+            "Crafting amounts under 1 SCU now display in cSCU so small quantities are readable",
+            "The diagnostic snapshot now redacts your Windows username",
+        ]),
         ("App  6.2.1  -  Jul 05, 2026",
         [
             "Beta feature improvements - Railen and Constellation Taurus, cargo tilt/rotation",
