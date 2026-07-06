@@ -57,6 +57,15 @@ public class DataService : IDisposable
                 modifier_pct INTEGER NOT NULL,
                 PRIMARY KEY (resource_name, station)
             );
+            CREATE TABLE IF NOT EXISTS resource_found_in (
+                resource_name TEXT NOT NULL,
+                host_ore TEXT NOT NULL,
+                min_pct REAL NOT NULL,
+                max_pct REAL NOT NULL,
+                probability REAL NOT NULL,
+                variants INTEGER NOT NULL,
+                PRIMARY KEY (resource_name, host_ore)
+            );
             CREATE TABLE IF NOT EXISTS blueprints (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -179,6 +188,13 @@ public class DataService : IDisposable
         var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
         var applied = GetMeta("data_version");
 
+        // Backfill byproduct sourcing for DBs seeded before the resource_found_in table
+        // existed (the table is created empty by CreateSchema). Idempotent: only fills when
+        // empty, and a later same-run reseed re-populates it anyway. Fresh installs skip this
+        // (resourceCount == 0) and get it via SeedAll below.
+        if (resourceCount > 0 && Scalar<long>("SELECT COUNT(*) FROM resource_found_in") == 0)
+            ReseedFoundIn(LoadSeed(bytes));
+
         // Fresh install - seed everything.
         if (resourceCount == 0)
         {
@@ -229,6 +245,7 @@ public class DataService : IDisposable
 
         Exec("DELETE FROM resource_locations");
         Exec("DELETE FROM resource_refineries");
+        Exec("DELETE FROM resource_found_in");
         Exec("DELETE FROM resources");
         Exec("DELETE FROM blueprint_ingredients");
         Exec("DELETE FROM blueprints");
@@ -249,6 +266,11 @@ public class DataService : IDisposable
             foreach (var ref_ in r.Refineries)
                 Exec("INSERT OR IGNORE INTO resource_refineries VALUES (@r,@st,@sy,@m)",
                     ("@r", r.Name), ("@st", ref_.Station), ("@sy", ref_.System), ("@m", ref_.ModifierPct));
+
+            foreach (var f in r.FoundIn ?? [])
+                Exec("INSERT OR IGNORE INTO resource_found_in VALUES (@r,@h,@mn,@mx,@p,@v)",
+                    ("@r", r.Name), ("@h", f.Ore), ("@mn", f.MinPct), ("@mx", f.MaxPct),
+                    ("@p", f.Probability), ("@v", f.Variants));
         }
 
         foreach (var bp in seed.Blueprints)
@@ -276,6 +298,20 @@ public class DataService : IDisposable
         using var tx = _conn!.BeginTransaction();
         Exec("DELETE FROM blueprint_unlocks");
         InsertUnlocks(seed);
+        tx.Commit();
+    }
+
+    // Standalone (re)load of just the byproduct-sourcing table, for backfilling DBs seeded
+    // before the table existed without a disruptive full reseed.
+    private void ReseedFoundIn(SeedData seed)
+    {
+        using var tx = _conn!.BeginTransaction();
+        Exec("DELETE FROM resource_found_in");
+        foreach (var r in seed.Resources)
+            foreach (var f in r.FoundIn ?? [])
+                Exec("INSERT OR IGNORE INTO resource_found_in VALUES (@r,@h,@mn,@mx,@p,@v)",
+                    ("@r", r.Name), ("@h", f.Ore), ("@mn", f.MinPct), ("@mx", f.MaxPct),
+                    ("@p", f.Probability), ("@v", f.Variants));
         tx.Commit();
     }
 
@@ -421,6 +457,27 @@ public class DataService : IDisposable
             result.Add(bp);
         }
 
+        return result;
+    }
+
+    /// <summary>Other ores' deposits that also yield <paramref name="resourceName"/> as a
+    /// byproduct, best spawn chance first. Reference data (datamined); empty for ores that are
+    /// only ever a headline ore or have no datamined composition.</summary>
+    public List<FoundInSource> GetFoundInForResource(string resourceName)
+    {
+        var result = new List<FoundInSource>();
+        using var cmd = _conn!.CreateCommand();
+        cmd.CommandText = @"
+            SELECT host_ore, min_pct, max_pct, probability, variants
+            FROM resource_found_in
+            WHERE resource_name = @r
+            ORDER BY probability DESC, max_pct DESC, host_ore";
+        cmd.Parameters.AddWithValue("@r", resourceName);
+
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+            result.Add(new FoundInSource(
+                rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetInt32(4)));
         return result;
     }
 
@@ -612,10 +669,13 @@ public class DataService : IDisposable
 
     private record SeedResource(
         string Name, int BaseRs, string Tier, string Rarity, string Method,
-        List<string> Locations, List<SeedRefinery> Refineries
+        List<string> Locations, List<SeedRefinery> Refineries,
+        List<SeedFoundIn>? FoundIn
     );
 
     private record SeedRefinery(string Station, string System, int ModifierPct);
+
+    private record SeedFoundIn(string Ore, double MinPct, double MaxPct, double Probability, int Variants);
 
     private record SeedBlueprint(
         string Name, string Category, string? SubCategory,
