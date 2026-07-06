@@ -42,3 +42,16 @@ public record RefineryYield(string Station, string System, int ModifierPct);
 // Variants = how many rock-type variants of that host carry it. Datamined from SC
 // MineableComposition; reference data only.
 public record FoundInSource(string Ore, double MinPct, double MaxPct, double Probability, int Variants);
+
+// Ship-mining minigame parameters for a resource, datamined from its MineableElement record.
+// Class = Metal / Mineral / Gem (from the ResourceType tag). Instability 0-1000 (volatility),
+// Resistance 0-1 (fracture hardness), WindowMid 0-1 (optimal charge centre), WindowThin
+// (optimal-window tightness), Explosion (blast multiplier), Cluster 0-1 (cluster density).
+// Reference data only. Gems read 0 for the physics fields (no ship charge mechanic).
+public record MiningProfile(
+    string Class, double Instability, double Resistance,
+    double WindowMid, double WindowThin, double Explosion, double Cluster);
+
+// One element in a resource's own dedicated rock: the resource itself (IsPrimary) plus the
+// byproducts that come with it. MinPct/MaxPct = that element's composition band. Datamined.
+public record CompositionPart(string Ore, double MinPct, double MaxPct, bool IsPrimary);

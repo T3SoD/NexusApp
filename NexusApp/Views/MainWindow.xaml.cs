@@ -858,6 +858,130 @@ public partial class MainWindow : Window
         return row;
     }
 
+    // Compact number: drop a trailing ".0" but keep real decimals.
+    private static string FmtD(double v) => v == System.Math.Floor(v) ? ((long)v).ToString() : v.ToString("0.##");
+
+    // Severity colour for the mining gauges: lo = green (easy/good), md = amber, hi = red (hard/risky).
+    private System.Windows.Media.Brush LevelBrush(string level) => level switch
+    {
+        "hi" => BrushFromHex("#EF4444"),
+        "md" => (System.Windows.Media.Brush)FindResource("AccentBrush"),
+        _    => BrushFromHex("#66E6A6"),
+    };
+
+    // One gauge in the Mining Profile: label, value + qualitative tag, and a severity-coloured bar.
+    private Border MiningStatCard(string label, string value, string tag, string level, double fillPct)
+    {
+        var lvl = LevelBrush(level);
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
+
+        var sp = new StackPanel();
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 8.5, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = dim });
+        var vrow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 7) };
+        vrow.Children.Add(new TextBlock { Text = value, FontSize = 17, FontFamily = monoFont, Foreground = lvl, VerticalAlignment = VerticalAlignment.Bottom });
+        vrow.Children.Add(new TextBlock { Text = tag, FontSize = 9, FontFamily = monoFont, Foreground = lvl, Margin = new Thickness(6, 0, 0, 2), VerticalAlignment = VerticalAlignment.Bottom });
+        sp.Children.Add(vrow);
+
+        var bar = new Grid { Height = 5 };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0, System.Math.Min(100, fillPct)), GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0, 100 - fillPct), GridUnitType.Star) });
+        var track = new Border { CornerRadius = new CornerRadius(3), Background = BrushFromHex("#147FE9E0") };
+        Grid.SetColumnSpan(track, 2); bar.Children.Add(track);
+        var fill = new Border { CornerRadius = new CornerRadius(3), Background = lvl };
+        Grid.SetColumn(fill, 0); bar.Children.Add(fill);
+        sp.Children.Add(bar);
+
+        return new Border
+        {
+            Width = 132, Margin = new Thickness(0, 0, 8, 8), Padding = new Thickness(11, 9, 11, 10),
+            CornerRadius = new CornerRadius(6), Background = BrushFromHex("#0A0E14"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            Child = sp,
+        };
+    }
+
+    // The optimal-charge-window strip: a green sweet-spot zone centred on WindowMid, its width set
+    // by WindowThin (tighter window = narrower zone = harder to mine).
+    private System.Windows.FrameworkElement ChargeWindow(NexusApp.Models.MiningProfile p)
+    {
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
+        double mid = System.Math.Max(0, System.Math.Min(100, p.WindowMid * 100));
+        double halfW = System.Math.Max(5, System.Math.Min(24, 20 - p.WindowThin * 6));
+        double zL = System.Math.Max(0, mid - halfW);
+        double zW = System.Math.Min(100 - zL, halfW * 2);
+
+        var outer = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        var lr = new Grid();
+        lr.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        lr.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        lr.Children.Add(new TextBlock { Text = "OPTIMAL CHARGE WINDOW", FontSize = 9, FontFamily = monoFont, Foreground = dim, Margin = new Thickness(0, 0, 0, 6) });
+        var tt = new TextBlock { Text = $"tightness {FmtD(p.WindowThin)}", FontSize = 9, FontFamily = monoFont, Foreground = dim };
+        Grid.SetColumn(tt, 1); lr.Children.Add(tt);
+        outer.Children.Add(lr);
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(zL, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(1, zW), GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(System.Math.Max(0, 100 - zL - zW), GridUnitType.Star) });
+        var zone = new Border { Background = BrushFromHex("#3366E6A6"), BorderBrush = BrushFromHex("#66E6A6"), BorderThickness = new Thickness(1, 0, 1, 0) };
+        Grid.SetColumn(zone, 1); g.Children.Add(zone);
+        var track = new Border
+        {
+            Height = 24, CornerRadius = new CornerRadius(5), Background = BrushFromHex("#0A0E14"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            ClipToBounds = true, Child = g,
+        };
+        outer.Children.Add(track);
+        return outer;
+    }
+
+    // Segmented composition bar (each element sized by its average share of the rock).
+    private Border CompositionBar(System.Collections.Generic.List<NexusApp.Models.CompositionPart> comp)
+    {
+        var g = new Grid { Height = 16 };
+        double sum = comp.Sum(c => (c.MinPct + c.MaxPct) / 2);
+        if (sum <= 0) sum = 1;
+        for (int i = 0; i < comp.Count; i++)
+        {
+            var c = comp[i];
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength((c.MinPct + c.MaxPct) / 2, GridUnitType.Star) });
+            var seg = new Border { Background = c.IsPrimary ? (System.Windows.Media.Brush)FindResource("GoldBrush") : RarityBrush(RarityOf(c.Ore)) };
+            Grid.SetColumn(seg, i); g.Children.Add(seg);
+        }
+        return new Border
+        {
+            Height = 16, CornerRadius = new CornerRadius(5), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 11), Child = g,
+        };
+    }
+
+    // A composition row: rarity dot (gold if the resource itself) + ore + its % band.
+    private UIElement CompRow(NexusApp.Models.CompositionPart c)
+    {
+        var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
+        var col = c.IsPrimary ? gold : RarityBrush(RarityOf(c.Ore));
+
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 3) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        left.Children.Add(new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(2), Background = col, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+        left.Children.Add(new TextBlock { Text = c.Ore, FontSize = 12.5, Foreground = c.IsPrimary ? gold : fg, FontWeight = c.IsPrimary ? FontWeights.SemiBold : FontWeights.Normal, VerticalAlignment = VerticalAlignment.Center });
+        g.Children.Add(left);
+        var pct = new TextBlock { Text = $"{FmtD(c.MinPct)}-{FmtD(c.MaxPct)}%", FontSize = 12, FontFamily = monoFont, Foreground = c.IsPrimary ? gold : BrushFromHex("#7FE9E0"), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(pct, 1); g.Children.Add(pct);
+        return g;
+    }
+
+    // Rarity string for another ore by name (for byproduct/composition dot colour); common if unknown.
+    private string RarityOf(string ore) =>
+        _vm.AllResources.FirstOrDefault(x => x.Name.Equals(ore, StringComparison.OrdinalIgnoreCase))?.Rarity ?? "common";
+
     private Border ToggleLink(string showText, string hideText, System.Windows.FrameworkElement target)
     {
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
@@ -889,6 +1013,8 @@ public partial class MainWindow : Window
         var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
         var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
 
+        var profile = App.Data.GetMiningProfile(r.Name);
+
         // hero header
         var hg = new Grid();
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -897,8 +1023,21 @@ public partial class MainWindow : Window
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
         nameRow.Children.Add(new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
         nameRow.Children.Add(new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
+        // class badge (Metal / Mineral / Gem) from the datamined resource type
+        if (profile != null)
+        {
+            var clsBrush = profile.Class == "Metal" ? gold : profile.Class == "Mineral" ? BrushFromHex("#7FE9E0") : BrushFromHex("#A855F7");
+            nameRow.Children.Add(new Border
+            {
+                Child = new TextBlock { Text = profile.Class.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.SemiBold, FontFamily = monoFont, Foreground = clsBrush, VerticalAlignment = VerticalAlignment.Center },
+                BorderBrush = clsBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(11, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
         ht.Children.Add(nameRow);
-        ht.Children.Add(new TextBlock { Text = $"{CapFirst(r.Rarity)}  ·  {MethodLabel(r.Method)}", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0) });
+        var qFloor = r.Method == "ship" ? "501" : r.Method.Contains("fps") ? "201" : r.Method.Contains("vehicle") ? "~297" : "";
+        var metaText = $"{CapFirst(r.Rarity)}  ·  {MethodLabel(r.Method)}" + (qFloor.Length > 0 ? $"  ·  quality floor {qFloor}" : "");
+        ht.Children.Add(new TextBlock { Text = metaText, FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0) });
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
@@ -912,6 +1051,74 @@ public partial class MainWindow : Window
             padding: new Thickness(20, 14, 18, 14));
         hero.Margin = new Thickness(0, 0, 0, 12);
         ReferenceDetailPanel.Children.Add(hero);
+
+        // mining profile - ship-mining minigame parameters (datamined). Gems/refined show a note.
+        ReferenceDetailPanel.Children.Add(RefSectionLabel("MINING PROFILE"));
+        if (r.Method == "ship" && profile != null && (profile.Instability > 0 || profile.Resistance > 0 || profile.Explosion > 0))
+        {
+            var mp = new StackPanel();
+            mp.Children.Add(ChargeWindow(profile));
+            var gauges = new System.Windows.Controls.WrapPanel();
+            var inst = profile.Instability;
+            gauges.Children.Add(MiningStatCard("INSTABILITY", FmtD(inst), inst >= 700 ? "volatile" : inst >= 300 ? "moderate" : "stable", inst >= 700 ? "hi" : inst >= 300 ? "md" : "lo", inst / 1000 * 100));
+            var res = profile.Resistance;
+            gauges.Children.Add(MiningStatCard("RESISTANCE", $"{System.Math.Round(res * 100)}%", res >= 0.7 ? "hard" : res >= 0.4 ? "medium" : "soft", res >= 0.7 ? "hi" : res >= 0.4 ? "md" : "lo", res * 100));
+            var ex = profile.Explosion;
+            gauges.Children.Add(MiningStatCard("EXPLOSION RISK", $"{FmtD(ex)}x", ex >= 160 ? "high" : ex >= 80 ? "med" : "low", ex >= 160 ? "hi" : ex >= 80 ? "md" : "lo", ex / 260 * 100));
+            var cl = profile.Cluster;
+            gauges.Children.Add(MiningStatCard("CLUSTER DENSITY", $"{System.Math.Round(cl * 100)}%", cl >= 0.5 ? "clustered" : "sparse", cl >= 0.5 ? "lo" : "md", cl * 100));
+            mp.Children.Add(gauges);
+            ReferenceDetailPanel.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(8), Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+                BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 13, 14, 6), Margin = new Thickness(0, 0, 0, 4), Child = mp,
+            });
+        }
+        else
+        {
+            var noteText = r.Method == "refined"
+                ? $"{r.Name} is a refined product, not mined directly."
+                : profile?.Class == "Gem" || r.Method != "ship"
+                    ? $"Hand or vehicle mined. Extracted by {MethodLabel(r.Method)} - no ship-mining charge, instability or fracture mechanics."
+                    : $"No ship-mining charge profile. Extracted by {MethodLabel(r.Method)}.";
+            ReferenceDetailPanel.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(8), Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+                BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 0, 0, 4),
+                Child = new TextBlock { Text = noteText, FontSize = 12.5, Foreground = dim, TextWrapping = System.Windows.TextWrapping.Wrap },
+            });
+        }
+
+        // deposit composition - what this ore's own rock actually yields (datamined).
+        var comp = App.Data.GetCompositionForResource(r.Name);
+        if (comp.Count > 0)
+        {
+            var primary = comp.FirstOrDefault(c => c.IsPrimary);
+            var byproducts = comp.Where(c => !c.IsPrimary).ToList();
+            ReferenceDetailPanel.Children.Add(RefSectionLabel($"IF YOU MINE A {r.Name.ToUpperInvariant()} ROCK"));
+            var primTxt = primary != null ? $"{FmtD(primary.MinPct)}-{FmtD(primary.MaxPct)}%" : "-";
+            ReferenceDetailPanel.Children.Add(new TextBlock
+            {
+                Text = byproducts.Count > 0
+                    ? $"Its own deposit: {r.Name} makes up {primTxt}, plus these byproducts."
+                    : $"Its own deposit is effectively pure {r.Name} ({primTxt}).",
+                FontSize = 11, Foreground = dim, TextWrapping = System.Windows.TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
+            });
+            if (byproducts.Count > 0)
+            {
+                var box = new StackPanel();
+                box.Children.Add(CompositionBar(comp));
+                foreach (var c in comp) box.Children.Add(CompRow(c));
+                ReferenceDetailPanel.Children.Add(new Border
+                {
+                    CornerRadius = new CornerRadius(6), Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+                    BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+                    Padding = new Thickness(13, 12, 14, 10), Margin = new Thickness(0, 0, 0, 4), Child = box,
+                });
+            }
+        }
 
         // found in other deposits - byproduct sourcing (datamined). Only shown when this ore
         // actually appears in another ore's rock; headline-only ores and hand/vehicle gems have none.

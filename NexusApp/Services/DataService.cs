@@ -66,6 +66,24 @@ public class DataService : IDisposable
                 variants INTEGER NOT NULL,
                 PRIMARY KEY (resource_name, host_ore)
             );
+            CREATE TABLE IF NOT EXISTS resource_mining (
+                resource_name TEXT PRIMARY KEY,
+                class TEXT NOT NULL,
+                instability REAL NOT NULL,
+                resistance REAL NOT NULL,
+                window_mid REAL NOT NULL,
+                window_thin REAL NOT NULL,
+                explosion REAL NOT NULL,
+                cluster REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS resource_composition (
+                resource_name TEXT NOT NULL,
+                ore TEXT NOT NULL,
+                min_pct REAL NOT NULL,
+                max_pct REAL NOT NULL,
+                is_primary INTEGER NOT NULL,
+                PRIMARY KEY (resource_name, ore)
+            );
             CREATE TABLE IF NOT EXISTS blueprints (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -188,12 +206,13 @@ public class DataService : IDisposable
         var resourceCount = Scalar<long>("SELECT COUNT(*) FROM resources");
         var applied = GetMeta("data_version");
 
-        // Backfill byproduct sourcing for DBs seeded before the resource_found_in table
-        // existed (the table is created empty by CreateSchema). Idempotent: only fills when
-        // empty, and a later same-run reseed re-populates it anyway. Fresh installs skip this
+        // Backfill the datamined reference tables (byproduct sourcing, mining profile, rock
+        // composition) for DBs seeded before these tables existed - CreateSchema makes them
+        // empty. Triggered off resource_mining (the newest) so any older DB gets the full set.
+        // Idempotent, and a later same-run reseed re-populates anyway. Fresh installs skip this
         // (resourceCount == 0) and get it via SeedAll below.
-        if (resourceCount > 0 && Scalar<long>("SELECT COUNT(*) FROM resource_found_in") == 0)
-            ReseedFoundIn(LoadSeed(bytes));
+        if (resourceCount > 0 && Scalar<long>("SELECT COUNT(*) FROM resource_mining") == 0)
+            ReseedDatamine(LoadSeed(bytes));
 
         // Fresh install - seed everything.
         if (resourceCount == 0)
@@ -246,6 +265,8 @@ public class DataService : IDisposable
         Exec("DELETE FROM resource_locations");
         Exec("DELETE FROM resource_refineries");
         Exec("DELETE FROM resource_found_in");
+        Exec("DELETE FROM resource_mining");
+        Exec("DELETE FROM resource_composition");
         Exec("DELETE FROM resources");
         Exec("DELETE FROM blueprint_ingredients");
         Exec("DELETE FROM blueprints");
@@ -267,10 +288,9 @@ public class DataService : IDisposable
                 Exec("INSERT OR IGNORE INTO resource_refineries VALUES (@r,@st,@sy,@m)",
                     ("@r", r.Name), ("@st", ref_.Station), ("@sy", ref_.System), ("@m", ref_.ModifierPct));
 
-            foreach (var f in r.FoundIn ?? [])
-                Exec("INSERT OR IGNORE INTO resource_found_in VALUES (@r,@h,@mn,@mx,@p,@v)",
-                    ("@r", r.Name), ("@h", f.Ore), ("@mn", f.MinPct), ("@mx", f.MaxPct),
-                    ("@p", f.Probability), ("@v", f.Variants));
+            InsertFoundIn(r);
+            InsertMining(r);
+            InsertComposition(r);
         }
 
         foreach (var bp in seed.Blueprints)
@@ -301,17 +321,47 @@ public class DataService : IDisposable
         tx.Commit();
     }
 
-    // Standalone (re)load of just the byproduct-sourcing table, for backfilling DBs seeded
-    // before the table existed without a disruptive full reseed.
-    private void ReseedFoundIn(SeedData seed)
+    private void InsertFoundIn(SeedResource r)
     {
+        foreach (var f in r.FoundIn ?? [])
+            Exec("INSERT OR IGNORE INTO resource_found_in VALUES (@r,@h,@mn,@mx,@p,@v)",
+                ("@r", r.Name), ("@h", f.Ore), ("@mn", f.MinPct), ("@mx", f.MaxPct),
+                ("@p", f.Probability), ("@v", f.Variants));
+    }
+
+    private void InsertMining(SeedResource r)
+    {
+        if (r.Mining is { } m)
+            Exec("INSERT OR IGNORE INTO resource_mining VALUES (@r,@c,@i,@re,@wm,@wt,@e,@cl)",
+                ("@r", r.Name), ("@c", m.Class), ("@i", m.Instability), ("@re", m.Resistance),
+                ("@wm", m.WindowMid), ("@wt", m.WindowThin), ("@e", m.Explosion), ("@cl", m.Cluster));
+    }
+
+    private void InsertComposition(SeedResource r)
+    {
+        foreach (var c in r.Composition ?? [])
+            Exec("INSERT OR IGNORE INTO resource_composition VALUES (@r,@o,@mn,@mx,@p)",
+                ("@r", r.Name), ("@o", c.Ore), ("@mn", c.MinPct), ("@mx", c.MaxPct), ("@p", c.Primary ? 1 : 0));
+    }
+
+    // Standalone (re)load of just the datamined reference tables, for backfilling DBs seeded
+    // before the tables existed without a disruptive full reseed.
+    private void ReseedDatamine(SeedData seed)
+    {
+        // Never wipe the tables from an empty seed - a parse failure returns zero resources, and
+        // deleting-then-inserting-nothing would silently blank the datamined sections.
+        if (seed.Resources.Count == 0) return;
+
         using var tx = _conn!.BeginTransaction();
         Exec("DELETE FROM resource_found_in");
+        Exec("DELETE FROM resource_mining");
+        Exec("DELETE FROM resource_composition");
         foreach (var r in seed.Resources)
-            foreach (var f in r.FoundIn ?? [])
-                Exec("INSERT OR IGNORE INTO resource_found_in VALUES (@r,@h,@mn,@mx,@p,@v)",
-                    ("@r", r.Name), ("@h", f.Ore), ("@mn", f.MinPct), ("@mx", f.MaxPct),
-                    ("@p", f.Probability), ("@v", f.Variants));
+        {
+            InsertFoundIn(r);
+            InsertMining(r);
+            InsertComposition(r);
+        }
         tx.Commit();
     }
 
@@ -478,6 +528,39 @@ public class DataService : IDisposable
         while (rdr.Read())
             result.Add(new FoundInSource(
                 rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetInt32(4)));
+        return result;
+    }
+
+    /// <summary>Ship-mining minigame profile for a resource, or null if none is datamined
+    /// (e.g. hand/vehicle gems or refined products). Reference data.</summary>
+    public MiningProfile? GetMiningProfile(string resourceName)
+    {
+        using var cmd = _conn!.CreateCommand();
+        cmd.CommandText = @"
+            SELECT class, instability, resistance, window_mid, window_thin, explosion, cluster
+            FROM resource_mining WHERE resource_name = @r";
+        cmd.Parameters.AddWithValue("@r", resourceName);
+        using var rdr = cmd.ExecuteReader();
+        if (!rdr.Read()) return null;
+        return new MiningProfile(
+            rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2),
+            rdr.GetDouble(3), rdr.GetDouble(4), rdr.GetDouble(5), rdr.GetDouble(6));
+    }
+
+    /// <summary>What a resource's own dedicated rock yields: the resource itself (IsPrimary)
+    /// plus its byproducts, primary first. Empty when there is no datamined deposit. Reference.</summary>
+    public List<CompositionPart> GetCompositionForResource(string resourceName)
+    {
+        var result = new List<CompositionPart>();
+        using var cmd = _conn!.CreateCommand();
+        cmd.CommandText = @"
+            SELECT ore, min_pct, max_pct, is_primary
+            FROM resource_composition WHERE resource_name = @r
+            ORDER BY is_primary DESC, max_pct DESC, ore";
+        cmd.Parameters.AddWithValue("@r", resourceName);
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+            result.Add(new CompositionPart(rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetInt32(3) == 1));
         return result;
     }
 
@@ -670,12 +753,18 @@ public class DataService : IDisposable
     private record SeedResource(
         string Name, int BaseRs, string Tier, string Rarity, string Method,
         List<string> Locations, List<SeedRefinery> Refineries,
-        List<SeedFoundIn>? FoundIn
+        List<SeedFoundIn>? FoundIn, SeedMining? Mining, List<SeedComposition>? Composition
     );
 
     private record SeedRefinery(string Station, string System, int ModifierPct);
 
     private record SeedFoundIn(string Ore, double MinPct, double MaxPct, double Probability, int Variants);
+
+    private record SeedMining(
+        string Class, double Instability, double Resistance,
+        double WindowMid, double WindowThin, double Explosion, double Cluster);
+
+    private record SeedComposition(string Ore, double MinPct, double MaxPct, bool Primary);
 
     private record SeedBlueprint(
         string Name, string Category, string? SubCategory,
