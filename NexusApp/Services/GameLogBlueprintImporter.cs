@@ -41,13 +41,30 @@ public sealed class GameLogBlueprintImporter
     }
 
     private readonly Dictionary<string, string> _known;   // case-insensitive lookup -> canonical seed name
+    private readonly List<string> _componentNames = new(); // official component names for the step-4 fallback
 
-    public GameLogBlueprintImporter(IEnumerable<string> seedBlueprintNames)
+    public GameLogBlueprintImporter(IEnumerable<string> seedBlueprintNames,
+        IEnumerable<string>? componentOfficialNames = null)
     {
         _known = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase);
         foreach (var n in seedBlueprintNames)
             if (!string.IsNullOrWhiteSpace(n)) _known[n] = n;
+
+        // Step-4 candidates: distinct official component names, 3+ chars (shortest real name is 3;
+        // anything shorter would false-match grade/size tokens). Longest first so "Surveyor-Go"
+        // wins over "Surveyor"; ordinal tiebreak keeps the order deterministic. NBSP-normalized:
+        // the game's localization spells some names with a no-break space while the seed uses a
+        // regular space, and both sides must agree for the seed gate to pass.
+        if (componentOfficialNames is not null)
+        {
+            var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var n in componentOfficialNames)
+                if (n?.Replace(Nbsp, ' ').Trim() is { Length: >= 3 } t && seen.Add(t)) _componentNames.Add(t);
+            _componentNames.Sort((a, b) => b.Length != a.Length ? b.Length - a.Length : string.CompareOrdinal(a, b));
+        }
     }
+
+    private const char Nbsp = '\u00A0';
 
     // Pulls the blueprint name from a log line, or null if it isn't a receipt. The game wraps it:
     //   Added notification "Received Blueprint: <NAME>: " [n] to queue. ...   (older logs omit the ":")
@@ -70,10 +87,21 @@ public sealed class GameLogBlueprintImporter
     //   1) exact (vanilla everything + modded armor/weapons/ammo StarStrings doesn't touch)
     //   2) strip the default StarStrings ship-component prefix, retry (modded ship components)
     //   3) translate via the user's localization file (any custom mod / format), then match
+    //   4) structural fallback (issue #17): find a known official component name embedded
+    //      word-bounded in the custom string - every community pack keeps the official name
+    //      inside its decorated string, so this resolves even when the on-disk global.ini is
+    //      missing or no longer matches the (possibly months-old) log lines
     // A vanilla name has no prefix, so step 2 is a harmless no-op for unmodded users; step 3 is a
-    // no-op when no localizationMap is supplied.
+    // no-op when no localizationMap is supplied; step 4 is a no-op without componentOfficialNames.
     public string? Resolve(string rawName, IReadOnlyDictionary<string, string>? localizationMap = null)
+        => Resolve(rawName, localizationMap, out _);
+
+    /// <summary>Same as <see cref="Resolve(string,IReadOnlyDictionary{string,string})"/>, also
+    /// reporting whether the name was only recovered by the step-4 structural fallback.</summary>
+    private string? Resolve(string rawName, IReadOnlyDictionary<string, string>? localizationMap,
+        out bool viaNameFallback)
     {
+        viaNameFallback = false;
         if (_known.TryGetValue(rawName, out var canon)) return canon;
         var stripped = StarStringsPrefix.Replace(rawName, "");
         if (stripped.Length != rawName.Length && _known.TryGetValue(stripped, out canon)) return canon;
@@ -82,13 +110,59 @@ public sealed class GameLogBlueprintImporter
         if (localizationMap is not null
             && localizationMap.TryGetValue(rawName, out var official)
             && _known.TryGetValue(official, out canon)) return canon;
+        // Last resort: a known official component name embedded word-bounded in the custom string.
+        // Word boundaries keep no-separator formats ("2AFR-76") out - those still need the map.
+        // Only the LONGEST structural match is considered: if it fails the seed gate the string
+        // stays unresolved (a seed gap that must reach the unrecognized report), because falling
+        // through to a shorter name would mark a DIFFERENT item owned ("Broadspec-Lite" is not
+        // "BroadSpec"). A tie between two DIFFERENT equal-length names is refused outright - any
+        // pick would be a guess. NBSP-normalized to match the candidate list.
+        var rawScan = rawName.IndexOf(Nbsp) >= 0 ? rawName.Replace(Nbsp, ' ') : rawName;
+        for (int i = 0; i < _componentNames.Count; i++)
+        {
+            var name = _componentNames[i];
+            if (!ContainsWordBounded(rawScan, name)) continue;
+            // The list is sorted longest-first, so only the immediate same-length neighbors can tie.
+            for (int j = i + 1; j < _componentNames.Count && _componentNames[j].Length == name.Length; j++)
+                if (ContainsWordBounded(rawScan, _componentNames[j])) return null;
+            if (_known.TryGetValue(name, out canon))
+            {
+                viaNameFallback = true;
+                return canon;
+            }
+            return null;
+        }
         return null;
     }
 
-    public string? ResolveLine(string line, IReadOnlyDictionary<string, string>? localizationMap = null)
+    // True when name occurs in raw with no letter/digit touching either end of the match
+    // (case-insensitive). Hyphens/quotes/spaces all count as boundaries, so "Surveyor" matches
+    // inside "Surveyor-Go" - candidate ordering (longest first) is what picks the right one.
+    private static bool ContainsWordBounded(string raw, string name)
     {
+        int i = 0;
+        while ((i = raw.IndexOf(name, i, System.StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            bool leftOk = i == 0 || !char.IsLetterOrDigit(raw[i - 1]);
+            int end = i + name.Length;
+            bool rightOk = end == raw.Length || !char.IsLetterOrDigit(raw[end]);
+            if (leftOk && rightOk) return true;
+            i++;
+        }
+        return false;
+    }
+
+    public string? ResolveLine(string line, IReadOnlyDictionary<string, string>? localizationMap = null)
+        => ResolveLine(line, localizationMap, out _);
+
+    /// <summary>Same as <see cref="ResolveLine(string,IReadOnlyDictionary{string,string})"/>, also
+    /// reporting whether the name was only recovered by the step-4 structural fallback.</summary>
+    internal string? ResolveLine(string line, IReadOnlyDictionary<string, string>? localizationMap,
+        out bool viaNameFallback)
+    {
+        viaNameFallback = false;
         var raw = ExtractRawName(line);
-        return raw is null ? null : Resolve(raw, localizationMap);
+        return raw is null ? null : Resolve(raw, localizationMap, out viaNameFallback);
     }
 
     /// <summary>True if a log line contains a StarStrings component token (e.g. "Mil/1/D") - a
@@ -96,7 +170,8 @@ public sealed class GameLogBlueprintImporter
     public static bool HasStarStringsComponentSignature(string line) =>
         line.IndexOf('/') >= 0 && StarStringsSignature.IsMatch(line);
 
-    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, List<string> UnmatchedLines, int FilesScanned, bool StarStringsDetected, System.DateTime? EarliestUtc);
+    public sealed record HistoryScan(List<string> Matched, List<string> Unmatched, List<string> UnmatchedLines, int FilesScanned, bool StarStringsDetected, System.DateTime? EarliestUtc,
+        int? LocalizationEntries = null, int FallbackMatched = 0);
 
     // Scans the current Game.log + sibling logbackups/*.log for every blueprint receipt.
     // Returns DISTINCT canonical matched names + distinct unmatched raw names. Read-only,
@@ -108,6 +183,10 @@ public sealed class GameLogBlueprintImporter
         var unmatched = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         var unmatchedLines = new List<string>();   // one full example log line per distinct unmatched name
         bool starStrings = false;
+        // Per-name resolution paths, kept separately so FallbackMatched = names ONLY the step-4
+        // fallback ever recovered, independent of the order receipts are encountered in the files.
+        var viaPrimary = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        var viaFb = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         System.DateTime? earliest = null;           // oldest log timestamp seen = how far back the scan could see
 
         var files = new List<string>();
@@ -143,8 +222,8 @@ public sealed class GameLogBlueprintImporter
                     if (line.IndexOf(Marker, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var raw = ExtractRawName(line);
                     if (raw is null) continue;
-                    var canon = Resolve(raw, localizationMap);
-                    if (canon is not null) matched.Add(canon);
+                    var canon = Resolve(raw, localizationMap, out bool viaFallback);
+                    if (canon is not null) { matched.Add(canon); (viaFallback ? viaFb : viaPrimary).Add(canon); }
                     else if (unmatched.Add(raw)) unmatchedLines.Add(line.Trim());   // keep the raw line as a sample
                 }
             }
@@ -152,6 +231,8 @@ public sealed class GameLogBlueprintImporter
             progress?.Invoke(++done);
         }
 
-        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), unmatchedLines, files.Count, starStrings, earliest);
+        int fallbackMatched = viaFb.Count(n => !viaPrimary.Contains(n));
+        return new HistoryScan(matched.OrderBy(s => s).ToList(), unmatched.OrderBy(s => s).ToList(), unmatchedLines, files.Count, starStrings, earliest,
+            localizationMap?.Count, fallbackMatched);
     }
 }

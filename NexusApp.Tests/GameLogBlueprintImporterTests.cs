@@ -197,4 +197,204 @@ public class GameLogBlueprintImporterTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // ── Structural name fallback (issue #17): when the user's global.ini map is missing or does
+    // not match the log strings (mod updated, stale override, logbackups from an older pack), a
+    // custom component string still resolves if a known official name appears word-bounded in it.
+    // Candidates are the bundled official component names - no dependence on the user's files. ──
+
+    // The 18 raw strings reported in issue #17 and the official name each must resolve to.
+    private static readonly (string Raw, string Official)[] Issue17 =
+    {
+        ("P IND 0B Defiant", "Defiant"),
+        ("P IND 2B Sedulity", "Sedulity"),
+        ("Q IND 1B Colossus", "Colossus"),
+        ("Q IND 2B Huracan", "Huracan"),
+        ("Q IND 3B Agni", "Agni"),
+        ("Q MIL 1A VK-00", "VK-00"),
+        ("Q MIL 1B Siren", "Siren"),
+        ("Q MIL 2A XL-1", "XL-1"),
+        ("Q MIL 2B Yeager", "Yeager"),
+        ("Q MIL 3A TS-2", "TS-2"),
+        ("Q MIL 3B Balandin", "Balandin"),
+        ("R IND 0C Surveyor-Go", "Surveyor-Go"),
+        ("R IND 1C Surveyor-Lite", "Surveyor-Lite"),
+        ("R IND 3C Surveyor-Max", "Surveyor-Max"),
+        ("S CIV 3B 6CA 'Bila'", "6CA 'Bila'"),
+        ("S IND 1A Palisade", "Palisade"),
+        ("S IND 2A Rampart", "Rampart"),
+        ("S IND 3A Parapet", "Parapet"),
+    };
+
+    private static string[] Issue17Officials()
+    {
+        var names = new string[Issue17.Length];
+        for (int i = 0; i < Issue17.Length; i++) names[i] = Issue17[i].Official;
+        return names;
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_ResolvesAllIssue17Strings_WithNoMap()
+    {
+        var imp = new GameLogBlueprintImporter(Issue17Officials(), Issue17Officials());
+        foreach (var (raw, official) in Issue17)
+            Assert.Equal(official, imp.Resolve(raw));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_Remix2QuotedFormat()
+    {
+        // The sibling community pack's real on-disk format: CLASS-SizeGrade "Name".
+        var imp = new GameLogBlueprintImporter(
+            new[] { "Defiant", "6CA 'Bila'" }, new[] { "Defiant", "6CA 'Bila'" });
+        Assert.Equal("Defiant", imp.Resolve("IND-0B \"Defiant\""));
+        Assert.Equal("6CA 'Bila'", imp.Resolve("CIV-3B \"6CA 'Bila'\""));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_LongestMatchWins()
+    {
+        // "Surveyor" also word-matches inside "Surveyor-Go" (hyphen is a boundary), so the
+        // longer official name must win.
+        var names = new[] { "Surveyor", "Surveyor-Go" };
+        var imp = new GameLogBlueprintImporter(names, names);
+        Assert.Equal("Surveyor-Go", imp.Resolve("R IND 0C Surveyor-Go"));
+        Assert.Equal("Surveyor", imp.Resolve("R IND 2C Surveyor"));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_RequiresWordBoundary()
+    {
+        // "Agni" inside "Magnitude" and "FR-76" inside "2AFR-76" are not word-bounded - the
+        // no-separator formats still need the localization map, never a substring guess.
+        var imp = new GameLogBlueprintImporter(new[] { "Agni", "FR-76" }, new[] { "Agni", "FR-76" });
+        Assert.Null(imp.Resolve("IND-3B Magnitude"));
+        Assert.Null(imp.Resolve("2AFR-76"));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_OfficialNotInSeed_ReturnsNull()
+    {
+        var imp = new GameLogBlueprintImporter(new[] { "Tundra" }, new[] { "Defiant" });
+        Assert.Null(imp.Resolve("P IND 0B Defiant"));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_LongestMatchNotInSeed_DoesNotFallThroughToShorter()
+    {
+        // Real shipped collision: components.ini carries both "Broadspec-Lite" and "BroadSpec"
+        // while the seed only knows "BroadSpec". A Broadspec-Lite receipt must stay unresolved
+        // (and land in the unrecognized report as a seed gap), never mark BroadSpec owned.
+        var imp = new GameLogBlueprintImporter(
+            new[] { "BroadSpec" }, new[] { "Broadspec-Lite", "BroadSpec" });
+        Assert.Null(imp.Resolve("Broadspec-Lite"));
+        Assert.Null(imp.Resolve("R IND 1C Broadspec-Lite"));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_NormalizesNbsp_InCandidateAndRaw()
+    {
+        // The game's localization spells some names with a no-break space (Game.log writes it
+        // verbatim) while the seed uses a regular space - both sides normalize before matching.
+        var imp = new GameLogBlueprintImporter(
+            new[] { "Hellion Scattergun" }, new[] { "Hellion\u00A0Scattergun" });
+        Assert.Equal("Hellion Scattergun", imp.Resolve("Hellion\u00A0Scattergun"));
+    }
+
+    [Fact]
+    public void Resolve_NameFallback_EqualLengthTie_RefusesToGuess()
+    {
+        // Two DIFFERENT equal-length names in one string means any pick is a guess - refuse and
+        // leave the string unresolved (it lands in the unrecognized report instead).
+        var names = new[] { "TS-2", "Agni" };
+        var imp = new GameLogBlueprintImporter(names, names);
+        Assert.Null(imp.Resolve("Q MIL Agni TS-2"));
+        // A single unambiguous name still resolves.
+        Assert.Equal("Agni", imp.Resolve("Q MIL 3B Agni"));
+    }
+
+    [Fact]
+    public void Resolve_WithoutComponentNames_FallbackDisabled()
+    {
+        // Regression guard: the one-arg constructor keeps the pre-fallback behavior.
+        var imp = new GameLogBlueprintImporter(new[] { "Defiant" });
+        Assert.Null(imp.Resolve("P IND 0B Defiant"));
+    }
+
+    [Fact]
+    public void Resolve_LocalizationMap_WinsBeforeNameFallback()
+    {
+        // The user's own global.ini is authoritative when it knows the string; the structural
+        // fallback only runs when steps 1-3 all miss.
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        { ["Custom Foo Defiant"] = "Tundra" };
+        var imp = new GameLogBlueprintImporter(
+            new[] { "Tundra", "Defiant" }, new[] { "Defiant" });
+        Assert.Equal("Tundra", imp.Resolve("Custom Foo Defiant", map));
+    }
+
+    [Fact]
+    public void ScanHistory_NameFallback_ResolvesIssue17Receipts_WithNullMap()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = Path.Combine(dir, "Game.log");
+        var lines = new List<string>();
+        foreach (var (raw, _) in Issue17) lines.Add(RealLine(raw));
+        File.WriteAllLines(log, lines);
+        try
+        {
+            var imp = new GameLogBlueprintImporter(Issue17Officials(), Issue17Officials());
+            var scan = imp.ScanHistory(log);
+
+            foreach (var (_, official) in Issue17) Assert.Contains(official, scan.Matched);
+            Assert.Empty(scan.Unmatched);
+            Assert.Equal(Issue17.Length, scan.FallbackMatched);
+            Assert.Null(scan.LocalizationEntries);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ScanHistory_FallbackMatched_ExcludesNamesTheMapAlsoResolved()
+    {
+        // The SAME canonical name arrives as a fallback-only form (live log, scanned first) and a
+        // map-resolvable form (backup). FallbackMatched counts names ONLY the fallback recovered,
+        // independent of scan order - so this must be 0, not 1.
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var backups = Path.Combine(dir, "logbackups");
+        Directory.CreateDirectory(backups);
+        var live = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(live, new[] { RealLine("IND-0B \"Defiant\"") });          // fallback-only form
+        File.WriteAllLines(Path.Combine(backups, "old.log"), new[] { RealLine("P IND 0B Defiant") }); // map form
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        { ["P IND 0B Defiant"] = "Defiant" };
+        try
+        {
+            var imp = new GameLogBlueprintImporter(new[] { "Defiant" }, new[] { "Defiant" });
+            var scan = imp.ScanHistory(live, null, map);
+
+            Assert.Contains("Defiant", scan.Matched);
+            Assert.Equal(0, scan.FallbackMatched);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ScanHistory_ReportsLocalizationEntries_WhenMapSupplied()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(log, new[] { RealLine("Tundra") });
+        try
+        {
+            var imp = new GameLogBlueprintImporter(new[] { "Tundra" });
+            var scan = imp.ScanHistory(log, null, LocMap());
+            Assert.Equal(1, scan.LocalizationEntries);
+            Assert.Equal(0, scan.FallbackMatched);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

@@ -38,7 +38,8 @@ public static class BlueprintImportFlow
             ? scan.EarliestUtc.Value.ToString("d MMM yyyy HH:mm", CultureInfo.InvariantCulture) + " UTC"
             : "unknown";
         Logger.Info($"[GameLog] past-logs import scan: {scan.FilesScanned} file(s), oldest data {oldest}, " +
-                    $"{scan.Matched.Count} matched, {scan.Unmatched.Count} unrecognized");
+                    $"{scan.Matched.Count} matched ({scan.FallbackMatched} via name fallback), {scan.Unmatched.Count} unrecognized, " +
+                    $"localization map {(scan.LocalizationEntries.HasValue ? $"{scan.LocalizationEntries.Value} entries" : "not loaded")}");
 
         if (scan.Matched.Count == 0 && scan.Unmatched.Count == 0)
             return new Result(false, 0, 0, scan.FilesScanned, scan.EarliestUtc.HasValue
@@ -49,7 +50,8 @@ public static class BlueprintImportFlow
         // build line + raw names only.
         var report = UnrecognizedBlueprintReport.Build(
             AppInfo.Version, App.Data.MiningDataVersion, buildLine,
-            scan.FilesScanned, scan.Matched.Count, scan.UnmatchedLines, scan.StarStringsDetected, DateTime.Now);
+            scan.FilesScanned, scan.Matched.Count, scan.UnmatchedLines, scan.StarStringsDetected, DateTime.Now,
+            scan.LocalizationEntries);
 
         var dlg = new ImportResultDialog(scan.Matched, scan.Unmatched, scan.FilesScanned, scan.EarliestUtc, report) { Owner = owner };
         if (dlg.ShowDialog() != true)

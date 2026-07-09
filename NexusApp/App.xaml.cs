@@ -193,15 +193,19 @@ public partial class App : Application
     // auto-detects next to the active Game.log. Null (and a no-op) when nothing is found.
     private IReadOnlyDictionary<string, string>? BuildLocalizationMap(string logPath)
     {
-        var path = !string.IsNullOrWhiteSpace(Settings.Current.GlobalIniPath)
+        bool overridden = !string.IsNullOrWhiteSpace(Settings.Current.GlobalIniPath);
+        var path = overridden
             ? Settings.Current.GlobalIniPath
             : GlobalIniReader.DeriveGlobalIniPath(logPath);
         if (string.IsNullOrEmpty(path)) { Logger.Info("[LOC] no global.ini path resolved"); return null; }
 
+        // The path itself is never logged (it can contain a Windows username), but its ORIGIN is -
+        // a stale Settings override vs a bad derivation need different fixes (issue #17 diagnostics).
+        var origin = overridden ? "Settings override" : "derived from Game.log path";
         var map = GlobalIniReader.TryBuildFromFile(path, ComponentStringReference.KeyToOfficialName);
         Logger.Info(map is null
-            ? "[LOC] global.ini not found or unreadable"
-            : $"[LOC] global.ini parsed: {map.Count} custom blueprint name(s)");
+            ? $"[LOC] global.ini not found or unreadable ({origin})"
+            : $"[LOC] global.ini parsed: {map.Count} custom blueprint name(s) ({origin})");
         return map;
     }
 

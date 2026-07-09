@@ -16,7 +16,8 @@ public static class DiagnosticSnapshot
         string osVersion,
         IReadOnlyList<(string Key, string Value)> settings,
         string logContents,
-        DateTime timestamp)
+        DateTime timestamp,
+        string? unmatchedLogContents = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("=== Nexus diagnostic snapshot ===");
@@ -31,6 +32,14 @@ public static class DiagnosticSnapshot
         sb.AppendLine();
         sb.AppendLine("--- nexus.log ---");
         sb.AppendLine(string.IsNullOrWhiteSpace(logContents) ? "(log is empty)" : logContents.TrimEnd());
+        // Unmatched-blueprint diagnostics ride along when present, so one snapshot carries
+        // everything needed to debug a "blueprint not recognized" report (issue #17).
+        if (!string.IsNullOrWhiteSpace(unmatchedLogContents))
+        {
+            sb.AppendLine();
+            sb.AppendLine("--- unmatched_blueprints.log ---");
+            sb.AppendLine(unmatchedLogContents.TrimEnd());
+        }
         return sb.ToString();
     }
 

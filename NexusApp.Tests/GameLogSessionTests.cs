@@ -156,4 +156,126 @@ public class GameLogSessionTests
         s.PreferredPath = @"D:\Games\StarCitizen\LIVE\Game.log";
         Assert.Equal(@"D:\Games\StarCitizen\LIVE\Game.log", s.StartPath());
     }
+
+    // ── Live-tail diagnostics (issue #17 hardening): unresolved receipts must be visible in
+    // nexus.log (once per distinct name per session), and fallback-resolved marks attributed. ──
+
+    private static int CountLogLines(string marker)
+    {
+        var p = Logger.LogPath;
+        if (!File.Exists(p)) return 0;
+        int n = 0;
+        foreach (var line in File.ReadAllLines(p)) if (line.Contains(marker)) n++;
+        return n;
+    }
+
+    [Fact]
+    public void UnresolvedReceipt_LoggedOncePerSession_ResetAllowsRelogging()
+    {
+        // Unique per EXECUTION: the isolated log file persists across test runs, so a fixed
+        // marker would accumulate counts run over run.
+        var marker = "Zqx Unknownpart " + Guid.NewGuid().ToString("N");
+        var s = Make(out _, "Bracket Cooler");
+        s.SetAutoMark(true);
+        s.Ingest(Bp(marker));
+        s.Ingest(Bp(marker));   // same receipt again (e.g. the notification lifecycle repeats it)
+        Assert.Equal(1, CountLogLines(marker));
+
+        s.Reset();              // new SC session - worth one fresh line if it is still unresolved
+        s.Ingest(Bp(marker));
+        Assert.Equal(2, CountLogLines(marker));
+    }
+
+    [Fact]
+    public void AutoMark_ViaNameFallback_MarksAndAttributesInLog()
+    {
+        // Seed knows "Defiant"; the raw string is a custom-renamed receipt only the step-4
+        // structural fallback (wired with the bundled official names) can recover.
+        var s = Make(out var owned, "Defiant");
+        s.SetAutoMark(true);
+        s.Ingest(Bp("P IND 0B Defiant"));
+
+        Assert.Contains("Defiant", owned);
+        Assert.Equal(1, s.Count);
+        Assert.True(CountLogLines("auto-marked blueprint owned: Defiant (via name fallback)") >= 1);
+    }
+
+    [Fact]
+    public void UnresolvedReceipt_RecordedInDedicatedUnmatchedLog()
+    {
+        var marker = "Zqx Dedicated " + Guid.NewGuid().ToString("N");
+        var s = Make(out _, "Bracket Cooler");
+        s.SetAutoMark(true);
+        s.Ingest(Bp(marker));
+
+        var hits = File.Exists(UnmatchedBlueprintLog.LogPath)
+            ? File.ReadAllLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray()
+            : Array.Empty<string>();
+        Assert.Single(hits);
+        Assert.Contains("| live |", hits[0]);
+    }
+
+    [Fact]
+    public void ScanHistory_RecordsUnmatchedToDedicatedLog()
+    {
+        var marker = "Zqx Scanned " + Guid.NewGuid().ToString("N");
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(log, new[] { $"<2026-01-01T12:00:00.000Z> [Notice] Received Blueprint: {marker}" });
+        try
+        {
+            var s = Make(out _, "Bracket Cooler");
+            s.ScanHistory(log);
+
+            var hits = File.Exists(UnmatchedBlueprintLog.LogPath)
+                ? File.ReadAllLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray()
+                : Array.Empty<string>();
+            Assert.Single(hits);
+            Assert.Contains("| import scan |", hits[0]);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // ── Live-tail localization map invalidation (issue #17 hardening): changing the global.ini
+    // setting must drop the cached map so the next line rebuilds it, not wait for a new SC session. ──
+
+    [Fact]
+    public void InvalidateLocalizationMap_ForcesRebuildOnNextResolve()
+    {
+        int builds = 0;
+        var s = new GameLogSession(
+            () => new[] { "Tundra" },
+            _ => false,
+            (_, _) => { },
+            _ => { builds++; return null; });
+
+        s.Resolve("Received Blueprint: Tundra");
+        s.Resolve("Received Blueprint: Tundra");
+        Assert.Equal(1, builds);   // cached after the first build
+
+        s.InvalidateLocalizationMap();
+        s.Resolve("Received Blueprint: Tundra");
+        Assert.Equal(2, builds);   // dropped cache forces a rebuild
+    }
+
+    [Fact]
+    public void Start_DropsCachedLocalizationMap()
+    {
+        // Re-pointing the watcher (Settings Game.log path change, monitor path box) moves the
+        // DERIVED global.ini path too - the cached live map must not survive it.
+        int builds = 0;
+        var s = new GameLogSession(
+            () => new[] { "Tundra" },
+            _ => false,
+            (_, _) => { },
+            _ => { builds++; return null; });
+
+        s.Resolve("Received Blueprint: Tundra");
+        Assert.Equal(1, builds);
+
+        s.Start(Path.Combine(Path.GetTempPath(), "nexus_other_" + Guid.NewGuid().ToString("N"), "Game.log"));
+        s.Resolve("Received Blueprint: Tundra");
+        Assert.Equal(2, builds);
+    }
 }

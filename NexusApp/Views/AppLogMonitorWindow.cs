@@ -168,6 +168,10 @@ public sealed class AppLogMonitorWindow : Window
         try { log = File.Exists(Logger.LogPath) ? File.ReadAllText(Logger.LogPath) : "(no log file)"; }
         catch (Exception ex) { log = $"(could not read log: {ex.Message})"; }
 
+        string? unmatched = null;
+        try { if (File.Exists(UnmatchedBlueprintLog.LogPath)) unmatched = File.ReadAllText(UnmatchedBlueprintLog.LogPath); }
+        catch { /* best-effort - the snapshot still works without it */ }
+
         var settings = new List<(string, string)>
         {
             ("Distribution", AppInfo.Distribution),
@@ -182,7 +186,7 @@ public sealed class AppLogMonitorWindow : Window
 
         return DiagnosticSnapshot.Build(
             AppInfo.Version, GameData.Version, App.Data.MiningDataVersion,
-            Environment.OSVersion.VersionString, settings, log, DateTime.Now);
+            Environment.OSVersion.VersionString, settings, log, DateTime.Now, unmatched);
     }
 
     private void CopySnapshot()

@@ -308,6 +308,7 @@ public sealed class LogMonitorWindow : Window
         if (App.Settings.Current.GlobalIniPath == path) return;   // no-op if unchanged
         App.Settings.Current.GlobalIniPath = path;
         App.Settings.Save();
+        App.GameLog.InvalidateLocalizationMap();   // the live tail must pick up the new path now
     }
 
     private void SaveSnapshot()
