@@ -74,4 +74,25 @@ public class UnrecognizedBlueprintReportTests
         Assert.Contains("Star Citizen build: unknown", report);
         Assert.Contains("StarStrings mod: not detected", report);
     }
+
+    // ── Localization-map status (issue #17): the report must say whether the user's global.ini
+    // map loaded, so a "nothing recognized" report is self-diagnosing without their nexus.log. ──
+
+    [Fact]
+    public void Build_IncludesLocalizationMapEntryCount_WhenLoaded()
+    {
+        var report = UnrecognizedBlueprintReport.Build(
+            "6.3.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, false,
+            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: 1602);
+        Assert.Contains("Localization map: 1602 entries", report);
+    }
+
+    [Fact]
+    public void Build_ShowsLocalizationMapNotLoaded_WhenNull()
+    {
+        var report = UnrecognizedBlueprintReport.Build(
+            "6.3.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, false,
+            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: null);
+        Assert.Contains("Localization map: not loaded", report);
+    }
 }

@@ -32,6 +32,9 @@ public sealed class GameLogSession : IDisposable
     private string _lastHandle = "";   // dedupe the HandleDetected event
     private IReadOnlyDictionary<string, string>? _liveLocalizationMap;   // cached for the live tail
     private bool _liveLocalizationBuilt;                                 // rebuilt on a new SC session
+    // Unresolved receipt names already logged this session - one nexus.log line per distinct name,
+    // not one per notification-lifecycle repeat (issue #17 diagnostics).
+    private readonly HashSet<string> _unresolvedLogged = new(StringComparer.OrdinalIgnoreCase);
 
     public GameLogSession(
         Func<IEnumerable<string>> seedNames,
@@ -68,6 +71,7 @@ public sealed class GameLogSession : IDisposable
         _marks.Clear();
         _liveLocalizationMap = null;   // a new SC session may follow a localization change - rebuild lazily
         _liveLocalizationBuilt = false;
+        _unresolvedLogged.Clear();     // still-unresolved receipts are worth one fresh line per session
         SessionReset?.Invoke();
     }
 
@@ -83,8 +87,18 @@ public sealed class GameLogSession : IDisposable
         return _liveLocalizationMap;
     }
 
-    // Built lazily: the blueprint name list isn't ready until seed data loads.
-    private GameLogBlueprintImporter Importer => _importer ??= new GameLogBlueprintImporter(_seedNames());
+    /// <summary>Drop the cached live-tail localization map so the next line rebuilds it fresh.
+    /// Called when the global.ini setting changes - waiting for a new SC session is too late.</summary>
+    public void InvalidateLocalizationMap()
+    {
+        _liveLocalizationMap = null;
+        _liveLocalizationBuilt = false;
+    }
+
+    // Built lazily: the blueprint name list isn't ready until seed data loads. The bundled official
+    // component names power the importer's structural name fallback (issue #17).
+    private GameLogBlueprintImporter Importer => _importer ??=
+        new GameLogBlueprintImporter(_seedNames(), ComponentStringReference.KeyToOfficialName.Values);
 
     /// <summary>Blueprints auto-marked owned so far this session, oldest first.</summary>
     public IReadOnlyList<BlueprintMark> Marks => _marks;
@@ -115,6 +129,10 @@ public sealed class GameLogSession : IDisposable
 
     public void Start(string path, bool fromBeginning = false)
     {
+        // Re-pointing the watcher moves the DERIVED global.ini path with it - drop the cached
+        // live map so the next line rebuilds it against the new location (covers the Settings
+        // Game.log path change and the monitor's path box in one place).
+        InvalidateLocalizationMap();
         _watcher.Start(path, fromBeginning);
         StateChanged?.Invoke();
     }
@@ -140,7 +158,17 @@ public sealed class GameLogSession : IDisposable
     public string? Resolve(string rawLine) => Importer.ResolveLine(rawLine, LiveLocalizationMap());
 
     public GameLogBlueprintImporter.HistoryScan ScanHistory(string liveLogPath, Action<int>? progress = null)
-        => Importer.ScanHistory(liveLogPath, progress, _localizationMapFor?.Invoke(liveLogPath));
+    {
+        var scan = Importer.ScanHistory(liveLogPath, progress, _localizationMapFor?.Invoke(liveLogPath));
+        // Every unmatched receipt lands in the dedicated diagnostics file with its map context, so
+        // a user report can carry exactly the data needed to fix the mapping (issue #17).
+        foreach (var line in scan.UnmatchedLines)
+        {
+            var raw = GameLogBlueprintImporter.ExtractRawName(line);
+            if (raw is not null) UnmatchedBlueprintLog.Record("import scan", raw, line, scan.LocalizationEntries);
+        }
+        return scan;
+    }
 
     public void NotifyBulkOwnershipChanged() => BulkOwnershipChanged?.Invoke();
 
@@ -159,13 +187,28 @@ public sealed class GameLogSession : IDisposable
 
         if (!AutoMark || e.Category != LogCategory.Blueprint) return;
 
-        var canon = Importer.ResolveLine(e.Raw, LiveLocalizationMap());
-        if (canon is null || _isOwned(canon)) return;
+        var canon = Importer.ResolveLine(e.Raw, LiveLocalizationMap(), out bool viaFallback);
+        if (canon is null)
+        {
+            // Surface the failure in nexus.log AND the dedicated unmatched-blueprints file (issue
+            // #17: these used to vanish silently). The raw name is game-item display text - same
+            // data the import dialog already shows; no paths.
+            var raw = GameLogBlueprintImporter.ExtractRawName(e.Raw);
+            if (raw is not null && _unresolvedLogged.Add(raw))
+            {
+                Logger.Info($"[GameLog] blueprint receipt unrecognized: {raw}");
+                UnmatchedBlueprintLog.Record("live", raw, e.Raw, LiveLocalizationMap()?.Count);
+            }
+            return;
+        }
+        if (_isOwned(canon)) return;
 
         _setOwned(canon, true);
         var mark = new BlueprintMark { Name = canon };
         _marks.Add(mark);
-        Logger.Info($"[GameLog] auto-marked blueprint owned: {canon}");
+        Logger.Info(viaFallback
+            ? $"[GameLog] auto-marked blueprint owned: {canon} (via name fallback)"
+            : $"[GameLog] auto-marked blueprint owned: {canon}");
         Marked?.Invoke(mark);
     }
 

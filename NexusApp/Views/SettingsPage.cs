@@ -304,6 +304,7 @@ public sealed class SettingsPage : UserControl
         if (App.Settings.Current.GlobalIniPath == path) return;
         App.Settings.Current.GlobalIniPath = path;
         App.Settings.Save();
+        App.GameLog.InvalidateLocalizationMap();   // the live tail must pick up the new path now
         Logger.Info("[UI] global.ini path updated in Settings");
     }
 

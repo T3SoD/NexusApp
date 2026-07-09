@@ -36,6 +36,28 @@ public class DiagnosticSnapshotTests
     }
 
     [Fact]
+    public void Build_IncludesUnmatchedBlueprintSection_WhenProvided()
+    {
+        var snap = DiagnosticSnapshot.Build(
+            "6.3.0", "4.8.3", "1.2.5", "os", new List<(string, string)>(),
+            "log line", new DateTime(2026, 7, 9, 12, 0, 0),
+            unmatchedLogContents: "2026-07-09 11:59:00 | live | app 6.3.0 | map not loaded | P IND 0B Defiant | <line>");
+
+        Assert.Contains("--- unmatched_blueprints.log ---", snap);
+        Assert.Contains("P IND 0B Defiant", snap);
+    }
+
+    [Fact]
+    public void Build_OmitsUnmatchedBlueprintSection_WhenEmpty()
+    {
+        var snap = DiagnosticSnapshot.Build(
+            "6.3.0", "4.8.3", "1.2.5", "os", new List<(string, string)>(),
+            "log line", new DateTime(2026, 7, 9, 12, 0, 0));
+
+        Assert.DoesNotContain("unmatched_blueprints.log", snap);
+    }
+
+    [Fact]
     public void RedactUserProfile_ReplacesProfilePrefixOnly()
     {
         var home = @"C:\Users\alice";

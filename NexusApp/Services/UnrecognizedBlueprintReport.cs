@@ -61,13 +61,17 @@ public static class UnrecognizedBlueprintReport
         int matchedCount,
         IReadOnlyList<string> unmatchedLines,
         bool starStringsDetected,
-        DateTime timestamp)
+        DateTime timestamp,
+        int? localizationEntries = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Nexus v{appVersion}  ·  Mining data v{miningDataVersion}  ·  {timestamp:yyyy-MM-dd HH:mm}");
         sb.AppendLine($"Star Citizen build: {(string.IsNullOrWhiteSpace(buildLine) ? "unknown" : buildLine)}");
         sb.AppendLine($"Scanned {filesScanned} log file(s) - matched {matchedCount}, unrecognized {unmatchedLines.Count}");
         sb.AppendLine($"StarStrings mod: {(starStringsDetected ? "detected" : "not detected")}");
+        // Whether the user's global.ini joined into a custom -> official map for this scan - the
+        // first thing to check when custom-renamed components come back unrecognized (issue #17).
+        sb.AppendLine($"Localization map: {(localizationEntries.HasValue ? $"{localizationEntries.Value} entries" : "not loaded")}");
         sb.AppendLine();
         sb.AppendLine("Unrecognized blueprints - the full Game.log line for each (samples to fix the mapping):");
         foreach (var line in unmatchedLines) sb.AppendLine(line);
