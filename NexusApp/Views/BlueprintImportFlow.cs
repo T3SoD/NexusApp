@@ -48,10 +48,13 @@ public static class BlueprintImportFlow
 
         // Report (for the dialog's Copy / Export) of the names we couldn't map. No PII: versions +
         // build line + raw names only.
+        // Origin is a pure function of settings (mirrors App.BuildLocalizationMap's precedence).
+        var locOrigin = string.IsNullOrWhiteSpace(App.Settings.Current.GlobalIniPath)
+            ? "derived from Game.log path" : "Settings override";
         var report = UnrecognizedBlueprintReport.Build(
             AppInfo.Version, App.Data.MiningDataVersion, buildLine,
             scan.FilesScanned, scan.Matched.Count, scan.UnmatchedLines, scan.StarStringsDetected, DateTime.Now,
-            scan.LocalizationEntries);
+            scan.LocalizationEntries, locOrigin);
 
         var dlg = new ImportResultDialog(scan.Matched, scan.Unmatched, scan.FilesScanned, scan.EarliestUtc, report) { Owner = owner };
         if (dlg.ShowDialog() != true)

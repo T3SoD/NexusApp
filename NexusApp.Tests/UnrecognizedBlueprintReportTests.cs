@@ -79,20 +79,23 @@ public class UnrecognizedBlueprintReportTests
     // map loaded, so a "nothing recognized" report is self-diagnosing without their nexus.log. ──
 
     [Fact]
-    public void Build_IncludesLocalizationMapEntryCount_WhenLoaded()
+    public void Build_IncludesLocalizationMapEntryCount_AndOrigin_WhenLoaded()
     {
         var report = UnrecognizedBlueprintReport.Build(
             "6.3.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, false,
-            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: 1602);
-        Assert.Contains("Localization map: 1602 entries", report);
+            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: 1602,
+            localizationOrigin: "derived from Game.log path");
+        Assert.Contains("Localization map: 1602 entries (derived from Game.log path)", report);
     }
 
     [Fact]
-    public void Build_ShowsLocalizationMapNotLoaded_WhenNull()
+    public void Build_ShowsLocalizationMapNotLoaded_WithOrigin_WhenNull()
     {
+        // "not loaded (Settings override)" is the line that reveals a stale override remotely.
         var report = UnrecognizedBlueprintReport.Build(
             "6.3.0", "1.2.4", null, 1, 0, new List<string> { "Plain Name" }, false,
-            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: null);
-        Assert.Contains("Localization map: not loaded", report);
+            new DateTime(2026, 7, 9, 0, 0, 0), localizationEntries: null,
+            localizationOrigin: "Settings override");
+        Assert.Contains("Localization map: not loaded (Settings override)", report);
     }
 }

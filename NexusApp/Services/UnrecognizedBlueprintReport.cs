@@ -62,7 +62,8 @@ public static class UnrecognizedBlueprintReport
         IReadOnlyList<string> unmatchedLines,
         bool starStringsDetected,
         DateTime timestamp,
-        int? localizationEntries = null)
+        int? localizationEntries = null,
+        string? localizationOrigin = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Nexus v{appVersion}  ·  Mining data v{miningDataVersion}  ·  {timestamp:yyyy-MM-dd HH:mm}");
@@ -71,7 +72,11 @@ public static class UnrecognizedBlueprintReport
         sb.AppendLine($"StarStrings mod: {(starStringsDetected ? "detected" : "not detected")}");
         // Whether the user's global.ini joined into a custom -> official map for this scan - the
         // first thing to check when custom-renamed components come back unrecognized (issue #17).
-        sb.AppendLine($"Localization map: {(localizationEntries.HasValue ? $"{localizationEntries.Value} entries" : "not loaded")}");
+        // The origin ("Settings override" / "derived from Game.log path") makes a stale override
+        // visible from the report alone: "not loaded (Settings override)".
+        var mapText = localizationEntries.HasValue ? $"{localizationEntries.Value} entries" : "not loaded";
+        if (!string.IsNullOrWhiteSpace(localizationOrigin)) mapText += $" ({localizationOrigin})";
+        sb.AppendLine($"Localization map: {mapText}");
         sb.AppendLine();
         sb.AppendLine("Unrecognized blueprints - the full Game.log line for each (samples to fix the mapping):");
         foreach (var line in unmatchedLines) sb.AppendLine(line);
