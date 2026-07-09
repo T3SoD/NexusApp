@@ -134,7 +134,6 @@ Run the app directly, with no installation.
 
 ```
 NexusApp/
-├─ NexusApp.sln
 ├─ nexus_installer.iss          # Inno Setup installer recipe
 └─ NexusApp/
    ├─ Assets/                   # Icons and logos
