@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.3.1  -  Jul 09, 2026",
+        [
+            "Blueprint import and auto-track now recognize ship components renamed by any community localization pack, even when your localization file is missing or from a different pack version - the importer finds the official component name inside the custom string",
+            "New unmatched_blueprints.log (next to nexus.log) records every blueprint receipt the app could not recognize, with the context needed to fix it - and rides along in the diagnostic snapshot",
+            "The unrecognized-blueprints report now shows whether your localization file loaded, how many names it mapped, and where the app looked for it (Settings override or auto-detected next to Game.log)",
+            "Changing the localization file path now takes effect immediately for live blueprint tracking, no restart needed",
+        ]),
         ("App  6.3.0  -  Jul 05, 2026",
         [
             "Mining Codex now shows, for each ore, where else it turns up as a byproduct (which other ores' rocks also yield it, with the percentage band and spawn chance) and what its own rock yields when you mine it",
