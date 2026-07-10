@@ -705,6 +705,7 @@ public partial class MainWindow : Window
 
         if (filtered.Count == 0)
         {
+            _codexHologram?.Stop();   // the detail panel is going away - do not rely on Unloaded timing
             ReferenceDetailPanel.Children.Clear();
             ReferenceList.Children.Add(new TextBlock
             {
@@ -1025,7 +1026,7 @@ public partial class MainWindow : Window
         var ht = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
         nameRow.Children.Add(new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-        nameRow.Children.Add(new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
+        nameRow.Children.Add(new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         // class badge (Metal / Mineral / Gem) from the datamined resource type
         if (profile != null)
         {
@@ -1040,7 +1041,7 @@ public partial class MainWindow : Window
         ht.Children.Add(nameRow);
         var qFloor = r.Method == "ship" ? "501" : r.Method.Contains("fps") ? "201" : r.Method.Contains("vehicle") ? "~297" : "";
         var metaText = $"{CapFirst(r.Rarity)}  ·  {MethodLabel(r.Method)}" + (qFloor.Length > 0 ? $"  ·  quality floor {qFloor}" : "");
-        ht.Children.Add(new TextBlock { Text = metaText, FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0) });
+        ht.Children.Add(new TextBlock { Text = metaText, FontSize = 12, Foreground = dim, Margin = new Thickness(0, 4, 0, 0), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         hg.Children.Add(ht);
         var rsStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         rsStack.Children.Add(new TextBlock { Text = "RS VALUE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right });
