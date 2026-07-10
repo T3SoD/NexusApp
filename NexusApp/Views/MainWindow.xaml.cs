@@ -1073,19 +1073,30 @@ public partial class MainWindow : Window
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // hologram column, filled in once comp is available below
         var ht = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
-        nameRow.Children.Add(new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-        nameRow.Children.Add(new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
+        // Grid (not StackPanel) so the name column is width-constrained and CharacterEllipsis actually engages;
+        // a horizontal StackPanel measures children with infinite width and never trims.
+        var nameRow = new Grid();
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // class badge column, filled in below when profile is known
+        var nameSwatch = new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        Grid.SetColumn(nameSwatch, 0);
+        nameRow.Children.Add(nameSwatch);
+        var nameText = new TextBlock { Text = r.Name, FontSize = 24, FontWeight = FontWeights.Bold, FontFamily = headFont, Foreground = rb, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
+        Grid.SetColumn(nameText, 1);
+        nameRow.Children.Add(nameText);
         // class badge (Metal / Mineral / Gem) from the datamined resource type
         if (profile != null)
         {
             var clsBrush = profile.Class == "Metal" ? gold : profile.Class == "Mineral" ? BrushFromHex("#7FE9E0") : BrushFromHex("#A855F7");
-            nameRow.Children.Add(new Border
+            var classBadge = new Border
             {
                 Child = new TextBlock { Text = profile.Class.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.SemiBold, FontFamily = monoFont, Foreground = clsBrush, VerticalAlignment = VerticalAlignment.Center },
                 BorderBrush = clsBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(11, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            Grid.SetColumn(classBadge, 2);
+            nameRow.Children.Add(classBadge);
         }
         ht.Children.Add(nameRow);
         var qFloor = r.Method == "ship" ? "501" : r.Method.Contains("fps") ? "201" : r.Method.Contains("vehicle") ? "~297" : "";
