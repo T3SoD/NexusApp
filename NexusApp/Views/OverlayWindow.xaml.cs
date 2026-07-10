@@ -617,6 +617,7 @@ public partial class OverlayWindow : Window
 
     private void PulseWorkOrderButton()
     {
+        if (Motion.Reduced) return;   // Ready is already conveyed by the button text/color
         var anim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.25, TimeSpan.FromMilliseconds(300))
         {
             AutoReverse = true,
