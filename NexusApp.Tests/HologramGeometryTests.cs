@@ -59,8 +59,10 @@ public class HologramGeometryTests
         Assert.Equal(2, segs.Length);
         Assert.Equal(-88, segs[0].StartDeg, 6);            // -90 + gap/2
         Assert.Equal(0.6 * 352, segs[0].SweepDeg, 6);      // 211.2
+        Assert.Equal(0, segs[0].SourceIndex);
         Assert.Equal(segs[0].StartDeg + segs[0].SweepDeg + 4, segs[1].StartDeg, 6);
         Assert.Equal(0.4 * 352, segs[1].SweepDeg, 6);      // 140.8
+        Assert.Equal(1, segs[1].SourceIndex);
     }
 
     [Fact]
@@ -70,6 +72,7 @@ public class HologramGeometryTests
         Assert.Single(segs);
         Assert.Equal(-88, segs[0].StartDeg, 6);
         Assert.Equal(356, segs[0].SweepDeg, 6);            // one segment, one gap
+        Assert.Equal(2, segs[0].SourceIndex);              // the surviving value was input[2]
     }
 
     [Fact]

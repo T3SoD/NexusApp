@@ -794,7 +794,11 @@ public partial class MainWindow : Window
             {
                 ReferenceList.BeginAnimation(UIElement.OpacityProperty,
                     new System.Windows.Media.Animation.DoubleAnimation(0.55, 1,
-                        System.TimeSpan.FromMilliseconds(120)));
+                        System.TimeSpan.FromMilliseconds(120))
+                    {
+                        EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+                        { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
+                    });
             }
         }
     }

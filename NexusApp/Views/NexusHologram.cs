@@ -122,12 +122,15 @@ public sealed class NexusHologram : FrameworkElement
             : System.Math.Clamp((_clock.Elapsed.TotalMilliseconds - _shownAtMs) / RingDrawInMs, 0, 1);
         double ease = 1 - (1 - t) * (1 - t);      // ease-out quad, mirrors the mock
 
-        // Segment 0 is always the resource's own ore (GetCompositionForResource orders
-        // primary first); everything after it is a byproduct drawn at reduced opacity.
+        // The resource's own ore is always the first entry in the composition percentages
+        // passed to Show/ComputeRing (GetCompositionForResource orders primary first), so the
+        // primary segment is identified by SOURCE index (SourceIndex == 0), not by position in
+        // _ring - ComputeRing filters non-positive percentages before assigning positions, so a
+        // zero-pct primary must not silently shift a byproduct into the bright pen.
         for (int i = 0; i < _ring.Length; i++)
         {
             var seg = _ring[i];
-            var pen = i == 0 ? RingPrimaryPen : RingByproductPen;
+            var pen = seg.SourceIndex == 0 ? RingPrimaryPen : RingByproductPen;
             dc.DrawGeometry(null, pen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
         }
 
