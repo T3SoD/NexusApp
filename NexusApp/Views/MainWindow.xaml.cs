@@ -691,23 +691,40 @@ public partial class MainWindow : Window
     }
 
     // Tiny static glyph, 10x10: diamond = Metal, three dots = Mineral, hexagon = Gem.
-    // Shapes and stroke come from the frozen codex-motion mock values.
+    // Shapes and stroke come from the frozen codex-motion mock values. Brush and geometries are
+    // parsed once and frozen here so BuildResourceCard doesn't re-parse/re-allocate per card per rebuild.
+    private static readonly System.Windows.Media.SolidColorBrush ClassGlyphBrush =
+        FrozenBrush(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xC0, 0xFF, 0xB2, 0x3E)));
+    private static readonly System.Windows.Media.Geometry ClassGlyphMetalGeometry =
+        FrozenGeometry("M 5,0 L 10,5 L 5,10 L 0,5 Z");
+    private static readonly System.Windows.Media.Geometry ClassGlyphGemGeometry =
+        FrozenGeometry("M 2.5,0.7 L 7.5,0.7 L 10,5 L 7.5,9.3 L 2.5,9.3 L 0,5 Z");
+    private static readonly System.Windows.Media.Geometry ClassGlyphMineralGeometry =
+        FrozenGeometry("M 2,7 A 1.6,1.6 0 1 0 2,7.01 M 7,3 A 2,2 0 1 0 7,3.01 M 7.5,8 A 1.3,1.3 0 1 0 7.5,8.01");
+
+    private static System.Windows.Media.SolidColorBrush FrozenBrush(System.Windows.Media.SolidColorBrush b) { b.Freeze(); return b; }
+
+    private static System.Windows.Media.Geometry FrozenGeometry(string data)
+    {
+        var g = System.Windows.Media.Geometry.Parse(data);
+        g.Freeze();
+        return g;
+    }
+
     private static FrameworkElement? ClassGlyph(string oreClass)
     {
-        var amber = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xC0, 0xFF, 0xB2, 0x3E));
-        amber.Freeze();
-        string? data = oreClass.ToLowerInvariant() switch
+        System.Windows.Media.Geometry? geometry = oreClass.ToLowerInvariant() switch
         {
-            "metal"   => "M 5,0 L 10,5 L 5,10 L 0,5 Z",
-            "gem"     => "M 2.5,0.7 L 7.5,0.7 L 10,5 L 7.5,9.3 L 2.5,9.3 L 0,5 Z",
-            "mineral" => "M 2,7 A 1.6,1.6 0 1 0 2,7.01 M 7,3 A 2,2 0 1 0 7,3.01 M 7.5,8 A 1.3,1.3 0 1 0 7.5,8.01",
+            "metal"   => ClassGlyphMetalGeometry,
+            "gem"     => ClassGlyphGemGeometry,
+            "mineral" => ClassGlyphMineralGeometry,
             _ => null,
         };
-        if (data is null) return null;
+        if (geometry is null) return null;
         return new System.Windows.Shapes.Path
         {
-            Data = System.Windows.Media.Geometry.Parse(data),
-            Stroke = amber, StrokeThickness = 1.2, Width = 10, Height = 10,
+            Data = geometry,
+            Stroke = ClassGlyphBrush, StrokeThickness = 1.2, Width = 10, Height = 10,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
         };
     }
@@ -767,9 +784,12 @@ public partial class MainWindow : Window
         {
             // Filter/search rebuilds happen per keystroke (debounced) - a per-card stagger would
             // be jank and noise, so the rebuilt list gets one quick settle fade instead.
-            ReferenceList.BeginAnimation(UIElement.OpacityProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0.55, 1,
-                    System.TimeSpan.FromMilliseconds(120)));
+            if (!Motion.Reduced)
+            {
+                ReferenceList.BeginAnimation(UIElement.OpacityProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(0.55, 1,
+                        System.TimeSpan.FromMilliseconds(120)));
+            }
         }
     }
 
@@ -785,7 +805,7 @@ public partial class MainWindow : Window
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });   // fixed so ore names don't zig-zag when a row has no class glyph
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var gem = new Border { Width = 11, Height = 11, CornerRadius = new CornerRadius(3), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
@@ -1075,7 +1095,7 @@ public partial class MainWindow : Window
         var ht = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         // Grid (not StackPanel) so the name column is width-constrained and CharacterEllipsis actually engages;
         // a horizontal StackPanel measures children with infinite width and never trims.
-        var nameRow = new Grid();
+        var nameRow = new Grid { HorizontalAlignment = HorizontalAlignment.Left };
         nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         nameRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // class badge column, filled in below when profile is known
@@ -1290,6 +1310,7 @@ public partial class MainWindow : Window
     // Capped so long dossiers do not animate below the fold.
     private static void CascadeIn(UIElementCollection children, int maxAnimated)
     {
+        if (Motion.Reduced) return;   // elements are already at final opacity/position - only the entrance is skipped
         int n = System.Math.Min(children.Count, maxAnimated);
         for (int i = 0; i < n; i++)
         {
