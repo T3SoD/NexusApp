@@ -17,12 +17,14 @@ public sealed class NexusHologram : FrameworkElement
     private const double RingGapDeg = 4.0;
     private const double RingDrawInMs = 600;
     private static readonly Color Stroke = Color.FromRgb(0xFF, 0xB2, 0x3E);   // MOBIGLAS amber
-    private static readonly Color PrimaryStroke = Color.FromRgb(0xFF, 0xD0, 0x89);   // amber-bright, primary ring segment
+    private static readonly Color DefaultPrimaryStroke = Color.FromRgb(0xFF, 0xD0, 0x89);   // amber-bright fallback, used only before the first Show
 
-    // Pens are compile-time-constant colors/widths, so they're built once and frozen
-    // instead of allocated every OnRender call.
-    private static readonly Pen RingPrimaryPen = FrozenPen(PrimaryStroke, 0xFF, 2);     // segment 0: the resource's own ore, fully opaque
-    private static readonly Pen RingByproductPen = FrozenPen(Stroke, 0x8C, 2);          // segments 1+: byproducts, 55% opacity
+    // Design scheme D (approved 2026-07-10): the primary ring segment takes the resource's own
+    // rarity color (opaque), so its pen is built per-Show from the caller-supplied color instead
+    // of being a compile-time constant. Byproduct/edge colors ARE compile-time constants, so
+    // those pens stay static and frozen instead of allocated every OnRender call.
+    private Pen _ringPrimaryPen = FrozenPen(DefaultPrimaryStroke, 0xFF, 2);   // safe default so OnRender before any Show doesn't NRE
+    private static readonly Pen RingByproductPen = FrozenPen(Color.FromRgb(0x7F, 0xE9, 0xE0), 0x8C, 2);   // segments 1+: byproducts, cyan at 55% opacity (scheme D)
     private static readonly Pen EdgePen = FrozenPen(Stroke, 0xE0, 1.4);
 
     private readonly HologramState _state = new();
@@ -42,10 +44,13 @@ public sealed class NexusHologram : FrameworkElement
         Unloaded += (_, _) => Stop();
     }
 
-    public void Show(string oreName, string oreClass, IReadOnlyList<double> compositionPercentages)
+    public void Show(string oreName, string oreClass, IReadOnlyList<double> compositionPercentages, Color primaryColor)
     {
         _wire = HologramGeometry.For(oreClass);
         _ring = HologramGeometry.ComputeRing(compositionPercentages, RingGapDeg);
+        // Built once per Show (not per frame): the primary segment's pen tracks the ore's own
+        // rarity color (opaque), per the approved scheme D design.
+        _ringPrimaryPen = FrozenPen(primaryColor, 0xFF, 2);
         _clock ??= System.Diagnostics.Stopwatch.StartNew();
         // Motion.Reduced ("reduce animations"): back-date the draw-in origin so the ring
         // reads as fully drawn on the very first static frame, instead of animating in.
@@ -135,10 +140,12 @@ public sealed class NexusHologram : FrameworkElement
         // primary segment is identified by SOURCE index (SourceIndex == 0), not by position in
         // _ring - ComputeRing filters non-positive percentages before assigning positions, so a
         // zero-pct primary must not silently shift a byproduct into the bright pen.
+        // Primary (SourceIndex 0) = the ore's own rarity color, opaque; byproducts = cyan at
+        // 55% opacity - approved scheme D.
         for (int i = 0; i < _ring.Length; i++)
         {
             var seg = _ring[i];
-            var pen = seg.SourceIndex == 0 ? RingPrimaryPen : RingByproductPen;
+            var pen = seg.SourceIndex == 0 ? _ringPrimaryPen : RingByproductPen;
             dc.DrawGeometry(null, pen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
         }
 

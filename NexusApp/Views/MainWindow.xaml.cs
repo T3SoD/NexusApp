@@ -1193,7 +1193,14 @@ public partial class MainWindow : Window
         _codexHologram?.Stop();
         _codexHologram = new NexusHologram { Width = 120, Height = 120, Margin = new Thickness(0, 0, 4, 0) };
         var pcts = comp.Select(c => (c.MinPct + c.MaxPct) / 2.0).ToList();
-        _codexHologram.Show(r.Name, profile?.Class ?? "Metal", pcts);
+        // Scheme D (approved 2026-07-10): the primary ring segment takes the ore's own rarity
+        // color, opaque. rb is built from RarityBrush(r.Rarity), which always returns a
+        // SolidColorBrush (BrushFromHex) - fall back to the amber-bright default if that ever
+        // stops holding true.
+        var primaryColor = rb is System.Windows.Media.SolidColorBrush rbSolid
+            ? rbSolid.Color
+            : System.Windows.Media.Color.FromRgb(0xFF, 0xD0, 0x89);
+        _codexHologram.Show(r.Name, profile?.Class ?? "Metal", pcts, primaryColor);
         if (!IsActive) _codexHologram.Pause();   // deactivation already happened - do not run under the game
         Grid.SetColumn(_codexHologram, 2);
         hg.Children.Add(_codexHologram);
