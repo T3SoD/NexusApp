@@ -44,6 +44,13 @@ public partial class MainWindow : Window
         _vm.OcrPhaseReceived    += p => _overlay?.ReceiveScanPhase(p);
         _vm.OcrProgressReceived += c => _overlay?.ReceiveScanProgress(c);
 
+        // RS Decoder match choreography: the scan-result surfaces are data-bound, so the reveal
+        // is driven here. Watch the derived best-match for the full/settle decision, and the
+        // recent-scan list for a genuine new row. Both defer to Loaded priority so the bound
+        // visuals have been generated before they are animated.
+        _vm.PropertyChanged += OnScanVmPropertyChanged;
+        _vm.ScanHistory.CollectionChanged += OnScanHistoryChanged;
+
         _scanChipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
         _scanChipTimer.Tick += (_, __) => UpdateScanChip();
         _scanChipTimer.Start();
@@ -582,6 +589,149 @@ public partial class MainWindow : Window
     {
         if (sender is Button btn && btn.DataContext is ScanHistoryEntry entry)
             _vm.RunScanNoHistory(entry.Rs);
+    }
+
+    // ── RS Decoder match choreography ─────────────────────────────────────────
+    // The scan card, other-matches list, and recent-scan rail are all data-bound, so their reveal
+    // is animated from the code-behind once WPF has generated the templated visuals. The tracker
+    // gates the full reveal to a genuinely changed best match; a same-value rescan just settles.
+
+    private readonly NexusApp.Services.ScanMotionTracker _scanMotion = new();
+    private int? _lastRecentRs;   // top recent-scan row already revealed - dedupes cart/rebuild churn
+
+    private void OnScanVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MainViewModel.BestMatch)) return;
+        var name = _vm.BestMatch?.Resource?.Name;
+        bool full = _scanMotion.ShouldChoreograph(name);
+        // Defer: the ContentControl/ItemsControl content is regenerated during layout, so the
+        // card parts and other-match containers do not exist until after this notification.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (full) PlayScanChoreography(name!);
+            else if (!string.IsNullOrEmpty(name)) SettleScanResults();
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    // A new scan inserts one row at the top of ScanHistory (the visible list is then rebuilt).
+    // Animate only that single new row - never the whole rebuilt list - and only when it actually
+    // surfaces at the top under the active filter and is not a cart/rebuild echo of the same row.
+    private void OnScanHistoryChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add || e.NewStartingIndex != 0) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (Motion.Reduced) return;
+            if (_vm.FilteredScanHistory.Count == 0 || _vm.ScanHistory.Count == 0) return;
+            int topRs = _vm.FilteredScanHistory[0].Rs;
+            if (topRs != _vm.ScanHistory[0].Rs) return;   // the new scan was filtered out - nothing new to reveal
+            if (topRs == _lastRecentRs) return;           // same top as last time (e.g. cart refresh rebuild)
+            _lastRecentRs = topRs;
+            if (RecentScansList.ItemContainerGenerator.ContainerFromIndex(0) is UIElement row)
+                FadeRise(row);
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    // Full match reveal (frozen values, Item 3): hero fade+rise, the two corner brackets contracting
+    // in from 8px outside, the rarity swatch wiping open, and the other-matches list cascading.
+    private void PlayScanChoreography(string name)
+    {
+        Logger.Info($"[UI] Scan: match choreography ({name})");
+        if (Motion.Reduced) return;
+
+        FadeRise(BestMatchHost);   // hero card: fade 0-1 + rise 12px, 200ms, settle
+
+        // Corner brackets: the ChamferPanel draws two L-brackets (top-right + bottom-left) grouped in
+        // PART_Brackets. Each contracts diagonally in from 8px outside its resting corner while the
+        // bracket layer fades 0.4 -> 1 (250ms, settle).
+        if (FindByName(BestMatchHost, "PART_Brackets") is Grid brackets)
+        {
+            brackets.BeginAnimation(UIElement.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0.4, 1, System.TimeSpan.FromMilliseconds(250))
+                { EasingFunction = Motion.Settle });
+            var dur = System.TimeSpan.FromMilliseconds(250);
+            foreach (UIElement child in brackets.Children)
+            {
+                if (child is not Border b) continue;
+                double dx = b.HorizontalAlignment == HorizontalAlignment.Right ? 8 : -8;
+                double dy = b.VerticalAlignment == VerticalAlignment.Top ? -8 : 8;
+                var t = new System.Windows.Media.TranslateTransform(dx, dy);
+                b.RenderTransform = t;
+                t.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(dx, 0, dur) { EasingFunction = Motion.Settle });
+                t.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(dy, 0, dur) { EasingFunction = Motion.Settle });
+            }
+        }
+
+        // Rarity swatch: ScaleX 0 -> 1 wiping open from the left edge (300ms, ease-out).
+        if (FindByName(BestMatchHost, "RaritySwatch") is FrameworkElement swatch)
+        {
+            var scale = new System.Windows.Media.ScaleTransform(0, 1);
+            swatch.RenderTransformOrigin = new Point(0, 0.5);
+            swatch.RenderTransform = scale;
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 1, System.TimeSpan.FromMilliseconds(300))
+                { EasingFunction = Motion.SlideOut });
+        }
+
+        // Other matches: reuse the dossier cascade (200ms each / 40ms stagger / 12px rise, cap 8).
+        if (FindItemsHost(OtherMatchesList) is Panel host)
+            CascadeIn(host.Children, maxAnimated: 8);
+    }
+
+    // Same-match rescan: no full reveal, just a quiet settle on the hero card
+    // (120ms, opacity 0.55 -> 1) - the idiom shared with the Codex filter rebuild.
+    private void SettleScanResults()
+    {
+        if (Motion.Reduced) return;
+        BestMatchHost.BeginAnimation(UIElement.OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0.55, 1, System.TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+                { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
+            });
+    }
+
+    // Single-element fade 0-1 + rise 12px, 200ms settle - the CascadeIn treatment for one element.
+    private static void FadeRise(UIElement el)
+    {
+        if (Motion.Reduced) return;
+        var slide = new System.Windows.Media.TranslateTransform(0, 12);
+        el.RenderTransform = slide;
+        el.Opacity = 0;
+        var dur = System.TimeSpan.FromMilliseconds(200);
+        el.BeginAnimation(UIElement.OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
+        slide.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
+    }
+
+    // Walk the visual tree for a named element. The scan card's parts live inside a DataTemplate,
+    // so they are reachable only after generation, by name, rather than as compiled fields.
+    private static DependencyObject? FindByName(DependencyObject root, string name)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe && fe.Name == name) return child;
+            if (FindByName(child, name) is { } found) return found;
+        }
+        return null;
+    }
+
+    // The panel that hosts an ItemsControl's generated item containers (for CascadeIn).
+    private static Panel? FindItemsHost(DependencyObject root)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is Panel p && p.IsItemsHost) return p;
+            if (FindItemsHost(child) is { } found) return found;
+        }
+        return null;
     }
 
     // ── Reference Tree ───────────────────────────────────────────────────────

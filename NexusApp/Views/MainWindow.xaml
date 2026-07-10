@@ -506,7 +506,7 @@
                                    Foreground="{StaticResource FgDimBrush}" Margin="2,18,0,8"/>
 
                         <!-- hero best match -->
-                        <ContentControl Grid.Row="3" Content="{Binding BestMatch}"
+                        <ContentControl Grid.Row="3" x:Name="BestMatchHost" Content="{Binding BestMatch}"
                                         Visibility="{Binding HasResults, Converter={StaticResource BoolVis}}">
                             <ContentControl.ContentTemplate>
                                 <DataTemplate>
@@ -524,7 +524,7 @@
                                             </Grid.RowDefinitions>
 
                                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Border Width="18" Height="18" CornerRadius="5" Margin="0,0,12,0" VerticalAlignment="Center"
+                                                <Border x:Name="RaritySwatch" Width="18" Height="18" CornerRadius="5" Margin="0,0,12,0" VerticalAlignment="Center"
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
                                                 <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="Bold"
                                                            Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
@@ -604,7 +604,7 @@
                                    Visibility="{Binding HasResults, Converter={StaticResource BoolVis}}"/>
 
                         <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding OtherMatches}">
+                            <ItemsControl x:Name="OtherMatchesList" ItemsSource="{Binding OtherMatches}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <views:ChamferPanel Margin="0,0,0,8" Chamfer="9" Padding="0">
@@ -669,7 +669,7 @@
                                 </Grid>
                                 <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource NavBorderBrush}"/>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="6,6,6,6">
-                                    <ItemsControl ItemsSource="{Binding FilteredScanHistory}">
+                                    <ItemsControl x:Name="RecentScansList" ItemsSource="{Binding FilteredScanHistory}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Button Margin="0" Cursor="Hand" HorizontalContentAlignment="Stretch" Click="HistoryItem_Click">
