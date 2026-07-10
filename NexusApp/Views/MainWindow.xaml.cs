@@ -75,6 +75,11 @@ public partial class MainWindow : Window
         SetActivePage("command");
         Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanChipTimer?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
 
+        // The Codex hologram pauses when the app loses focus and resumes when it regains it -
+        // an unfocused window has no business burning CPU on an ambient render loop.
+        Activated   += (_, _) => _codexHologram?.Resume();
+        Deactivated += (_, _) => _codexHologram?.Pause();
+
         BuildHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
         {
@@ -231,6 +236,7 @@ public partial class MainWindow : Window
 
         if (page == "blueprints") InitBlueprintBrowse();
         if (page == "reference") { BuildFilterPills(); BuildReferenceTree(staggerEntry: true); }
+        if (page != "reference") _codexHologram?.Stop();   // leaving (or never on) the Codex - stop the ambient loop
         if (page == "workorders") RebuildWorkOrderList();
         if (page == "command") InitCommandPage();
         if (page == "network") InitNetworkPage();
