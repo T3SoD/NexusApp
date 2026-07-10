@@ -17,11 +17,13 @@ public sealed class NexusHologram : FrameworkElement
     private const double RingGapDeg = 4.0;
     private const double RingDrawInMs = 600;
     private static readonly Color Stroke = Color.FromRgb(0xFF, 0xB2, 0x3E);   // MOBIGLAS amber
+    private static readonly Color PrimaryStroke = Color.FromRgb(0xFF, 0xD0, 0x89);   // amber-bright, primary ring segment
 
     // Pens are compile-time-constant colors/widths, so they're built once and frozen
     // instead of allocated every OnRender call.
-    private static readonly Pen RingPen = FrozenPen(0xB0, 2);
-    private static readonly Pen EdgePen = FrozenPen(0xE0, 1.4);
+    private static readonly Pen RingPrimaryPen = FrozenPen(PrimaryStroke, 0xFF, 2);     // segment 0: the resource's own ore, fully opaque
+    private static readonly Pen RingByproductPen = FrozenPen(Stroke, 0x8C, 2);          // segments 1+: byproducts, 55% opacity
+    private static readonly Pen EdgePen = FrozenPen(Stroke, 0xE0, 1.4);
 
     private readonly HologramState _state = new();
     private HologramGeometry.Wireframe _wire = HologramGeometry.For("Metal");
@@ -120,17 +122,23 @@ public sealed class NexusHologram : FrameworkElement
             : System.Math.Clamp((_clock.Elapsed.TotalMilliseconds - _shownAtMs) / RingDrawInMs, 0, 1);
         double ease = 1 - (1 - t) * (1 - t);      // ease-out quad, mirrors the mock
 
-        foreach (var seg in _ring)
-            dc.DrawGeometry(null, RingPen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
+        // Segment 0 is always the resource's own ore (GetCompositionForResource orders
+        // primary first); everything after it is a byproduct drawn at reduced opacity.
+        for (int i = 0; i < _ring.Length; i++)
+        {
+            var seg = _ring[i];
+            var pen = i == 0 ? RingPrimaryPen : RingByproductPen;
+            dc.DrawGeometry(null, pen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
+        }
 
         var pts = HologramGeometry.Project(_wire.Vertices, _yaw, Tilt, radius * 0.52, center);
         foreach (var edge in _wire.Edges)
             dc.DrawLine(EdgePen, pts[edge.A], pts[edge.B]);
     }
 
-    private static Pen FrozenPen(byte alpha, double width)
+    private static Pen FrozenPen(Color color, byte alpha, double width)
     {
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(alpha, Stroke.R, Stroke.G, Stroke.B)), width);
+        var pen = new Pen(new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B)), width);
         pen.Freeze();
         return pen;
     }
