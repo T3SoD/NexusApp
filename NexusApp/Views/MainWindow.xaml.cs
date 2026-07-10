@@ -1194,6 +1194,7 @@ public partial class MainWindow : Window
         _codexHologram = new NexusHologram { Width = 120, Height = 120, Margin = new Thickness(0, 0, 4, 0) };
         var pcts = comp.Select(c => (c.MinPct + c.MaxPct) / 2.0).ToList();
         _codexHologram.Show(r.Name, profile?.Class ?? "Metal", pcts);
+        if (!IsActive) _codexHologram.Pause();   // deactivation already happened - do not run under the game
         Grid.SetColumn(_codexHologram, 2);
         hg.Children.Add(_codexHologram);
 

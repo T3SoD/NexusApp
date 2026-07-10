@@ -47,7 +47,11 @@ public sealed class NexusHologram : FrameworkElement
         _wire = HologramGeometry.For(oreClass);
         _ring = HologramGeometry.ComputeRing(compositionPercentages, RingGapDeg);
         _clock ??= System.Diagnostics.Stopwatch.StartNew();
-        _shownAtMs = _clock.Elapsed.TotalMilliseconds;
+        // Motion.Reduced ("reduce animations"): back-date the draw-in origin so the ring
+        // reads as fully drawn on the very first static frame, instead of animating in.
+        _shownAtMs = Motion.Reduced
+            ? _clock.Elapsed.TotalMilliseconds - RingDrawInMs
+            : _clock.Elapsed.TotalMilliseconds;
         if (_state.Show())
         {
             Logger.Info($"[UI] Codex hologram: start ({oreName}, {oreClass})");
@@ -87,6 +91,10 @@ public sealed class NexusHologram : FrameworkElement
     {
         if (_hooked) return;
         _lastTicks = _clock?.ElapsedTicks ?? 0;
+        // Motion.Reduced contract (Motion.cs): ambient loops go static, so this control
+        // must not subscribe to the render loop at all - the static frame set up by
+        // Show()/Resume() is enough (mirrors the gating idiom in NexusBeamIcon.Start()).
+        if (Motion.Reduced) return;
         CompositionTarget.Rendering += OnFrame;
         _hooked = true;
     }
