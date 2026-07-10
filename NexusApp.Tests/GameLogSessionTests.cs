@@ -162,10 +162,8 @@ public class GameLogSessionTests
 
     private static int CountLogLines(string marker)
     {
-        var p = Logger.LogPath;
-        if (!File.Exists(p)) return 0;
         int n = 0;
-        foreach (var line in File.ReadAllLines(p)) if (line.Contains(marker)) n++;
+        foreach (var line in TestFiles.ReadSharedLines(Logger.LogPath)) if (line.Contains(marker)) n++;
         return n;
     }
 
@@ -208,9 +206,8 @@ public class GameLogSessionTests
         s.SetAutoMark(true);
         s.Ingest(Bp(marker));
 
-        var hits = File.Exists(UnmatchedBlueprintLog.LogPath)
-            ? File.ReadAllLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray()
-            : Array.Empty<string>();
+        var hits = TestFiles.ReadSharedLines(UnmatchedBlueprintLog.LogPath)
+            .Where(l => l.Contains(marker)).ToArray();
         Assert.Single(hits);
         Assert.Contains("| live |", hits[0]);
     }
@@ -228,9 +225,8 @@ public class GameLogSessionTests
             var s = Make(out _, "Bracket Cooler");
             s.ScanHistory(log);
 
-            var hits = File.Exists(UnmatchedBlueprintLog.LogPath)
-                ? File.ReadAllLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray()
-                : Array.Empty<string>();
+            var hits = TestFiles.ReadSharedLines(UnmatchedBlueprintLog.LogPath)
+                .Where(l => l.Contains(marker)).ToArray();
             Assert.Single(hits);
             Assert.Contains("| import scan |", hits[0]);
         }

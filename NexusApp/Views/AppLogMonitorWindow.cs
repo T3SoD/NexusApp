@@ -164,12 +164,14 @@ public sealed class AppLogMonitorWindow : Window
 
     private string BuildSnapshot()
     {
+        // Shared-mode reads: an exclusive read here would make a concurrent diagnostics append
+        // throw and silently drop its line (the writer never throws by design).
         string log;
-        try { log = File.Exists(Logger.LogPath) ? File.ReadAllText(Logger.LogPath) : "(no log file)"; }
+        try { log = ReadShared(Logger.LogPath) ?? "(no log file)"; }
         catch (Exception ex) { log = $"(could not read log: {ex.Message})"; }
 
         string? unmatched = null;
-        try { if (File.Exists(UnmatchedBlueprintLog.LogPath)) unmatched = File.ReadAllText(UnmatchedBlueprintLog.LogPath); }
+        try { unmatched = ReadShared(UnmatchedBlueprintLog.LogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
 
         var settings = new List<(string, string)>
@@ -187,6 +189,15 @@ public sealed class AppLogMonitorWindow : Window
         return DiagnosticSnapshot.Build(
             AppInfo.Version, GameData.Version, App.Data.MiningDataVersion,
             Environment.OSVersion.VersionString, settings, log, DateTime.Now, unmatched);
+    }
+
+    // Read a whole file without denying a concurrent writer (FileShare.ReadWrite); null if absent.
+    private static string? ReadShared(string path)
+    {
+        if (!File.Exists(path)) return null;
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var sr = new StreamReader(fs);
+        return sr.ReadToEnd();
     }
 
     private void CopySnapshot()

@@ -15,9 +15,7 @@ public class UnmatchedBlueprintLogTests
     private static string Unique(string stem) => stem + " " + Guid.NewGuid().ToString("N");
 
     private static string[] LinesWith(string marker) =>
-        File.Exists(UnmatchedBlueprintLog.LogPath)
-            ? File.ReadAllLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray()
-            : Array.Empty<string>();
+        TestFiles.ReadSharedLines(UnmatchedBlueprintLog.LogPath).Where(l => l.Contains(marker)).ToArray();
 
     [Fact]
     public void Record_WritesSelfContainedContextLine()
