@@ -18,19 +18,30 @@ public sealed class NexusHologram : FrameworkElement
     private const double RingDrawInMs = 600;
     private static readonly Color Stroke = Color.FromRgb(0xFF, 0xB2, 0x3E);   // MOBIGLAS amber
 
+    // Pens are compile-time-constant colors/widths, so they're built once and frozen
+    // instead of allocated every OnRender call.
+    private static readonly Pen RingPen = FrozenPen(0xB0, 2);
+    private static readonly Pen EdgePen = FrozenPen(0xE0, 1.4);
+
     private readonly HologramState _state = new();
     private HologramGeometry.Wireframe _wire = HologramGeometry.For("Metal");
     private HologramGeometry.RingSegment[] _ring = System.Array.Empty<HologramGeometry.RingSegment>();
-    private string _oreName = "";
     private double _yaw;
     private double _shownAtMs = -1;                // for the ring draw-in
+    private double _pausedAtMs;                    // _clock reading at the last Pause
     private System.Diagnostics.Stopwatch? _clock;
     private long _lastTicks;
     private bool _hooked;
 
+    public NexusHologram()
+    {
+        // The render event is a static hook (CompositionTarget.Rendering); a host that
+        // tears this control out of the tree without calling Stop() must not leak it.
+        Unloaded += (_, _) => Stop();
+    }
+
     public void Show(string oreName, string oreClass, IReadOnlyList<double> compositionPercentages)
     {
-        _oreName = oreName;
         _wire = HologramGeometry.For(oreClass);
         _ring = HologramGeometry.ComputeRing(compositionPercentages, RingGapDeg);
         _clock ??= System.Diagnostics.Stopwatch.StartNew();
@@ -47,6 +58,7 @@ public sealed class NexusHologram : FrameworkElement
     {
         if (!_state.Pause()) return;
         Logger.Info("[UI] Codex hologram: pause (window inactive)");
+        _pausedAtMs = _clock?.Elapsed.TotalMilliseconds ?? 0;
         Unhook();
     }
 
@@ -54,6 +66,11 @@ public sealed class NexusHologram : FrameworkElement
     {
         if (!_state.Resume()) return;
         Logger.Info("[UI] Codex hologram: resume");
+        // The clock keeps running while paused, so shift the draw-in origin forward by
+        // the paused duration - otherwise a Pause during the 600ms draw-in plus a later
+        // Resume snaps the ring straight to fully drawn.
+        if (_shownAtMs >= 0 && _clock is not null)
+            _shownAtMs += _clock.Elapsed.TotalMilliseconds - _pausedAtMs;
         Hook();
     }
 
@@ -96,22 +113,26 @@ public sealed class NexusHologram : FrameworkElement
         if (w <= 0 || h <= 0) return;
         var center = new Point(w / 2, h / 2);
         double radius = System.Math.Min(w, h) / 2 - 4;
+        if (radius <= 0) return;   // too small to draw; also guards ArcGeometry's Size(r, r)
 
         // Ring draw-in progress: 0..1 over RingDrawInMs from the last Show.
         double t = _clock is null || _shownAtMs < 0 ? 1
             : System.Math.Clamp((_clock.Elapsed.TotalMilliseconds - _shownAtMs) / RingDrawInMs, 0, 1);
         double ease = 1 - (1 - t) * (1 - t);      // ease-out quad, mirrors the mock
 
-        var ringPen = new Pen(new SolidColorBrush(Color.FromArgb(0xB0, Stroke.R, Stroke.G, Stroke.B)), 2);
-        ringPen.Freeze();
         foreach (var seg in _ring)
-            dc.DrawGeometry(null, ringPen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
+            dc.DrawGeometry(null, RingPen, ArcGeometry(center, radius, seg.StartDeg, seg.SweepDeg * ease));
 
-        var edgePen = new Pen(new SolidColorBrush(Color.FromArgb(0xE0, Stroke.R, Stroke.G, Stroke.B)), 1.4);
-        edgePen.Freeze();
         var pts = HologramGeometry.Project(_wire.Vertices, _yaw, Tilt, radius * 0.52, center);
         foreach (var edge in _wire.Edges)
-            dc.DrawLine(edgePen, pts[edge.A], pts[edge.B]);
+            dc.DrawLine(EdgePen, pts[edge.A], pts[edge.B]);
+    }
+
+    private static Pen FrozenPen(byte alpha, double width)
+    {
+        var pen = new Pen(new SolidColorBrush(Color.FromArgb(alpha, Stroke.R, Stroke.G, Stroke.B)), width);
+        pen.Freeze();
+        return pen;
     }
 
     private static StreamGeometry ArcGeometry(Point center, double r, double startDeg, double sweepDeg)
