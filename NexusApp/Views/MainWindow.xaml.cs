@@ -230,7 +230,7 @@ public partial class MainWindow : Window
         };
 
         if (page == "blueprints") InitBlueprintBrowse();
-        if (page == "reference") { BuildFilterPills(); BuildReferenceTree(); }
+        if (page == "reference") { BuildFilterPills(); BuildReferenceTree(staggerEntry: true); }
         if (page == "workorders") RebuildWorkOrderList();
         if (page == "command") InitCommandPage();
         if (page == "network") InitNetworkPage();
@@ -679,7 +679,40 @@ public partial class MainWindow : Window
     private Action? _deselectRefCard;   // resets the currently-selected resource card's chamfer visuals
     private readonly Dictionary<string, Action> _refSelectByName = new(StringComparer.OrdinalIgnoreCase);   // select a resource card by name
 
-    private void BuildReferenceTree()
+    private Dictionary<string, string>? _oreClassByName;   // ore -> Metal/Mineral/Gem ("" when unknown)
+
+    private string OreClass(string name)
+    {
+        _oreClassByName ??= _vm.AllResources.ToDictionary(
+            res => res.Name,
+            res => App.Data.GetMiningProfile(res.Name)?.Class ?? "",
+            StringComparer.OrdinalIgnoreCase);
+        return _oreClassByName.TryGetValue(name, out var c) ? c : "";
+    }
+
+    // Tiny static glyph, 10x10: diamond = Metal, three dots = Mineral, hexagon = Gem.
+    // Shapes and stroke come from the frozen codex-motion mock values.
+    private static FrameworkElement? ClassGlyph(string oreClass)
+    {
+        var amber = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xC0, 0xFF, 0xB2, 0x3E));
+        amber.Freeze();
+        string? data = oreClass.ToLowerInvariant() switch
+        {
+            "metal"   => "M 5,0 L 10,5 L 5,10 L 0,5 Z",
+            "gem"     => "M 2.5,0.7 L 7.5,0.7 L 10,5 L 7.5,9.3 L 2.5,9.3 L 0,5 Z",
+            "mineral" => "M 2,7 A 1.6,1.6 0 1 0 2,7.01 M 7,3 A 2,2 0 1 0 7,3.01 M 7.5,8 A 1.3,1.3 0 1 0 7.5,8.01",
+            _ => null,
+        };
+        if (data is null) return null;
+        return new System.Windows.Shapes.Path
+        {
+            Data = System.Windows.Media.Geometry.Parse(data),
+            Stroke = amber, StrokeThickness = 1.2, Width = 10, Height = 10,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
+        };
+    }
+
+    private void BuildReferenceTree(bool staggerEntry = false)
     {
         ReferenceList.Children.Clear();
         _deselectRefCard = null;
@@ -725,6 +758,19 @@ public partial class MainWindow : Window
             if (i == 0) selectFirst = select;
         }
         selectFirst?.Invoke();   // auto-select the first card (shows its detail)
+
+        if (staggerEntry)
+        {
+            CascadeIn(ReferenceList.Children, maxAnimated: 14);
+        }
+        else
+        {
+            // Filter/search rebuilds happen per keystroke (debounced) - a per-card stagger would
+            // be jank and noise, so the rebuilt list gets one quick settle fade instead.
+            ReferenceList.BeginAnimation(UIElement.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0.55, 1,
+                    System.TimeSpan.FromMilliseconds(120)));
+        }
     }
 
     private FrameworkElement BuildResourceCard(Resource r, out Action select)
@@ -739,14 +785,17 @@ public partial class MainWindow : Window
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var gem = new Border { Width = 11, Height = 11, CornerRadius = new CornerRadius(3), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         Grid.SetColumn(gem, 0); grid.Children.Add(gem);
+        var classGlyph = ClassGlyph(OreClass(r.Name));
+        if (classGlyph != null) { Grid.SetColumn(classGlyph, 1); grid.Children.Add(classGlyph); }
         var name = new TextBlock { Text = r.Name, FontSize = 13, Foreground = rb, FontFamily = headFont, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
-        Grid.SetColumn(name, 1); grid.Children.Add(name);
+        Grid.SetColumn(name, 2); grid.Children.Add(name);
         var rs = new TextBlock { Text = r.BaseRs > 0 ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        Grid.SetColumn(rs, 2); grid.Children.Add(rs);
+        Grid.SetColumn(rs, 3); grid.Children.Add(rs);
 
         var host = Hud.CardFrame(grid, out var frame, out _, chamfer: 8, padding: new Thickness(12, 9, 12, 9));
         host.Margin = new Thickness(0, 0, 8, 6);
