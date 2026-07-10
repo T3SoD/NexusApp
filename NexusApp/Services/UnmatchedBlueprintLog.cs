@@ -39,8 +39,15 @@ public static class UnmatchedBlueprintLog
                 }
 
                 var map = localizationEntries.HasValue ? $"map {localizationEntries.Value} entries" : "map not loaded";
-                File.AppendAllText(path,
-                    $"{Stamp()} | {source} | app {NexusApp.AppInfo.Version} | {map} | {rawName} | {fullLine.Trim()}{Environment.NewLine}");
+                var line = $"{Stamp()} | {source} | app {NexusApp.AppInfo.Version} | {map} | {rawName} | {fullLine.Trim()}{Environment.NewLine}";
+                // A concurrent reader (snapshot copy, external viewer) holding a read-share lock
+                // makes the append throw; one short retry keeps those entries from silently dropping.
+                try { File.AppendAllText(path, line); }
+                catch (IOException)
+                {
+                    System.Threading.Thread.Sleep(15);
+                    File.AppendAllText(path, line);
+                }
                 return true;
             }
         }
