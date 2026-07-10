@@ -12,7 +12,7 @@ public static class HologramGeometry
 {
     public readonly record struct Edge(int A, int B);
     public sealed record Wireframe(Point3D[] Vertices, Edge[] Edges);
-    public readonly record struct RingSegment(double StartDeg, double SweepDeg);
+    public readonly record struct RingSegment(double StartDeg, double SweepDeg, int SourceIndex);
 
     // Metal: elongated octahedron. Vertex/edge data frozen from the codex-motion mock.
     private static readonly Wireframe Metal = new(
@@ -72,16 +72,20 @@ public static class HologramGeometry
     /// 12 o'clock, values normalized so sweeps total 360 minus one gap per segment.</summary>
     public static RingSegment[] ComputeRing(IReadOnlyList<double> percentages, double gapDeg = 4.0)
     {
-        var parts = percentages.Where(p => p > 0).ToList();
+        // Carry the ORIGINAL index through the filter so a caller can identify the primary
+        // segment by source index rather than by position in the (filtered) result array -
+        // a zero-or-negative primary percentage must not silently promote a byproduct into
+        // its place.
+        var parts = percentages.Select((p, i) => (p, i)).Where(t => t.p > 0).ToList();
         if (parts.Count == 0) return System.Array.Empty<RingSegment>();
-        double sum = parts.Sum();
+        double sum = parts.Sum(t => t.p);
         double arc = 360.0 - parts.Count * gapDeg;
         var segs = new RingSegment[parts.Count];
         double cursor = -90.0 + gapDeg / 2.0;
         for (int i = 0; i < parts.Count; i++)
         {
-            double sweep = parts[i] / sum * arc;
-            segs[i] = new RingSegment(cursor, sweep);
+            double sweep = parts[i].p / sum * arc;
+            segs[i] = new RingSegment(cursor, sweep, parts[i].i);
             cursor += sweep + gapDeg;
         }
         return segs;
