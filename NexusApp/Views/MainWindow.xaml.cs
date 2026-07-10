@@ -59,6 +59,15 @@ public partial class MainWindow : Window
         BlueprintGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.Hologram, 46);
         WorkOrderGlyphHost.Content = Hud.AmbientGlyph(Hud.Ambient.OreConveyor, 38);
 
+        // The empty-state reticle spins only when motion is allowed; under Reduce
+        // Animations it reads as a static instrument.
+        if (!Motion.Reduced && ReticleRing.RenderTransform is System.Windows.Media.RotateTransform rt)
+        {
+            var spin = new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromSeconds(9))
+            { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever };
+            rt.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, spin);
+        }
+
         // Nav is the Wrist-OS app dock (mock #31): static line glyphs in chamfered dock tiles, styled in
         // GameTheme (DockTile). The old animated NavIco rail glyphs were retired with the rail.
         StartOsClock();

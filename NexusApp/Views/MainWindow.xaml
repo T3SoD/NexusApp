@@ -588,17 +588,6 @@
                                         <Ellipse x:Name="ReticleRing" Width="56" Height="56" Stroke="{DynamicResource CyanGlowBrush}" StrokeThickness="1.5"
                                                  StrokeDashArray="4 3" RenderTransformOrigin="0.5,0.5">
                                             <Ellipse.RenderTransform><RotateTransform Angle="0"/></Ellipse.RenderTransform>
-                                            <Ellipse.Triggers>
-                                                <EventTrigger RoutedEvent="Loaded">
-                                                    <BeginStoryboard>
-                                                        <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetName="ReticleRing"
-                                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                                             From="0" To="360" Duration="0:0:9" RepeatBehavior="Forever"/>
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </EventTrigger>
-                                            </Ellipse.Triggers>
                                         </Ellipse>
                                         <Ellipse Width="30" Height="30" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         <Border Width="1" Height="56" Background="{DynamicResource CyanDimBrush}" HorizontalAlignment="Center"/>
