@@ -1003,6 +1003,8 @@ public partial class MainWindow : Window
         return btn;
     }
 
+    private NexusHologram? _codexHologram;   // the one ambient element in the Codex dossier
+
     private void ShowResourceDetail(Resource r)
     {
         ReferenceDetailPanel.Children.Clear();
@@ -1019,6 +1021,7 @@ public partial class MainWindow : Window
         var hg = new Grid();
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        hg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // hologram column, filled in once comp is available below
         var ht = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
         nameRow.Children.Add(new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(4), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
@@ -1093,6 +1096,16 @@ public partial class MainWindow : Window
 
         // deposit composition - what this ore's own rock actually yields (datamined).
         var comp = App.Data.GetCompositionForResource(r.Name);
+
+        // The one ambient element: class crystal + composition ring (design spec 2026-07-09).
+        // comp may be empty for non-ship ores - the control renders crystal-only, no special casing.
+        _codexHologram?.Stop();
+        _codexHologram = new NexusHologram { Width = 120, Height = 120, Margin = new Thickness(0, 0, 4, 0) };
+        var pcts = comp.Select(c => (c.MinPct + c.MaxPct) / 2.0).ToList();
+        _codexHologram.Show(r.Name, profile?.Class ?? "Metal", pcts);
+        Grid.SetColumn(_codexHologram, 2);
+        hg.Children.Add(_codexHologram);
+
         if (comp.Count > 0)
         {
             var primary = comp.FirstOrDefault(c => c.IsPrimary);
@@ -1207,6 +1220,32 @@ public partial class MainWindow : Window
                 ReferenceDetailPanel.Children.Add(more);
                 ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {sorted.Count}", "Show fewer", more));
             }
+        }
+
+        CascadeIn(ReferenceDetailPanel.Children, maxAnimated: 8);
+    }
+
+    // Fade + rise the first few children in sequence - the MOBIGLAS dossier reveal.
+    // Capped so long dossiers do not animate below the fold.
+    private static void CascadeIn(UIElementCollection children, int maxAnimated)
+    {
+        int n = System.Math.Min(children.Count, maxAnimated);
+        for (int i = 0; i < n; i++)
+        {
+            if (children[i] is not FrameworkElement fe) continue;
+            var slide = new System.Windows.Media.TranslateTransform(0, 12);
+            fe.RenderTransform = slide;
+            fe.Opacity = 0;
+            var delay = System.TimeSpan.FromMilliseconds(i * 40);
+            var dur = System.TimeSpan.FromMilliseconds(200);
+            var ease = new System.Windows.Media.Animation.QuadraticEase
+            { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur)
+            { BeginTime = delay, EasingFunction = ease };
+            var rise = new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur)
+            { BeginTime = delay, EasingFunction = ease };
+            fe.BeginAnimation(UIElement.OpacityProperty, fade);
+            slide.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, rise);
         }
     }
 
