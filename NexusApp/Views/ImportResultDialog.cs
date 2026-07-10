@@ -109,6 +109,7 @@ public sealed class ImportResultDialog : Window
         outer.Children.Add(footer);
 
         Content = outer;
+        DialogMotion.Attach(this);
     }
 
     private static TextBlock SectionLabel(string text) => new()

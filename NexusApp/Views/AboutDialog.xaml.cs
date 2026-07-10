@@ -349,7 +349,7 @@ public class AboutDialog : Window
     {
         Title = "About Nexus";
         Width = 600; Height = 660;
-        PreviewKeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
+        PreviewKeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Escape) DialogMotion.Close(this, base.Close); };
         Background = (Brush)Application.Current.FindResource("BgBrush");
         Foreground = (Brush)Application.Current.FindResource("FgBrush");
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -550,11 +550,12 @@ public class AboutDialog : Window
             Padding = new Thickness(20, 8, 20, 8),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
-        closeBtn.Click += (s, e) => Close();
+        closeBtn.Click += (s, e) => DialogMotion.Close(this, base.Close);
         footer.Child = closeBtn;
         outer.Children.Add(footer);
 
         Content = outer;
+        DialogMotion.Attach(this);
     }
 
     private static void AddBadge(Panel parent, string text)
