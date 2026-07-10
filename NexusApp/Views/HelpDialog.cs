@@ -298,6 +298,7 @@ public class HelpDialog : Window
 
         BuildTopicRows();
         SelectTopic(Topics.OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase).First());
+        DialogMotion.Attach(this);
     }
 
     private UIElement BuildLeftPane()
@@ -608,7 +609,7 @@ public class HelpDialog : Window
             Padding = new Thickness(20, 8, 20, 8),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
-        closeBtn.Click += (_, __) => Close();
+        closeBtn.Click += (_, __) => DialogMotion.Close(this, base.Close);
         Grid.SetColumn(closeBtn, 0);
 
         var tutorialBtn = new Button
@@ -619,7 +620,7 @@ public class HelpDialog : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             ToolTip = "Replay the guided welcome tour",
         };
-        tutorialBtn.Click += (_, __) => { TutorialRequested = true; Close(); };
+        tutorialBtn.Click += (_, __) => { TutorialRequested = true; DialogMotion.Close(this, base.Close); };
         Grid.SetColumn(tutorialBtn, 2);
 
         row.Children.Add(closeBtn);
@@ -632,6 +633,6 @@ public class HelpDialog : Window
     {
         if (e.Key != Key.Escape) return;
         if (!string.IsNullOrEmpty(_search.Text)) { _search.Clear(); _search.Focus(); }
-        else Close();
+        else DialogMotion.Close(this, base.Close);
     }
 }

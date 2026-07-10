@@ -75,5 +75,6 @@ public sealed class GridExportDialog : Window
         }
 
         Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        DialogMotion.Attach(this);
     }
 }

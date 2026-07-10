@@ -40,6 +40,7 @@ public class ShoppingDialog : Window
 
         Content = outer;
         Rebuild();
+        DialogMotion.Attach(this);
     }
 
     private void Rebuild()

@@ -67,6 +67,7 @@ public sealed class WorkOrderEditorDialog : Window
         root.Children.Add(actions);
 
         Content = root;
+        DialogMotion.Attach(this);
     }
 
     private static Button MakeButton(string text, string styleKey) => new()
