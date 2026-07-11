@@ -312,6 +312,17 @@ public partial class MainViewModel : ObservableObject
         if (item != null) ShoppingList.Remove(item);
     }
 
+    // Cart button on the overlay's scan result cards: one command that flips between
+    // add/remove depending on current cart membership, so the XAML only needs a single
+    // Command binding. Both branches mutate ShoppingList, which drives RefreshCartStatus
+    // and thus IsInCart on the next CollectionChanged pass - no extra INPC needed here.
+    [RelayCommand]
+    private void ToggleCart(MatchResult m)
+    {
+        if (m.IsInCart) RemoveFromShopping(m.Resource.Name);
+        else AddResourceToShopping(m.Resource);
+    }
+
     [RelayCommand]
     private void ClearShopping()
     {
