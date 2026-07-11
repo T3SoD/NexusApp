@@ -69,6 +69,7 @@ public partial class OverlayWindow : Window
         RebuildHistory();
 
         _vm.WorkOrders.CollectionChanged += (s, e) => { if (_activeTab == "orders") RebuildOrdersPanel(); };
+        _vm.ShoppingList.CollectionChanged += (s, e) => { if (_activeTab == "shopping") RebuildShoppingPanel(); };
 
         BuildOverlayHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
@@ -151,8 +152,15 @@ public partial class OverlayWindow : Window
         if (IsVisible) { _cursorPoll.Start(); UpdateCursorPassThrough(); }
     }
 
-    private void UpdateCursorPassThrough() =>
-        SetPassThrough(App.Settings.Current.OverlayPassThroughWhenCursorHidden && IsCursorHidden());
+    private void UpdateCursorPassThrough()
+    {
+        bool passThrough = App.Settings.Current.OverlayPassThroughWhenCursorHidden && IsCursorHidden();
+        SetPassThrough(passThrough);
+        // Mirror the same decision onto the Refinery Tracker flyout: it is a second Topmost
+        // interactive window anchored to the overlay, and was otherwise never click-through
+        // when the game hides the cursor (issue A4).
+        if (_woFlyout != null && _woFlyout.IsVisible) _woFlyout.SetPassThrough(passThrough);
+    }
 
     // Toggle WS_EX_TRANSPARENT so the OS routes the mouse to the game below when true. No-op when the
     // desired state already matches, so the [WIN] log records only real transitions.
@@ -495,7 +503,13 @@ public partial class OverlayWindow : Window
     private void OverlayRsInput_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { RunScanFromInput(); OverlayRsInput.Clear(); }
-        if (e.Key == Key.Escape) Hide();
+        if (e.Key == Key.Escape)
+        {
+            // Escape used to Hide() the whole overlay - jarring mid-scan. Now it only tames the
+            // input: clear typed text first, or (if already empty) just drop keyboard focus.
+            if (OverlayRsInput.Text.Length > 0) OverlayRsInput.Clear();
+            else { Keyboard.ClearFocus(); Focus(); }
+        }
     }
 
     private void OverlayScan_Click(object sender, RoutedEventArgs e) => RunScanFromInput();
@@ -955,7 +969,7 @@ public partial class OverlayWindow : Window
 
     // ── Server / Shard section (inside the HUB's SERVER / SHARD chamfer panel) ──────
     // Amber title, then the current shard (cyan dot + label, raw id beneath) and up to 3 recent shards
-    // (dot + region/instance, relative join time on the right) - the mock's SERVER / SHARD panel. The
+    // (dot + region/instance, absolute local join time on the right) - the mock's SERVER / SHARD panel. The
     // ChamferPanel host supplies the card frame, so this no longer draws its own border. Renders only
     // shard metadata, never the player.
     private void RebuildShardPanel()
@@ -1014,7 +1028,7 @@ public partial class OverlayWindow : Window
                 row.Children.Add(ShardRow(ShardDot(dim), $"{s.Region} . {s.Instance}", dim, null, 10, FontWeights.Normal));
                 var ago = new TextBlock
                 {
-                    Text = Ago(s.JoinedAt), FontFamily = monoFont, FontSize = 9, Foreground = dim,
+                    Text = "joined " + s.JoinedAt.ToLocalTime().ToString("HH:mm"), FontFamily = monoFont, FontSize = 9, Foreground = dim,
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 Grid.SetColumn(ago, 1);
@@ -1044,18 +1058,6 @@ public partial class OverlayWindow : Window
         if (font != null) tb.FontFamily = font;
         row.Children.Add(tb);
         return row;
-    }
-
-    // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
-    // Recomputed on each panel rebuild (tab show / shard change), not on a live ticking timer.
-    private static string Ago(DateTime utcWhen)
-    {
-        var span = DateTime.UtcNow - utcWhen;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-        if (span.TotalMinutes < 1) return "just now";
-        if (span.TotalHours   < 1) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays    < 1) return $"{(int)span.TotalHours}h ago";
-        return $"{(int)span.TotalDays}d ago";
     }
 
     // ── HAULING tab (Cargo Hauling glance) ──────────────────────────────────────
