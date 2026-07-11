@@ -106,6 +106,7 @@ public partial class OverlayWindow : Window
         // Contract scan/box are shared state: re-sync the contract toggle + box switch/LED whenever the
         // main Cargo Hauling page (or anything else) flips them, so the two surfaces never drift.
         App.ContractScan.RunningChanged += SyncContractFromShared;
+        App.ContractScan.StageChanged += OnContractStageChanged;   // refresh the HAULING "last scan: ..." status line
         App.ContractBoxVisibilityChanged += OnContractBoxShared;
         _contractBoxVisible = App.ContractBoxVisible;   // seed from shared state so the switch isn't stale on first open
 
@@ -359,6 +360,7 @@ public partial class OverlayWindow : Window
     // yellow contract indicator, never the OcrService / magenta _scanIndicator.
     private Border? _haulScanSwTrack, _haulScanSwKnob, _haulBoxSwTrack, _haulBoxSwKnob;
     private FrameworkElement? _haulScanSwitchPair, _haulBoxSwitchPair;
+    private TextBlock? _haulScanStatus;   // dim mono "last scan: ..." line under the toggles
 
     private void BuildHaulingControls()
     {
@@ -376,8 +378,40 @@ public partial class OverlayWindow : Window
         _haulBoxSwitchPair = SwitchPair(_haulBoxSwTrack, "Show/Hide contract detection box", ToggleContractBoxSwitch, SyncHaulingControls);
         HaulingControlBar.Children.Add(_haulBoxSwitchPair);
 
+        // Dim mono status line under the toggles: the contract scanner's last pipeline stage in plain
+        // words (a coarse stage token only - the raw OCR text / contractor name never reaches the UI).
+        // Lives in the fixed strip (parent StackPanel), OUTSIDE HaulingList so a rebuild never clears it.
+        if (_haulScanStatus == null && HaulingControlBar.Parent is Panel strip)
+        {
+            _haulScanStatus = new TextBlock
+            {
+                Text = ContractStageText.For(App.ContractScan.LastStage),
+                FontFamily = (FontFamily)FindResource("MonoFont"),
+                FontSize = 10,
+                Foreground = (Brush)FindResource("FgDimBrush"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(2, 6, 0, 0),
+            };
+            strip.Children.Insert(strip.Children.IndexOf(HaulingControlBar) + 1, _haulScanStatus);
+        }
+
         SyncHaulingControls();
     }
+
+    // Push the scanner's current coarse stage into the dim status line. Cheap (a string set), so both
+    // the live StageChanged handler and a hauling-tab rebuild call it. No logging: this only mirrors the
+    // existing [CONTRACT] pipeline breadcrumbs.
+    private void RefreshHaulScanStatus()
+    {
+        if (_haulScanStatus != null)
+            _haulScanStatus.Text = ContractStageText.For(App.ContractScan.LastStage);
+    }
+
+    // The contract scanner's coarse stage changed (timer thread): marshal to the UI and refresh the
+    // status line while the HAULING tab is on screen (mirrors OnHaulsChanged's tab guard; a rebuild on
+    // tab entry catches up anything missed off-tab).
+    private void OnContractStageChanged()
+        => Dispatcher.Invoke(() => { if (_activeTab == "hauling") RefreshHaulScanStatus(); });
 
     // Auto-scan contracts is opt-in; flipping it starts/stops the contract scanner, then persists the choice.
     private void ToggleContractScanSwitch()
@@ -913,6 +947,7 @@ public partial class OverlayWindow : Window
         App.Shards.Changed -= OnShardsChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
+        App.ContractScan.StageChanged -= OnContractStageChanged;
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         base.OnClosed(e);
@@ -1106,6 +1141,7 @@ public partial class OverlayWindow : Window
     // per-contract CONTRACTS cards (identity + payout) in a collapsible section so the plan stays glanceable.
     private void RebuildHaulingPanel()
     {
+        RefreshHaulScanStatus();   // catch the status line up on tab entry / haul change (fixed strip, not cleared)
         HaulingList.Children.Clear();
 
         var accent = (Brush)FindResource("AccentBrush");
@@ -1353,6 +1389,11 @@ public partial class OverlayWindow : Window
                 card.Children.Add(new TextBlock { Text = desc.Length == 0 ? $"{role}:" : $"{role}: {desc}", FontSize = 11, Foreground = fg, Margin = new Thickness(8, 3, 0, 0), TextWrapping = TextWrapping.Wrap });
             }
         }
+
+        // Max container size from the contract OCR (int?, null = not stated in the captured text): the
+        // biggest single box this haul allows, same dim style as the cargo/route lines above.
+        if (h.ContainerCap is > 0)
+            card.Children.Add(HaulRow($"max box {h.ContainerCap.Value} SCU", dim, 8));
 
         return card;
     }
