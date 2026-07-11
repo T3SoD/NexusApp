@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using NexusApp.Models;
 using NexusApp.Services;
 
@@ -19,6 +20,11 @@ public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
+
+    // Row-insert highlight identity: haul id + leg/objective key, tracked across rebuilds so the
+    // one-shot flash only ever plays once per row, on the Refresh() where it first appears.
+    private readonly HashSet<string> _seenRowKeys = new();
+    private bool _hasSeededOnce;   // set true after the very first Refresh(); that call never highlights
 
     // Chip palette shared with the rest of the HUD (matches Hud.StateBar / Hud.StatusChip tints).
     private static readonly Color _amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
@@ -45,6 +51,11 @@ public sealed class HaulingPage : UserControl
     {
         _body.Children.Clear();
 
+        // The very first Refresh() (page construction) only seeds row identity - no light show on
+        // page open. Later Refresh() calls highlight newly inserted rows, but only while this page
+        // is actually the one visible - background rebuilds while parked on another module never flash.
+        bool allowHighlight = _hasSeededOnce && IsVisible && !Motion.Reduced;
+
         // Clear-all lives in the header (built once); only show it when there's something to clear.
         if (_clearBtn is not null)
             _clearBtn.Visibility = App.Hauls.AllHauls.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -52,11 +63,13 @@ public sealed class HaulingPage : UserControl
         if (App.Hauls.AllHauls.Count == 0)
         {
             _body.Children.Add(Placeholder("No active hauls. Accept a hauling contract in-game."));
+            _hasSeededOnce = true;
             return;
         }
 
-        RenderActive();
+        RenderActive(allowHighlight);
         RenderBottom();
+        _hasSeededOnce = true;
     }
 
     // -- layout --------------------------------------------------------------------
@@ -99,7 +112,7 @@ public sealed class HaulingPage : UserControl
 
     // -- active hauls --------------------------------------------------------------
 
-    private void RenderActive()
+    private void RenderActive(bool allowHighlight)
     {
         var active = App.Hauls.ActiveHauls;
         _body.Children.Add(SectionHeader($"Active hauls · {active.Count}"));
@@ -112,11 +125,11 @@ public sealed class HaulingPage : UserControl
         // Two-up card grid (the mock's grid2). Per-card margins create the gutters.
         var grid = new UniformGrid { Columns = 2 };
         foreach (var h in active)
-            grid.Children.Add(ActiveHaulCard(h));
+            grid.Children.Add(ActiveHaulCard(h, allowHighlight));
         _body.Children.Add(grid);
     }
 
-    private UIElement ActiveHaulCard(Haul h)
+    private UIElement ActiveHaulCard(Haul h, bool allowHighlight)
     {
         var inner = new StackPanel();
 
@@ -178,18 +191,22 @@ public sealed class HaulingPage : UserControl
             inner.Children.Add(new Border { Height = 6 });
 
         if (h.ContractObjectives.Count > 0)
-            foreach (var o in h.ContractObjectives)
-                inner.Children.Add(OcrObjectiveRow(o));
+        {
+            for (int i = 0; i < h.ContractObjectives.Count; i++)
+                inner.Children.Add(OcrObjectiveRow(h.MissionId, i, h.ContractObjectives[i], allowHighlight));
+        }
         else
+        {
             foreach (var leg in h.Legs)
-                inner.Children.Add(LegRow(leg));
+                inner.Children.Add(LegRow(h.MissionId, leg, allowHighlight));
+        }
 
         var card = Hud.Panel(inner, brackets: true, padding: new Thickness(14, 12, 14, 12));
         card.Margin = new Thickness(0, 0, 10, 10);
         return card;
     }
 
-    private UIElement LegRow(HaulLeg leg)
+    private UIElement LegRow(string missionId, HaulLeg leg, bool allowHighlight)
     {
         var role = leg.Role == HaulRole.Pickup ? "Collect" : "Deliver";
 
@@ -216,6 +233,11 @@ public sealed class HaulingPage : UserControl
             TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(tb, 1); grid.Children.Add(tb);
+
+        // Row identity = haul id + the leg's own objective id (already leg-indexed); highlight only
+        // the first time this key is seen, and only when the caller says it is allowed to.
+        var key = $"{missionId}|{leg.ObjectiveId}";
+        if (_seenRowKeys.Add(key) && allowHighlight) HighlightRow(grid);
         return grid;
     }
 
@@ -234,7 +256,7 @@ public sealed class HaulingPage : UserControl
         return sb.ToString();
     }
 
-    private UIElement OcrObjectiveRow(ContractObjective o)
+    private UIElement OcrObjectiveRow(string missionId, int index, ContractObjective o, bool allowHighlight)
     {
         // OCR objectives are contract targets (no completion state), so the marker is a static teal pip.
         var grid = new Grid { Margin = new Thickness(2, 6, 0, 0) };
@@ -253,7 +275,32 @@ public sealed class HaulingPage : UserControl
             TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(tb, 1); grid.Children.Add(tb);
+
+        // OCR objectives carry no id of their own, so identity falls back to the haul id + the
+        // objective's position in the list (its "leg index" equivalent - the list is replaced
+        // wholesale on each OCR pass, but existing indices keep the same slot).
+        var key = $"{missionId}|obj{index}";
+        if (_seenRowKeys.Add(key) && allowHighlight) HighlightRow(grid);
         return grid;
+    }
+
+    // One-shot row-insert highlight: a per-row SolidColorBrush clone (never a shared/frozen resource)
+    // fades from amber #FFB23E at 20% alpha to transparent, 400ms, ease-out - mirrors MainWindow's
+    // FlashBorder one-shot idiom. FillBehavior.Stop + a transparent resting base value means the
+    // background reads as plain once the flash ends.
+    private static void HighlightRow(Panel row)
+    {
+        var resting = Color.FromArgb(0x00, 0xFF, 0xB2, 0x3E);
+        var brush = new SolidColorBrush(resting);
+        row.Background = brush;
+        var anim = new ColorAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(Motion.FlashMs),
+            FillBehavior = FillBehavior.Stop,
+        };
+        anim.KeyFrames.Add(new EasingColorKeyFrame(Color.FromArgb(0x33, 0xFF, 0xB2, 0x3E), KeyTime.FromPercent(0.0)));
+        anim.KeyFrames.Add(new EasingColorKeyFrame(resting, KeyTime.FromPercent(1.0)) { EasingFunction = Motion.SlideOut });
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
     }
 
     // -- bottom row: consolidation table (left) + finished hauls (right) -----------

@@ -144,8 +144,22 @@ public sealed class NetworkPage : UserControl
             InteractionLog.Nav($"Blueprint Network: {label}");
             RebuildSubTabs();
             RenderContent();
+            SettleHostFade();
         };
         return border;
+    }
+
+    // Sub-tab switch settles the freshly swapped content with a quiet fade (120ms, opacity
+    // 0.55 -> 1) - the same idiom as MainWindow's SettleScanResults / Codex filter-rebuild settle.
+    private void SettleHostFade()
+    {
+        if (Motion.Reduced) return;
+        _host.BeginAnimation(OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0.55, 1, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+                { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
+            });
     }
 
     // ── group switcher ──────────────────────────────────────────────────────────
