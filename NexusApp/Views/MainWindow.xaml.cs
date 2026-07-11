@@ -2080,16 +2080,19 @@ public partial class MainWindow : Window
         tb.Text = n == 1 ? "1 owned" : $"{n} owned";
     }
 
-    private double _ownedCountShown = double.NaN;   // last value actually painted; roll animates from here
+    private double _ownedCountShown = double.NaN;   // last roll target; used only for the no-op skip below
 
     private void UpdateOwnedCount()
     {
         var n = App.Settings.OwnedBlueprintCount;
 
         // First paint, or reduced motion: snap straight to the count - nothing to roll from.
+        // The base value is stored too, so a later From-less roll hands off from here rather
+        // than from the attached property's 0.0 default.
         if (Motion.Reduced || double.IsNaN(_ownedCountShown))
         {
             BpOwnedCount.BeginAnimation(OwnedCountCurrentProperty, null);
+            BpOwnedCount.SetValue(OwnedCountCurrentProperty, (double)n);
             BpOwnedCount.Text = n == 1 ? "1 owned" : $"{n} owned";
             _ownedCountShown = n;
             return;
@@ -2097,7 +2100,10 @@ public partial class MainWindow : Window
 
         if (n == _ownedCountShown) return;   // no change - do not restart the roll
 
-        var roll = new System.Windows.Media.Animation.DoubleAnimation(_ownedCountShown, n, System.TimeSpan.FromMilliseconds(300))
+        // No explicit From: WPF's snapshot-and-replace then continues from the LIVE animated
+        // value, so a retrigger mid-roll keeps rolling smoothly instead of snapping to the
+        // previous target first.
+        var roll = new System.Windows.Media.Animation.DoubleAnimation(n, System.TimeSpan.FromMilliseconds(300))
         { EasingFunction = Motion.Settle };
         BpOwnedCount.BeginAnimation(OwnedCountCurrentProperty, roll);
         _ownedCountShown = n;
