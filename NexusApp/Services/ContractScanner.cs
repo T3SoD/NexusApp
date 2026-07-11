@@ -20,6 +20,14 @@ public sealed class ContractScanner : IDisposable
     /// <summary>Raised when the scanner starts or stops, so every surface's toggle can re-sync.</summary>
     public event Action? RunningChanged;
 
+    /// <summary>Raised when the COARSE last-scan stage changes, so a status line can re-sync.</summary>
+    public event Action? StageChanged;
+
+    /// <summary>Coarse token for the most recent scan outcome (null before the first scan). One of
+    /// "unavail" | "noregion" | "notext" | "noanchor" | "parsed". The parsed contractor name is
+    /// deliberately dropped here so it never leaves the scanner (PII posture).</summary>
+    public string? LastStage { get; private set; }
+
     public bool IsRunning => _running;
 
     public ContractScanner(ContractOcrService ocr)
@@ -100,6 +108,18 @@ public sealed class ContractScanner : IDisposable
         else { state  = "parsed:" + ContractParser.NormalizeTitle(d.ContractedBy);
                detail = $"parsed contractor '{d.ContractedBy}' reward {d.Reward} objectives {d.Objectives.Count} " +
                         $"containerCap {(d.ContainerCap.HasValue ? d.ContainerCap.Value + " SCU" : "not stated in captured text")}"; }
+
+        // Expose a COARSE stage token to any status surface. The parsed variant carries the contractor
+        // name, so strip it here: LastStage never leaves with player-adjacent text (PII posture). Deduped
+        // on LastStage itself (its own field, separate from the _lastDiag log dedup below) so the event
+        // fires once per state change, not per tick. This runs before the log-dedup early return so the
+        // token stays live even when the log line is being suppressed.
+        var stage = state.StartsWith("parsed") ? "parsed" : state;
+        if (stage != LastStage)
+        {
+            LastStage = stage;
+            StageChanged?.Invoke();
+        }
 
         // Dedup on the COARSE state (not the noisy per-frame text) so a stable panel logs one line per
         // state change, not one per tick - otherwise OCR jitter floods nexus.log past its rotation cap.
