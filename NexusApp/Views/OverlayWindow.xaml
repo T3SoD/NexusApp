@@ -436,6 +436,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -445,9 +446,12 @@
                             Padding="0,12" Margin="10,12,10,0"
                             Click="WorkOrderToggle_Click"/>
 
-                    <StackPanel x:Name="OrdersSummaryPanel" Grid.Row="1" Margin="10,14,10,0"/>
+                    <!-- E2 quick-add: "+ Quick order" trigger + inline unfold form, built once in code-behind. -->
+                    <StackPanel x:Name="QuickAddHost" Grid.Row="1" Margin="10,10,10,0"/>
 
-                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <StackPanel x:Name="OrdersSummaryPanel" Grid.Row="2" Margin="10,14,10,0"/>
+
+                    <Grid Grid.Row="3" Margin="0,8,0,0">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="OrdersPanelItems" Margin="10,0"/>
                         </ScrollViewer>
