@@ -253,8 +253,9 @@ public partial class MainWindow : Window
         if (page == "blueprints") InitBlueprintBrowse();
         if (page == "reference") { BuildFilterPills(); BuildReferenceTree(staggerEntry: true); }
         if (page != "reference") _codexHologram?.Stop();   // leaving (or never on) the Codex - stop the ambient loop
+        if (page != "command") _commandPage?.ResetEntrance();   // leaving (or never on) Operations - clear the entrance flag so it replays next open
         if (page == "workorders") RebuildWorkOrderList();
-        if (page == "command") InitCommandPage();
+        if (page == "command") { InitCommandPage(); _commandPage?.PlayEntrance(); }
         if (page == "network") InitNetworkPage();
         if (page == "hauling") InitHaulingPage();
         if (page == "planner") InitPlannerPage();
