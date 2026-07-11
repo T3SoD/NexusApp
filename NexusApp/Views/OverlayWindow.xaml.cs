@@ -138,6 +138,22 @@ public partial class OverlayWindow : Window
     private System.Windows.Threading.DispatcherTimer? _cursorPoll;
     private bool _passThrough;
 
+    // Two-tap destructive-action guards for the HAULING tab (Clear all + per-card x). A Button.Click
+    // handler arms via TwoTapConfirm.Tap and registers its revert here; this list is polled from the
+    // existing 150ms cursor-poll tick below (UpdateCursorPassThrough) instead of a dedicated timer, per
+    // the no-new-timers constraint. Once IsArmed(now) goes false for an entry, its revert runs once and
+    // the entry drops off the list.
+    private readonly List<(TwoTapConfirm Confirm, Action Revert)> _armedConfirms = new();
+
+    // Solid red "Sure?" fill for an armed two-tap confirm (mock value, not the softer DangerBrush text color).
+    private static readonly SolidColorBrush ArmedConfirmBrush = MakeFrozenBrush(0xE5, 0x48, 0x4D);
+    private static SolidColorBrush MakeFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -163,6 +179,22 @@ public partial class OverlayWindow : Window
         // interactive window anchored to the overlay, and was otherwise never click-through
         // when the game hides the cursor (issue A4).
         if (_woFlyout != null && _woFlyout.IsVisible) _woFlyout.SetPassThrough(passThrough);
+
+        PollArmedConfirms();
+    }
+
+    // Revert any armed two-tap confirm ("Sure?") whose window has lapsed without a second tap, restoring
+    // its resting visual. Piggybacks this tick rather than a dedicated timer (no new timers).
+    private void PollArmedConfirms()
+    {
+        if (_armedConfirms.Count == 0) return;
+        var now = DateTime.UtcNow;
+        for (int i = _armedConfirms.Count - 1; i >= 0; i--)
+        {
+            if (_armedConfirms[i].Confirm.IsArmed(now)) continue;
+            _armedConfirms[i].Revert();
+            _armedConfirms.RemoveAt(i);
+        }
     }
 
     // Toggle WS_EX_TRANSPARENT so the OS routes the mouse to the game below when true. No-op when the
@@ -1086,6 +1118,10 @@ public partial class OverlayWindow : Window
         var active = App.Hauls.ActiveHauls;
 
         // Compact "Clear all" affordance, shown whenever there is anything to clear (active or finished).
+        // Two-tap guarded (destructive): the first click arms ("Sure?" + solid red) instead of clearing
+        // outright, and only a second click inside the confirm window actually clears. An unconfirmed
+        // arm reverts on its own via the cursor-poll tick (PollArmedConfirms above), so no timer is
+        // started here.
         Button? ClearAllButton()
         {
             if (App.Hauls.AllHauls.Count == 0) return null;
@@ -1096,7 +1132,20 @@ public partial class OverlayWindow : Window
                 Padding = new Thickness(8, 2, 8, 2), Cursor = Cursors.Hand,
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right,
             };
-            b.Click += (_, __) => App.Hauls.ClearAll();   // Changed -> OnHaulsChanged rebuilds
+            void RestClearAll() { b.Content = "Clear all"; b.Background = cardBg; b.Foreground = accent; }
+            var confirm = new TwoTapConfirm(TimeSpan.FromSeconds(3), () =>
+            {
+                InteractionLog.Click("clear all hauls (confirmed)", b);
+                App.Hauls.ClearAll();   // Changed -> OnHaulsChanged rebuilds
+            });
+            b.Click += (_, __) =>
+            {
+                if (confirm.Tap(DateTime.UtcNow))
+                {
+                    b.Content = "Sure?"; b.Background = ArmedConfirmBrush; b.Foreground = Brushes.White;
+                    _armedConfirms.Add((confirm, RestClearAll));
+                }
+            };
             return b;
         }
 
@@ -1254,8 +1303,24 @@ public partial class OverlayWindow : Window
             Grid.SetColumn(prog, 1); titleGrid.Children.Add(prog);
         }
 
+        // Two-tap guarded (destructive): the "x" morphs to "Sure?" (solid red) on the first click; a
+        // second click inside the window removes the card. Same pattern as ClearAllButton above,
+        // reverted by the shared cursor-poll tick (PollArmedConfirms) rather than a new timer.
         var deleteBtn = new Button { Content = "x", FontFamily = mono, FontSize = 13, FontWeight = FontWeights.Bold, Foreground = dim, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(6, 0, 6, 0), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
-        deleteBtn.Click += (_, __) => App.Hauls.Remove(missionId);   // Changed -> OnHaulsChanged rebuilds
+        void RestDelete() { deleteBtn.Content = "x"; deleteBtn.Background = Brushes.Transparent; deleteBtn.Foreground = dim; }
+        var deleteConfirm = new TwoTapConfirm(TimeSpan.FromSeconds(3), () =>
+        {
+            InteractionLog.Click("remove haul (confirmed)", deleteBtn);
+            App.Hauls.Remove(missionId);   // Changed -> OnHaulsChanged rebuilds
+        });
+        deleteBtn.Click += (_, __) =>
+        {
+            if (deleteConfirm.Tap(DateTime.UtcNow))
+            {
+                deleteBtn.Content = "Sure?"; deleteBtn.Background = ArmedConfirmBrush; deleteBtn.Foreground = Brushes.White;
+                _armedConfirms.Add((deleteConfirm, RestDelete));
+            }
+        };
         Grid.SetColumn(deleteBtn, 2); titleGrid.Children.Add(deleteBtn);
         card.Children.Add(titleGrid);
 
