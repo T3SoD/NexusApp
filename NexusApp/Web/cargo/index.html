@@ -196,6 +196,23 @@ controls.minDistance = 5; controls.maxDistance = 120;
 controls.maxPolarAngle = Math.PI*0.49;
 controls.target.set(0, 1.8, 0);
 
+// Camera reframe: snap the first scene of a run (and every scene under reduced motion); otherwise
+// hand a 350ms ease-out lerp of position + orbit target to the animate() loop. The caller still does
+// all the frustum/distance/fog math (see buildScene); only the position/target application is tweened.
+function reframeCamera(pos, target){
+  if (REDUCED || !hasFramedOnce){
+    camera.position.copy(pos); controls.target.copy(target);
+    camera.updateProjectionMatrix(); controls.update();
+    camTween = null;   // a snap also cancels any tween still in flight (e.g. reduced toggled mid-tween)
+    return;
+  }
+  camTween = { start: clock.getElapsedTime(), ms: 350,
+               fromP: camera.position.clone(), toP: pos.clone(),
+               fromT: controls.target.clone(), toT: target.clone() };
+}
+// Any user orbit/zoom cancels an in-flight camera tween so input always wins (interruptible).
+controls.addEventListener('start', () => { camTween = null; });
+
 // Grid Studio only (owner dev tool): W/A/S/D pan the camera up/left/down/right in screen space.
 // Gated on studioMode so the shipped Cargo Planner stays pure mouse-driven.
 let studioMode = false;
@@ -235,6 +252,17 @@ let root = new THREE.Group(); worldGroup.add(root);
 let tierGroups = {}, tierKeys = [], connectors = [];
 let GW = 8, GD = 4, GH = 4;
 let lastDims = '';
+
+// ---- motion state (payload-driven) ----
+// REDUCED mirrors the payload's reduced-motion flag: when set the camera snaps and containers
+// appear at full opacity/scale. hasFramedOnce keeps the first scene a hard snap (later ship
+// changes tween). camTween/boxTweens are the in-flight animations the animate() loop advances.
+let REDUCED = false;
+let hasFramedOnce = false;
+let camTween = null;
+let boxTweens = [];
+let lastBoxSig = null;   // count + total SCU of the last rendered box set; guards re-materialize
+function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
 
 // ---- blueprint backdrop (02): floor grid + faint schematic walls ----
 function bpGrid(size, div, color, op){
@@ -295,6 +323,21 @@ function addBox(scu, cx, cz, cy, w, d, h){
   const cl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(px,0,pz), new THREE.Vector3(px,cy,pz)]),
     new THREE.LineBasicMaterial({ color:0x7FE9E0, transparent:true, opacity:0 }));
   root.add(cl); connectors.push({ line:cl, tier, px, pz, baseY:cy });
+  return mesh;
+}
+
+// Start a container's materialize: it grows from opacity 0 / scale 0.9 to its resting look over
+// 200ms ease-out, offset by a per-box stagger (capped at index 20). An opaque resting material is
+// made transparent only for the tween and restored on finish, so depth sorting is not degraded.
+function startBoxMaterialize(mesh, i){
+  const mat = mesh.material;
+  const restOpacity = mat.opacity;
+  const wasOpaque = !mat.transparent;
+  if (wasOpaque) mat.transparent = true;
+  mat.opacity = 0;
+  mesh.scale.setScalar(0.9);
+  boxTweens.push({ mesh, mat, restOpacity, wasOpaque,
+                   delay: Math.min(i, 20) * 30, start: clock.getElapsedTime(), ms: 200 });
 }
 
 function disposeGroup(obj){
@@ -325,12 +368,21 @@ function buildScene(data){
   }
   document.getElementById('empty').style.display = (!editing && boxes.length===0) ? 'flex' : 'none';
 
+  // Materialize only a genuinely new box set (count + total SCU signature), and only when motion is
+  // allowed. Re-posts of the same boxes (a hull-load rebuild, a studio/testSel/edit toggle) keep the
+  // same signature and render at rest, so containers do not re-animate on every payload.
+  let boxScuTotal = 0; for (const b of boxes) boxScuTotal += (b.scu || 0);
+  const boxSig = boxes.length + ':' + boxScuTotal;
+  const materialize = !REDUCED && boxSig !== lastBoxSig;
+  lastBoxSig = boxSig;
+
   // clear previous world (the hull hologram is persistent - detach it before the dispose)
   if (window.__holoHull && window.__holoHull.parent) window.__holoHull.parent.remove(window.__holoHull);
   scene.remove(worldGroup); disposeGroup(worldGroup);
   worldGroup = new THREE.Group(); scene.add(worldGroup);
   root = new THREE.Group(); worldGroup.add(root);
   tierGroups = {}; connectors = []; sep = 0; slider.value = 0; valEl.textContent = '0%';
+  boxTweens = [];   // the old world (and its box materials) was just disposed; drop stale tweens
   gizmoMeshes = [];   // stale ring refs must not survive a rebuild (they would false-hit the raycaster)
 
   GW = Math.max(1, bounds.w); GD = Math.max(1, bounds.d); GH = Math.max(1, bounds.h);
@@ -391,7 +443,10 @@ function buildScene(data){
         spr.scale.set(1.3,1.3,1); spr.position.set(cx, cy + g.h/2 + 0.55, cz); parent.add(spr);
       }
     });
-    for (const b of boxes) addBox(b.scu, b.x, b.y, b.z, b.w, b.d, b.h);
+    boxes.forEach((b, i) => {
+      const mesh = addBox(b.scu, b.x, b.y, b.z, b.w, b.d, b.h);
+      if (materialize && mesh) startBoxMaterialize(mesh, i);
+    });
   }
   if (window.__holoHull) root.add(window.__holoHull);
   tierKeys = Object.keys(tierGroups).map(Number).sort((a,b)=>a-b);
@@ -424,12 +479,16 @@ function buildScene(data){
     lastDims = frameKey;
     const span = Math.max(GW, GD, GH);
     const k = span / 8;
-    camera.position.set(12*k, 10.5*k, 14*k);
+    const framedPos = new THREE.Vector3(12*k, 10.5*k, 14*k);
     // capital hulls extend far beyond the grids; keep the far plane ahead of max zoom-out
     camera.far = Math.max(400, span*20); camera.updateProjectionMatrix();
-    controls.target.set(0, GH*0.45, 0);
+    const framedTarget = new THREE.Vector3(0, GH*0.45, 0);
     controls.minDistance = span*0.6; controls.maxDistance = span*8;
-    controls.update();
+    // Snap the first scene / reduced motion, else tween position + target over 350ms.
+    reframeCamera(framedPos, framedTarget);
+    // Only a real ship counts as a framed scene: the empty startup placeholder (shipKey '') must not
+    // consume the first-scene snap, so the first actual ship still snaps and later switches tween.
+    if (shipKey) hasFramedOnce = true;
     // Fog scales with the ship so big hulls do not fade to black at normal orbit distances.
     scene.fog.near = Math.max(30, span*3.5);
     scene.fog.far  = Math.max(90, span*14);
@@ -528,6 +587,9 @@ function setHull(data){
 function renderPayload(data){
   data = data || {};
   lastPayload = data;
+  const wasReduced = REDUCED;
+  REDUCED = !!data.reduced;
+  if (REDUCED !== wasReduced) post({ type:'log', msg:'reduced motion ' + (REDUCED ? 'on' : 'off') });
   studioMode = !!data.studio;
   document.getElementById('camhelp').style.display = studioMode ? 'block' : 'none';
   syncEditState(data);
@@ -1062,6 +1124,30 @@ function animate(){
   sep+=(target-sep)*0.09; valEl.textContent=Math.round(sep*100)+'%';
   applySep(sep);
   panFromKeys();
+  // Camera reframe tween: lerp position + orbit target, then let controls.update() damp as usual.
+  if (camTween){
+    const k = easeOutCubic(Math.min(1, (t - camTween.start) * 1000 / camTween.ms));
+    camera.position.lerpVectors(camTween.fromP, camTween.toP, k);
+    controls.target.lerpVectors(camTween.fromT, camTween.toT, k);
+    if (k >= 1) camTween = null;
+  }
+  // Container materialize tweens: opacity + scale grow-in, staggered by their per-box delay.
+  if (boxTweens.length){
+    for (let i = boxTweens.length - 1; i >= 0; i--){
+      const bt = boxTweens[i];
+      const e = (t - bt.start) * 1000 - bt.delay;
+      if (e < 0) continue;   // still inside its stagger delay
+      const k = easeOutCubic(Math.min(1, e / bt.ms));
+      bt.mat.opacity = bt.restOpacity * k;
+      bt.mesh.scale.setScalar(0.9 + 0.1 * k);
+      if (e >= bt.ms){
+        bt.mesh.scale.setScalar(1);
+        bt.mat.opacity = bt.restOpacity;
+        if (bt.wasOpaque) bt.mat.transparent = false;   // restore opaque material, keep depth sorting clean
+        boxTweens.splice(i, 1);
+      }
+    }
+  }
   controls.update(); renderer.render(scene, camera);
 }
 

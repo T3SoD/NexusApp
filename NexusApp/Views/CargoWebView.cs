@@ -416,7 +416,13 @@ public sealed class CargoWebView : UserControl
             grids,
             boxes,
             stats = new { pct, scu, cap, boxes = count },
+            reduced = Motion.Reduced,   // page snaps the camera and shows boxes at full opacity when true
         };
         return JsonSerializer.Serialize(payload);
     }
+
+    // Test seam for the payload's motion flag: builds a plain View-mode payload (no edit / studio /
+    // test-fill), matching ComputeLayout's internal-for-tests precedent. Kept minimal on purpose.
+    internal static string BuildPayloadForTest(PackResult? trip, ShipCargoDef? ship) =>
+        BuildPayload(trip, ship, editMode: false, editRev: 0, studio: false, testSel: -1);
 }
