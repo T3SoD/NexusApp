@@ -147,7 +147,10 @@ public partial class OverlayWindow : Window
         IsVisibleChanged += (_, ev) =>
         {
             if ((bool)ev.NewValue) { _cursorPoll.Start(); UpdateCursorPassThrough(); }
-            else { _cursorPoll.Stop(); SetPassThrough(false); }   // never leave it click-through while hidden
+            // Never leave either window click-through once the poll stops: the flyout can stay visible
+            // when the overlay is hidden via the main-window toggle (only Close_Click hides the flyout),
+            // so force it interactive here too or it would be click-dead until the overlay reappears.
+            else { _cursorPoll.Stop(); SetPassThrough(false); _woFlyout?.SetPassThrough(false); }
         };
         if (IsVisible) { _cursorPoll.Start(); UpdateCursorPassThrough(); }
     }
