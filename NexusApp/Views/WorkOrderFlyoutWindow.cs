@@ -1,9 +1,11 @@
 using System.Collections.Specialized;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using NexusApp.Models;
+using NexusApp.Services;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -21,6 +23,12 @@ public class WorkOrderFlyoutWindow : Window
     private double _ownerLeft, _ownerTop, _ownerHeight, _ownerWidth;
     private readonly TextBlock _sideBtnText;
     private readonly TextBlock _hideBtnText;
+
+    // Issue A4: mirror the overlay's cursor-hidden click-through (OverlayWindow.xaml.cs) onto this
+    // flyout. There is no separate poll timer here - the overlay's existing 150ms tick drives both
+    // windows via WorkOrderToggle_Click/UpdateCursorPassThrough.
+    private IntPtr _hwnd;
+    private bool _passThrough;
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static Color Col(string key) => (Color)System.Windows.Application.Current.FindResource(key);
@@ -127,6 +135,32 @@ public class WorkOrderFlyoutWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => Rebuild();
         Rebuild();
     }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        _hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+    }
+
+    // Toggle WS_EX_TRANSPARENT so the OS routes the mouse to the game below when true - same Win32
+    // recipe as OverlayWindow.SetPassThrough (cs:159-168). No-op before SourceInitialized (zero HWND)
+    // or when the desired state already matches, so the [WIN] log only records real transitions.
+    public void SetPassThrough(bool on)
+    {
+        if (on == _passThrough || _hwnd == IntPtr.Zero) return;
+        _passThrough = on;
+        int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
+        SetWindowLong(_hwnd, GWL_EXSTYLE, on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT);
+        Logger.Info(on
+            ? "[WIN] refinery flyout input: pass-through (game cursor hidden)"
+            : "[WIN] refinery flyout input: interactive (game cursor shown)");
+    }
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private static Border MakeToolButton(UIElement child) => new()
     {
