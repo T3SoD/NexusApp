@@ -56,6 +56,11 @@ public class AppSettings
     // while the game hides the OS cursor (FPS / flight), so a stray click can't land on it or steal
     // focus. It becomes interactive again the moment the cursor is shown. Default on.
     public bool OverlayPassThroughWhenCursorHidden { get; set; } = true;
+
+    // Overlay UI state: which tab was last on screen, and how tall the RECENT scan-history strip was
+    // dragged to, so both survive a hide/close and come back on next launch/show.
+    public string OverlayActiveTab { get; set; } = "stats";
+    public double OverlayHistoryHeight { get; set; } = 120;
 }
 
 public class ScanRegion

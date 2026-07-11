@@ -56,12 +56,14 @@ public partial class OverlayWindow : Window
         var s = App.Settings.Current;
         Left = s.OverlayLeft; Top = s.OverlayTop;
         Width = s.OverlayWidth; Height = s.OverlayHeight;
+        HistoryStripRow.Height = new GridLength(s.OverlayHistoryHeight);
 
+        double opacity = Math.Clamp(s.OverlayOpacity, 0.2, 1.0);
         OpacitySlider.ValueChanged -= OpacitySlider_ValueChanged;
-        OpacitySlider.Value = 1.0;
+        OpacitySlider.Value = opacity;
         OpacitySlider.ValueChanged += OpacitySlider_ValueChanged;
-        this.Opacity = 1.0;
-        OpacityLabel.Text = "100%";
+        this.Opacity = opacity;
+        OpacityLabel.Text = $"{(int)(opacity * 100)}%";
 
         _vm.FilteredScanHistory.CollectionChanged += (s, e) => RebuildHistory();
         RebuildHistory();
@@ -77,7 +79,8 @@ public partial class OverlayWindow : Window
                 SyncScanControls();
         };
 
-        SwitchTab("stats");
+        var savedTab = s.OverlayActiveTab;
+        SwitchTab(savedTab is "stats" or "scan" or "orders" or "shopping" or "hauling" ? savedTab : "stats");
 
         // BETA Game.log blueprint session - drive + mirror it from the STATS tab. The
         // overlay lives for the app's lifetime (created once, hidden/shown), so these
@@ -121,7 +124,7 @@ public partial class OverlayWindow : Window
             bool visible = (bool)e.NewValue;
             Logger.Info($"[WIN] overlay {(visible ? "shown" : "hidden")}");
             if (visible) Shown?.Invoke();
-            else Hidden?.Invoke();
+            else { SaveBounds(); Hidden?.Invoke(); }
         };
     }
 
@@ -470,13 +473,23 @@ public partial class OverlayWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
-        App.Settings.Current.OverlayLeft = Left; App.Settings.Current.OverlayTop = Top;
-        App.Settings.Current.OverlayWidth = Width; App.Settings.Current.OverlayHeight = Height;
-        App.Settings.Save();
+        SaveBounds();
         _woFlyout?.Hide();
         _ordersTicker?.Stop();
         _ordersTicker = null;
         Hide();
+    }
+
+    // Persists window position/size plus the RECENT strip's current height (the strip is scan-only and
+    // may currently be collapsed - _historyHidden picks the right source). Called on Close_Click and on
+    // the IsVisibleChanged hidden path (:119-125 above), so bounds survive both the close button and the
+    // main-window toggle hiding the overlay.
+    private void SaveBounds()
+    {
+        App.Settings.Current.OverlayLeft = Left; App.Settings.Current.OverlayTop = Top;
+        App.Settings.Current.OverlayWidth = Width; App.Settings.Current.OverlayHeight = Height;
+        App.Settings.Current.OverlayHistoryHeight = _historyHidden ? _savedHistoryHeight.Value : HistoryStripRow.Height.Value;
+        App.Settings.Save();
     }
 
     private void OverlayRsInput_KeyDown(object sender, KeyEventArgs e)
@@ -666,6 +679,8 @@ public partial class OverlayWindow : Window
     private void SwitchTab(string tab)
     {
         _activeTab = tab;
+        App.Settings.Current.OverlayActiveTab = tab;
+        App.Settings.Save();
         StatsTabContent.Visibility    = tab == "stats"    ? Visibility.Visible : Visibility.Collapsed;
         ScanTabContent.Visibility     = tab == "scan"     ? Visibility.Visible : Visibility.Collapsed;
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
@@ -729,6 +744,11 @@ public partial class OverlayWindow : Window
             HistoryStrip_Container.Visibility = Visibility.Collapsed;
             HistorySplitter.Visibility = Visibility.Collapsed;
             _historyHidden = true;
+
+            // Leaving SCAN: persist whatever height the user last dragged the strip to, so it's
+            // restored next launch even if the app closes while parked on a different tab.
+            App.Settings.Current.OverlayHistoryHeight = _savedHistoryHeight.Value;
+            App.Settings.Save();
         }
     }
 
