@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
@@ -38,27 +37,5 @@ public static class DialogMotion
         var fade = new DoubleAnimation(root.Opacity, 0, TimeSpan.FromMilliseconds(Motion.DialogCloseMs)) { EasingFunction = Motion.SlideOut };
         fade.Completed += (_, _) => { if (!done) { done = true; close(); } };
         root.BeginAnimation(UIElement.OpacityProperty, fade);
-    }
-}
-
-// Reusable exit animations for elements that remove themselves from a live panel
-// (e.g. a refinery order card once its job completes). Kept alongside DialogMotion
-// rather than in Motion.cs, which stays pure vocabulary (constants + easings).
-public static class MotionEffects
-{
-    /// <summary>Fade + vertical collapse, then remove from the panel. Reduced removes instantly.</summary>
-    public static void CollapseRemove(FrameworkElement el, Panel parent)
-    {
-        if (Motion.Reduced) { parent.Children.Remove(el); return; }
-        el.IsHitTestVisible = false;
-        var scale = new ScaleTransform(1, 1);
-        el.RenderTransform = scale;
-        el.RenderTransformOrigin = new Point(0.5, 0);
-        var ms = TimeSpan.FromMilliseconds(Motion.ExitMs);
-        var fade = new DoubleAnimation(el.Opacity, 0, ms) { EasingFunction = Motion.SlideOut };
-        var squash = new DoubleAnimation(1, 0, ms) { EasingFunction = Motion.SlideOut };
-        fade.Completed += (_, _) => parent.Children.Remove(el);
-        el.BeginAnimation(UIElement.OpacityProperty, fade);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, squash);
     }
 }

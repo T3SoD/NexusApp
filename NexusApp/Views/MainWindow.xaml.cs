@@ -619,6 +619,7 @@ public partial class MainWindow : Window
     // surfaces at the top under the active filter and is not a cart/rebuild echo of the same row.
     private void OnScanHistoryChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset) { _lastRecentRs = null; return; }
         if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add || e.NewStartingIndex != 0) return;
         Dispatcher.BeginInvoke(new Action(() =>
         {

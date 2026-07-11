@@ -23,7 +23,6 @@ public static class Motion
     public const double BreatheMs  = 1900;  // status-dot breathe (mock live dots ~1.8-2.0s)
     public const double DialogOpenMs  = 180;  // dialog entrance (motion-pass mock)
     public const double DialogCloseMs = 120;  // dialog exit (~70% of entrance)
-    public const double ExitMs        = 140;  // card collapse-remove
     public const double FlashMs       = 400;  // one-shot state flash (order ready)
     public const double DrillMs       = 240;  // drill-down directional slide
 
