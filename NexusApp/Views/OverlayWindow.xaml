@@ -351,14 +351,22 @@
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                     <!-- C2: refinery guidance line, its own row (Task 7 slots a composition
-                                                         bar beneath this without touching the rows above). Collapses when
-                                                         the resource has no refinery modifier to report. -->
-                                                    <TextBlock Text="{Binding RefineryText}" FontSize="10.5"
+                                                         bar beneath this without touching the rows above). Frozen format
+                                                         "Best: <station> +<pct>%"; the +0;-0 numeric format keeps the sign
+                                                         correct for negative modifiers (renders -8%, never +-8%). Collapses
+                                                         when the resource has no refinery data at all. -->
+                                                    <TextBlock FontSize="10.5"
                                                                Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="Best: {0} {1:+0;-0}%">
+                                                                <Binding Path="BestRefinery.Station"/>
+                                                                <Binding Path="BestRefinery.ModifierPct"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding RefineryText}" Value="No refinery modifier">
+                                                                    <DataTrigger Binding="{Binding BestRefinery}" Value="{x:Null}">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
