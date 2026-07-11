@@ -48,6 +48,11 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         _vm = vm;
+        // Lets the results ItemTemplate reach VM-level commands (ToggleCartCommand) via
+        // RelativeSource AncestorType=Window, same pattern MainWindow uses. Nothing else in
+        // this file's XAML binds to the inherited Window DataContext (results-card bindings
+        // resolve against each item's own DataContext), so this is safe to introduce here.
+        DataContext = _vm;
 
         // Chamfered shell: recompute the frame Path + the content clip whenever the overlay is resized
         // (CanResizeWithGrip), so the MOBIGLAS bevel tracks the window. Fires on first layout too.
@@ -594,6 +599,16 @@ public partial class OverlayWindow : Window
         _vm.RsInput = rs.ToString();
         _vm.LookupCommand.Execute(null);
         OverlayResults.ItemsSource = _vm.ScanResults;
+    }
+
+    // Cart button on a scan result card. The actual add/remove runs via ToggleCartCommand
+    // (bound in XAML); this only records the specific "which resource" breadcrumb, since the
+    // app-wide Button click handler (App.xaml.cs RegisterInteractionLogging) already logs the
+    // generic "+ CART"/"IN CART" click - same double-log pattern as the two-tap confirm buttons.
+    private void CartToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: MatchResult m } b)
+            InteractionLog.Click($"overlay cart toggle {m.Resource.Name}", b);
     }
 
     private void BuildOverlayHistoryFilterPills()

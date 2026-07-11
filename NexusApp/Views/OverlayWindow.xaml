@@ -299,6 +299,33 @@
                                                         <TextBlock Text="{Binding Resource.Name}" FontWeight="SemiBold"
                                                                    Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"
                                                                    VerticalAlignment="Center"/>
+                                                        <!-- C1: tier chip (S = amber-bright text+border; A/B/C = dim) -->
+                                                        <Border Padding="5,1" CornerRadius="3" Margin="5,0,0,0"
+                                                                VerticalAlignment="Center" BorderThickness="1">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource FgDimBrush}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                            <Setter Property="BorderBrush" Value="{DynamicResource GoldBrush}"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding Resource.Tier}"
+                                                                       FontFamily="{StaticResource MonoFont}" FontSize="9">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource FgDimBrush}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                                <Setter Property="Foreground" Value="{DynamicResource GoldBrush}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </Border>
                                                         <Border Padding="3,1" CornerRadius="3" Margin="5,0,0,0"
                                                                 Background="{DynamicResource AccentBrush}"
                                                                 VerticalAlignment="Center"
@@ -323,7 +350,62 @@
                                                                    FontSize="11" Foreground="{DynamicResource FgDimBrush}"
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
+                                                    <!-- C2: refinery guidance line, its own row (Task 7 slots a composition
+                                                         bar beneath this without touching the rows above). Collapses when
+                                                         the resource has no refinery modifier to report. -->
+                                                    <TextBlock Text="{Binding RefineryText}" FontSize="10.5"
+                                                               Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding RefineryText}" Value="No refinery modifier">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </StackPanel>
+                                                <!-- C5: cart button (+ CART / IN CART, drives ToggleCartCommand) -->
+                                                <Button Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                        Cursor="Hand" FontSize="9" FontWeight="Bold"
+                                                        FontFamily="{StaticResource MonoFont}"
+                                                        Command="{Binding DataContext.ToggleCartCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Click="CartToggle_Click">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="1" CornerRadius="3" Padding="7,3">
+                                                                            <TextBlock Text="{TemplateBinding Content}"
+                                                                                       Foreground="{TemplateBinding Foreground}"
+                                                                                       FontFamily="{TemplateBinding FontFamily}"
+                                                                                       FontSize="{TemplateBinding FontSize}"
+                                                                                       FontWeight="{TemplateBinding FontWeight}"
+                                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Setter Property="Content" Value="+ CART"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource CyanBrush}"/>
+                                                            <Setter Property="Background" Value="{DynamicResource CyanDimBrush}"/>
+                                                            <Setter Property="BorderBrush" Value="#667FE9E0"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInCart}" Value="True">
+                                                                    <Setter Property="Content" Value="IN CART"/>
+                                                                    <Setter Property="Foreground" Value="#062422"/>
+                                                                    <Setter Property="Background" Value="{DynamicResource CyanBrush}"/>
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource CyanBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
                                             </Grid>
                                         </Grid>
                                     </views:ChamferPanel>
