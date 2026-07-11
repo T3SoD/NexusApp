@@ -205,9 +205,9 @@ public sealed class CommandPage : UserControl
         var cards = new UIElement[]
         {
             LastScanCard(),
-            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString(), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders),
+            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders),
             Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu),
-            Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString(), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
+            Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString("N0"), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
             Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush", covPct, "%"),
         };
         for (int i = 0; i < cards.Length; i++)

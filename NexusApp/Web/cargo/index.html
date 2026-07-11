@@ -258,6 +258,7 @@ let lastDims = '';
 // appear at full opacity/scale. hasFramedOnce keeps the first scene a hard snap (later ship
 // changes tween). camTween/boxTweens are the in-flight animations the animate() loop advances.
 let REDUCED = false;
+let reducedLogged = false;   // true once the reduced-motion state has been posted at least once
 let hasFramedOnce = false;
 let camTween = null;
 let boxTweens = [];
@@ -589,7 +590,7 @@ function renderPayload(data){
   lastPayload = data;
   const wasReduced = REDUCED;
   REDUCED = !!data.reduced;
-  if (REDUCED !== wasReduced) post({ type:'log', msg:'reduced motion ' + (REDUCED ? 'on' : 'off') });
+  if (!reducedLogged || REDUCED !== wasReduced) { reducedLogged = true; post({ type:'log', msg:'reduced motion ' + (REDUCED ? 'on' : 'off') }); }
   studioMode = !!data.studio;
   document.getElementById('camhelp').style.display = studioMode ? 'block' : 'none';
   syncEditState(data);
