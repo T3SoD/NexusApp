@@ -12,8 +12,8 @@ public static class QuickOrderFactory
 {
     public static WorkOrder Create(string resource, string refinery, int minutes, DateTime now)
     {
-        if (string.IsNullOrWhiteSpace(resource)) throw new ArgumentException("resource required", nameof(resource));
-        if (minutes <= 0) throw new ArgumentException("timer must be positive", nameof(minutes));
+        if (string.IsNullOrWhiteSpace(resource)) throw new ArgumentException("resource required");
+        if (minutes <= 0) throw new ArgumentException("timer must be positive");
 
         var name = resource.Trim();
         return new WorkOrder
