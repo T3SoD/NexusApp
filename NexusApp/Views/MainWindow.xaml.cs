@@ -1972,6 +1972,16 @@ public partial class MainWindow : Window
     private BpOwnFilter _bpOwnFilter = BpOwnFilter.All;
     private string? _detailBpName;                 // blueprint currently shown in the detail panel
     private Border? _detailOwnedToggle;            // its "Owned" toggle, kept in sync with nav checkboxes
+    // Drill-down depth trackers for the directional slide (motion pass Item 8). Nav and content
+    // rebuild independently (clicking a row shows detail without RenderBlueprintNav running), so
+    // each needs its own last-rendered depth to compare against - sharing one field would have the
+    // nav's write clobber the value the content panel needs to compare against in the same action.
+    // Nav: root=0, category=1, subgroup=2, family=3 (its own switch already branches on these).
+    // Content: landing collapses subgroup/family into one "subcategory" tier (root=0, category=1,
+    // subgroup-or-family=2) since ShowBlueprintLanding renders identically at either; detail is
+    // always 3. "search" is not part of the hierarchy at either tracker - see PlayDrillSlide.
+    private int _bpNavDepth;
+    private int _bpDetailDepth;
     // Maps a blueprint name to its nav-row toggle pill so a single toggle updates that
     // one row in place instead of rebuilding the whole list (the source of the lag).
     // Maps a blueprint name to a callback that refreshes that nav row's ownership
@@ -2055,10 +2065,42 @@ public partial class MainWindow : Window
         }
     }
 
+    // Local mirror of the CountUp attached behavior (Views/CountUp.cs), retargeted at a fixed
+    // 300ms roll for the Blueprint Library's "N owned" count (frozen value; CountUp.cs's own
+    // duration is fixed via Motion.CountUpMs at 900ms, tuned for the RS Decoder's lock-on read,
+    // so this is a small local copy rather than a change to that shared behavior - same pattern
+    // as CommandPage.cs's local Run-count-up mirror from the Operations entrance task).
+    private static readonly DependencyProperty OwnedCountCurrentProperty = DependencyProperty.RegisterAttached(
+        "OwnedCountCurrent", typeof(double), typeof(MainWindow), new PropertyMetadata(0.0, OnOwnedCountCurrentChanged));
+
+    private static void OnOwnedCountCurrentChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
+    {
+        if (o is not TextBlock tb) return;
+        int n = (int)System.Math.Round((double)e.NewValue);
+        tb.Text = n == 1 ? "1 owned" : $"{n} owned";
+    }
+
+    private double _ownedCountShown = double.NaN;   // last value actually painted; roll animates from here
+
     private void UpdateOwnedCount()
     {
         var n = App.Settings.OwnedBlueprintCount;
-        BpOwnedCount.Text = n == 1 ? "1 owned" : $"{n} owned";
+
+        // First paint, or reduced motion: snap straight to the count - nothing to roll from.
+        if (Motion.Reduced || double.IsNaN(_ownedCountShown))
+        {
+            BpOwnedCount.BeginAnimation(OwnedCountCurrentProperty, null);
+            BpOwnedCount.Text = n == 1 ? "1 owned" : $"{n} owned";
+            _ownedCountShown = n;
+            return;
+        }
+
+        if (n == _ownedCountShown) return;   // no change - do not restart the roll
+
+        var roll = new System.Windows.Media.Animation.DoubleAnimation(_ownedCountShown, n, System.TimeSpan.FromMilliseconds(300))
+        { EasingFunction = Motion.Settle };
+        BpOwnedCount.BeginAnimation(OwnedCountCurrentProperty, roll);
+        _ownedCountShown = n;
     }
 
     private int CatCount(string cat) => _allBlueprints?.Count(b => b.Category == cat && MatchesOwnFilter(b)) ?? 0;
@@ -2188,6 +2230,31 @@ public partial class MainWindow : Window
         return FamilyKey(name);   // piece word not found as a standalone token; fall back
     }
 
+    // Directional slide for the blueprint drill-down (frozen in
+    // docs/superpowers/specs/2026-07-10-motion-pass-values.md Item 8): the freshly rebuilt
+    // container slides in from +12px (descending to a deeper level) or -12px (backing out to a
+    // shallower one), fading 0 to 1 over Motion.DrillMs on the reveal curve. Same depth (e.g.
+    // switching between sibling rows at the same tier) plays no slide. newDepth < 0 means the
+    // current state ("search") is not part of the drill-down hierarchy - skipped entirely, and
+    // the last real depth is left untouched so the next real hierarchy move still compares
+    // correctly. Returns the depth to store back into the caller's tracker field.
+    private int PlayDrillSlide(Panel container, int oldDepth, int newDepth)
+    {
+        if (newDepth < 0) return oldDepth;
+        if (Motion.Reduced || newDepth == oldDepth) return newDepth;
+
+        double fromX = newDepth > oldDepth ? 12 : -12;
+        var slide = new System.Windows.Media.TranslateTransform(fromX, 0);
+        container.RenderTransform = slide;
+        container.Opacity = 0;
+        var dur = System.TimeSpan.FromMilliseconds(Motion.DrillMs);
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Reveal };
+        var move = new System.Windows.Media.Animation.DoubleAnimation(fromX, 0, dur) { EasingFunction = Motion.Reveal };
+        container.BeginAnimation(UIElement.OpacityProperty, fade);
+        slide.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, move);
+        return newDepth;
+    }
+
     private void RenderBlueprintNav()
     {
         BlueprintNavPanel.Children.Clear();
@@ -2292,6 +2359,16 @@ public partial class MainWindow : Window
                 break;
             }
         }
+
+        int navDepth = _bpLevel switch
+        {
+            "root" => 0,
+            "category" => 1,
+            "subgroup" => 2,
+            "family" => 3,
+            _ => -1,   // "search" - not part of the drill-down hierarchy, no slide
+        };
+        _bpNavDepth = PlayDrillSlide(BlueprintNavPanel, _bpNavDepth, navDepth);
     }
 
     private TextBlock NavEmptyNote(string text = "Nothing here in this filter") => new()
@@ -2550,8 +2627,23 @@ public partial class MainWindow : Window
             var now = !App.Settings.IsBlueprintOwned(bp.Name);
             App.Settings.SetBlueprintOwned(bp.Name, now);
             OnOwnershipChanged(bp.Name, now);
+            PlayOwnedTick(pill);
         };
         return pill;
+    }
+
+    // One-shot scale-in on the toggled ownership pill/toggle (frozen: 0.97 to 1.0, 150ms,
+    // settle, origin center-left). Motion Item 8's "owned tick".
+    private static void PlayOwnedTick(FrameworkElement row)
+    {
+        if (Motion.Reduced) return;
+        var scale = new System.Windows.Media.ScaleTransform(0.97, 0.97);
+        row.RenderTransform = scale;
+        row.RenderTransformOrigin = new Point(0, 0.5);
+        var tick = new System.Windows.Media.Animation.DoubleAnimation(0.97, 1.0, System.TimeSpan.FromMilliseconds(150))
+        { EasingFunction = Motion.Settle };
+        scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, tick);
+        scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, tick);
     }
 
     // Applies a single ownership change to the UI. Always updates the count and the
@@ -2612,6 +2704,7 @@ public partial class MainWindow : Window
             App.Settings.SetBlueprintOwned(bpName, now);
             ApplyOwnedToggleVisual(toggle, now);
             OnOwnershipChanged(bpName, now);   // sync nav row + count in place (no full rebuild)
+            PlayOwnedTick(toggle);
         };
         return toggle;
     }
@@ -2673,6 +2766,17 @@ public partial class MainWindow : Window
             int catOwned = all.Count(b => b.Category == cat && App.Settings.IsBlueprintOwned(b.Name));
             BlueprintDetailPanel.Children.Add(CategoryProgress(cat, catOwned, catTotal));
         }
+
+        // Landing renders identically regardless of level (no _bpLevel reference above), so
+        // subgroup and family collapse into one "subcategory" tier here - detail (below) owns depth 3.
+        int landingDepth = _bpLevel switch
+        {
+            "root" => 0,
+            "category" => 1,
+            "subgroup" or "family" => 2,
+            _ => -1,   // "search" - not part of the drill-down hierarchy, no slide
+        };
+        _bpDetailDepth = PlayDrillSlide(BlueprintDetailPanel, _bpDetailDepth, landingDepth);
     }
 
     private UIElement CategoryProgress(string cat, int owned, int total)
@@ -3170,6 +3274,10 @@ public partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 });
         }
+
+        // Detail is always the deepest tier (3); switching between sibling blueprints while
+        // already viewing one plays no slide (same depth), matching a real drill-in.
+        _bpDetailDepth = PlayDrillSlide(BlueprintDetailPanel, _bpDetailDepth, 3);
     }
 
     private static void AddDetailRow(StackPanel panel, string label, string value)
