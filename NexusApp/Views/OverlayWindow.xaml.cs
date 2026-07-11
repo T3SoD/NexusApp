@@ -739,14 +739,26 @@ public partial class OverlayWindow : Window
         };
     }
 
-    // Expand rows: one per part - ore name (11px), optional "primary" chip, pct band (mono 10.5px).
-    // Wrapped in a 1px top border to separate the section from the card body.
+    // Expand rows: a "CAN CONTAIN" header (G1) above one row per part - ore name (11px), optional
+    // "primary" chip, pct band (mono 10.5px). Wrapped in a 1px top border to separate the section
+    // from the card body. Frozen: docs/superpowers/specs/2026-07-11-overlay-pass-values.md ("Part G additions").
     private Border BuildExpandRows(IReadOnlyList<CompositionPart> parts)
     {
         var line = (Brush)FindResource("BorderBrush");
         var fg = (Brush)FindResource("FgBrush");
         var mono = (FontFamily)FindResource("MonoFont");
         var stack = new StackPanel { Margin = new Thickness(0, 5, 0, 1) };
+
+        // G1: "Can contain" header - matches the file's existing uppercase-label idiom
+        // (ToUpperInvariant at render time; WPF has no text-transform, see QuickAdd's Label()).
+        // Opacity set on the element itself, same idiom as the byproduct segments in BuildBar.
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Can contain".ToUpperInvariant(),
+            FontSize = 8.5,
+            Foreground = new SolidColorBrush(CompPrimary),
+            Opacity = 0.85,
+        });
 
         foreach (var p in parts)
         {
