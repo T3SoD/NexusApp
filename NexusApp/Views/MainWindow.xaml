@@ -521,6 +521,7 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
                                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -528,7 +529,32 @@
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
                                                 <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="Bold"
                                                            Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
-                                                <Border Padding="6,2" CornerRadius="4" Margin="12,0,0,0" VerticalAlignment="Center" Background="{StaticResource Bg3Brush}">
+                                                <!-- G3: tier chip (S = amber-bright text + amber-line border; A/B/C = dim), overlay treatment -->
+                                                <Border Padding="6,2" CornerRadius="3" Margin="12,0,0,0" VerticalAlignment="Center" BorderThickness="1">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource NavBorderBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding Resource.Tier}" FontFamily="{StaticResource MonoFont}" FontSize="10">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource FgDimBrush}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource GoldBrush}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                                <Border Padding="6,2" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center" Background="{StaticResource Bg3Brush}">
                                                     <TextBlock Text="{Binding BadgeText}" FontSize="9" FontWeight="Bold"
                                                                Foreground="{StaticResource GoldBrush}"/>
                                                 </Border>
@@ -560,15 +586,35 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                                                             Fill="{Binding RefineryColor, Converter={StaticResource HexColor}}"/>
-                                                    <TextBlock Text="{Binding RefineryText}" FontSize="12" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
-                                                </StackPanel>
+                                                <!-- G2/G3: "Best refinery: <station> +<pct>%" - overlay MultiBinding idiom over BestRefinery
+                                                     (+0;-0 keeps the sign correct; collapses when the resource has no refinery data). -->
+                                                <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource FgDimBrush}">
+                                                    <TextBlock.Text>
+                                                        <MultiBinding StringFormat="Best refinery: {0} {1:+0;-0}%">
+                                                            <Binding Path="BestRefinery.Station"/>
+                                                            <Binding Path="BestRefinery.ModifierPct"/>
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding BestRefinery}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                                 <Button Grid.Column="1" Content="+ Add to cart" Style="{StaticResource ChamferAccentButton}" Padding="14,7"
                                                         Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding Resource}"/>
                                             </Grid>
+
+                                            <!-- G3: composition bar + CAN CONTAIN rows, OPEN by default (hero = best match).
+                                                 Built in code-behind (HeroComposition_Loaded); the hero's lock-on FadeRise
+                                                 carries the entrance, so the rows render static/open. -->
+                                            <StackPanel x:Name="HeroCompositionHost" Grid.Row="4" Grid.ColumnSpan="2"
+                                                        Margin="0,6,0,0" Loaded="HeroComposition_Loaded"/>
                                         </Grid>
                                     </views:ChamferPanel>
                                 </DataTemplate>
@@ -607,40 +653,90 @@
                             <ItemsControl x:Name="OtherMatchesList" ItemsSource="{Binding OtherMatches}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <views:ChamferPanel Margin="0,0,0,8" Chamfer="9" Padding="0">
-                                            <Grid Height="58">
+                                        <!-- G3: compact overlay treatment - tier chip, refinery line, composition bar,
+                                             tap-to-expand CAN CONTAIN rows (one open at a time; no-composition cards inert). -->
+                                        <views:ChamferPanel Margin="0,0,0,8" Chamfer="9" Padding="0"
+                                                            MouseLeftButtonDown="OtherMatchCard_MouseLeftButtonDown">
+                                            <Grid>
                                                 <Border Width="4" HorizontalAlignment="Left" CornerRadius="10,0,0,10"
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
-                                                <Grid Margin="16,0,16,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel VerticalAlignment="Center">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="16"
-                                                                       Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
-                                                            <Border Padding="5,1" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center"
-                                                                    Background="{DynamicResource AccentBrush}"
-                                                                    Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
-                                                                <TextBlock Text="CART" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
-                                                            </Border>
+                                                <StackPanel Margin="16,10,16,10">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="16"
+                                                                           Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
+                                                                <!-- tier chip (S = amber-bright text + amber-line border; A/B/C = dim) -->
+                                                                <Border Padding="5,1" CornerRadius="3" Margin="8,0,0,0" VerticalAlignment="Center" BorderThickness="1">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="BorderBrush" Value="{DynamicResource NavBorderBrush}"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock Text="{Binding Resource.Tier}" FontFamily="{StaticResource MonoFont}" FontSize="9">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Foreground" Value="{DynamicResource FgDimBrush}"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
+                                                                                        <Setter Property="Foreground" Value="{DynamicResource GoldBrush}"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </Border>
+                                                                <Border Padding="5,1" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                        Background="{DynamicResource AccentBrush}"
+                                                                        Visibility="{Binding IsInCart, Converter={StaticResource BoolVis}}">
+                                                                    <TextBlock Text="CART" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                                <Border Padding="5,1" CornerRadius="3" Background="{StaticResource Bg3Brush}">
+                                                                    <TextBlock Text="{Binding BadgeText}" FontSize="9" FontWeight="Bold"
+                                                                               Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
+                                                                </Border>
+                                                                <TextBlock Text="{Binding NodesText}" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                            </StackPanel>
                                                         </StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                            <Border Padding="5,1" CornerRadius="3" Background="{StaticResource Bg3Brush}">
-                                                                <TextBlock Text="{Binding BadgeText}" FontSize="9" FontWeight="Bold"
-                                                                           Foreground="{Binding CardColor, Converter={StaticResource HexColor}}"/>
-                                                            </Border>
-                                                            <TextBlock Text="{Binding NodesText}" FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" FontSize="18"
-                                                               Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
-                                                    <Button Grid.Column="2" Content="Add" Style="{StaticResource ChamferButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
-                                                            Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding Resource}"/>
-                                                </Grid>
+                                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" FontSize="18"
+                                                                   Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
+                                                        <Button Grid.Column="2" Content="Add" Style="{StaticResource ChamferButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                                Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding Resource}"/>
+                                                    </Grid>
+                                                    <!-- G2/G3: "Best refinery: <station> +<pct>%" - overlay MultiBinding idiom (collapses when no refinery data). -->
+                                                    <TextBlock FontSize="11" Foreground="{StaticResource FgDimBrush}" Margin="0,4,0,0">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="Best refinery: {0} {1:+0;-0}%">
+                                                                <Binding Path="BestRefinery.Station"/>
+                                                                <Binding Path="BestRefinery.ModifierPct"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding BestRefinery}" Value="{x:Null}">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- composition bar + tap-to-expand rows, built in code-behind (OtherMatchComposition_Loaded). -->
+                                                    <StackPanel x:Name="CompositionHost" Loaded="OtherMatchComposition_Loaded"/>
+                                                </StackPanel>
                                             </Grid>
                                         </views:ChamferPanel>
                                     </DataTemplate>

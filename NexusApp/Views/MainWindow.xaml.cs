@@ -600,11 +600,21 @@ public partial class MainWindow : Window
     private readonly NexusApp.Services.ScanMotionTracker _scanMotion = new();
     private int? _lastRecentRs;   // top recent-scan row already revealed - dedupes cart/rebuild churn
 
+    // ── RS Decoder deposit composition (G3) ───────────────────────────────────
+    // Own cache instance (not shared with the overlay). Bar/rows/motion come from ScanCardComposition,
+    // shared verbatim with the overlay so both surfaces stay in lockstep.
+    private readonly NexusApp.Services.CompositionCache _composition = new(App.Data.GetCompositionForResource);
+    private string? _expandedName;            // the single expanded OTHER MATCHES card (survives cart rebuilds)
+    private FrameworkElement? _openRows;      // its live rows element, refreshed on each rebuild
+
     private void OnScanVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(MainViewModel.BestMatch)) return;
         var name = _vm.BestMatch?.Resource?.Name;
         bool full = _scanMotion.ShouldChoreograph(name);
+        // A genuinely new best match starts the OTHER MATCHES collapsed; a cart-toggle rebuild
+        // (same match) keeps the open card open so its rows re-render in place, never re-animated.
+        if (full) { _expandedName = null; _openRows = null; }
         // Defer: the ContentControl/ItemsControl content is regenerated during layout, so the
         // card parts and other-match containers do not exist until after this notification.
         Dispatcher.BeginInvoke(new Action(() =>
@@ -764,6 +774,89 @@ public partial class MainWindow : Window
             var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
             if (child is Panel p && p.IsItemsHost) return p;
             if (FindItemsHost(child) is { } found) return found;
+        }
+        return null;
+    }
+
+    // ── RS Decoder deposit composition (G3) ───────────────────────────────────
+    // Frozen values: docs/superpowers/specs/2026-07-11-overlay-pass-values.md ("Part G additions").
+    // Shared bar/rows/motion builders live in ScanCardComposition; only the per-surface expand
+    // orchestration lives here (hero always open; other-matches tap-to-expand, one at a time).
+
+    // Hero (BEST MATCH) composition: bar + CAN CONTAIN rows OPEN by default (it is the best match).
+    // Built static/open - the hero card's lock-on FadeRise (PlayScanChoreography) carries the 200ms
+    // fade+rise entrance, so the rows never animate separately. No-composition ores show no bar/rows.
+    private void HeroComposition_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not StackPanel host || host.DataContext is not MatchResult m) return;
+        host.Children.Clear();
+        var parts = _composition.Get(m.Resource.Name);
+        if (parts.Count == 0) return;
+
+        host.Children.Add(ScanCardComposition.BuildBar(parts));
+        var rows = ScanCardComposition.BuildExpandRows(parts);
+        rows.Opacity = 1;   // open + static; the hero FadeRise animates the whole card
+        host.Children.Add(rows);
+    }
+
+    // OTHER MATCHES composition: bar + collapsed rows, tap-to-expand. Idempotent - clears and
+    // rebuilds on every (re)generation, honouring the current _expandedName so the open card
+    // survives a cart-toggle rebuild without re-animating. No-composition cards stay inert.
+    private void OtherMatchComposition_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not StackPanel host || host.DataContext is not MatchResult m) return;
+        host.Children.Clear();
+        var parts = _composition.Get(m.Resource.Name);
+
+        if (parts.Count == 0)
+        {
+            if (FindCardPanel(host) is { } bare) bare.Cursor = Cursors.Arrow;
+            return;
+        }
+        if (FindCardPanel(host) is { } card) card.Cursor = Cursors.Hand;
+
+        host.Children.Add(ScanCardComposition.BuildBar(parts));
+        var rows = ScanCardComposition.BuildExpandRows(parts);
+        bool expanded = string.Equals(m.Resource.Name, _expandedName, StringComparison.OrdinalIgnoreCase);
+        rows.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        host.Children.Add(rows);
+        if (expanded) { _openRows = rows; rows.Opacity = 1; }   // static on rebuild, no re-entrance
+    }
+
+    // Card tap: toggle the composition rows (200ms fade+rise on expand; Reduced snaps). Bubbling
+    // MouseLeftButtonDown, so the "Add" button (which handles its own click) never reaches here.
+    // One card open at a time - opening a new one collapses the previously open one.
+    private void OtherMatchCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement card || card.DataContext is not MatchResult m) return;
+        if (FindByName(card, "CompositionHost") is not StackPanel { Children.Count: >= 2 } host) return;
+        var rows = (FrameworkElement)host.Children[1];
+        var name = m.Resource.Name;
+
+        InteractionLog.Click($"scan composition {name}", card);
+
+        if (string.Equals(name, _expandedName, StringComparison.OrdinalIgnoreCase))
+        {
+            ScanCardComposition.CollapseRows(rows);
+            _expandedName = null;
+            _openRows = null;
+            return;
+        }
+
+        if (_expandedName != null && _openRows != null) ScanCardComposition.CollapseRows(_openRows); // one open at a time
+        ScanCardComposition.ExpandRows(rows, animate: !Motion.Reduced);
+        _expandedName = name;
+        _openRows = rows;
+    }
+
+    // The ChamferPanel card root that owns a composition host (walk up the visual tree).
+    private static FrameworkElement? FindCardPanel(DependencyObject from)
+    {
+        var d = from;
+        while (d != null)
+        {
+            if (d is ChamferPanel cp) return cp;
+            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
         }
         return null;
     }
