@@ -172,7 +172,7 @@
             <Grid Grid.Row="2">
 
                 <!-- HUB tab (Beta Game.log session): MOBIGLAS glance. Mock order = SCAN STATUS LEDs,
-                     BLUEPRINTS COLLECTED hero (accent chamfer + count-up), SERVER / SHARD (chamfer),
+                     hero tiles (READY ORDERS + HAUL, accent chamfer), SERVER / SHARD (chamfer),
                      COLLECTION LOG. One vertical scroll, like the mock's .body. The pills / status line /
                      footer the old layout carried are gone: session-monitoring shows via the LEDs, and
                      Reset session / advanced monitor now live in the advanced Game.log monitor. -->
@@ -185,35 +185,55 @@
                         <TextBlock Text="SCAN STATUS" Style="{StaticResource SectionLabel}" Margin="1,0,0,6"/>
                         <WrapPanel x:Name="HubScanBar"/>
 
-                        <!-- BLUEPRINTS COLLECTED hero: big cyan count-up for this session (CountUp.SetTo). -->
-                        <views:ChamferPanel Accent="True" ShowBrackets="True" Chamfer="12"
-                                            Padding="13,11" Margin="0,11,0,0">
-                            <StackPanel>
-                                <TextBlock Text="BLUEPRINTS COLLECTED" Style="{StaticResource SectionLabel}"/>
-                                <Border Height="1" Background="{DynamicResource NavBorderBrush}" Margin="0,6,0,8"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="StatsBigCount" Text="0"
-                                               FontFamily="{StaticResource MonoFont}" FontSize="40" FontWeight="Bold"
-                                               Foreground="{DynamicResource CyanBrush}" VerticalAlignment="Bottom">
-                                        <TextBlock.Effect>
-                                            <DropShadowEffect Color="{DynamicResource CyanColor}" BlurRadius="16"
-                                                              ShadowDepth="0" Opacity="0.4"/>
-                                        </TextBlock.Effect>
-                                    </TextBlock>
-                                    <TextBlock Text="this session" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                        <!-- F1 hero tiles (frozen 2026-07-11 overlay pass): 2-column grid, 8px gap, each tile
+                             the same accent ChamferPanel look (amber-line border + amber glow) the old single
+                             BLUEPRINTS COLLECTED hero used. READY ORDERS = work orders ready to collect (cyan
+                             when > 0, else dim); HAUL = total committed SCU across active hauls (always cyan)
+                             + delivered x/y drops sub-line. Values are set in code-behind (RebuildStatsPanel);
+                             the old count-up moved into the COLLECTION LOG header below as "(N)". -->
+                        <Grid Margin="0,11,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <views:ChamferPanel Grid.Column="0" Accent="True" ShowBrackets="True" Chamfer="12"
+                                                Padding="10,11">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock x:Name="HubReadyValue" Text="0"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="24" FontWeight="Bold"
+                                               Foreground="{DynamicResource FgDimBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="READY ORDERS" FontSize="8.5" FontWeight="Bold"
                                                Foreground="{DynamicResource FgDimBrush}"
-                                               Margin="9,0,0,7" VerticalAlignment="Bottom"/>
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
                                 </StackPanel>
-                            </StackPanel>
-                        </views:ChamferPanel>
+                            </views:ChamferPanel>
+                            <views:ChamferPanel Grid.Column="2" Accent="True" ShowBrackets="True" Chamfer="12"
+                                                Padding="10,11">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock x:Name="HubHaulValue" Text="0 SCU"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="24" FontWeight="Bold"
+                                               Foreground="{DynamicResource CyanBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="HAUL" FontSize="8.5" FontWeight="Bold"
+                                               Foreground="{DynamicResource FgDimBrush}"
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="HubHaulSub" Text="0/0 drops"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                               Foreground="{DynamicResource FgDimBrush}"
+                                               HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </views:ChamferPanel>
+                        </Grid>
 
                         <!-- SERVER / SHARD: current + recent shards (built in code-behind, RebuildShardPanel). -->
                         <views:ChamferPanel Chamfer="12" Padding="13,10" Margin="0,11,0,0">
                             <StackPanel x:Name="ShardPanel"/>
                         </views:ChamferPanel>
 
-                        <!-- COLLECTION LOG: blueprint feed (newest first), inline in the scroll. -->
-                        <TextBlock Text="COLLECTION LOG" Style="{StaticResource Eyebrow}" Margin="1,13,0,4"/>
+                        <!-- COLLECTION LOG: blueprint feed (newest first), inline in the scroll. Header count
+                             is the same App.GameLog.Count the old hero count-up rendered (F2, frozen). -->
+                        <TextBlock x:Name="StatsFeedHeader" Text="COLLECTION LOG (0)" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentBrush}" Margin="1,13,0,4"/>
                         <Grid MinHeight="56">
                             <StackPanel x:Name="StatsFeedItems"/>
                             <TextBlock x:Name="StatsEmptyState"
