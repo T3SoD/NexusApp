@@ -92,7 +92,7 @@ public partial class OverlayWindow : Window
         _vm.FilteredScanHistory.CollectionChanged += (s, e) => RebuildHistory();
         RebuildHistory();
 
-        _vm.WorkOrders.CollectionChanged += (s, e) => { if (_activeTab == "orders") RebuildOrdersPanel(); };
+        _vm.WorkOrders.CollectionChanged += (s, e) => { UpdateRefineryTabLabel(); if (_activeTab == "orders") RebuildOrdersPanel(); };
         _vm.ShoppingList.CollectionChanged += (s, e) => { if (_activeTab == "shopping") RebuildShoppingPanel(); };
 
         BuildOverlayHistoryFilterPills();
@@ -135,10 +135,12 @@ public partial class OverlayWindow : Window
         _contractBoxVisible = App.ContractBoxVisible;   // seed from shared state so the switch isn't stale on first open
 
         UpdateHaulingTabLabel();   // initial overlay tab count (updates as hauls stream in)
+        UpdateRefineryTabLabel();  // initial REFINERY (N) ready-to-collect badge
 
         BuildScanControls();
         BuildHaulingControls();
         BuildHubScanControls();
+        BuildQuickAddPanel();      // E2 quick-add trigger + form (built once into QuickAddHost)
 
         // When an order turns ready, rebuild the orders panel if it is showing: the ready card flashes itself in
         // BuildOverlayOrderCard (pill fade + one-shot border flash). The old 4x opacity pulse on the dock button is gone.
@@ -1247,6 +1249,15 @@ public partial class OverlayWindow : Window
         TabHaulingBtn.Content = n > 0 ? $"HAULING ({n})" : "HAULING";
     }
 
+    // E1: shows the ready-to-collect count on the REFINERY tab button: "REFINERY" or "REFINERY (N)".
+    // Mirrors UpdateHaulingTabLabel; driven by the WorkOrders.CollectionChanged subscription (every
+    // save/collect reloads the collection) plus the initial build, so the badge stays fresh off-tab.
+    private void UpdateRefineryTabLabel()
+    {
+        var n = _vm.WorkOrders.Count(w => w.Status == WorkOrderStatus.ReadyToCollect);
+        TabOrdersBtn.Content = n > 0 ? $"REFINERY ({n})" : "REFINERY";
+    }
+
     // Refresh the Server / Shard section when the shard history changes, but only while the STATS
     // tab is on screen (mirrors OnHaulsChanged's tab guard).
     private void OnShardsChanged()
@@ -1693,6 +1704,181 @@ public partial class OverlayWindow : Window
     // time (smooth ScaleX), so the ticker only refreshes the text each second.
     private readonly Dictionary<string, TextBlock> _orderTimerRefs = new();
 
+    // ── E2 quick-add form (built once into QuickAddHost, survives orders-panel rebuilds) ─────────
+    private bool _quickAddBuilt;
+    private Button _quickAddTrigger = null!;
+    private Border _quickAddForm = null!;
+    private TextBox _quickResourceBox = null!;
+    private TextBox _quickRefineryBox = null!;
+    private TextBox _quickMinutesBox = null!;
+    private TextBlock _quickError = null!;
+
+    // Builds the "+ Quick order" trigger and the (collapsed) inline form once. The refinery field is a
+    // plain TextBox: the frozen values style every quick-form field uniformly as "mono 12px on #0A0F15"
+    // text fields (authoritative), and the main editor's only station source is a private static array in
+    // WorkOrderEditorPanel that can't be reused without an out-of-scope edit or duplication; the refinery
+    // is also optional here. Everything richer stays in the main-window editor.
+    private void BuildQuickAddPanel()
+    {
+        if (_quickAddBuilt) return;
+        _quickAddBuilt = true;
+
+        var dim     = (Brush)FindResource("FgDimBrush");
+        var line    = (Brush)FindResource("NavBorderBrush");
+        var mono    = (FontFamily)FindResource("MonoFont");
+        var fieldBg = HexBrush("#0A0F15");
+
+        _quickAddTrigger = new Button
+        {
+            Content = "+  Quick order",
+            Style = (Style)FindResource("NexusButton"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(0, 6, 0, 6),
+            FontSize = 11,
+        };
+        _quickAddTrigger.Click += QuickAddTrigger_Click;
+
+        // Frozen field: mono 12px on #0A0F15, 1px line border, 4px radius (NexusTextBox template supplies
+        // the rounded 1px border + placeholder-from-Tag; we override bg/font to the frozen values).
+        TextBox Field(string placeholder) => new TextBox
+        {
+            Style = (Style)FindResource("NexusTextBox"),
+            Background = fieldBg, FontFamily = mono, FontSize = 12,
+            Padding = new Thickness(8, 5, 8, 5), Tag = placeholder,
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+
+        // Frozen label: 9px uppercase dim (WPF has no letter-spacing, so this matches the overlay's
+        // existing 9px uppercase label idiom, e.g. "ACTIVE ORDERS").
+        TextBlock Label(string text) => new TextBlock
+        {
+            Text = text.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = dim, Margin = new Thickness(0, 8, 0, 0),
+        };
+
+        _quickResourceBox = Field("Resource");
+        _quickRefineryBox = Field("Refinery (optional)");
+        _quickMinutesBox  = Field("45");
+
+        _quickError = new TextBlock
+        {
+            FontSize = 10, Foreground = HexBrush("#E5484D"),
+            Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed,
+        };
+
+        var addBtn = new Button
+        {
+            Content = "ADD", Style = (Style)FindResource("AccentButton"),
+            Padding = new Thickness(16, 5, 16, 5), FontSize = 11,
+        };
+        addBtn.Click += QuickAddConfirm_Click;
+        var cancelBtn = new Button
+        {
+            Content = "CANCEL", Style = (Style)FindResource("NexusButton"),
+            Padding = new Thickness(14, 5, 14, 5), FontSize = 11, Margin = new Thickness(8, 0, 0, 0),
+        };
+        cancelBtn.Click += QuickAddCancel_Click;
+
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
+        btnRow.Children.Add(addBtn);
+        btnRow.Children.Add(cancelBtn);
+
+        var formStack = new StackPanel();
+        formStack.Children.Add(Label("Resource"));
+        formStack.Children.Add(_quickResourceBox);
+        formStack.Children.Add(Label("Refinery"));
+        formStack.Children.Add(_quickRefineryBox);
+        formStack.Children.Add(Label("Timer (min)"));
+        formStack.Children.Add(_quickMinutesBox);
+        formStack.Children.Add(_quickError);
+        formStack.Children.Add(btnRow);
+
+        _quickAddForm = new Border
+        {
+            Child = formStack,
+            Background = (Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = line, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10, 12, 12),
+            Visibility = Visibility.Collapsed,
+        };
+
+        QuickAddHost.Children.Add(_quickAddTrigger);
+        QuickAddHost.Children.Add(_quickAddForm);
+    }
+
+    private void QuickAddTrigger_Click(object sender, RoutedEventArgs e)
+    {
+        _quickError.Visibility = Visibility.Collapsed;
+        _quickResourceBox.Text = _vm.BestMatch?.Resource.Name ?? "";   // prefill the top scan match
+        _quickRefineryBox.Text = "";
+        _quickMinutesBox.Text  = "";
+        _quickAddTrigger.Visibility = Visibility.Collapsed;
+        UnfoldQuickForm();
+        _quickResourceBox.Focus();
+        _quickResourceBox.CaretIndex = _quickResourceBox.Text.Length;
+    }
+
+    // Frozen: unfold 200ms fade 0->1 + 8px rise, Motion.Settle, one-shot; Reduced snaps.
+    private void UnfoldQuickForm()
+    {
+        _quickAddForm.Visibility = Visibility.Visible;
+        if (Motion.Reduced)
+        {
+            _quickAddForm.BeginAnimation(OpacityProperty, null);
+            _quickAddForm.Opacity = 1;
+            _quickAddForm.RenderTransform = null;
+            return;
+        }
+        var shift = new System.Windows.Media.TranslateTransform(0, 8);
+        _quickAddForm.RenderTransform = shift;
+        _quickAddForm.Opacity = 0;
+        var dur = TimeSpan.FromMilliseconds(200);
+        _quickAddForm.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
+        shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(8, 0, dur) { EasingFunction = Motion.Settle });
+    }
+
+    private void CollapseQuickForm()
+    {
+        _quickAddForm.BeginAnimation(OpacityProperty, null);
+        _quickAddForm.Opacity = 1;
+        _quickAddForm.Visibility = Visibility.Collapsed;
+        _quickError.Visibility = Visibility.Collapsed;
+        _quickAddTrigger.Visibility = Visibility.Visible;
+    }
+
+    private void QuickAddCancel_Click(object sender, RoutedEventArgs e) => CollapseQuickForm();
+
+    private void QuickAddConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        var resource = _quickResourceBox.Text.Trim();
+        var refinery = _quickRefineryBox.Text.Trim();
+        var minutes  = int.TryParse(_quickMinutesBox.Text.Trim(), out var mv) ? mv : 0;
+        try
+        {
+            // UtcNow is required: WorkOrder's timer math is UtcNow-based (Now would skew by the UTC offset).
+            var wo = QuickOrderFactory.Create(resource, refinery, minutes, DateTime.UtcNow);
+            _vm.SaveWorkOrderCommand.Execute(wo);   // same persistence path as the editor -> CollectionChanged refreshes every surface + the badge
+            InteractionLog.Click($"overlay quick order ({resource})", (Button)sender);
+            CollapseQuickForm();
+        }
+        catch (ArgumentException ex)
+        {
+            _quickError.Text = ex.Message;   // inline dim red, no dialog (frozen)
+            _quickError.Visibility = Visibility.Visible;
+        }
+    }
+
+    // E3: mark a ready order collected -> Complete, through the same persistence path the editor uses.
+    private void CollectOrder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: WorkOrder wo } b) return;
+        wo.Status = WorkOrderStatus.Complete;
+        _vm.SaveWorkOrderCommand.Execute(wo);
+        InteractionLog.Click($"overlay order collected ({wo.Label})", b);
+    }
+
     // Ready-flash bookkeeping (mirrors MainWindow). The orders panel fully rebuilds on every change, and a save
     // fires a rebuild per re-added order, so the flash is scheduled once (deferred) against the final card set.
     private readonly HashSet<string> _orderEverRefining = new();
@@ -1901,6 +2087,29 @@ public partial class OverlayWindow : Window
                     { FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd });
 
             _orderTimerRefs[wo.Id] = tTxt;
+        }
+
+        // E3: a ready order gains a "COLLECTED" action (frozen: #66E6A6 on rgba(102,230,166,0.12),
+        // 1px rgba(102,230,166,0.4) border, 4px radius, 10px). Collecting marks it Complete via the
+        // same persistence path the editor uses, so every surface (and the REFINERY badge) refreshes.
+        if (wo.Status == WorkOrderStatus.ReadyToCollect)
+        {
+            var collectBtn = new Button
+            {
+                Content = "COLLECTED",
+                Style = (Style)FindResource("NexusButton"),
+                Foreground = HexBrush("#66E6A6"),
+                Background = HexBrush("#1F66E6A6"),   // rgba(102,230,166,0.12)
+                BorderBrush = HexBrush("#6666E6A6"),  // rgba(102,230,166,0.4)
+                BorderThickness = new Thickness(1),
+                FontSize = 10, FontWeight = FontWeights.Bold,
+                Padding = new Thickness(10, 4, 10, 4),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 9, 0, 0),
+                Tag = wo,
+            };
+            collectBtn.Click += CollectOrder_Click;
+            stack.Children.Add(collectBtn);
         }
 
         grid.Children.Add(stack);
