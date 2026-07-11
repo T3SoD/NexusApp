@@ -273,7 +273,8 @@
                         <ItemsControl x:Name="OverlayResults">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <views:ChamferPanel Margin="0,3" Chamfer="9" ClipContent="True" Padding="0">
+                                    <views:ChamferPanel Margin="0,3" Chamfer="9" ClipContent="True" Padding="0"
+                                                        MouseLeftButtonDown="Card_MouseLeftButtonDown">
                                         <views:ChamferPanel.Style>
                                             <Style TargetType="{x:Type views:ChamferPanel}" BasedOn="{StaticResource {x:Type views:ChamferPanel}}">
                                                 <Setter Property="Background"    Value="{DynamicResource Bg3Brush}"/>
@@ -289,7 +290,8 @@
                                         <Grid>
                                             <Border Width="3" HorizontalAlignment="Left"
                                                     Background="{Binding CardColor, Converter={StaticResource HexColor}}"/>
-                                            <Grid Margin="11,8">
+                                            <StackPanel Margin="11,8">
+                                            <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
@@ -415,6 +417,12 @@
                                                     </Button.Style>
                                                 </Button>
                                             </Grid>
+                                            <!-- Task 7 (C3/C4): deposit-composition bar + tap-to-expand rows,
+                                                 built per card in code-behind (CompositionHost_Loaded) because
+                                                 the segment/row count is per-resource dynamic. Empty for
+                                                 no-composition ores, which then never toggle. -->
+                                            <StackPanel x:Name="CompositionHost" Loaded="CompositionHost_Loaded"/>
+                                            </StackPanel>
                                         </Grid>
                                     </views:ChamferPanel>
                                 </DataTemplate>

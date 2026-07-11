@@ -19,6 +19,25 @@ public partial class OverlayWindow : Window
     private RegionSelectorWindow? _contractRegionSelector;   // independent draw overlay for the contract region
     private bool _contractBoxVisible;
 
+    // ── Deposit composition (Task 7, C3/C4) ────────────────────────────────────
+    // One window-level cache: each resource's composition is loaded once, lazily, on
+    // first card build (App.Data.GetCompositionForResource). Empty results cache too.
+    private readonly CompositionCache _composition = new(App.Data.GetCompositionForResource);
+    // Resource name of the single currently-expanded card, or null when none is open.
+    // Keyed by name (not a UI reference) so it survives ScanResults rebuilds - a cart
+    // toggle replaces every MatchResult with a `with`-clone and regenerates containers,
+    // but Resource.Name is stable, so the same card re-renders expanded without re-firing
+    // the entrance animation.
+    private string? _expandedName;
+    // Live rows element of the currently-expanded card, refreshed on every rebuild by the
+    // expanded card's own build. Only read while _expandedName is non-null, so it is never
+    // a stale/dead reference at that point.
+    private FrameworkElement? _openRows;
+    // Set only by ApplyExactAutoExpand (a real scan) to the exact match's name so that card's
+    // first build plays the entrance animation once; consumed on that build. Cart-toggle
+    // rebuilds leave it null, so the expanded card re-renders statically (no re-animation).
+    private string? _animateExpandName;
+
     public event Action<NexusApp.Models.ScanRegion>? ScanRegionSelected;
     public event Action<bool>? BoxVisibilityToggled;
     // Independent cargo-contract region/box events (mirror the RS pair above; MainWindow owns the yellow indicator).
@@ -599,6 +618,7 @@ public partial class OverlayWindow : Window
         _vm.RsInput = rs.ToString();
         _vm.LookupCommand.Execute(null);
         OverlayResults.ItemsSource = _vm.ScanResults;
+        ApplyExactAutoExpand();
     }
 
     // Cart button on a scan result card. The actual add/remove runs via ToggleCartCommand
@@ -609,6 +629,250 @@ public partial class OverlayWindow : Window
     {
         if (sender is Button { DataContext: MatchResult m } b)
             InteractionLog.Click($"overlay cart toggle {m.Resource.Name}", b);
+    }
+
+    // ── Deposit composition bar + tap-to-expand (Task 7, C3/C4) ─────────────────
+    // Frozen values: docs/superpowers/specs/2026-07-11-overlay-pass-values.md ("Scan result cards").
+    private static readonly Color CompTrack     = Color.FromRgb(0x1A, 0x20, 0x28);        // bar track
+    private static readonly Color CompPrimary   = Color.FromRgb(0xFF, 0xB2, 0x3E);        // primary segment / chip text (amber)
+    private static readonly Color CompCyan      = Color.FromRgb(0x7F, 0xE9, 0xE0);        // byproduct segments
+    private static readonly Color CompInert     = Color.FromRgb(0x5F, 0x6B, 0x78);        // remainder / inert
+    private static readonly Color CompPctBand   = Color.FromRgb(0xFF, 0xD0, 0x89);        // pct band (amber-bright)
+    private static readonly Color CompAmberLine = Color.FromArgb(0x6B, 0xFF, 0xB2, 0x3E); // "primary" chip border (amber-line .42)
+    private static readonly double[] ByproductOpacity = { 1.0, 0.7, 0.45 };               // stepped by descending share
+
+    // After a real scan rebinds ScanResults, auto-expand the exact match IFF it has composition data.
+    // Called only from the scan entry points (RunScan / recent-scan tap), never from a cart-toggle
+    // rebuild, so IsInCart churn does not re-fire the auto-expand. Runs synchronously before the queued
+    // per-card Loaded handlers, so those observe the final _expandedName / _animateExpandName.
+    private void ApplyExactAutoExpand()
+    {
+        _expandedName = null;
+        _openRows = null;
+        _animateExpandName = null;
+
+        var exact = _vm.ScanResults.FirstOrDefault(r => r.IsExact);
+        if (exact == null || _composition.Get(exact.Resource.Name).Count == 0) return;
+
+        _expandedName = exact.Resource.Name;
+        _animateExpandName = exact.Resource.Name;
+    }
+
+    // Each result card realizes (and re-realizes on a rebuild) a CompositionHost StackPanel; fill it
+    // with the bar + collapsed/expanded rows. Idempotent - clears and rebuilds, so a repeated Loaded
+    // (cart-toggle rebuild, re-parenting) stays correct and honours the current _expandedName.
+    private void CompositionHost_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is StackPanel host && host.DataContext is MatchResult m)
+            BuildCompositionUi(host, m);
+    }
+
+    private void BuildCompositionUi(StackPanel host, MatchResult m)
+    {
+        host.Children.Clear();
+        var parts = _composition.Get(m.Resource.Name);
+
+        // No composition -> no bar, no expand affordance; the card never toggles.
+        if (parts.Count == 0)
+        {
+            if (FindCard(host) is { } bare) bare.Cursor = Cursors.Arrow;
+            return;
+        }
+
+        if (FindCard(host) is { } card) card.Cursor = Cursors.Hand;
+
+        host.Children.Add(BuildBar(parts));
+
+        var rows = BuildExpandRows(parts);
+        bool expanded = string.Equals(m.Resource.Name, _expandedName, StringComparison.OrdinalIgnoreCase);
+        rows.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        host.Children.Add(rows);
+
+        if (!expanded) return;
+
+        _openRows = rows;
+        bool wantAnim = string.Equals(m.Resource.Name, _animateExpandName, StringComparison.OrdinalIgnoreCase);
+        if (wantAnim) _animateExpandName = null;   // one-shot: consume so cart rebuilds render static
+        if (wantAnim && !Motion.Reduced) AnimateRowsIn(rows);
+        else rows.Opacity = 1;                     // Reduced / static rebuild: expanded, no entrance
+    }
+
+    // 4px segmented bar: primary (amber) first, byproducts (cyan, stepped opacity by descending share),
+    // then an inert remainder to 100%. Widths proportional to each part's (Min+Max)/2 average.
+    private static Border BuildBar(IReadOnlyList<CompositionPart> parts)
+    {
+        static double Avg(CompositionPart p) => (p.MinPct + p.MaxPct) / 2.0;
+
+        var byproducts = parts.Where(p => !p.IsPrimary).OrderByDescending(Avg).ToList();
+
+        var grid = new Grid();
+        void AddSegment(double weight, Color color, double opacity)
+        {
+            if (weight <= 0) return;
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(weight, GridUnitType.Star) });
+            var seg = new Border { Background = new SolidColorBrush(color), Opacity = opacity };
+            Grid.SetColumn(seg, grid.ColumnDefinitions.Count - 1);
+            grid.Children.Add(seg);
+        }
+
+        foreach (var p in parts.Where(p => p.IsPrimary)) AddSegment(Avg(p), CompPrimary, 1.0);
+        for (int i = 0; i < byproducts.Count; i++)
+            AddSegment(Avg(byproducts[i]), CompCyan, ByproductOpacity[Math.Min(i, ByproductOpacity.Length - 1)]);
+
+        double remainder = 100.0 - parts.Sum(Avg);
+        if (remainder > 0) AddSegment(remainder, CompInert, 1.0);
+
+        return new Border
+        {
+            Height = 4,
+            CornerRadius = new CornerRadius(2),
+            Background = new SolidColorBrush(CompTrack),
+            Margin = new Thickness(0, 6, 0, 0),
+            Child = grid,
+        };
+    }
+
+    // Expand rows: one per part - ore name (11px), optional "primary" chip, pct band (mono 10.5px).
+    // Wrapped in a 1px top border to separate the section from the card body.
+    private Border BuildExpandRows(IReadOnlyList<CompositionPart> parts)
+    {
+        var line = (Brush)FindResource("BorderBrush");
+        var fg = (Brush)FindResource("FgBrush");
+        var mono = (FontFamily)FindResource("MonoFont");
+        var stack = new StackPanel { Margin = new Thickness(0, 5, 0, 1) };
+
+        foreach (var p in parts)
+        {
+            var row = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            left.Children.Add(new TextBlock
+            {
+                Text = p.Ore,
+                FontSize = 11,
+                Foreground = fg,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            if (p.IsPrimary) left.Children.Add(BuildPrimaryChip());
+            Grid.SetColumn(left, 0);
+            row.Children.Add(left);
+
+            var pct = new TextBlock
+            {
+                Text = $"{p.MinPct:0}-{p.MaxPct:0}%",
+                FontFamily = mono,
+                FontSize = 10.5,
+                Foreground = new SolidColorBrush(CompPctBand),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(pct, 1);
+            row.Children.Add(pct);
+
+            stack.Children.Add(row);
+        }
+
+        return new Border
+        {
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            BorderBrush = line,
+            Margin = new Thickness(0, 6, 0, 0),
+            Child = stack,
+        };
+    }
+
+    private Border BuildPrimaryChip() => new()
+    {
+        Margin = new Thickness(6, 0, 0, 0),
+        Padding = new Thickness(4, 0, 4, 1),
+        CornerRadius = new CornerRadius(3),
+        BorderThickness = new Thickness(1),
+        BorderBrush = new SolidColorBrush(CompAmberLine),
+        VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock { Text = "primary", FontSize = 8.5, Foreground = new SolidColorBrush(CompPrimary) },
+    };
+
+    // Card tap: toggle the composition rows. Bubbling MouseLeftButtonDown, so the cart button
+    // (which handles its own click) never reaches here. Cards without composition have no rows and
+    // never toggle. One card open at a time - opening a new one collapses the previously open one.
+    private void Card_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement card || card.DataContext is not MatchResult m) return;
+
+        if (FindDescendant(card, "CompositionHost") is not StackPanel { Children.Count: >= 2 } host) return;
+        var rows = (FrameworkElement)host.Children[1];
+        var name = m.Resource.Name;
+
+        InteractionLog.Click($"overlay composition {name}", card);
+
+        if (string.Equals(name, _expandedName, StringComparison.OrdinalIgnoreCase))
+        {
+            CollapseRows(rows);
+            _expandedName = null;
+            _openRows = null;
+            return;
+        }
+
+        if (_expandedName != null && _openRows != null) CollapseRows(_openRows); // one open at a time
+        ExpandRows(rows, animate: !Motion.Reduced);
+        _expandedName = name;
+        _openRows = rows;
+    }
+
+    private static void ExpandRows(FrameworkElement rows, bool animate)
+    {
+        rows.Visibility = Visibility.Visible;
+        if (animate) { AnimateRowsIn(rows); return; }
+        rows.BeginAnimation(UIElement.OpacityProperty, null);
+        rows.RenderTransform = null;
+        rows.Opacity = 1;
+    }
+
+    private static void CollapseRows(FrameworkElement rows)
+    {
+        rows.BeginAnimation(UIElement.OpacityProperty, null);
+        rows.RenderTransform = null;
+        rows.Opacity = 1;
+        rows.Visibility = Visibility.Collapsed;
+    }
+
+    // Entrance: 200ms fade 0->1 + 12px rise, Motion.Settle, one-shot (frozen "expand motion").
+    private static void AnimateRowsIn(FrameworkElement rows)
+    {
+        var shift = new System.Windows.Media.TranslateTransform(0, 12);
+        rows.RenderTransform = shift;
+        rows.Opacity = 0;
+        var dur = TimeSpan.FromMilliseconds(200);
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle };
+        var rise = new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle };
+        rows.BeginAnimation(UIElement.OpacityProperty, fade);
+        shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, rise);
+    }
+
+    // The ChamferPanel card root that owns a composition host (walk up the visual tree).
+    private static FrameworkElement? FindCard(DependencyObject from)
+    {
+        var d = from;
+        while (d != null)
+        {
+            if (d is ChamferPanel cp) return cp;
+            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+        }
+        return null;
+    }
+
+    // Named descendant lookup (the CompositionHost inside one card's subtree).
+    private static FrameworkElement? FindDescendant(DependencyObject root, string name)
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe && fe.Name == name) return fe;
+            if (FindDescendant(child, name) is { } found) return found;
+        }
+        return null;
     }
 
     private void BuildOverlayHistoryFilterPills()
@@ -717,6 +981,7 @@ public partial class OverlayWindow : Window
                 OverlayRsInput.Text = e2.Rs.ToString("N0");
                 _vm.RunScanNoHistory(e2.Rs);
                 OverlayResults.ItemsSource = _vm.ScanResults;
+                ApplyExactAutoExpand();
             };
             HistoryStrip.Children.Add(rowBorder);
         }
