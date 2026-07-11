@@ -33,13 +33,13 @@ public partial class OverlayWindow : Window
     public FrameworkElement ContractRegionTarget => SetContractRegionBtn;   // HAULING tab's set-region link
 
     /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
-    public void ShowScanTabForTutorial() => SwitchTab("scan");
+    public void ShowScanTabForTutorial() => SwitchTab("scan", persist: false);
 
     /// <summary>Force the HUB tab visible so the tour can point at the status lights.</summary>
-    public void ShowHubTabForTutorial() => SwitchTab("stats");
+    public void ShowHubTabForTutorial() => SwitchTab("stats", persist: false);
 
     /// <summary>Force the HAULING tab visible so the tour can point at the contract scan controls.</summary>
-    public void ShowHaulingTabForTutorial() => SwitchTab("hauling");
+    public void ShowHaulingTabForTutorial() => SwitchTab("hauling", persist: false);
 
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
     private readonly Action<string> _onOrderReady;
@@ -676,11 +676,16 @@ public partial class OverlayWindow : Window
     private void TabShopping_Click(object sender, RoutedEventArgs e) => SwitchTab("shopping");
     private void TabHauling_Click(object sender, RoutedEventArgs e) => SwitchTab("hauling");
 
-    private void SwitchTab(string tab)
+    // persist:false = a programmatic tab flip (the welcome tour) that must not overwrite the
+    // user's saved tab preference; every user-driven switch keeps the default and persists.
+    private void SwitchTab(string tab, bool persist = true)
     {
         _activeTab = tab;
-        App.Settings.Current.OverlayActiveTab = tab;
-        App.Settings.Save();
+        if (persist)
+        {
+            App.Settings.Current.OverlayActiveTab = tab;
+            App.Settings.Save();
+        }
         StatsTabContent.Visibility    = tab == "stats"    ? Visibility.Visible : Visibility.Collapsed;
         ScanTabContent.Visibility     = tab == "scan"     ? Visibility.Visible : Visibility.Collapsed;
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
