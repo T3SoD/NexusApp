@@ -111,7 +111,9 @@ public partial class OverlayWindow : Window
         BuildHaulingControls();
         BuildHubScanControls();
 
-        _onOrderReady = label => PulseWorkOrderButton();
+        // When an order turns ready, rebuild the orders panel if it is showing: the ready card flashes itself in
+        // BuildOverlayOrderCard (pill fade + one-shot border flash). The old 4x opacity pulse on the dock button is gone.
+        _onOrderReady = _ => { if (_activeTab == "orders") RebuildOrdersPanel(); };
         WorkOrderEditorPanel.OrderReadyToCollect += _onOrderReady;
 
         IsVisibleChanged += (_, e) =>
@@ -615,15 +617,22 @@ public partial class OverlayWindow : Window
     }
 
 
-    private void PulseWorkOrderButton()
+    // One-shot border color flash for an overlay order card: amber -> cyan (peak at 45%) -> resting, 400ms, ease-out.
+    // Animates the Color of a per-card SolidColorBrush clone (never a shared/frozen resource brush).
+    private static void FlashOrderBorder(SolidColorBrush target, Color resting)
     {
-        if (Motion.Reduced) return;   // Ready is already conveyed by the button text/color
-        var anim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.25, TimeSpan.FromMilliseconds(300))
+        var amber = Color.FromRgb(0xFF, 0xB2, 0x3E);
+        var cyan  = Color.FromRgb(0x7F, 0xE9, 0xE0);
+        var anim = new System.Windows.Media.Animation.ColorAnimationUsingKeyFrames
         {
-            AutoReverse = true,
-            RepeatBehavior = new System.Windows.Media.Animation.RepeatBehavior(4),
+            Duration = TimeSpan.FromMilliseconds(Motion.FlashMs),
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
         };
-        WorkOrderBtn.BeginAnimation(OpacityProperty, anim);
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(amber, System.Windows.Media.Animation.KeyTime.FromPercent(0.0)));
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(cyan, System.Windows.Media.Animation.KeyTime.FromPercent(0.45)) { EasingFunction = Motion.SlideOut });
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(resting, System.Windows.Media.Animation.KeyTime.FromPercent(1.0)) { EasingFunction = Motion.SlideOut });
+        target.Color = resting;
+        target.BeginAnimation(SolidColorBrush.ColorProperty, anim);
     }
 
     private void WorkOrderToggle_Click(object sender, RoutedEventArgs e)
@@ -1268,11 +1277,28 @@ public partial class OverlayWindow : Window
     // time (smooth ScaleX), so the ticker only refreshes the text each second.
     private readonly Dictionary<string, TextBlock> _orderTimerRefs = new();
 
+    // Ready-flash bookkeeping (mirrors MainWindow). The orders panel fully rebuilds on every change, and a save
+    // fires a rebuild per re-added order, so the flash is scheduled once (deferred) against the final card set.
+    private readonly HashSet<string> _orderEverRefining = new();
+    private readonly HashSet<string> _orderFlashedReady = new();
+    private readonly Dictionary<string, OverlayOrderParts> _orderCardParts = new();
+    private bool _orderAnimQueued;
+
+    // The animatable pieces of an overlay order card, captured at build time for the deferred flash pass.
+    private sealed class OverlayOrderParts
+    {
+        public Border Chip = null!;
+        public SolidColorBrush? FlashBorder;   // per-card clone, set only for a flash candidate
+        public WorkOrderStatus Status;
+        public bool PreReady;
+    }
+
     private void RebuildOrdersPanel()
     {
         OrdersPanelItems.Children.Clear();
         OrdersSummaryPanel.Children.Clear();
         _orderTimerRefs.Clear();
+        _orderCardParts.Clear();
 
         var orders = _vm.WorkOrders;
         bool any = orders.Count > 0;
@@ -1289,7 +1315,8 @@ public partial class OverlayWindow : Window
         BuildOrdersSummary(orders);
 
         foreach (var wo in orders)
-            OrdersPanelItems.Children.Add(BuildOverlayOrderCard(wo));
+            OrdersPanelItems.Children.Add(BuildOverlayOrderCard(wo));   // records card parts in _orderCardParts[wo.Id]
+        ScheduleOrderAnimations();
 
         var hasTimers = orders.Any(w => w.HasActiveTimer);
         if (hasTimers && _ordersTicker == null)
@@ -1376,6 +1403,21 @@ public partial class OverlayWindow : Window
         var headFont = (FontFamily)FindResource("HeadFont");
         var statusBrush = HexBrush(wo.StatusColorHex);
 
+        // Ready-flash candidate: a card built in the ready state for an order we have already seen refining and not
+        // yet flashed. Cloning the border brush (only for a candidate) lets the deferred pass animate its Color
+        // without ever touching the shared resource brush. The one-per-order guard is consumed in FlushOrderAnimations.
+        bool flashCandidate = wo.Status == WorkOrderStatus.ReadyToCollect
+                              && !Motion.Reduced
+                              && _orderEverRefining.Contains(wo.Id)
+                              && !_orderFlashedReady.Contains(wo.Id);
+        Brush cardBorder = navB;
+        SolidColorBrush? flashBorder = null;
+        if (flashCandidate && navB is SolidColorBrush navSolid)
+        {
+            flashBorder = new SolidColorBrush(navSolid.Color);
+            cardBorder = flashBorder;
+        }
+
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1447,10 +1489,50 @@ public partial class OverlayWindow : Window
 
         grid.Children.Add(stack);
         // Chamfered MOBIGLAS card (TL+BR bevel) with the status bar clipped to the silhouette.
-        var card = Hud.Panel(grid, chamfer: 10, bg: cardBg, border: navB,
+        var card = Hud.Panel(grid, chamfer: 10, bg: cardBg, border: cardBorder,
                              padding: new Thickness(0), clipContent: true);
         card.Margin = new Thickness(0, 0, 0, 8);
+
+        // Capture the parts; the deferred pass (FlushOrderAnimations) plays the flash once, on the final card.
+        _orderCardParts[wo.Id] = new OverlayOrderParts
+        {
+            Chip = chip, FlashBorder = flashBorder, Status = wo.Status,
+            PreReady = wo.Status is WorkOrderStatus.Refining or WorkOrderStatus.Mining || wo.HasActiveTimer,
+        };
         return card;
+    }
+
+    // Coalesced deferred flash pass (mirrors MainWindow): scheduled once per rebuild storm, runs on the final cards.
+    private void ScheduleOrderAnimations()
+    {
+        if (_orderAnimQueued) return;
+        _orderAnimQueued = true;
+        Dispatcher.BeginInvoke(new Action(FlushOrderAnimations), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void FlushOrderAnimations()
+    {
+        _orderAnimQueued = false;
+        foreach (var wo in _vm.WorkOrders)
+        {
+            if (!_orderCardParts.TryGetValue(wo.Id, out var parts)) continue;
+
+            if (parts.PreReady) _orderEverRefining.Add(wo.Id);
+
+            if (parts.Status == WorkOrderStatus.ReadyToCollect
+                && _orderEverRefining.Contains(wo.Id)
+                && _orderFlashedReady.Add(wo.Id)   // once per order
+                && !Motion.Reduced && parts.FlashBorder != null)
+            {
+                // Pill fade-in (frozen pill crossfade, 150ms). The overlay status chip is inline (not a Hud.StatusChip),
+                // so this uses the sanctioned single-pill opacity fade rather than the two-chip cross-dissolve.
+                parts.Chip.Opacity = 0;
+                parts.Chip.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { EasingFunction = Motion.Settle });
+                // Border flash (frozen: amber -> cyan at 45% -> resting, 400ms, ease-out, one shot).
+                FlashOrderBorder(parts.FlashBorder, parts.FlashBorder.Color);
+                NexusApp.Services.Logger.Info($"[UI] Refinery: order ready flash ({wo.Label})");
+            }
+        }
     }
 
     private void OrdersTicker_Tick(object? sender, EventArgs e)

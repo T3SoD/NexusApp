@@ -707,6 +707,38 @@ public partial class MainWindow : Window
             new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
     }
 
+    // One-shot border color flash: amber -> cyan (peak at 45%) -> resting, 400ms, ease-out. Animates the Color of
+    // a per-card SolidColorBrush clone (the caller must never pass a shared/frozen resource brush). FillBehavior.Stop
+    // + resting base value means the stroke settles back to its resting color once the flash ends.
+    private static void FlashBorder(System.Windows.Media.SolidColorBrush target, System.Windows.Media.Color resting)
+    {
+        var amber = System.Windows.Media.Color.FromRgb(0xFF, 0xB2, 0x3E);
+        var cyan  = System.Windows.Media.Color.FromRgb(0x7F, 0xE9, 0xE0);
+        var anim = new System.Windows.Media.Animation.ColorAnimationUsingKeyFrames
+        {
+            Duration = System.TimeSpan.FromMilliseconds(Motion.FlashMs),
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
+        };
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(amber, System.Windows.Media.Animation.KeyTime.FromPercent(0.0)));
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(cyan, System.Windows.Media.Animation.KeyTime.FromPercent(0.45)) { EasingFunction = Motion.SlideOut });
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingColorKeyFrame(resting, System.Windows.Media.Animation.KeyTime.FromPercent(1.0)) { EasingFunction = Motion.SlideOut });
+        target.Color = resting;
+        target.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty, anim);
+    }
+
+    // Status-chip cross-dissolve (frozen: 150ms - 75ms out, swap, 75ms in). The outgoing chip fades out over the
+    // first half then removes itself; the incoming chip fades in over the second half.
+    private static void CrossfadePill(FrameworkElement outgoing, FrameworkElement incoming)
+    {
+        var half = System.TimeSpan.FromMilliseconds(75);
+        incoming.Opacity = 0;
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, half) { EasingFunction = Motion.SlideOut };
+        fadeOut.Completed += (_, _) => { if (outgoing.Parent is Panel p) p.Children.Remove(outgoing); };
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, half) { BeginTime = half, EasingFunction = Motion.Settle };
+        outgoing.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        incoming.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
     // Walk the visual tree for a named element. The scan card's parts live inside a DataTemplate,
     // so they are reachable only after generation, by name, rather than as compiled fields.
     private static DependencyObject? FindByName(DependencyObject root, string name)
@@ -1585,6 +1617,27 @@ public partial class MainWindow : Window
     private System.Windows.Threading.DispatcherTimer? _listTicker;
     private readonly Dictionary<string, TextBlock?> _rowLiveRefs = new();
 
+    // Card add + ready-flash bookkeeping. The gallery fully rebuilds on every WorkOrders change, and a single
+    // save fires a rebuild PER re-added order (LoadWorkOrders clears + re-adds all), so an animation started during
+    // that storm is wiped by the next rebuild. Detection therefore runs once, deferred, against the final card set.
+    private readonly HashSet<string> _knownWorkOrderIds = new();   // ids we've ever built a card for (add = new -> fade+rise)
+    private bool _workOrdersSeeded;                                // first build seeds without animating existing cards
+    private readonly HashSet<string> _woEverRefining = new();      // ids seen in a pre-ready (refining/active-timer) state
+    private readonly HashSet<string> _woFlashedReady = new();      // ids whose ready-flash has already played (once per order)
+    private readonly Dictionary<string, WoCardParts> _woCardParts = new();   // final card refs by id, rebuilt each pass
+    private bool _woAnimQueued;                                    // coalesces the deferred animation pass across the storm
+
+    // The animatable pieces of a work-order card, captured at build time so the deferred pass can add/flash them.
+    private sealed class WoCardParts
+    {
+        public FrameworkElement Card = null!;
+        public Grid ChipHost = null!;
+        public Border Chip = null!;
+        public System.Windows.Media.SolidColorBrush? ReadyStroke;
+        public WorkOrderStatus Status;
+        public bool PreReady;   // refining / mining / has an active timer
+    }
+
     private void NewWorkOrder_Click(object sender, RoutedEventArgs e) => OpenWorkOrderEditor(new WorkOrder());
 
     // Add/edit now happens in a modal popup (the page is a card gallery). The editor's Save/Delete run the
@@ -1595,6 +1648,7 @@ public partial class MainWindow : Window
     private void RebuildWorkOrderList()
     {
         _rowLiveRefs.Clear();
+        _woCardParts.Clear();
         WorkOrderGallery.Children.Clear();
 
         var orders = _vm.WorkOrders;
@@ -1606,10 +1660,16 @@ public partial class MainWindow : Window
         {
             var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
             foreach (var wo in orders)
-                grid.Children.Add(BuildWorkOrderCard(wo));
+            {
+                var card = BuildWorkOrderCard(wo);   // records this card's animatable parts in _woCardParts[wo.Id]
+                grid.Children.Add(card);
+                // Pre-hide a genuinely new card so it does not paint at full opacity for a frame before the deferred fade+rise.
+                if (_workOrdersSeeded && !Motion.Reduced && !_knownWorkOrderIds.Contains(wo.Id)) card.Opacity = 0;
+            }
             grid.Children.Add(AddWorkOrderTile());
             WorkOrderGallery.Children.Add(grid);
         }
+        ScheduleWorkOrderAnimations();
 
         var hasTimers = orders.Any(w => w.HasActiveTimer);
         if (hasTimers && _listTicker == null)
@@ -1687,7 +1747,10 @@ public partial class MainWindow : Window
         var rightTop = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         var chip = Hud.StatusChip(wo.Status);
         chip.VerticalAlignment = VerticalAlignment.Center;
-        rightTop.Children.Add(chip);
+        // Hosted in a Grid so the ready-transition can overlay the outgoing status chip and cross-dissolve.
+        var chipHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        chipHost.Children.Add(chip);
+        rightTop.Children.Add(chipHost);
         var deleteTb = new TextBlock { Text = "x", FontFamily = monoFont, FontSize = 13, FontWeight = FontWeights.Bold, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Center };
         var deleteBtn = new Border { Child = deleteTb, Padding = new Thickness(10, 0, 2, 0), Cursor = System.Windows.Input.Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Delete" };
         deleteBtn.MouseEnter += (s, _) => deleteTb.Foreground = BrushFromHex("#EF4444");
@@ -1722,8 +1785,13 @@ public partial class MainWindow : Window
         host.Margin = new Thickness(7, 7, 7, 7);
         host.Cursor = System.Windows.Input.Cursors.Hand;
 
+        System.Windows.Media.SolidColorBrush? readyStroke = null;
         if (wo.Status == WorkOrderStatus.ReadyToCollect)
-            frame.Stroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x59, 0x66, 0xE6, 0xA6));   // green-tinted border
+        {
+            // Dedicated per-card brush (never a shared/frozen resource) so the border flash can animate its Color.
+            readyStroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x59, 0x66, 0xE6, 0xA6));   // green-tinted border
+            frame.Stroke = readyStroke;
+        }
         if (wo.Status == WorkOrderStatus.Complete)
             host.Opacity = 0.72;
 
@@ -1734,10 +1802,64 @@ public partial class MainWindow : Window
         deleteBtn.MouseLeftButtonDown += (s, e) =>
         {
             e.Handled = true;
-            _vm.DeleteWorkOrderCommand.Execute(wo.Id);   // CollectionChanged -> RebuildWorkOrderList
+            // Delete stays immediate; the model remove raises CollectionChanged -> full RebuildWorkOrderList,
+            // which discards this card wholesale, so the 140ms collapse cannot be shown here (allowed skip).
+            _vm.DeleteWorkOrderCommand.Execute(wo.Id);
+        };
+
+        // Capture the animatable parts; the deferred pass (FlushWorkOrderAnimations) plays add/ready animations once,
+        // after the rebuild storm, on the final card - detection is Id-keyed so it survives the rebuilds.
+        _woCardParts[wo.Id] = new WoCardParts
+        {
+            Card = host, ChipHost = chipHost, Chip = chip, ReadyStroke = readyStroke, Status = wo.Status,
+            PreReady = wo.Status is WorkOrderStatus.Refining or WorkOrderStatus.Mining || wo.HasActiveTimer,
         };
 
         return host;
+    }
+
+    // Coalesced deferred animation pass. LoadWorkOrders clears + re-adds every order, so a single save fires many
+    // rebuilds; scheduling once (guarded) and running at Loaded priority lets us animate the final card set only.
+    private void ScheduleWorkOrderAnimations()
+    {
+        if (_woAnimQueued) return;
+        _woAnimQueued = true;
+        Dispatcher.BeginInvoke(new Action(FlushWorkOrderAnimations), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void FlushWorkOrderAnimations()
+    {
+        _woAnimQueued = false;
+        foreach (var wo in _vm.WorkOrders)
+        {
+            if (!_woCardParts.TryGetValue(wo.Id, out var parts)) continue;
+
+            if (parts.PreReady) _woEverRefining.Add(wo.Id);
+
+            // Card add (frozen: fade + rise 12px, 200ms, settle) - a genuinely new order, never on the first seed.
+            bool isNew = !_knownWorkOrderIds.Contains(wo.Id);
+            _knownWorkOrderIds.Add(wo.Id);
+            if (_workOrdersSeeded && isNew) FadeRise(parts.Card);
+            else parts.Card.Opacity = 1;   // undo any pre-hide for a card that will not fade
+
+            // Ready flash: once per order, only for the genuine Refining -> Ready transition (seen refining first).
+            if (parts.Status == WorkOrderStatus.ReadyToCollect
+                && _woEverRefining.Contains(wo.Id)
+                && _woFlashedReady.Add(wo.Id)
+                && !Motion.Reduced && parts.ReadyStroke != null)
+            {
+                // Pill crossfade (frozen: 150ms - 75ms out, swap, 75ms in): outgoing REFINING chip dissolves to READY.
+                var outgoingChip = Hud.StatusChip(WorkOrderStatus.Refining);
+                outgoingChip.VerticalAlignment = VerticalAlignment.Center;
+                outgoingChip.IsHitTestVisible = false;
+                parts.ChipHost.Children.Add(outgoingChip);
+                CrossfadePill(outgoingChip, parts.Chip);
+                // Border flash (frozen: amber -> cyan at 45% -> resting, 400ms, ease-out, one shot).
+                FlashBorder(parts.ReadyStroke, parts.ReadyStroke.Color);
+                Logger.Info($"[UI] Refinery: order ready flash ({wo.Label})");
+            }
+        }
+        _workOrdersSeeded = true;
     }
 
     // Always-present progress bar: an animated gradient fill for an active timer, else a static status bar
