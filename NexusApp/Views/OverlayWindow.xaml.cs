@@ -92,7 +92,12 @@ public partial class OverlayWindow : Window
         _vm.FilteredScanHistory.CollectionChanged += (s, e) => RebuildHistory();
         RebuildHistory();
 
-        _vm.WorkOrders.CollectionChanged += (s, e) => { UpdateRefineryTabLabel(); if (_activeTab == "orders") RebuildOrdersPanel(); };
+        _vm.WorkOrders.CollectionChanged += (s, e) =>
+        {
+            UpdateRefineryTabLabel();
+            if (_activeTab == "orders") RebuildOrdersPanel();
+            if (_activeTab == "stats") RebuildStatsPanel();   // F1: READY ORDERS hero tile tracks the same count
+        };
         _vm.ShoppingList.CollectionChanged += (s, e) => { if (_activeTab == "shopping") RebuildShoppingPanel(); };
 
         BuildOverlayHistoryFilterPills();
@@ -1240,6 +1245,7 @@ public partial class OverlayWindow : Window
     {
         UpdateHaulingTabLabel();                 // keep the tab count fresh even off the HAULING tab
         if (_activeTab == "hauling") RebuildHaulingPanel();
+        if (_activeTab == "stats") RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
     }
 
     // Shows the active-haul count on the overlay tab button: "HAULING" or "HAULING (N)".
@@ -1249,13 +1255,35 @@ public partial class OverlayWindow : Window
         TabHaulingBtn.Content = n > 0 ? $"HAULING ({n})" : "HAULING";
     }
 
+    // E1/F1: work orders ready to collect - shared by the REFINERY tab badge and the HUB's READY
+    // ORDERS hero tile so the enum walk lives in exactly one place.
+    private int ReadyOrdersCount() => _vm.WorkOrders.Count(w => w.Status == WorkOrderStatus.ReadyToCollect);
+
     // E1: shows the ready-to-collect count on the REFINERY tab button: "REFINERY" or "REFINERY (N)".
     // Mirrors UpdateHaulingTabLabel; driven by the WorkOrders.CollectionChanged subscription (every
     // save/collect reloads the collection) plus the initial build, so the badge stays fresh off-tab.
     private void UpdateRefineryTabLabel()
     {
-        var n = _vm.WorkOrders.Count(w => w.Status == WorkOrderStatus.ReadyToCollect);
+        var n = ReadyOrdersCount();
         TabOrdersBtn.Content = n > 0 ? $"REFINERY ({n})" : "REFINERY";
+    }
+
+    // F1: sums committed SCU + delivered/total dropoff legs across a set of hauls. Shared by the HUB's
+    // HAUL hero tile and the HAULING tab's totals line (RebuildHaulingPanel) so this math lives once.
+    private static (int Scu, int Done, int Total) HaulTotals(IEnumerable<Haul> hauls)
+    {
+        int scu = 0, done = 0, total = 0;
+        foreach (var h in hauls)
+        {
+            // SCU committed: prefer the OCR objectives the cards render, fall back to the dropoff legs.
+            scu += h.ContractObjectives.Count > 0
+                ? h.ContractObjectives.Sum(o => o.Scu)
+                : h.Legs.Where(l => l.Role == HaulRole.Dropoff).Sum(l => l.TargetScu);
+            var d = h.Legs.Where(l => l.Role == HaulRole.Dropoff).ToList();
+            total += d.Count;
+            done += d.Count(l => l.Completed);
+        }
+        return (scu, done, total);
     }
 
     // Refresh the Server / Shard section when the shard history changes, but only while the STATS
@@ -1281,16 +1309,28 @@ public partial class OverlayWindow : Window
         // Server / Shard section sits in the STATS tab; refresh it whenever the tab is built.
         RebuildShardPanel();
 
-        // Shared brushes / fonts for the feed below the hero count.
+        // Shared brushes / fonts for the hero tiles + feed below them.
         var dim    = (Brush)FindResource("FgDimBrush");
         var fg     = (Brush)FindResource("FgBrush");
+        var cyan   = (Brush)FindResource("CyanBrush");
         var border = (Brush)FindResource("NavBorderBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
 
-        // Hero KPI: count this session's collected blueprints up from 0 into the big cyan readout (the
-        // BLUEPRINTS COLLECTED accent panel is in XAML; CountUp animates StatsBigCount). Re-runs only when
-        // the value changes, so flipping back to the HUB doesn't reset a settled number.
-        CountUp.SetTo(StatsBigCount, App.GameLog.Count);
+        // F1 hero tiles: READY ORDERS (cyan when > 0, else dim - shares the enum walk with the REFINERY
+        // tab badge via ReadyOrdersCount) and HAUL (committed SCU + delivered/total drops across active
+        // hauls, always cyan per the frozen values - shares the totals math with RebuildHaulingPanel via
+        // HaulTotals). Both tiles keep the accent ChamferPanel look (border color set in XAML).
+        var ready = ReadyOrdersCount();
+        HubReadyValue.Text = ready.ToString();
+        HubReadyValue.Foreground = ready > 0 ? cyan : dim;
+
+        var (scu, done, total) = HaulTotals(App.Hauls.ActiveHauls);
+        HubHaulValue.Text = $"{scu:N0} SCU";
+        HubHaulSub.Text = $"{done}/{total} drops";
+
+        // F2: the feed header carries the same session count the old hero count-up rendered
+        // (App.GameLog.Count), so the demoted number is exactly the approved one.
+        StatsFeedHeader.Text = $"COLLECTION LOG ({App.GameLog.Count})";
 
         // Blueprints-collected feed (newest first).
         StatsFeedItems.Children.Clear();
@@ -1485,18 +1525,10 @@ public partial class OverlayWindow : Window
         }
 
         // ── TOTALS: how big is this run, will it fit, what is it worth, and how far along am I ──
-        int totalScu = 0, totalReward = 0, drops = 0, dropsDone = 0;
-        foreach (var h in active)
-        {
-            // SCU committed: prefer the OCR objectives the cards render, fall back to the dropoff legs.
-            totalScu += h.ContractObjectives.Count > 0
-                ? h.ContractObjectives.Sum(o => o.Scu)
-                : h.Legs.Where(l => l.Role == HaulRole.Dropoff).Sum(l => l.TargetScu);
-            if (h.Reward > 0) totalReward += h.Reward;
-            var d = h.Legs.Where(l => l.Role == HaulRole.Dropoff).ToList();
-            drops += d.Count;
-            dropsDone += d.Count(l => l.Completed);
-        }
+        // SCU + drops share the HUB hero tile's math (HaulTotals); reward is a separate, tiny sum kept
+        // local to this tab since the hero tile doesn't render it.
+        var (totalScu, dropsDone, drops) = HaulTotals(active);
+        int totalReward = active.Where(h => h.Reward > 0).Sum(h => h.Reward);
 
         var totals = new TextBlock { Margin = new Thickness(2, 2, 0, 2), TextWrapping = TextWrapping.Wrap };
         totals.Inlines.Add(new System.Windows.Documents.Run("HAULS ") { Foreground = accent, FontWeight = FontWeights.Bold, FontSize = 11 });
