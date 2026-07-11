@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Models;
@@ -28,6 +30,23 @@ public sealed class CommandPage : UserControl
     /// <summary>The KPI card row, for the welcome tour's Operations step to ring.</summary>
     public FrameworkElement? KpiRowTarget => _kpiRow;
 
+    // ── Operations entrance (tab-open only; never on data ticks) ──
+    // Fires once per tab-open visit (MainWindow's SetActivePage calls PlayEntrance after
+    // InitCommandPage/Refresh, and calls ResetEntrance whenever the page is not the active
+    // one, so the next tab-open replays it). Refresh() itself never triggers this - the
+    // dashboard rebuilds its content statically on every live data tick while the tab stays
+    // open, and only PlayEntrance layers the cascade/count-up/sparkline reveal on top.
+    private bool _entrancePlayed;
+
+    // Number Runs/TextBlocks captured fresh on each Refresh(), so PlayEntrance can retrigger
+    // their count-up. TextBlock targets (no separately-styled unit alongside the number) go
+    // through the real CountUp.To; Run targets (Refinery Queue "active", Cargo In Transit
+    // "SCU" - a second, differently-styled Run sits next to the number) go through the local
+    // CountUpRun mirror below, since CountUp.cs only supports a whole TextBlock target.
+    private readonly List<(DependencyObject El, double To, string Suffix)> _kpiCountTargets = new();
+
+    private Polyline? _sparklinePoly;
+
     private Brush Br(string k) => (Brush)Application.Current.FindResource(k);
     private FontFamily Ui => (FontFamily)Application.Current.FindResource("UiFont");
     private FontFamily Disp => (FontFamily)Application.Current.FindResource("DisplayFont");
@@ -48,6 +67,107 @@ public sealed class CommandPage : UserControl
         _root.Children.Add(HeaderRow());
         _root.Children.Add(KpiRow());
         _root.Children.Add(Panels());
+    }
+
+    /// <summary>
+    /// Operations entrance: KPI cascade (fade+rise, 200ms/40ms stagger/12px, cap 5) + a
+    /// count-up retrigger on the 5 KPI numbers + the Last Scan sparkline drawing itself in.
+    /// Called by MainWindow's SetActivePage right after InitCommandPage/Refresh, ONLY on tab
+    /// open - never on the live data ticks that also call Refresh() while the tab stays open.
+    /// The _entrancePlayed flag (reset via ResetEntrance whenever this page is not the active
+    /// one) makes this idempotent for the current visit even if called more than once.
+    /// </summary>
+    public void PlayEntrance()
+    {
+        if (_entrancePlayed) return;
+        _entrancePlayed = true;
+        if (Motion.Reduced) return;   // values/sparkline already render at their final state - only the reveal is skipped
+
+        if (_kpiRow != null) CascadeIn(_kpiRow.Children, maxAnimated: 5);
+
+        foreach (var (el, to, suffix) in _kpiCountTargets)
+        {
+            if (el is Run run) CountUpRun(run, to);
+            else if (el is TextBlock tb) { CountUp.SetSuffix(tb, suffix); CountUp.SetTo(tb, to); }
+        }
+
+        AnimateSparkline();
+    }
+
+    /// <summary>Clears the entrance-played flag so the next tab-open plays it again.</summary>
+    public void ResetEntrance() => _entrancePlayed = false;
+
+    // Fade + rise the first few children in sequence (200ms/40ms stagger/12px rise, QuadraticEase
+    // EaseOut) - a local copy of MainWindow's CascadeIn idiom (private there; copied here rather
+    // than exposed, per the motion-pass plan).
+    private static void CascadeIn(UIElementCollection children, int maxAnimated)
+    {
+        int n = Math.Min(children.Count, maxAnimated);
+        for (int i = 0; i < n; i++)
+        {
+            if (children[i] is not FrameworkElement fe) continue;
+            var slide = new TranslateTransform(0, 12);
+            fe.RenderTransform = slide;
+            fe.Opacity = 0;
+            var delay = TimeSpan.FromMilliseconds(i * 40);
+            var dur = TimeSpan.FromMilliseconds(200);
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            var fade = new DoubleAnimation(0, 1, dur) { BeginTime = delay, EasingFunction = ease };
+            var rise = new DoubleAnimation(12, 0, dur) { BeginTime = delay, EasingFunction = ease };
+            fe.BeginAnimation(UIElement.OpacityProperty, fade);
+            slide.BeginAnimation(TranslateTransform.YProperty, rise);
+        }
+    }
+
+    // Local mirror of CountUp.cs's 0 -> to roll-up (Motion.CountUpMs, Motion.Settle), targeting
+    // a Run instead of a whole TextBlock. Used where the number Run sits beside a second,
+    // differently-styled unit Run (Refinery Queue "active", Cargo In Transit "SCU") - CountUp.cs
+    // only supports a TextBlock target, which would overwrite that unit Run's own styling.
+    private static readonly DependencyProperty RunCountProperty = DependencyProperty.RegisterAttached(
+        "RunCount", typeof(double), typeof(CommandPage), new PropertyMetadata(0.0, OnRunCountChanged));
+
+    private static void OnRunCountChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
+    {
+        if (o is Run run) run.Text = ((double)e.NewValue).ToString("N0");
+    }
+
+    private static void CountUpRun(Run run, double to)
+    {
+        run.SetValue(RunCountProperty, 0.0);
+        run.Text = "0";
+        var anim = new DoubleAnimation(0, to, new Duration(TimeSpan.FromMilliseconds(Motion.CountUpMs))) { EasingFunction = Motion.Settle };
+        run.BeginAnimation(RunCountProperty, anim);
+    }
+
+    // Sparkline draw-on: StrokeDashOffset animates full-length -> 0 (600ms, Motion.SlideOut),
+    // then the dash is cleared so subsequent live-data rebuilds (fresh Polyline instances) just
+    // render plainly - copies the donut draw-in idiom at NetworkPage.cs (dash units are multiples
+    // of StrokeThickness, so the raw pixel length is divided by it, same as the donut's radius/stroke).
+    private void AnimateSparkline()
+    {
+        var poly = _sparklinePoly;
+        if (poly == null || poly.Points.Count < 2) return;
+        double lenPx = PolylineLength(poly.Points);
+        if (lenPx <= 0) return;
+        double dashLen = lenPx / poly.StrokeThickness;
+
+        poly.StrokeDashArray = new DoubleCollection { dashLen };
+        poly.StrokeDashOffset = dashLen;
+        var anim = new DoubleAnimation(dashLen, 0, TimeSpan.FromMilliseconds(600)) { EasingFunction = Motion.SlideOut };
+        anim.Completed += (_, _) =>
+        {
+            poly.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+            poly.StrokeDashArray = null;
+        };
+        poly.BeginAnimation(Shape.StrokeDashOffsetProperty, anim);
+    }
+
+    private static double PolylineLength(PointCollection points)
+    {
+        double len = 0;
+        for (int i = 1; i < points.Count; i++)
+            len += (points[i] - points[i - 1]).Length;
+        return len;
     }
 
     // ── header: glow-dash eyebrow + title + subtitle, with an ambient radar sweep accent ──
@@ -75,16 +195,20 @@ public sealed class CommandPage : UserControl
         int covered = catalog.Count(b => (ownerCounts.TryGetValue(b.Name, out var c) && c > 0) || App.Settings.IsBlueprintOwned(b.Name));
         int covPct = bpTotal > 0 ? (int)System.Math.Round(100.0 * covered / bpTotal) : 0;
 
+        // Rebuilt fresh every Refresh() (tab-open AND live data ticks) - reset the count-up
+        // targets so PlayEntrance only ever sees the current visit's fresh elements.
+        _kpiCountTargets.Clear();
+
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 16), Height = 132 };
         for (int i = 0; i < 5; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
 
         var cards = new UIElement[]
         {
             LastScanCard(),
-            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString(), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush"),
-            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush"),
-            Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString(), "", "Auto-tracked from Game.log", false, "CyanBrush"),
-            Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush"),
+            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString(), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders),
+            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu),
+            Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString(), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
+            Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush", covPct, "%"),
         };
         for (int i = 0; i < cards.Length; i++)
         {
@@ -106,6 +230,7 @@ public sealed class CommandPage : UserControl
             var val = new TextBlock { Text = last.Rs.ToString("N0"), FontFamily = Disp, FontSize = 34, FontWeight = FontWeights.Bold, Foreground = Br("GoldBrush"), Margin = new Thickness(0, 6, 0, 0) };
             val.Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("GoldBrush")).Color, BlurRadius = 16, ShadowDepth = 0, Opacity = 0.35 };
             sp.Children.Add(val);
+            _kpiCountTargets.Add((val, last.Rs, ""));
             var match = last.Match == MatchKind.Exact ? "exact" : last.Match == MatchKind.Close ? "close" : "no match";
             var foot = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
             foot.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = Br("AccentBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center });
@@ -130,7 +255,7 @@ public sealed class CommandPage : UserControl
     private UIElement Sparkline()
     {
         var vals = _vm.ScanHistory.Take(7).Select(e => (double)e.Rs).Reverse().ToList();
-        if (vals.Count < 2) return new Grid();
+        if (vals.Count < 2) { _sparklinePoly = null; return new Grid(); }
         double min = vals.Min(), max = vals.Max(), range = max - min < 1 ? 1 : max - min;
         const double w = 86, h = 26;
         var poly = new Polyline { Stroke = Br("CyanBrush"), StrokeThickness = 1.6, StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Right, Width = w, Height = h };
@@ -141,19 +266,32 @@ public sealed class CommandPage : UserControl
             double y = h - h * (vals[i] - min) / range;
             poly.Points.Add(new Point(x, y));
         }
+        // Drawn fully visible by default (data ticks just render it plainly) - PlayEntrance
+        // is what dashes it and animates the reveal, tab-open only.
+        _sparklinePoly = poly;
         return poly;
     }
 
-    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush)
+    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "")
     {
         var sp = new StackPanel();
         sp.Children.Add(KpiLabel(icon, key));
         var value = new TextBlock { FontFamily = Disp, FontSize = 34, FontWeight = FontWeights.Bold, Foreground = Br(valueBrush), Margin = new Thickness(0, 6, 0, 0) };
         if (valueBrush == "CyanBrush")
             value.Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("CyanBrush")).Color, BlurRadius = 14, ShadowDepth = 0, Opacity = 0.3 };
-        value.Inlines.Add(new Run(val));
+        var numberRun = new Run(val);
+        value.Inlines.Add(numberRun);
         if (!string.IsNullOrEmpty(unit))
+        {
             value.Inlines.Add(new Run("  " + unit) { FontFamily = Ui, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
+            // A second, differently-styled Run sits next to the number - CountUp.cs only
+            // supports a whole TextBlock target, so drive just the number Run instead.
+            _kpiCountTargets.Add((numberRun, countTo, ""));
+        }
+        else
+        {
+            _kpiCountTargets.Add((value, countTo, countSuffix));
+        }
         sp.Children.Add(value);
         var footEl = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         if (accent)
