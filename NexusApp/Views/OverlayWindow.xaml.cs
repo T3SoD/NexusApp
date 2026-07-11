@@ -1714,9 +1714,14 @@ public partial class OverlayWindow : Window
         }
 
         // Max container size from the contract OCR (int?, null = not stated in the captured text): the
-        // biggest single box this haul allows, same dim style as the cargo/route lines above.
+        // biggest single box this haul allows. Frozen: amber-bright #FFD089, 10.5px (D1) - its own
+        // style, not the dim HaulRow used for the cargo/route lines above.
         if (h.ContainerCap is > 0)
-            card.Children.Add(HaulRow($"max box {h.ContainerCap.Value} SCU", dim, 8));
+            card.Children.Add(new TextBlock
+            {
+                Text = $"max box {h.ContainerCap.Value} SCU", FontFamily = mono, FontSize = 10.5,
+                Foreground = (Brush)FindResource("GoldBrush"), Margin = new Thickness(8, 2, 0, 0),
+            });
 
         return card;
     }

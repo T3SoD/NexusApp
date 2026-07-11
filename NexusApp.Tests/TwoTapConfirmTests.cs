@@ -1,6 +1,8 @@
 using NexusApp.Services;
 using Xunit;
 
+namespace NexusApp.Tests;
+
 public class TwoTapConfirmTests
 {
     private static readonly DateTime T0 = new(2026, 1, 1, 12, 0, 0);
