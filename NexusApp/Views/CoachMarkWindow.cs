@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 
@@ -36,7 +37,10 @@ public sealed class CoachMarkWindow : Window
     private readonly Button     _next;
     private readonly Button     _skip;
     private readonly Polygon    _beak;
+    private readonly Grid       _root;
     private int _stepCount;
+    private int _currentStep = -1;      // set by SetContent, read once positioning is done
+    private int _lastAnimatedStep = -1; // guards the fade+rise to real step changes only
 
     private static Brush B(string key) => (Brush)Application.Current.FindResource(key);
 
@@ -118,10 +122,10 @@ public sealed class CoachMarkWindow : Window
 
         _beak = new Polygon { Fill = B("BgBrush"), Visibility = Visibility.Collapsed };
 
-        var root = new Grid();
-        root.Children.Add(card);
-        root.Children.Add(_beak);
-        Content = root;
+        _root = new Grid();
+        _root.Children.Add(card);
+        _root.Children.Add(_beak);
+        Content = _root;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -135,6 +139,7 @@ public sealed class CoachMarkWindow : Window
     /// <summary>Fill the bubble with a step's content.</summary>
     public void SetContent(string title, string caption, int stepIndex, int stepCount, bool isFirst, bool isLast, string nextLabel)
     {
+        _currentStep = stepIndex;
         _stepCount = stepCount;
         _title.Text = title;
         _caption.Text = caption;
@@ -182,6 +187,7 @@ public sealed class CoachMarkWindow : Window
 
         PlaceBeak(side);
         BringToTop();
+        AnimateIfStepChanged();
     }
 
     /// <summary>Center the bubble over <paramref name="owner"/> (steps with no target).</summary>
@@ -194,6 +200,24 @@ public sealed class CoachMarkWindow : Window
         Left = owner.Left + (owner.ActualWidth - w) / 2;
         Top  = owner.Top  + (owner.ActualHeight - h) / 2;
         BringToTop();
+        AnimateIfStepChanged();
+    }
+
+    // Fade 0-1 + rise 12px on the content root, 150ms settle - played only when the step index
+    // actually changed since the last time this fired, and only after the bubble has already been
+    // positioned for this step (ShowBeside/ShowCentered call this last, never before repositioning).
+    private void AnimateIfStepChanged()
+    {
+        if (_currentStep == _lastAnimatedStep) return;
+        _lastAnimatedStep = _currentStep;
+        if (Motion.Reduced) return;
+
+        var slide = new TranslateTransform(0, 12);
+        _root.RenderTransform = slide;
+        _root.Opacity = 0;
+        var dur = TimeSpan.FromMilliseconds(150);
+        _root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
+        slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
     }
 
     /// <summary>Point the beak from the bubble edge nearest the target toward it.</summary>
