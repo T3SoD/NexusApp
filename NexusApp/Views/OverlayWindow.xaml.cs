@@ -419,7 +419,7 @@ public partial class OverlayWindow : Window
                 Text = ContractStageText.For(App.ContractScan.LastStage),
                 FontFamily = (FontFamily)FindResource("MonoFont"),
                 FontSize = 10,
-                Foreground = (Brush)FindResource("FgDimBrush"),
+                Foreground = new SolidColorBrush(CompInert),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(2, 6, 0, 0),
             };
@@ -1857,7 +1857,7 @@ public partial class OverlayWindow : Window
         _quickResourceBox.CaretIndex = _quickResourceBox.Text.Length;
     }
 
-    // Frozen: unfold 200ms fade 0->1 + 8px rise, Motion.Settle, one-shot; Reduced snaps.
+    // Frozen: unfold 200ms fade 0->1 + 12px rise, Motion.Settle, one-shot; Reduced snaps.
     private void UnfoldQuickForm()
     {
         _quickAddForm.Visibility = Visibility.Visible;
@@ -1868,12 +1868,12 @@ public partial class OverlayWindow : Window
             _quickAddForm.RenderTransform = null;
             return;
         }
-        var shift = new System.Windows.Media.TranslateTransform(0, 8);
+        var shift = new System.Windows.Media.TranslateTransform(0, 12);
         _quickAddForm.RenderTransform = shift;
         _quickAddForm.Opacity = 0;
         var dur = TimeSpan.FromMilliseconds(200);
         _quickAddForm.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
-        shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(8, 0, dur) { EasingFunction = Motion.Settle });
+        shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
     }
 
     private void CollapseQuickForm()

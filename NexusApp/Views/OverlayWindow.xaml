@@ -326,10 +326,10 @@
                                                                 VerticalAlignment="Center" BorderThickness="1">
                                                             <Border.Style>
                                                                 <Style TargetType="Border">
-                                                                    <Setter Property="BorderBrush" Value="{DynamicResource FgDimBrush}"/>
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource NavBorderBrush}"/>
                                                                     <Style.Triggers>
                                                                         <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
-                                                                            <Setter Property="BorderBrush" Value="{DynamicResource GoldBrush}"/>
+                                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
                                                                         </DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
