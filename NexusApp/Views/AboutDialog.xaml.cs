@@ -13,6 +13,18 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.4.0  -  Jul 11, 2026",
+        [
+            "The Mining Codex ore dossier now opens with a live hologram - a slowly rotating wireframe crystal shaped by the ore's class, ringed by its deposit composition in the ore's rarity color with byproducts in cyan; it pauses while the game has focus and goes fully static under Reduce Animations",
+            "Scan results now show what a rock can contain - the RS Decoder (main window and overlay) lists each match's deposit composition under a Can Contain heading, with the best match open automatically and other matches a tap away",
+            "Scan results also show the best refinery for each ore with its yield modifier, plus an S to C tier chip, and the overlay cards gained an add-to-cart button",
+            "Run your refinery from the overlay - create a quick work order with a running timer without leaving the game, mark ready orders collected, and the REFINERY tab shows a live ready count",
+            "The overlay HUB now leads with ready-orders and haul-progress tiles; the session blueprint count lives in the Collection Log header",
+            "Hauling: each contract card shows its max container size, a status line explains what the last contract scan found, and Clear All plus per-haul removal now ask Sure? before acting",
+            "The overlay remembers itself - opacity, position, size, active tab, and history height all persist across sessions; the shopping tab updates live; Escape clears the scan input instead of hiding the overlay; the Refinery Tracker flyout now matches the overlay's click-through in FPS and flight",
+            "Motion polish across the app - scan results lock on with a reticle snap, the Operations dashboard counts up on entry, blueprint drill-down slides directionally, dialogs ease in and out, and every animation honors Reduce Animations (two that ignored it are fixed)",
+            "Beta feature improvements, currently in limited testing",
+        ]),
         ("App  6.3.1  -  Jul 09, 2026",
         [
             "Blueprint import and auto-track now recognize ship components renamed by any community localization pack, even when your localization file is missing or from a different pack version - the importer finds the official component name inside the custom string",
