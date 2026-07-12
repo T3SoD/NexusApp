@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.4.1  -  Jul 11, 2026",
+        [
+            "Fixed: the overlay opened at 20% opacity every launch instead of your saved setting - the slider's startup coercion was overwriting the stored value before it could be restored",
+        ]),
         ("App  6.4.0  -  Jul 11, 2026",
         [
             "The Mining Codex ore dossier now opens with a live hologram - a slowly rotating wireframe crystal shaped by the ore's class, ringed by its deposit composition in the ore's rarity color with byproducts in cyan; it pauses while the game has focus and goes fully static under Reduce Animations",
