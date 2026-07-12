@@ -82,12 +82,14 @@ public partial class OverlayWindow : Window
         Width = s.OverlayWidth; Height = s.OverlayHeight;
         HistoryStripRow.Height = new GridLength(s.OverlayHistoryHeight);
 
+        // Restore the saved opacity, THEN attach the save-on-change handler (it is deliberately
+        // not wired in XAML - see the comment on the slider). Attaching after the restore means
+        // construction-time coercion can never clobber the saved value again.
         double opacity = Math.Clamp(s.OverlayOpacity, 0.2, 1.0);
-        OpacitySlider.ValueChanged -= OpacitySlider_ValueChanged;
         OpacitySlider.Value = opacity;
-        OpacitySlider.ValueChanged += OpacitySlider_ValueChanged;
         this.Opacity = opacity;
         OpacityLabel.Text = $"{(int)(opacity * 100)}%";
+        OpacitySlider.ValueChanged += OpacitySlider_ValueChanged;
 
         _vm.FilteredScanHistory.CollectionChanged += (s, e) => RebuildHistory();
         RebuildHistory();

@@ -90,11 +90,14 @@
                 </StackPanel>
                 <!-- Window opacity - shared across every tab -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <!-- ValueChanged is wired in code AFTER the ctor restores the saved opacity:
+                         a XAML-wired handler fires during InitializeComponent (Minimum coerces the
+                         default Value 0 up to 0.2) and would persist that transient over the saved
+                         setting before the restore can read it. -->
                     <Slider x:Name="OpacitySlider" Style="{StaticResource OverlaySlider}"
                             Minimum="0.2" Maximum="1.0" SmallChange="0.05"
                             Width="74" VerticalAlignment="Center" Margin="0,0,6,0"
-                            ToolTip="Overlay opacity"
-                            ValueChanged="OpacitySlider_ValueChanged"/>
+                            ToolTip="Overlay opacity"/>
                     <TextBlock x:Name="OpacityLabel" Text="100%"
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="9" Foreground="{DynamicResource FgDimBrush}"
