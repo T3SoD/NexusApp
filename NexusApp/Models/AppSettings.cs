@@ -12,7 +12,7 @@ public class AppSettings
     public double OverlayWidth { get; set; } = 320;
     public double OverlayHeight { get; set; } = 480;
     public ScanRegion? ScanRegion { get; set; }
-    public double OverlayOpacity { get; set; } = 0.7;
+    public double OverlayOpacity { get; set; } = 1.0;
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
     public bool FirstRunComplete { get; set; }
