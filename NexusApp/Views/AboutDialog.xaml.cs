@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.4.2  -  Jul 18, 2026",
+        [
+            "Updated for Star Citizen Alpha 4.9 - 59 new craftable blueprints including the SecondWind armor and weapon sets, BUL-H4 superheavy armor, the Hazard-Zone repeaters, Vendetta HMG, CQ7 Rifle, the Strata Levski Edition mining armor, and the Artimex Chairman's Club set",
+            "New blueprint sources: Recco Battaglia contracts (mining, salvage, and recovery missions) and the Orison Relief event - six point tiers under Crusader Industries plus fabrication orders under Foxwell Enforcement",
+            "Mirai racing flight suits and helmets follow their 4.9 rename to the Neutrino Racing line",
+            "Mining reference data verified current for 4.9 - ore stats and scan signatures unchanged; in Nyx, Glaciem Ring no longer spawns Aluminium deposits and Keeger Belt no longer spawns Iron",
+            "Hauling contract caps updated, including the Orison Relief hauling missions",
+        ]),
         ("App  6.4.1  -  Jul 11, 2026",
         [
             "Fixed: the overlay opened at 20% opacity every launch instead of your saved setting - the slider's startup coercion was overwriting the stored value before it could be restored",
