@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.5.0  -  Jul 21, 2026",
+        [
+            "Nexus now survives the display errors that follow a Star Citizen crash - instead of stacking error dialogs, it quietly restarts itself once and carries on; if the display fails again right away, a plain dialog explains what happened and what to do",
+            "New in Settings > Diagnostics: CPU rendering - a compatibility switch for machines where game or driver crashes keep breaking Nexus's window; Nexus draws with the CPU instead of the graphics card at a small CPU cost, taking effect on the next launch",
+            "Crash messages now say whose fault it was - a Nexus bug asks you to send the snapshot that fixes it, while a Windows display error points at the game or driver and the CPU rendering switch",
+            "The app log tells a fuller story for bug reports - it records your display adapter and driver version at startup, display and power changes, when the Star Citizen process stops running, and a clean-shutdown marker",
+            "Nexus now keeps one previous log file when the log resets on its 72-hour cycle, so crash evidence from a few days ago still reaches the diagnostic snapshot",
+        ]),
         ("App  6.4.2  -  Jul 18, 2026",
         [
             "Updated for Star Citizen Alpha 4.9 - 59 new craftable blueprints including the SecondWind armor and weapon sets, BUL-H4 superheavy armor, the Hazard-Zone repeaters, Vendetta HMG, CQ7 Rifle, the Strata Levski Edition mining armor, and the Artimex Chairman's Club set",
