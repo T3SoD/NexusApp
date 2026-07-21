@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -29,6 +30,10 @@ public partial class App : Application
 
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
+
+    // 0 until an unhandled-exception handler owns the crash flow; later entries log and return,
+    // so a render-failure exception storm can never stack dialogs or exit paths (6.2.0 field bug).
+    private static int _crashHandling;
 
     // True while Nexus or Star Citizen holds the OS foreground; false means OCR auto-scans are paused.
     // Status indicators read this (and subscribe to the event) to show the paused (yellow) state.
@@ -78,29 +83,44 @@ public partial class App : Application
 
         DispatcherUnhandledException += (s, ex) =>
         {
-            Logger.Error("Unhandled UI exception", ex.Exception);
-            System.Windows.MessageBox.Show(crashMessage,
-                "Nexus - Unexpected Error", System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
+            // Swallow FIRST: when the render thread is dead, more exceptions arrive while the
+            // first is still being handled, and one escaping mid-dialog is what killed 6.2.0
+            // in the field (the crash MessageBox pumped messages and died).
             ex.Handled = true;
-            Shutdown(1);
+            Logger.Error("Unhandled UI exception", ex.Exception);
+            if (Interlocked.Exchange(ref _crashHandling, 1) != 0) return;
+            if (CrashGuard.IsRenderThreadFailure(ex.Exception))
+                CrashGuard.ExitForRenderThreadFailure();          // no UI: exit + auto-relaunch
+            else
+                CrashGuard.ShowCrashMessageAndExit(crashMessage); // native dialog off-thread, then exit
         };
 
         AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
         {
-            Logger.Error("Unhandled non-UI exception", ex.ExceptionObject as Exception);
-            System.Windows.MessageBox.Show(crashMessage,
-                "Nexus - Unexpected Error", System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
+            var exception = ex.ExceptionObject as Exception;
+            Logger.Error("Unhandled non-UI exception", exception);
+            // Fires on arbitrary threads; the native off-thread dialog is safe here (it is the
+            // WPF dispatcher-pumped MessageBox that killed 6.2.0, not a Win32 one). Only the
+            // render-death path stays dialog-free, taking exit + relaunch instead.
+            if (Interlocked.Exchange(ref _crashHandling, 1) != 0) return;
+            if (CrashGuard.IsRenderThreadFailure(exception))
+                CrashGuard.ExitForRenderThreadFailure();
+            else
+                CrashGuard.ShowCrashMessageAndExit(crashMessage);
         };
 
         Logger.Info($"Nexus {AppInfo.Version} starting");
         Logger.Info($"Distribution: {AppInfo.Distribution}");
         Logger.Info($"[WIN] process DPI awareness: {DpiAwarenessLabel()}");
+        // Keyed on the relaunch argument, not marker freshness: a manual restart within the
+        // loop-guard window must not be mislabeled as an auto-relaunch in diagnostics.
+        if (e.Args.Contains(CrashGuard.RelaunchArg))
+            Logger.Info("[WIN] auto-relaunched after a render thread failure (display connection lost, usually the game crashing or quitting)");
         RegisterInteractionLogging();
         _foreground = new ForegroundMonitor();
         _foreground.RelevanceChanged += OnForegroundRelevanceChanged;
         _foreground.Start();
+        SystemEventBreadcrumbs.Start();
 
         // One-time migration of user data from the old %AppData%\Nexus_v4 folder
         // (pre-5.0.1) to the version-neutral %AppData%\NexusApp, so upgraders
@@ -111,6 +131,15 @@ public partial class App : Application
         // Establish the local Blueprint Network identity from first launch (not lazily at first
         // export), so the import self-skip can always recognise "you" and never double-count.
         Settings.EnsureLocalNetworkId();
+
+        // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
+        // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before
+        // any window exists - MainWindow is created from StartupUri after OnStartup returns.
+        if (Settings.Current.SoftwareRendering)
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            Logger.Info("[WIN] software (CPU) rendering enabled - GPU compositing bypassed");
+        }
 
         // Single theme: the palette is merged statically in App.xaml
         // (Themes/Palette.Luxury.xaml); there is no picker and no runtime switch.

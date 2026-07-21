@@ -52,6 +52,11 @@ public class AppSettings
     // Top-bar clock format: true = 24-hour (HH:mm:ss), false = 12-hour with AM/PM. Default 24-hour.
     public bool Clock24Hour { get; set; } = true;
 
+    // Compatibility: render Nexus on the CPU (RenderMode.SoftwareOnly) instead of the GPU, for
+    // machines whose game/driver crashes keep killing WPF's render thread (0x88980406). Applied
+    // once at startup - toggling takes effect on the next launch. Default off.
+    public bool SoftwareRendering { get; set; }
+
     // Overlay input (issue #7): when on, the overlay passes the mouse straight through (click-through)
     // while the game hides the OS cursor (FPS / flight), so a stray click can't land on it or steal
     // focus. It becomes interactive again the moment the cursor is shown. Default on.
