@@ -19,6 +19,7 @@ public static class AccessGate
         "Tenuis",
         "UnknownGhost",
         "CupOfKoffee_TV",
+        "Rorran198",
     };
 
     // Approved = the owner (single-sourced from OwnerGate) or a beta tester on the list above.

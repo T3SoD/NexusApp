@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.5.1  -  Jul 21, 2026",
+        [
+            "Beta program update - expanded the tester roster",
+        ]),
         ("App  6.5.0  -  Jul 21, 2026",
         [
             "Nexus now survives the display errors that follow a Star Citizen crash - instead of stacking error dialogs, it quietly restarts itself once and carries on; if the display fails again right away, a plain dialog explains what happened and what to do",
