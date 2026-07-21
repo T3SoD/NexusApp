@@ -174,6 +174,11 @@ public sealed class AppLogMonitorWindow : Window
         try { unmatched = ReadShared(UnmatchedBlueprintLog.LogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
 
+        // The kept pre-rotation generation: carries crash evidence older than the 72h window.
+        string? previous = null;
+        try { previous = ReadShared(Logger.PreviousLogPath); }
+        catch { /* best-effort - the snapshot still works without it */ }
+
         var settings = new List<(string, string)>
         {
             ("Distribution", AppInfo.Distribution),
@@ -188,7 +193,8 @@ public sealed class AppLogMonitorWindow : Window
 
         return DiagnosticSnapshot.Build(
             AppInfo.Version, GameData.Version, App.Data.MiningDataVersion,
-            Environment.OSVersion.VersionString, settings, log, DateTime.Now, unmatched);
+            Environment.OSVersion.VersionString, settings, log, DateTime.Now, unmatched,
+            previousLogContents: previous);
     }
 
     // Read a whole file without denying a concurrent writer (FileShare.ReadWrite); null if absent.

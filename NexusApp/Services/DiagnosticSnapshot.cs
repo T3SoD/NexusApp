@@ -17,7 +17,8 @@ public static class DiagnosticSnapshot
         IReadOnlyList<(string Key, string Value)> settings,
         string logContents,
         DateTime timestamp,
-        string? unmatchedLogContents = null)
+        string? unmatchedLogContents = null,
+        string? previousLogContents = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("=== Nexus diagnostic snapshot ===");
@@ -39,6 +40,14 @@ public static class DiagnosticSnapshot
             sb.AppendLine();
             sb.AppendLine("--- unmatched_blueprints.log ---");
             sb.AppendLine(unmatchedLogContents.TrimEnd());
+        }
+        // The one kept pre-rotation generation, when present: a crash older than the 72h
+        // window lives here, so the snapshot still carries the evidence.
+        if (!string.IsNullOrWhiteSpace(previousLogContents))
+        {
+            sb.AppendLine();
+            sb.AppendLine("--- nexus.log.1 (previous) ---");
+            sb.AppendLine(previousLogContents.TrimEnd());
         }
         return sb.ToString();
     }

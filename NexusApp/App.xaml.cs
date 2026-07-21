@@ -74,10 +74,14 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Shown only for the APP-BUG bucket: render/display failures divert to CrashGuard's
+        // system-side dialog before this text is ever used, so the wording can honestly own
+        // the crash and pitch the snapshot (the classification pairing lives in CrashGuard).
         const string crashMessage =
             "Nexus hit an unexpected error and needs to close.\n\n" +
-            "Details have been saved to the log file at:\n%AppData%\\NexusApp\\logs\\nexus.log\n\n" +
-            "To help fix this: reopen Nexus, go to Settings (cog) → Diagnostics, click \"Save snapshot\", " +
+            "This looks like a bug in Nexus itself, and the file below is exactly what gets it fixed.\n\n" +
+            "Details have been saved to:\n%AppData%\\NexusApp\\logs\\nexus.log\n\n" +
+            "To help: reopen Nexus, go to Settings (cog) > Diagnostics, click \"Save snapshot\", " +
             "and send the file to T3SoD on Discord, or attach it to a GitHub issue:\n" +
             "https://github.com/T3SoD/NexusApp/issues";
 
@@ -92,7 +96,12 @@ public partial class App : Application
             if (CrashGuard.IsRenderThreadFailure(ex.Exception))
                 CrashGuard.ExitForRenderThreadFailure();          // no UI: exit + auto-relaunch
             else
+            {
+                // Explicit bucket line so triage never has to re-derive the classification
+                // from the stack (the render bucket logs its own line in CrashGuard).
+                Logger.Error("[WIN] crash class: app exception - showing crash dialog and exiting");
                 CrashGuard.ShowCrashMessageAndExit(crashMessage); // native dialog off-thread, then exit
+            }
         };
 
         AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
@@ -106,12 +115,16 @@ public partial class App : Application
             if (CrashGuard.IsRenderThreadFailure(exception))
                 CrashGuard.ExitForRenderThreadFailure();
             else
+            {
+                Logger.Error("[WIN] crash class: app exception - showing crash dialog and exiting");
                 CrashGuard.ShowCrashMessageAndExit(crashMessage);
+            }
         };
 
         Logger.Info($"Nexus {AppInfo.Version} starting");
         Logger.Info($"Distribution: {AppInfo.Distribution}");
         Logger.Info($"[WIN] process DPI awareness: {DpiAwarenessLabel()}");
+        GpuInfo.LogAdapters();
         // Keyed on the relaunch argument, not marker freshness: a manual restart within the
         // loop-guard window must not be mislabeled as an auto-relaunch in diagnostics.
         if (e.Args.Contains(CrashGuard.RelaunchArg))
@@ -281,6 +294,10 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // The clean-exit marker: a session log that just stops WITHOUT this line was killed
+        // or crashed. The crash paths bypass OnExit (Environment.Exit) and log their own
+        // [WIN] lines, so the distinction holds.
+        Logger.Info("[WIN] Nexus closing (clean exit)");
         _foreground?.Dispose();
         ContractScan?.Dispose();
         ContractOcr?.Dispose();

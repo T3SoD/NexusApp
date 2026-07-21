@@ -23,6 +23,9 @@ public static class Logger
     /// <summary>Absolute path of the app log file (for the in-app log monitor / diagnostic snapshot).</summary>
     public static string LogPath => _path;
 
+    /// <summary>The one kept previous generation (rotated out), so crash evidence survives rotation.</summary>
+    public static string PreviousLogPath => _path + ".1";
+
     // Footprint control: start the log fresh once it is older than 72h, with a runaway safety cap.
     private static readonly TimeSpan MaxAge = TimeSpan.FromHours(72);
     private const long MaxBytes = 5_000_000;
@@ -57,8 +60,18 @@ public static class Logger
                 var fi = new FileInfo(path);
                 if (nowUtc - fi.CreationTimeUtc > MaxAge || fi.Length > MaxBytes)
                 {
-                    File.Delete(path);
-                    rotated = true;
+                    // Keep ONE previous generation instead of deleting: crash evidence would
+                    // otherwise vanish the moment the 72h window lapped it (a user launching a
+                    // day after a crash would send an empty log). If a reader momentarily holds
+                    // either file (snapshot build, AV), SKIP this rotation and retry on a later
+                    // write: current evidence must never be sacrificed to footprint control,
+                    // and no in-app reader holds a log handle for more than milliseconds.
+                    try
+                    {
+                        File.Move(path, path + ".1", overwrite: true);
+                        rotated = true;
+                    }
+                    catch { /* blocked by a transient reader: retry next write */ }
                 }
             }
             File.AppendAllText(path, line + Environment.NewLine);

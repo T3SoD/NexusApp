@@ -48,6 +48,28 @@ public class DiagnosticSnapshotTests
     }
 
     [Fact]
+    public void Build_IncludesPreviousLogSection_WhenProvided()
+    {
+        var snap = DiagnosticSnapshot.Build(
+            "6.4.2", "4.9.0", "1.3.0", "os", new List<(string, string)>(),
+            "current line", new DateTime(2026, 7, 21, 12, 0, 0),
+            previousLogContents: "2026-07-18 09:00:00 [ERROR] evidence from before rotation");
+
+        Assert.Contains("--- nexus.log.1 (previous) ---", snap);
+        Assert.Contains("evidence from before rotation", snap);
+    }
+
+    [Fact]
+    public void Build_OmitsPreviousLogSection_WhenAbsent()
+    {
+        var snap = DiagnosticSnapshot.Build(
+            "6.4.2", "4.9.0", "1.3.0", "os", new List<(string, string)>(),
+            "current line", new DateTime(2026, 7, 21, 12, 0, 0));
+
+        Assert.DoesNotContain("nexus.log.1", snap);
+    }
+
+    [Fact]
     public void Build_OmitsUnmatchedBlueprintSection_WhenEmpty()
     {
         var snap = DiagnosticSnapshot.Build(
