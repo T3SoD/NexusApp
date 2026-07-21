@@ -9,6 +9,7 @@ public class AccessGateTests
     [Fact] public void Approved_IsCaseInsensitive() => Assert.True(AccessGate.IsApproved("turbov1rg1n"));
     [Fact] public void Approved_TrimsWhitespace() => Assert.True(AccessGate.IsApproved("  TurboV1RG1N  "));
     [Fact] public void Unknown_IsNotApproved() => Assert.False(AccessGate.IsApproved("SomeRando"));
+    [Fact] public void BetaTester_Rorran198_IsApproved() => Assert.True(AccessGate.IsApproved("Rorran198"));
 
     [Fact]
     public void EmptyOrNull_IsNotApproved()
