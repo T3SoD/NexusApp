@@ -38,6 +38,10 @@ jobs:
             echo "version=0.0.0" >> "$GITHUB_OUTPUT"
           fi
 
+      # Gate: no release is built or published if the unit test suite fails.
+      - name: Run tests
+        run: dotnet test NexusApp.Tests/NexusApp.Tests.csproj -c Release
+
       - name: Publish (self-contained win-x64)
         # -p:Version stamps the assembly so the in-app badges show the tag version.
         run: dotnet publish NexusApp/NexusApp.csproj -c Release -r win-x64 --self-contained true -o publish_out -p:Version=${{ steps.ver.outputs.version }}

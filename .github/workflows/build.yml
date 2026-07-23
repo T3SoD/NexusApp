@@ -1,7 +1,8 @@
 name: Build check
 
-# Verifies the app compiles cleanly on a stock Windows runner for every
-# push / PR to main. Does not produce or publish anything.
+# Verifies the app compiles cleanly and the unit test suite passes on a stock
+# Windows runner for every push / PR to main. Does not produce or publish
+# anything.
 
 on:
   push:
@@ -22,8 +23,12 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Restoring the test project also restores the app project it references.
       - name: Restore
-        run: dotnet restore NexusApp/NexusApp.csproj
+        run: dotnet restore NexusApp.Tests/NexusApp.Tests.csproj
 
       - name: Build (Release)
         run: dotnet build NexusApp/NexusApp.csproj -c Release --no-restore
+
+      - name: Test (Release)
+        run: dotnet test NexusApp.Tests/NexusApp.Tests.csproj -c Release --no-restore
