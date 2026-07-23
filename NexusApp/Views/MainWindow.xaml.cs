@@ -3301,6 +3301,167 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 0, 0, 6),
             });
 
+            // ── Byproduct sourcing note (issue #12) ──────────────────────────
+            // Ingredients like Aslarite are collected inside host rocks, not as dedicated
+            // deposits at each ranked location. This reuses the same datamined found-in rows
+            // the Mining Codex shows; probability and variants are intentionally omitted.
+            var byproductOres = new List<(string Name, string Rarity, List<NexusApp.Models.FoundInSource> Sources)>();
+            foreach (var ing in full.Ingredients)
+            {
+                var sources = App.Data.GetFoundInForResource(ing.ResourceName);
+                if (sources.Count == 0) continue;
+                var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
+                byproductOres.Add((ing.ResourceName, rarity, sources));
+            }
+
+            if (byproductOres.Count > 0)
+            {
+                var noteFg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+                var noteCyan = (System.Windows.Media.Brush)FindResource("CyanBrush");
+                var bandTrackBrush = BrushFromHex("#147FE9E0");   // faint cyan track (line .078)
+                var bandFillBrush = new System.Windows.Media.LinearGradientBrush(
+                    System.Windows.Media.Color.FromArgb(0x8C, 0x7F, 0xE9, 0xE0),   // cyan .55
+                    System.Windows.Media.Color.FromRgb(0x7F, 0xE9, 0xE0),          // cyan
+                    0);   // 0deg = left-to-right, matching the mock's 90deg gradient
+
+                var noteInner = new StackPanel { Margin = new Thickness(13, 11, 13, 9) };
+                noteInner.Children.Add(new TextBlock
+                {
+                    Text = "BYPRODUCT SOURCING",
+                    FontSize = 9, FontWeight = FontWeights.Bold,
+                    Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+                    Margin = new Thickness(0, 0, 0, 4),
+                });
+                noteInner.Children.Add(new TextBlock
+                {
+                    Text = "Host share per rock. Longer bar means a richer cut when you scan that rock.",
+                    FontSize = 11, Foreground = dimB, TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 10),
+                });
+
+                // Section C band-bar rows: rarity dot + ore name, then one bar per composition
+                // band (richest band first, filling the track). Bar width scales each band's
+                // upper bound against the ore's richest band; label reads "<hosts> up to <max>%".
+                const double trackW = 104, trackInnerW = 102;   // 1px border each side
+                bool firstBandRow = true;
+                foreach (var (oreName, oreRarity, sources) in byproductOres)
+                {
+                    var chd = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+                    chd.Children.Add(new Border
+                    {
+                        Width = 9, Height = 9, CornerRadius = new CornerRadius(3),
+                        Background = RarityBrush(oreRarity), VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(0, 0, 9, 0),
+                    });
+                    chd.Children.Add(new TextBlock
+                    {
+                        Text = oreName, FontFamily = headFont, FontWeight = FontWeights.SemiBold,
+                        FontSize = 13, Foreground = noteFg, VerticalAlignment = VerticalAlignment.Center,
+                    });
+
+                    var groups = ByproductNote.Groups(sources);
+                    double oreMax = groups.Count > 0 ? groups.Max(x => x.Max) : 0;
+                    var ordered = groups.OrderByDescending(x => x.Max).ToList();   // richest band on top
+
+                    var bands = new StackPanel { Margin = new Thickness(18, 0, 0, 0) };   // indent past the dot
+                    for (int bi = 0; bi < ordered.Count; bi++)
+                    {
+                        var grp = ordered[bi];
+                        double frac = ByproductNote.BarFraction(grp.Max, oreMax);
+
+                        var fill = new Border
+                        {
+                            HorizontalAlignment = HorizontalAlignment.Left,
+                            Width = trackInnerW * frac, Background = bandFillBrush,
+                        };
+                        var track = new Border
+                        {
+                            Width = trackW, Height = 9, CornerRadius = new CornerRadius(3),
+                            Background = bandTrackBrush, BorderBrush = navBorder0,
+                            BorderThickness = new Thickness(1), ClipToBounds = true,
+                            VerticalAlignment = VerticalAlignment.Center, Child = fill,
+                        };
+
+                        var label = new TextBlock
+                        {
+                            FontFamily = monoFont, FontSize = 10.5, Foreground = dimB,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(9, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                        };
+                        for (int hi = 0; hi < grp.Hosts.Count; hi++)
+                        {
+                            if (hi > 0) label.Inlines.Add(new System.Windows.Documents.Run(", ") { Foreground = dimB });
+                            label.Inlines.Add(new System.Windows.Documents.Run(grp.Hosts[hi]) { Foreground = noteFg });
+                        }
+                        label.Inlines.Add(new System.Windows.Documents.Run(" up to ") { Foreground = dimB });
+                        label.Inlines.Add(new System.Windows.Documents.Run(ByproductNote.Percent(grp.Max)) { Foreground = noteCyan });
+
+                        var bandRow = new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Margin = new Thickness(0, 0, 0, bi == ordered.Count - 1 ? 0 : 5),
+                        };
+                        bandRow.Children.Add(track);
+                        bandRow.Children.Add(label);
+                        bands.Children.Add(bandRow);
+                    }
+
+                    var crow = new StackPanel();
+                    crow.Children.Add(chd);
+                    crow.Children.Add(bands);
+
+                    // Hairline separator between rows only (not before the first).
+                    noteInner.Children.Add(new Border
+                    {
+                        Child = crow, Padding = new Thickness(0, 8, 0, 8),
+                        BorderBrush = navBorder0,
+                        BorderThickness = new Thickness(0, firstBandRow ? 0 : 1, 0, 0),
+                    });
+                    firstBandRow = false;
+                }
+
+                // 2px amber accent bar (AccentStrongBrush) + faint amber wash, cyan hairline border.
+                var noteGrid = new Grid();
+                noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2) });
+                noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                noteGrid.Children.Add(new Border { Background = (System.Windows.Media.Brush)FindResource("AccentStrongBrush") });
+                Grid.SetColumn(noteInner, 1); noteGrid.Children.Add(noteInner);
+
+                host.Children.Add(new Border
+                {
+                    Margin = new Thickness(0, 0, 0, 4),
+                    CornerRadius = new CornerRadius(4),
+                    Background = BrushFromHex("#07FFB23E"),
+                    BorderBrush = navBorder0,
+                    BorderThickness = new Thickness(1),
+                    ClipToBounds = true,
+                    Child = noteGrid,
+                });
+
+                Logger.Info($"[UI] blueprint byproducts: {byproductOres.Count} ores");
+            }
+
+            // Treatment B: "via <host>" chips on each covers line. A byproduct-sourced ore is
+            // tagged only with the hosts that actually spawn at that location (host presence read
+            // from each host ore's own Locations); a dim "no host here" chip marks an ore whose
+            // hosts are all absent. Chips are non-interactive reference markers (no logging).
+            var oreToSources = new Dictionary<string, List<NexusApp.Models.FoundInSource>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in byproductOres) oreToSources[b.Name] = b.Sources;
+            var hostLocations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var res in _vm.AllResources) hostLocations[res.Name] = res.Locations;
+
+            var chipAmber     = heroAccent;                                                    // amber text
+            var chipAmberLine = (System.Windows.Media.Brush)FindResource("AccentStrongBrush"); // amber-line border
+            var chipCyan      = (System.Windows.Media.Brush)FindResource("CyanBrush");          // "+N" text
+            var chipCyanLine  = (System.Windows.Media.Brush)FindResource("CyanDimBrush");       // "+N" border
+            Border ViaChip(string text, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush borderBrush) => new()
+            {
+                Child = new TextBlock { Text = text, FontFamily = monoFont, FontSize = 8.5, Foreground = textBrush },
+                BorderBrush = borderBrush, BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1),
+                Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            };
+
             int locRank = 1;
             foreach (var (location, covers) in rankedLocations)
             {
@@ -3340,14 +3501,47 @@ public partial class MainWindow : Window
                 });
                 locContent.Children.Add(topRow);
 
-                locContent.Children.Add(new TextBlock
+                var coversPanel = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                coversPanel.Children.Add(new TextBlock
                 {
-                    Text = $"{covers.Count}/{ingredientNames.Count} ingredients · {string.Join(", ", covers)}",
-                    FontSize = 10,
-                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                    Margin = new Thickness(0, 3, 0, 0),
-                    TextWrapping = TextWrapping.Wrap,
+                    Text = $"{covers.Count}/{ingredientNames.Count} ingredients ·",
+                    FontSize = 10, Foreground = dimB,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
                 });
+                for (int ci = 0; ci < covers.Count; ci++)
+                {
+                    if (ci > 0)
+                        coversPanel.Children.Add(new TextBlock
+                        {
+                            Text = ",", FontSize = 10, Foreground = dimB,
+                            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+                        });
+                    coversPanel.Children.Add(new TextBlock
+                    {
+                        Text = covers[ci], FontSize = 10, FontWeight = FontWeights.SemiBold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    });
+
+                    // Byproduct ores get "via <host>" chips for the hosts present here; ores with
+                    // found-in rows but no host at this location get a dim "no host here" chip;
+                    // ores without found-in rows get nothing.
+                    oreToSources.TryGetValue(covers[ci], out var oreSources);
+                    var chips = ByproductNote.HostsPresentAt(oreSources, hostLocations, location);
+                    if (chips.HasHosts)
+                    {
+                        if (chips.Present.Count == 0)
+                            coversPanel.Children.Add(ViaChip("no host here", dimB, navBorder0));
+                        else
+                        {
+                            foreach (var h in chips.Present)
+                                coversPanel.Children.Add(ViaChip($"via {h}", chipAmber, chipAmberLine));
+                            if (chips.Overflow > 0)
+                                coversPanel.Children.Add(ViaChip($"+{chips.Overflow}", chipCyan, chipCyanLine));
+                        }
+                    }
+                }
+                locContent.Children.Add(coversPanel);
 
                 Grid.SetColumn(locContent, 1);
                 locRow.Children.Add(locContent);
