@@ -11,117 +11,139 @@
   </picture>
 </p>
 
-**The offline, EAC-safe companion for Star Citizen's mine, refine, craft, haul loop.**
+**Nexus is an offline, EAC-safe companion app for the mine, refine, craft, and haul loop in Star Citizen.**
 
-Nexus decodes RS scan values into resource type and node count, times your refinery jobs, and doubles as a searchable reference for resources, blueprints, and which blueprints you own. It reads the game log to auto-collect blueprints the moment you unlock them and to merge your accepted hauling contracts into one consolidated pickup and delivery route, all from an overlay that floats over the game, **fully offline**. The **Blueprint Network** extends ownership tracking to friends or your org: trade library files and everyone sees who owns what.
+Nexus decodes RS scan values into a resource type and a node count. It times your refinery jobs. It also works as a searchable reference for resources, blueprints, and the blueprints that you own.
 
-> **Disclaimer:** Nexus is an unofficial, fan-made tool. It is **not** affiliated with, endorsed by, or sponsored by Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.
+Nexus reads `Game.log` for two purposes. It auto-collects blueprints the moment that you unlock them. It also merges your accepted hauling contracts into one consolidated route of pickup stops and delivery stops. An overlay shows all of this and floats over the game. Nexus works fully offline.
 
-> **EAC-safe by design:** Nexus runs entirely outside Star Citizen - no injection, no memory reading, no game files modified. It only captures your screen (the standard Windows OCR APIs) and reads the plain-text `Game.log` the game writes to disk (read-only, opened shared). It installs per-user, runs fully offline, and the whole pipeline is open source in this repo. There's nothing for Easy Anti-Cheat to flag.
+The **Blueprint Network** adds ownership tracking for friends or your org. You trade library files, and then everyone sees who owns what.
+
+> **Disclaimer:** Nexus is an unofficial, fan-made tool. Nexus has no affiliation with Cloud Imperium Games (CIG) or Roberts Space Industries (RSI). CIG and RSI do not endorse or sponsor Nexus. Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.
+
+> **EAC-safe by design:** Nexus runs fully outside Star Citizen. It does not inject code. It does not read memory. It does not modify game files.
+>
+> Nexus does only two operations. It captures your screen with the standard Windows OCR APIs. It reads the plain-text `Game.log` that the game writes to disk. It opens `Game.log` as read-only and in shared mode.
+>
+> Nexus installs per-user. It runs fully offline. The whole pipeline is open source in this repo. Easy Anti-Cheat has nothing to flag.
 
 ## Features
 
 | Page | What it does |
 |------|--------------|
-| **Operations** | The landing dashboard: your last scan, refinery queue, cargo in transit, session blueprints, and network coverage at a glance, with links into every module. |
-| **RS Signal Decoder** | Manually enter or **auto-scan** an RS value to identify the resource and node count. |
-| **Refinery Tracker** | Track active refinery jobs with live countdown timers and status indicators. |
-| **Mining Codex** | Full reference table of all mineable resources, filterable by system (Stanton / Pyro / Nyx) and method (Ship / ROC / FPS). |
-| **Blueprint Library** | Search ship / weapon / armor / ammo blueprints and see the raw resources each one requires. Mark which blueprints you own and filter by owned / not owned. |
-| **Blueprint Network** | Share which blueprints you own with friends or your org by trading library files, and see who in your group owns what - coverage, gaps to farm, and single-owner risk. Fully offline: you exchange files, nothing syncs. |
-| **Cargo Hauling** | Hauling contracts you accept in-game appear automatically from `Game.log`, consolidated into collect and deliver stops per location. Optional screen-scan enriches each haul with reward, contractor, and cargo details. |
+| **Operations** | The landing dashboard. It shows your last scan, the refinery queue, cargo in transit, session blueprints, and network coverage. It links to every module. |
+| **RS Signal Decoder** | Enter an RS value by hand, or use **auto-scan**. Nexus identifies the resource and the node count. |
+| **Refinery Tracker** | Track your active refinery jobs. Nexus shows live countdown timers and status indicators. |
+| **Mining Codex** | A full reference table of all mineable resources. Filter it by system (Stanton / Pyro / Nyx) and by method (Ship / ROC / FPS). |
+| **Blueprint Library** | Search ship, weapon, armor, and ammo blueprints. See the raw resources that each one needs. Mark the blueprints that you own. Filter by owned or not owned. |
+| **Blueprint Network** | Share the blueprints that you own with friends or your org. Trade library files to do this. See who in your group owns what: coverage, the gaps to farm, and single-owner risk. Nexus works fully offline. You exchange files, and nothing syncs. |
+| **Cargo Hauling** | The hauling contracts that you accept in-game appear automatically from `Game.log`. Nexus consolidates them into collect stops and deliver stops for each location. An optional screen-scan adds the reward, the contractor, and the cargo details to each haul. |
 
 **Highlights**
 
-- **Auto-scan overlay:** draw a region over the RS value on your screen and Nexus reads it automatically using the native Windows OCR engine.
-- **Floating overlay** that sits over the game and can be repositioned and dimmed to taste.
-- **Blueprint ownership tracking:** mark which blueprints you own, filter the library by owned / not owned, and track your collection completion per category, so you don't have to check in-game.
-- **Session Tracking:** Nexus reads your Star Citizen `Game.log` to mark blueprints Owned automatically the moment you receive them in-game, or imports everything you've already unlocked from past logs. Always on, read-only, and it never writes to or modifies any game file.
-- **Cargo Hauling:** accepted contracts appear on their own, with a consolidated collect-and-deliver plan across all active hauls, live shard tracking, and automatic cleanup when you change shards.
-- **Guided tour and built-in user guide:** a welcome tour walks new users through the app, replayable anytime from Help, alongside a searchable help guide covering every module.
-- **Blueprint Network:** pool your owned-blueprint library with friends or your org by trading files to see group coverage, gaps, and single-owner risk. Full details in the Blueprint Network section below.
-- **Shopping list:** add resources or blueprint ingredients and have them highlighted in scan results and history.
-- **Persistent work orders:** refinery timers survive app restarts.
-- Fully **offline:** no account or internet connection required. Settings and work orders are stored locally on your PC.
+- **Auto-scan overlay:** Draw a region over the RS value on your screen. Nexus then reads the value automatically with the native OCR engine in Windows.
+- **Overlay:** The overlay floats over the game. You can move it and dim it as you prefer.
+- **Blueprint ownership tracking:** Mark the blueprints that you own. Filter the library by owned or not owned. Track your collection completion for each category. Then you do not need to check in-game.
+- **Session Tracking:** Nexus reads your Star Citizen `Game.log`. It marks blueprints as Owned automatically the moment that you receive them in-game. It can also import everything that you already unlocked from past logs. Session Tracking is always on and read-only. It never writes to or modifies any game file.
+- **Cargo Hauling:** Accepted contracts appear on their own. Nexus makes a consolidated collect-and-deliver plan across all active hauls. It tracks the live shard. It cleans up automatically when you change shards.
+- **Guided tour and built-in user guide:** A welcome tour guides new users through Nexus. You can replay the tour anytime from Help. A searchable help guide covers every module.
+- **Blueprint Network:** Pool your owned-blueprint library with friends or your org. Trade files to see group coverage, gaps, and single-owner risk. See the full details in the Blueprint Network section below.
+- **Shopping list:** Add resources or blueprint ingredients. Nexus then highlights them in scan results and history.
+- **Persistent work orders:** Refinery timers survive when Nexus restarts.
+- Fully **offline:** You do not need an account or an internet connection. Nexus stores settings and work orders locally on your PC.
 
 ## Screenshots
 
 ### Operations
-The landing dashboard during a live session: last scan decoded, refinery queue with one order ready, cargo in transit, and your current shard - with drill-in links to every module.
+The landing dashboard during a live session. It shows the last scan decoded, the refinery queue with one order ready, cargo in transit, and your current shard. It links to every module.
 
 [![Nexus Operations dashboard with live KPI cards, refinery queue, active hauls, and server shard panel](docs/screenshots/operations.png)](docs/screenshots/operations.png)
 
 ### Auto-scan, in the cockpit
-The overlay's SCAN tab riding over Star Citizen while mining: the detection box is drawn around the in-game RS readout, and Nexus decodes it live - **RS 11,700** identified as **Torite** (RS 3,900 x3 nodes, exact), scan history filling in below.
+The overlay SCAN tab sits over Star Citizen during mining. The detection box surrounds the in-game RS readout. Nexus decodes the value live: it identifies **RS 11,700** as **Torite** (RS 3,900 x3 nodes, exact). The scan history fills in below.
 
 [![Nexus overlay auto-scanning an RS value in the Star Citizen mining cockpit and decoding it live](docs/screenshots/overlay-scan.png)](docs/screenshots/overlay-scan.png)
 
 ### Overlay HUB over the game
-The HUB tab floating over gameplay: green status lights for session tracking and both scanners, blueprints collected this session, and your current server and shard - all read-only, at a glance.
+The HUB tab floats over gameplay. It shows green status lights for session tracking and both scanners, the blueprints collected this session, and your current server and shard. Everything is read-only.
 
 [![Nexus overlay HUB tab floating over Star Citizen gameplay with status lights and shard panel](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
 ### RS Signal Decoder
-Type any RS value for a ranked breakdown: the best match as a hero card with node count and refinery yield, close matches below, and re-runnable scan history on the right.
+Type any RS value to get a ranked breakdown. The best match shows as a hero card with the node count and the refinery yield. Close matches show below. The re-runnable scan history shows on the right.
 
 [![Nexus RS Decoder with a Lindinium exact match hero card and other close matches](docs/screenshots/rs-decoder.png)](docs/screenshots/rs-decoder.png)
 
 ### Blueprint Library
-Drill into any blueprint for its full bill of materials, the contracts that unlock it, and a ranked WHERE TO MINE plan for the ingredients - and track everything you own.
+Open any blueprint to see its full bill of materials and the contracts that unlock it. It also shows a ranked WHERE TO MINE plan for the ingredients. Track everything that you own.
 
 [![Nexus Blueprint Library showing a blueprint's bill of materials, unlock contracts, and where to mine panel](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
 
 ### Blueprint Network
-Group coverage at a glance: the coverage ring, per-member ownership, and a watch list of the gaps nobody owns yet and single-owner blueprints at risk.
+Group coverage: the coverage ring, per-member ownership, and a watch list. The watch list shows the gaps that nobody owns yet and the single-owner blueprints at risk.
 
 [![Nexus Blueprint Network showing group blueprint coverage ring, per-member ownership, and watch list](docs/screenshots/blueprint-network.png)](docs/screenshots/blueprint-network.png)
 
 ### Mining Codex
-A full reference of every mineable resource: searchable, filterable by star system (Stanton / Pyro / Nyx) and mining method (Ship / ROC / FPS), with a detail panel covering RS value, refinery yields, locations, and the blueprints that use it.
+A full reference of every mineable resource. It is searchable. Filter it by star system (Stanton / Pyro / Nyx) and by mining method (Ship / ROC / FPS). A detail panel shows the RS value, refinery yields, locations, and the blueprints that use it.
 
 [![Nexus Mining Codex resource list with rarity colors and a Gold detail panel showing refinery yields and locations](docs/screenshots/mining-codex.png)](docs/screenshots/mining-codex.png)
 
 ### Refinery Tracker
-Live work orders as cards: one ready to collect, one mid-refine with its countdown running. Timers survive app restarts.
+Live work orders show as cards. One is ready to collect. One is mid-refine, and its countdown runs. The timers survive when Nexus restarts.
 
 [![Nexus Refinery Tracker with a ready work order and a refining order counting down](docs/screenshots/refinery-tracker.png)](docs/screenshots/refinery-tracker.png)
 
 ### Cargo Hauling
-Two live contracts tracked automatically from `Game.log` with their rewards, plus the consolidated collect / deliver table that turns every leg into one route plan grouped by location.
+Nexus tracks two live contracts automatically from `Game.log` and shows their rewards. The consolidated collect and deliver table turns every leg into one route plan for each location.
 
 [![Nexus Cargo Hauling page with live contract cards and the collect deliver consolidation table](docs/screenshots/cargo-hauling.png)](docs/screenshots/cargo-hauling.png)
 
 ### Overlay HAULING tab
-The same haul plan in-game: totals, consolidated stops, and per-contract progress without leaving the pilot seat.
+The same haul plan appears in-game. It shows totals, consolidated stops, and per-contract progress. You do not need to leave the pilot seat.
 
 [![Nexus overlay HAULING tab with haul totals, consolidated stops, and contract progress](docs/screenshots/overlay-hauling.png)](docs/screenshots/overlay-hauling.png)
 
 ## Installation (end users)
 
-Nexus ships two ways; pick whichever suits you. Both are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings and work orders locally, and run fully offline.
+Nexus comes in two forms. Choose the one that suits you. Both forms are self-contained, because Nexus bundles the .NET runtime. Both need no admin rights. Both store settings and work orders locally. Both run fully offline.
 
 ### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
 
-A guided setup that installs Nexus like normal Windows software.
+A guided setup installs Nexus like normal Windows software.
 
 1. Download **`Nexus_Setup.exe`** from the [Releases](../../releases) page.
-2. Right-click it → **Properties** → check **Unblock** at the bottom → **OK**.
-3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
-4. Launch Nexus from the Start menu or desktop.
+2. Right-click `Nexus_Setup.exe`.
+3. Select **Properties**.
+4. Check **Unblock** at the bottom of the dialog.
+5. Click **OK**.
+6. Run `Nexus_Setup.exe`.
+7. Follow the prompts.
+8. Optional: to make a desktop shortcut, select **Create a desktop shortcut**.
+9. Open Nexus from the Start menu or the desktop.
 
 ### Option 2 - Portable (standalone `NexusApp.exe`)
 
-Run the app directly, with no installation.
+Run Nexus directly. You do not need to install it.
 
 1. Download **`NexusApp_portable.zip`** from the [Releases](../../releases) page.
-2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK**.
-3. Right-click the ZIP → **Extract All…** and choose a location (Desktop or Documents is fine).
-4. Open the extracted folder and double-click **`NexusApp.exe`** (keep the whole folder together).
+2. Right-click `NexusApp_portable.zip`.
+3. Select **Properties**.
+4. Check **Unblock** at the bottom of the dialog.
+5. Click **OK**.
+6. Right-click `NexusApp_portable.zip` again.
+7. Select **Extract All…**.
+8. Choose a location, for example the Desktop or Documents.
+9. Open the extracted folder.
 
-> **Windows SmartScreen note (applies to both options):** the app is unsigned (code-signing certificates cost several hundred dollars a year), so Windows may show a blue *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. If Defender flags it, that's a false positive for an unsigned app.
+**Caution:** Keep all the files in the extracted folder together.
+
+10. Double-click **`NexusApp.exe`** to start Nexus.
+
+> **Windows SmartScreen note (applies to both options):** Nexus is unsigned. Code-signing certificates cost several hundred dollars a year. Because Nexus is unsigned, Windows can show a blue *"Windows protected your PC"* dialog on the first run. To continue, click **More info**, then click **Run anyway**. You can also use the **Unblock** step above. If Defender flags Nexus, this is a false positive for an unsigned app.
 
 <details>
-<summary><strong>For developers - tech stack & project layout</strong></summary>
+<summary><strong>For developers - tech stack and project layout</strong></summary>
 
 **Tech stack**
 
@@ -150,12 +172,19 @@ NexusApp/
 
 ## Support & Feedback
 
-Nexus is built by one person for the mining community, and hearing from people who use it is the best part. If you enjoy the app, please reach out and say so.
+One person builds Nexus for the mining community. Feedback from people who use Nexus is welcome. If you like Nexus, please contact me.
 
-Got a bug, a feature idea, or want to share how Nexus is working for you? **Message T3SoD on Discord** or **[open an issue on GitHub](https://github.com/T3SoD/NexusApp/issues)**. All feedback is welcome and helps shape where Nexus goes next.
+You can report a bug, suggest a feature, or tell me how Nexus works for you. **Message T3SoD on Discord** or **[open an issue on GitHub](https://github.com/T3SoD/NexusApp/issues)**. All feedback is welcome. It helps to shape the future of Nexus.
 
-When reporting a bug, you can attach a diagnostic snapshot: open the **Settings** module at the bottom of the app dock → **Diagnostics** → **Open App Log Monitor**, then **Save snapshot** to bundle your app version, OS, and recent log into a single file.
+When you report a bug, you can attach a diagnostic snapshot. To make a snapshot, do these steps:
+
+- Open the **Settings** module at the bottom of the app dock.
+- Select **Diagnostics**.
+- Select **Open App Log Monitor**.
+- Click **Save snapshot**.
+
+The snapshot combines the Nexus version, your OS, and your recent log into one file.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Nexus uses the [MIT License](LICENSE).
