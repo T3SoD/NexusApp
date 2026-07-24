@@ -52,6 +52,11 @@ public partial class App : Application
         ContractBoxVisibilityChanged?.Invoke(on);
     }
 
+    // True when this process was started by CrashGuard's auto-relaunch (render-thread-failure
+    // recovery), keyed on the relaunch argument. The Operations HUB strip reads it so the relaunch
+    // notice only ever shows on a relaunch start (a manual restart never trips it).
+    public static bool RelaunchedThisSession { get; private set; }
+
     // Reports the process's live DPI-awareness so nexus.log can confirm the shipped exe is actually
     // Per-Monitor V2 (issue #6) - DPI awareness is an embedded runtime property the CI compile can't verify.
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
@@ -127,7 +132,8 @@ public partial class App : Application
         GpuInfo.LogAdapters();
         // Keyed on the relaunch argument, not marker freshness: a manual restart within the
         // loop-guard window must not be mislabeled as an auto-relaunch in diagnostics.
-        if (e.Args.Contains(CrashGuard.RelaunchArg))
+        RelaunchedThisSession = RelaunchNotice.WasAutoRelaunched(e.Args);
+        if (RelaunchedThisSession)
             Logger.Info("[WIN] auto-relaunched after a render thread failure (display connection lost, usually the game crashing or quitting)");
         RegisterInteractionLogging();
         _foreground = new ForegroundMonitor();
@@ -140,6 +146,14 @@ public partial class App : Application
         // keep their settings, work orders and history. Runs before anything reads.
         SettingsService.MigrateLegacyAppData();
         Settings = new SettingsService();
+        // A render-relaunch start records when it happened (UTC) so Settings > Diagnostics can show
+        // the last automatic restart across sessions. Written after Settings loads so it persists.
+        if (RelaunchedThisSession)
+        {
+            Settings.Current.LastAutoRelaunchUtc = DateTime.UtcNow;
+            Settings.Save();
+            Logger.Info("[WIN] recorded last automatic restart timestamp for Settings > Diagnostics");
+        }
         NexusApp.Views.Motion.Reduced = Settings.Current.ReduceAnimations;
         // Establish the local Blueprint Network identity from first launch (not lazily at first
         // export), so the import self-skip can always recognise "you" and never double-count.

@@ -57,6 +57,11 @@ public class AppSettings
     // once at startup - toggling takes effect on the next launch. Default off.
     public bool SoftwareRendering { get; set; }
 
+    // Render-crash recovery: the UTC instant CrashGuard last auto-relaunched Nexus after Windows
+    // reported a display error (0x88980406), surfaced in Settings > Diagnostics ("Last automatic
+    // restart"). Stored UTC; the row localizes it. Null until the first auto-relaunch ever happens.
+    public DateTime? LastAutoRelaunchUtc { get; set; }
+
     // Overlay input (issue #7): when on, the overlay passes the mouse straight through (click-through)
     // while the game hides the OS cursor (FPS / flight), so a stray click can't land on it or steal
     // focus. It becomes interactive again the moment the cursor is shown. Default on.
