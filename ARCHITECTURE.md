@@ -1,16 +1,18 @@
 # Architecture
 
-A high-level map of how Nexus is built. For the security boundary (network,
-file, and game-process access), see [SECURITY.md](SECURITY.md).
+This document is a high-level map of how NexusApp is built. For the security
+boundary (network access, file access, and game-process access), see
+[SECURITY.md](SECURITY.md).
 
 ## Overview
 
-Nexus is a single-process **WPF desktop app** targeting **.NET 8**
-(`net8.0-windows`), published self-contained for `win-x64`. It follows the
-**MVVM** pattern using `CommunityToolkit.Mvvm`, with a thin services layer
-underneath the UI. All data is local: reference data is bundled at build time,
-and user data lives on disk under the per-user app-data folder. There is no
-network code.
+NexusApp is a single-process **WPF desktop app** that targets **.NET 8**
+(`net8.0-windows`). The build publishes NexusApp self-contained for `win-x64`.
+NexusApp uses the **MVVM** pattern with `CommunityToolkit.Mvvm`. A thin services
+layer sits under the UI.
+
+All data is local. The build bundles the reference data. The user data is on
+disk in the per-user app-data folder. There is no network code.
 
 ```
 +-----------------------------------------------------------+
@@ -38,98 +40,114 @@ network code.
 ## Layers
 
 ### Views (`Views/`, `MainWindow.xaml`, `OverlayWindow.xaml`)
-WPF windows and dialogs. The two primary surfaces are **MainWindow** (the full
-app) and **OverlayWindow** (a compact, always-on-top panel that floats over the
-game). Supporting windows include the region selector for auto-scan, the toast
-and scan-indicator popups, the app-log monitor, and the settings / about / help
-dialogs.
+The Views are the WPF windows and dialogs. The two main surfaces are
+**MainWindow** and **OverlayWindow**. **MainWindow** is the full NexusApp.
+**OverlayWindow** is a compact panel. **OverlayWindow** stays always-on-top and
+floats over the game.
+
+Supporting windows include:
+- the region selector for auto-scan
+- the toast and scan-indicator popups
+- the app-log monitor
+- the settings, about, and help dialogs
 
 ### ViewModel (`ViewModels/MainViewModel.cs`)
-A **single `MainViewModel` instance is shared by both the main window and the
-overlay.** This is the key to keeping the two surfaces in sync: a button on the
-overlay and the matching control on the main window are bound to the same
-observable state and commands, so a change made in one is reflected in the other
-with no manual copying. Scan results and refinery work orders flow through the
-same view model and therefore stay consistent everywhere.
+Both the main window and the overlay share a single **MainViewModel** instance.
+This design keeps the two surfaces in sync. A button on the overlay and the
+matching control on the main window bind to the same observable state and
+commands. So a change on one surface also shows on the other surface. No manual
+copy is necessary.
+
+Scan results and refinery work orders flow through the same view model. So they
+stay consistent everywhere.
 
 ### Services (`Services/`)
-Stateless-ish helpers that the view model orchestrates:
+The view model controls these services. Each service holds little or no state.
 
-- **DataService** - loads reference data (resources, blueprints) and persists
-  user data via SQLite and JSON.
-- **OcrService** - captures a screen region and runs the native Windows OCR
-  engine. Handles the image preprocessing (invert, contrast, upscale) and parses
-  the RS value out of the recognized text.
-- **ScannerService** - drives the opt-in auto-scan loop and reports readings.
-- **SettingsService** - loads/saves `AppSettings`, including app-data migration
-  from the legacy folder name.
-- **ThemeService** - provides the app's single theme resources (merged palette,
-  icon and logo URIs); the luxury/classic theme picker was removed in v6.0.0.
+- **DataService** - loads the reference data (resources and blueprints). It
+  saves the user data with SQLite and JSON.
+- **OcrService** - captures a screen region. It runs Windows OCR, the native OCR
+  engine. It prepares the image (invert, contrast, and upscale). It reads the RS
+  value from the recognized text.
+- **ScannerService** - runs the opt-in auto-scan loop. It reports the readings.
+- **SettingsService** - loads and saves `AppSettings`. It also moves app data
+  from the old folder name.
+- **ThemeService** - provides the single theme resources of NexusApp (merged
+  palette, icon URIs, and logo URIs). v6.0.0 removed the luxury/classic theme
+  picker.
 - **GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
   RsiHandleParser** - the read-only `Game.log` subsystem (see below).
 - **ComponentStringReference / GlobalIniReader** - translate mod-renamed
-  blueprint names back to their official names by joining the user's read-only
-  `global.ini` to the bundled `components.ini` reference; used by the `Game.log`
-  import path.
-- **Network (NetworkFileService / NetworkStore / NetworkScope)** - the offline
-  Blueprint Network file-exchange subsystem (see below).
-- **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** -
-  diagnostics: a self-rotating event log, UI-interaction breadcrumbs, foreground
-  window/process tracking (process name only, never window titles), and the
-  copy/save diagnostic bundle.
+  blueprint names back to their official names. They join the user's read-only
+  `global.ini` to the bundled `components.ini`. The `Game.log` import path uses
+  them.
+- **Network (NetworkFileService / NetworkStore / NetworkScope)** - the
+  file-exchange subsystem for the offline Blueprint Network (see below).
+- **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** - the
+  diagnostics. These are a self-rotating event log, UI-interaction breadcrumbs,
+  tracking of the foreground window and process, and the copy/save diagnostic
+  bundle. This tracking records the process name only, never window titles.
 
 ### Models (`Models/`)
-Plain data types: `Blueprint`, `Resource`, `WorkOrder`, `ShoppingItem`,
-`AppSettings`, and the `NetworkFile` / `NetworkModels` exchange types.
+The Models are plain data types: `Blueprint`, `Resource`, `WorkOrder`,
+`ShoppingItem`, `AppSettings`, and the `NetworkFile` / `NetworkModels` exchange
+types.
 
 ## Data and storage
 
-- **Reference data** ships as `Data/seed_data.json`, embedded into the assembly
-  as a resource at build time. It is the single source of mining and blueprint
-  data; there is no over-the-air update path. A second embedded reference,
-  `Data/components.ini`, maps internal component keys to their official names and
-  is refreshed per game patch at build time.
-- **User data** (settings, work orders, owned-blueprint library) is stored under
-  the per-user app-data folder via SQLite and JSON.
-- **Blueprint Network** uses a separate local `network.db` and exchanges
-  `.nexuslib` files that the user moves manually. Nothing syncs automatically.
-- **Versioning** is single-sourced from the `<Version>` in
-  `NexusApp/NexusApp.csproj`; the in-app badges and installer read it from the
-  built executable, and CI overrides it from the git tag for releases.
+- **Reference data** ships as `Data/seed_data.json`. The build embeds it into
+  the assembly as a resource. It is the single source of mining and blueprint
+  data. There is no over-the-air update path. A second embedded reference,
+  `Data/components.ini`, maps internal component keys to their official names.
+  The build refreshes it for each game patch.
+- **User data** (settings, work orders, and the owned-blueprint library) is on
+  disk in the per-user app-data folder. NexusApp stores it with SQLite and JSON.
+- **Blueprint Network** uses a separate local `network.db`. It exchanges
+  `.nexuslib` files that the user moves by hand. Nothing syncs automatically.
+- **Versioning** comes from one source: the `<Version>` in
+  `NexusApp/NexusApp.csproj`. The in-app badges and the installer read it from
+  the built executable. For releases, CI overrides it from the git tag.
 
 ## Key flows
 
 ### Auto-scan (RS Signal Decoder)
 1. The user draws a scan region over the RS value (RegionSelectorWindow).
-2. `ScannerService` periodically asks `OcrService` to capture that region.
-3. `OcrService` preprocesses the capture (invert colors so light-on-dark game
-   text becomes dark-on-light, boost contrast, upscale 6x) and runs Windows OCR.
-4. The recognized text is parsed into an RS integer, which the view model
-   decodes into the matching resource and node count.
+2. `ScannerService` asks `OcrService` to capture that region at regular
+   intervals.
+3. `OcrService` prepares the capture. It inverts the colors, so light-on-dark
+   game text becomes dark-on-light. It boosts the contrast and upscales 6x. Then
+   it runs Windows OCR.
+4. NexusApp parses the recognized text into an RS integer. The view model
+   decodes that integer into the matching resource and node count.
 
 ### Session Tracking (Beta, opt-in)
-`GameLogWatcher` tails the game's plain-text `Game.log` read-only;
-`GameLogBlueprintImporter` recognizes "Received Blueprint" notifications and
-marks those blueprints as owned. Blueprint names that a localization mod renamed
-are translated back to their official names using the user's read-only
-`global.ini` (auto-detected next to `Game.log`, or set explicitly), joined to the
-bundled `components.ini`. `GameLogSession` is an app-lifetime hub that ties the
-watcher, importer, and per-session tally together.
+`GameLogWatcher` reads the plain-text `Game.log` of the game as the game adds new
+lines. It opens the file read-only. `GameLogBlueprintImporter` finds the
+"Received Blueprint" notifications. It marks those blueprints as owned.
+
+A localization mod can rename blueprint names. NexusApp translates these names
+back to their official names. It joins the user's read-only `global.ini` to the
+bundled `components.ini`. NexusApp finds `global.ini` next to `Game.log`, or the
+user sets the path.
+
+`GameLogSession` is an app-lifetime hub. It ties the watcher, the importer, and
+the per-session tally together.
 
 ### Blueprint Network (offline sharing)
-A user exports their owned-blueprint library to a `.nexuslib` file and shares it
-out-of-band (Discord, a drive). Importing others' files builds a roster;
-`NetworkScope` resolves coverage views (who owns what, gaps, single-owner risk)
-and can filter the whole app to a single member. No server is involved.
+A user exports their owned-blueprint library to a `.nexuslib` file. The user
+shares the file out-of-band, for example on Discord or a drive. When the user
+imports files from other people, NexusApp builds a roster. `NetworkScope` creates
+coverage views (who owns what, gaps, and single-owner risk). `NetworkScope` can
+filter all of NexusApp to a single member. No server is involved.
 
 ## Build, test, and CI
 
-- **Build:** `dotnet build NexusApp/NexusApp.csproj -c Release`.
-- **Tests:** xUnit-style tests in `NexusApp.Tests/` cover the non-UI logic
-  (blueprint ownership, Game.log import, network file/store/scope/identity, RSI
-  handle parsing, diagnostics).
-- **CI:** GitHub Actions verify a clean Release build on every push / PR to
-  `main` (`build.yml`) and publish the installer and portable zip on a version
-  tag (`release.yml`, which also posts the changelog to Discord). CodeQL static
-  analysis runs via GitHub's default code-scanning setup (no workflow file), and
-  Dependabot keeps NuGet packages and Actions current.
+- **Build:** Run `dotnet build NexusApp/NexusApp.csproj -c Release`.
+- **Tests:** xUnit-style tests in `NexusApp.Tests/` cover the non-UI logic. This
+  logic is blueprint ownership, Game.log import, the network
+  file/store/scope/identity, RSI handle parsing, and diagnostics.
+- **CI:** GitHub Actions verify a clean Release build on every push and PR to
+  `main` (`build.yml`). On a version tag, GitHub Actions publish the installer
+  and the portable zip (`release.yml`). `release.yml` also posts the changelog to
+  Discord. GitHub's default code-scanning setup runs CodeQL static analysis, with
+  no workflow file. Dependabot keeps the NuGet packages and the Actions current.

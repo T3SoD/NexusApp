@@ -1,6 +1,11 @@
 **Nexus __VERSION__** - an unofficial, fan-made mining assistant for Star Citizen.
 
-Both downloads are self-contained (the .NET runtime is bundled), need **no admin rights**, store settings/work orders locally, and run fully offline. Pick whichever suits you.
+Both downloads are self-contained, because Nexus includes the .NET runtime. Both downloads:
+- need **no admin rights**
+- store settings and work orders on your computer
+- run fully offline
+
+Select the download that you want.
 
 ### Screenshots
 
@@ -14,37 +19,39 @@ Both downloads are self-contained (the .NET runtime is bundled), need **no admin
 ---
 
 ### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
-A guided setup that installs Nexus like normal Windows software.
+A guided setup installs Nexus like normal Windows software.
 
 1. Download **`Nexus_Setup.exe`** below.
-2. Right-click it → **Properties** → check **Unblock** at the bottom → **OK**.
-3. Run it and follow the prompts (optionally tick "Create a desktop shortcut").
-4. Launch Nexus from the Start menu or desktop.
+2. Right-click the file. Select **Properties**. Select the **Unblock** checkbox at the bottom. Click **OK**.
+3. Run the file. Follow the prompts. To make a desktop shortcut, select the "Create a desktop shortcut" option.
+4. Open Nexus from the Start menu or the desktop.
 
-- Creates Start-menu / optional desktop shortcuts
-- Clean uninstall from *Add or remove programs*
-- Installs per-user under `%LOCALAPPDATA%` - still no admin rights
+- The installer makes a Start-menu shortcut and an optional desktop shortcut.
+- You can uninstall Nexus cleanly from *Add or remove programs*.
+- Nexus installs for the current user under `%LOCALAPPDATA%`. This needs no admin rights.
 
 ### Option 2 - Portable (`NexusApp_portable.zip`)
-Run the app directly, with no installation.
+Run Nexus directly. Nexus needs no installation.
 
 1. Download **`NexusApp_portable.zip`** below.
-2. Right-click the ZIP → **Properties** → check **Unblock** at the bottom → **OK**.
-3. Right-click the ZIP → **Extract All…** and choose a location (Desktop or Documents is fine).
-4. Open the extracted folder and double-click **`NexusApp.exe`** (keep the whole folder together).
+2. Right-click the ZIP file. Select **Properties**. Select the **Unblock** checkbox at the bottom. Click **OK**.
+3. Right-click the ZIP file. Select **Extract All…**. Select a location, for example the Desktop or the Documents folder.
 
-- No installation, nothing written to the registry
-- Leaves no system traces; delete the folder to remove it completely
-- Easy to move between PCs or run from a USB stick
+   **Caution:** Keep all the files in the folder together.
+4. Open the extracted folder. Double-click **`NexusApp.exe`**.
+
+- Nexus needs no installation. It writes nothing to the registry.
+- Nexus leaves no traces on the system. To remove Nexus completely, delete the folder.
+- You can move Nexus between PCs. You can also run Nexus from a USB stick.
 
 ---
 
-> **Windows SmartScreen note (both options):** the app is unsigned, so Windows may show a *"Windows protected your PC"* dialog on first run. Click **More info → Run anyway**, or use the **Unblock** step above. Any Defender flag is a false positive for an unsigned app.
+> **Windows SmartScreen note (both options):** Nexus is unsigned, so Windows can show a *"Windows protected your PC"* dialog when you start Nexus the first time. Click **More info**. Then click **Run anyway**. Or use the **Unblock** step above. Any Defender flag is a false positive for an unsigned app.
 
 ### Features
-- **RS Signal Decoder** - manual entry or auto-scan to identify resource + node count
-- **Blueprint Library** - search blueprints and see required raw resources
-- **Mining Codex** - full resource reference, filterable by system and method
+- **RS Signal Decoder** - enter values manually or use auto-scan to find the resource and the node count
+- **Blueprint Library** - search blueprints and see the raw resources that a blueprint needs
+- **Mining Codex** - a full resource reference that you can filter by system and by method
 - **Refinery Tracker** - live countdown timers for refinery jobs
 
 ---
