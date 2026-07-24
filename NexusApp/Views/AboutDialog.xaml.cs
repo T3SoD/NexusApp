@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.6.0  -  Jul 24, 2026",
+        [
+            "New in Settings: App scale and Overlay scale - grow the whole interface from 100% up to 150% in 5% steps for high-resolution displays; App scale enlarges the main window and every dialog, Overlay scale enlarges the in-game overlay and its work order flyout",
+            "Settings is now organized into tabs - GAME, DIAGNOSTICS, and INTERFACE, with the red DATA tab set apart on the right - so you see one category at a time instead of one long scroll; Nexus reopens the tab you left off on",
+            "A small amber dot on the GAME tab warns when Nexus cannot find your Game.log",
+            "Clearing saved data now asks with a proper Nexus-styled confirmation instead of a bare Windows dialog",
+        ]),
         ("App  6.5.1  -  Jul 21, 2026",
         [
             "Beta program update - expanded the tester roster",
