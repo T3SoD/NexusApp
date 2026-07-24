@@ -357,25 +357,27 @@ public sealed class GridStudioPage : UserControl
         var file = System.IO.Path.GetFileName(path);
         GridSharePackage pkg;
         try { pkg = GridShareService.Import(path); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
         ShipCargoDef? preview;
         try { preview = _catalog.BuildPreview(pkg.ShipId, pkg.Grids); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
-        if (preview == null) { Logger.Info($"[UI] cargo grid import rejected ({file}): ship '{pkg.ShipId}' not in catalog"); SetStatus($"Skipped {file}: ship '{pkg.ShipId}' is not in the catalog.", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        if (preview == null) { Logger.Info($"[UI] cargo grid import rejected ({file}): ship '{TextSanitizer.ForLog(pkg.ShipId)}' not in catalog"); SetStatus($"Skipped {file}: ship '{pkg.ShipId}' is not in the catalog.", Warn); return false; }
 
         var targetShip = _catalog.ById(pkg.ShipId)!;
         var current = CurrentFor(pkg.ShipId);
         GridDiffResult diff;
         try { diff = GridDiff.Compute(current, pkg.Grids); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {ex.Message}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
         _selected = targetShip;
         RefreshShips();
         _importPanel.Begin(pkg, targetShip, current, diff);
         var more = _importQueue.Count > 0 ? $" ({_importQueue.Count} more queued)" : "";
         SetStatus($"Reviewing submission for {targetShip.DisplayName}. Pick aspects, then Apply selected.{more}", Cyan);
-        Logger.Info($"[UI] cargo grid import loaded ship={pkg.ShipId} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges} flagged={pkg.Flagged}");
+        // ShipId is the only untrusted field here (RsiHandle/ShipName/etc. are sanitized by
+        // GridShareService.Import); route it through the shared log sanitizer as defense-in-depth.
+        Logger.Info($"[UI] cargo grid import loaded ship={TextSanitizer.ForLog(pkg.ShipId)} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges} flagged={pkg.Flagged}");
         return true;
     }
 

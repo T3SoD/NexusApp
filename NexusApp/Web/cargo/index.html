@@ -1154,7 +1154,7 @@ function animate(){
 
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
-// data bridge: C# posts the packed trip as JSON; also expose a manual hook for browser testing.
+// data bridge: C# posts the packed trip as JSON.
 if (window.chrome && window.chrome.webview) {
   window.chrome.webview.addEventListener('message', e => {
     try {
@@ -1165,7 +1165,6 @@ if (window.chrome && window.chrome.webview) {
     catch(err){ console.error(err); post({ type:'log', msg:'render failed: ' + String(err && err.stack || err) }); }
   });
 }
-window.setCargo = d => renderPayload(d);
 
 buildScene(null);
 animate();

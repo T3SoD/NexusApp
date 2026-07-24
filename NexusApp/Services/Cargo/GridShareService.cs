@@ -49,34 +49,16 @@ public static class GridShareService
         if (pkg.Grids.Count > MaxGrids)
             throw new GridShareException($"File has too many grids ({pkg.Grids.Count}); the limit is {MaxGrids}.");
 
+        // TextSanitizer.Clean strips control/bidi/format chars and truncates, so a handle like
+        // "pilot\r\n[SCAN] forged" cannot forge nexus.log lines and notes cannot be multi-MB.
         return pkg with
         {
-            RsiHandle = Clean(pkg.RsiHandle, 64, false),
-            ShipName = Clean(pkg.ShipName, 80, false),
-            Summary = Clean(pkg.Summary, 200, false),
-            Notes = Clean(pkg.Notes, 4000, true),
-            FlagNote = Clean(pkg.FlagNote, 500, true),
+            RsiHandle = TextSanitizer.Clean(pkg.RsiHandle, 64, false),
+            ShipName = TextSanitizer.Clean(pkg.ShipName, 80, false),
+            Summary = TextSanitizer.Clean(pkg.Summary, 200, false),
+            Notes = TextSanitizer.Clean(pkg.Notes, 4000, true),
+            FlagNote = TextSanitizer.Clean(pkg.FlagNote, 500, true),
         };
-    }
-
-    // Strip control and bidi/format characters (keeping newlines only where allowed) and truncate, so
-    // a handle like "pilot\r\n[SCAN] forged" cannot forge nexus.log lines and notes cannot be multi-MB.
-    private static string Clean(string? s, int max, bool allowNewlines)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        var sb = new System.Text.StringBuilder(Math.Min(s.Length, max));
-        foreach (var ch in s)
-        {
-            if (sb.Length >= max) break;
-            if (allowNewlines && ch == '\n') { sb.Append('\n'); continue; }
-            // Drop Control (Cc: \r, \t, C0/C1) and Format (Cf: zero-width, bidi overrides, BOM)
-            // characters. Category-based so every invisible/injecting code point is covered.
-            var cat = char.GetUnicodeCategory(ch);
-            if (cat is System.Globalization.UnicodeCategory.Control or System.Globalization.UnicodeCategory.Format)
-                continue;
-            sb.Append(ch);
-        }
-        return sb.ToString();
     }
 
     // Convert a ship's effective grids (GridDef) to the override/share shape. Positions round-trip as

@@ -166,4 +166,56 @@ public class NetworkFileServiceTests : IDisposable
         Assert.Equal("g1", clash.ExistingId);
         Assert.Equal("g2", clash.IncomingId);
     }
+
+    // ── import caps (untrusted .nexuslib) ───────────────────────────────────────
+
+    private static string TempLibFile() =>
+        Path.Combine(Path.GetTempPath(), $"nexus_lib_{Guid.NewGuid():N}.nexuslib");
+
+    [Fact]
+    public void Load_OversizeFile_RejectedBeforeParse()
+    {
+        var path = TempLibFile();
+        try
+        {
+            // Larger than the cap and not even JSON: if the guard ran after reading/parsing we would get
+            // a "not a valid library" message instead of the size rejection.
+            File.WriteAllText(path, new string('x', NetworkFileService.MaxFileBytes + 1));
+            var ex = Assert.Throws<NetworkFileException>(() => _svc.Load(path));
+            Assert.Contains("too large", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally { try { File.Delete(path); } catch { } }
+    }
+
+    [Fact]
+    public void Parse_TooManyMembers_Rejected()
+    {
+        var members = Enumerable.Range(0, NetworkFileService.MaxMembers + 1)
+            .Select(i => FileMember($"g{i}", $"Member{i}")).ToArray();
+        var json = _svc.Serialize(_svc.BuildRoster("Big Org", members, T1));
+        Assert.Throws<NetworkFileException>(() => _svc.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_TooManyBlueprintsPerMember_Rejected()
+    {
+        var owned = Enumerable.Range(0, NetworkFileService.MaxBlueprintsPerMember + 1)
+            .Select(i => $"bp{i}").ToArray();
+        var json = _svc.Serialize(Library("g1", "Dave", "DaveSC", T1, owned));
+        Assert.Throws<NetworkFileException>(() => _svc.Parse(json));
+    }
+
+    [Fact]
+    public void Load_NormalLibrary_StillLoads()
+    {
+        var path = TempLibFile();
+        try
+        {
+            _svc.Save(path, Library("g1", "Dave", "DaveSC", T1, "Bracket Cooler", "Hellion Cannon"));
+            var file = _svc.Load(path);
+            Assert.Equal(NetworkFileKind.Library, file.Kind);
+            Assert.Equal(2, file.Member!.OwnedBlueprints.Count);
+        }
+        finally { try { File.Delete(path); } catch { } }
+    }
 }
