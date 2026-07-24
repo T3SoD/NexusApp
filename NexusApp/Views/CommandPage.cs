@@ -9,6 +9,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Models;
+using NexusApp.Services;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -29,6 +30,15 @@ public sealed class CommandPage : UserControl
 
     /// <summary>The KPI card row, for the welcome tour's Operations step to ring.</summary>
     public FrameworkElement? KpiRowTarget => _kpiRow;
+
+    // ── Auto-relaunch notice strip (render-crash recovery) ──
+    // Session-scoped state: this page is one persistent instance, and both tab-opens and live data
+    // ticks rebuild via Refresh(), so these fields keep one consistent strip across all rebuilds.
+    // The strip shows only on a render-relaunch start (App.RelaunchedThisSession) until dismissed.
+    private FrameworkElement? _relaunchStrip;      // current strip element, for the one-time entrance
+    private bool _relaunchDismissed;               // user dismissed the strip this session
+    private bool _relaunchStripLogged;             // "shown" logged once, not on every rebuild
+    private bool _relaunchEntrancePlayed;          // one-time fade-rise played this session
 
     // ── Operations entrance (tab-open only; never on data ticks) ──
     // Fires once per tab-open visit (MainWindow's SetActivePage calls PlayEntrance after
@@ -65,6 +75,8 @@ public sealed class CommandPage : UserControl
     {
         _root.Children.Clear();
         _root.Children.Add(HeaderRow());
+        _relaunchStrip = RelaunchStrip();
+        if (_relaunchStrip != null) _root.Children.Add(_relaunchStrip);
         _root.Children.Add(KpiRow());
         _root.Children.Add(Panels());
     }
@@ -82,6 +94,14 @@ public sealed class CommandPage : UserControl
         if (_entrancePlayed) return;
         _entrancePlayed = true;
         if (Motion.Reduced) return;   // values/sparkline already render at their final state - only the reveal is skipped
+
+        // The relaunch strip rides the same CascadeIn fade-rise as the KPI cards, gated on
+        // Motion.Reduced by the early return above. Once per session, not on every tab-open.
+        if (_relaunchStrip != null && !_relaunchEntrancePlayed)
+        {
+            _relaunchEntrancePlayed = true;
+            CascadeInSingle(_relaunchStrip);
+        }
 
         if (_kpiRow != null) CascadeIn(_kpiRow.Children, maxAnimated: 5);
 
@@ -117,6 +137,19 @@ public sealed class CommandPage : UserControl
             fe.BeginAnimation(UIElement.OpacityProperty, fade);
             slide.BeginAnimation(TranslateTransform.YProperty, rise);
         }
+    }
+
+    // One-element version of CascadeIn (fade + 12px rise, 200ms, QuadraticEase EaseOut) - the
+    // motion the mock's relaunch strip uses for its one-time entrance.
+    private static void CascadeInSingle(FrameworkElement fe)
+    {
+        var slide = new TranslateTransform(0, 12);
+        fe.RenderTransform = slide;
+        fe.Opacity = 0;
+        var dur = TimeSpan.FromMilliseconds(200);
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        fe.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
+        slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = ease });
     }
 
     // Local mirror of CountUp.cs's 0 -> to roll-up (Motion.CountUpMs, Motion.Settle), targeting
@@ -176,6 +209,103 @@ public sealed class CommandPage : UserControl
         var radar = Hud.AmbientGlyph(Hud.Ambient.StatusBoard, 46);
         radar.VerticalAlignment = VerticalAlignment.Center;
         return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", radar);
+    }
+
+    // ── auto-relaunch notice strip: amber alert shown on a render-relaunch start ──
+    // Sits between the header and the KPI row, only when this session was auto-relaunched by
+    // CrashGuard (App.RelaunchedThisSession) and not yet dismissed. Reuses the NetworkRisk
+    // amber-alert idiom: tinted amber bg (0x14 amber), amber-line border, chamfered panel, amber
+    // icon + caps eyebrow. Returns null when it should not show, so Refresh() simply omits it.
+    private FrameworkElement? RelaunchStrip()
+    {
+        if (!App.RelaunchedThisSession || _relaunchDismissed) return null;
+
+        if (!_relaunchStripLogged)
+        {
+            _relaunchStripLogged = true;
+            Logger.Info("[UI] auto-relaunch notice shown on Operations");
+        }
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // amber icon
+        grid.ColumnDefinitions.Add(new ColumnDefinition());                             // eyebrow + message
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // dismiss button
+
+        // Glyph in a 30x30 amber-line box (mock .rs-icon: 1px amber-line border, radius 4,
+        // bg rgba(255,178,62,0.06)); the 17px viewbox glyph is centered inside it.
+        var icon = new Border
+        {
+            Width = 30, Height = 30, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(4, 0, 14, 0),
+            BorderBrush = Br("AccentStrongBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(0x0F, 0xFF, 0xB2, 0x3E)),
+            Child = new Viewbox
+            {
+                Width = 17, Height = 17,
+                Child = new Path
+                {
+                    Data = Geometry.Parse("M21,12 A9,9 0 1 1 18,5.3 M21,4 L21,9 L16,9"),
+                    Stroke = Br("AccentBrush"), StrokeThickness = 1.7, Fill = Brushes.Transparent,
+                    Width = 24, Height = 24, Stretch = Stretch.Uniform,
+                },
+            },
+        };
+        Grid.SetColumn(icon, 0); grid.Children.Add(icon);
+
+        var body = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        body.Children.Add(new TextBlock
+        {
+            Text = "AUTOMATIC RESTART", FontFamily = Disp, FontSize = 10, FontWeight = FontWeights.Bold,
+            Foreground = Br("AccentBrush"), Margin = new Thickness(0, 0, 0, 5),
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = "Nexus restarted itself after Windows reported a display error. Your work was not " +
+                   "affected. If this keeps happening, enable CPU rendering in Settings > Diagnostics.",
+            FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left,
+        });
+        Grid.SetColumn(body, 1); grid.Children.Add(body);
+
+        var dismiss = new Button
+        {
+            Content = "Dismiss",
+            Style = (Style)Application.Current.FindResource("NexusButton"),
+            Padding = new Thickness(13, 6, 13, 6),
+            Margin = new Thickness(14, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        dismiss.Click += (_, _) => DismissRelaunchStrip();
+        Grid.SetColumn(dismiss, 2); grid.Children.Add(dismiss);
+
+        var panel = Hud.Panel(grid, chamfer: 12, padding: new Thickness(14, 12, 14, 12),
+                              bg: new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xB2, 0x3E)),
+                              border: Br("AccentStrongBrush"));
+        // Left amber edge accent (mock .relaunch-strip::before: 2px bar, 10px top/bottom inset, radius 2, amber glow).
+        panel.Children.Add(new Border
+        {
+            Width = 2, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch,
+            Margin = new Thickness(0, 10, 0, 10), CornerRadius = new CornerRadius(2),
+            Background = Br("AccentBrush"), IsHitTestVisible = false,
+            Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("AccentBrush")).Color, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 },
+        });
+        panel.Margin = new Thickness(0, 0, 0, 16);
+        return panel;
+    }
+
+    // Session-scoped dismiss: collapse the strip for the rest of this session. Setting the flag first
+    // means any interleaving Refresh() already omits the strip; the short fade (unless motion is
+    // reduced) just tidies the outgoing element before the rebuild drops it from layout.
+    private void DismissRelaunchStrip()
+    {
+        if (_relaunchDismissed) return;
+        _relaunchDismissed = true;
+        Logger.Info("[UI] auto-relaunch notice dismissed");
+
+        var strip = _relaunchStrip;
+        if (strip == null || Motion.Reduced) { Refresh(); return; }
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(Motion.HoverMs)) { EasingFunction = Motion.SlideOut };
+        fade.Completed += (_, _) => Refresh();
+        strip.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
     // ── 4 KPI cards: Last scan (hero, reticle) · Refinery queue · Cargo · Session ──

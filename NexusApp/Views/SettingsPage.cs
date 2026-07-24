@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
 using NexusApp.Services;
 
 namespace NexusApp.Views;
@@ -101,7 +103,11 @@ public sealed class SettingsPage : UserControl
                 "If Nexus restarts itself or its window breaks when Star Citizen crashes or quits, " +
                 "turn this on: Nexus draws with the CPU instead of the graphics card, which sidesteps " +
                 "those display errors at a small CPU cost. Takes effect the next time Nexus starts.",
-                cpuRenderToggle, last: true)));
+                cpuRenderToggle, last: false),
+            SettingRow("Last automatic restart",
+                "Shows the most recent time Nexus closed and reopened itself automatically after " +
+                "Windows reported a display error, usually while the game was crashing or quitting.",
+                RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
 
         // ── Overlay ─────────────────────────────────────────────────────────────
         var overlayPassToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
@@ -225,6 +231,49 @@ public sealed class SettingsPage : UserControl
         var wrap = new Border { Padding = new Thickness(0, 13, 0, 13), Child = grid };
         if (!last) { wrap.BorderBrush = Hud.Br("NavBorderBrush"); wrap.BorderThickness = new Thickness(0, 0, 0, 1); }
         return wrap;
+    }
+
+    // Right-side value for the "Last automatic restart" row: a calm mono local-time stamp with a
+    // small amber marker naming the underlying display error, or the empty-state label when nothing
+    // has been recorded. Mono + FgBrush (not cyan) per the frozen values. Reads the stored UTC.
+    private static UIElement RestartValue(DateTime? lastUtc)
+    {
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+
+        if (lastUtc is null)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = RelaunchNotice.NoneRecorded, FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+                Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right,
+            });
+            return stack;
+        }
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = RelaunchNotice.FormatTimestamp(lastUtc), FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+            Foreground = Hud.Br("FgBrush"), HorizontalAlignment = HorizontalAlignment.Right,
+        });
+
+        var marker = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        marker.Children.Add(new Ellipse
+        {
+            Width = 6, Height = 6, Fill = Hud.Br("AccentBrush"), Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 6, ShadowDepth = 0, Opacity = 0.6 },
+        });
+        marker.Children.Add(new TextBlock
+        {
+            Text = RelaunchNotice.Marker, FontFamily = Hud.Font("MonoFont"), FontSize = 10.5,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        });
+        stack.Children.Add(marker);
+        return stack;
     }
 
     // Outlined ghost action button (matches the app's NexusButton chrome).
