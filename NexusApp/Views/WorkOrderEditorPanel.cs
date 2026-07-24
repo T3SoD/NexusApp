@@ -14,6 +14,21 @@ public class WorkOrderEditorPanel : UserControl
 {
     public static event Action<string>? OrderReadyToCollect;
 
+    // Canonical Refining -> Ready transition, shared by the editor ticker and the main-gallery auto-flip so
+    // both persist and announce the flip identically (store write via the VM, then OrderReadyToCollect).
+    // Idempotent by status: only an order still in a pre-ready state (Refining/Mining) flips, so a second
+    // caller ticking the same order in the same second is a harmless no-op that returns false. Callers that
+    // want to reflect the flip in their own UI (the editor pills, a log line) key off the return value.
+    public static bool TryFlipToReady(WorkOrder order, MainViewModel vm)
+    {
+        if (order.Status != WorkOrderStatus.Refining && order.Status != WorkOrderStatus.Mining)
+            return false;
+        order.Status = WorkOrderStatus.ReadyToCollect;
+        vm.SaveWorkOrderCommand.Execute(order);
+        OrderReadyToCollect?.Invoke(order.Label);
+        return true;
+    }
+
     private readonly WorkOrder _order;
     private readonly MainViewModel _vm;
     private readonly List<string> _allLocations;
@@ -427,13 +442,12 @@ public class WorkOrderEditorPanel : UserControl
             _progressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _progressScale.ScaleX = 1;
 
-            if (_order.Status == WorkOrderStatus.Refining || _order.Status == WorkOrderStatus.Mining)
-            {
-                _order.Status = WorkOrderStatus.ReadyToCollect;
-                SetPillFromStatus(_order.Status);
-                _vm.SaveWorkOrderCommand.Execute(_order);
-                OrderReadyToCollect?.Invoke(_order.Label);
-            }
+            // Flip through the shared canonical path, then reflect the resulting Ready state in the pill row.
+            // The gallery ticker shares this same _order instance, so if it flipped first (both tick while the
+            // modal is open) TryFlipToReady is a no-op here, but the pills must still show Ready.
+            TryFlipToReady(_order, _vm);
+            if (_order.Status == WorkOrderStatus.ReadyToCollect)
+                SetPillFromStatus(_order.Status);   // editor-only UI: reflect the flip in the pill row
             _ticker?.Stop();
             return;
         }

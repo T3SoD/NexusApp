@@ -1766,14 +1766,17 @@ public partial class MainWindow : Window
         }
         ScheduleWorkOrderAnimations();
 
-        var hasTimers = orders.Any(w => w.HasActiveTimer);
-        if (hasTimers && _listTicker == null)
+        // Run the tick while any order still has a running timer OR has a run-out timer not yet flipped to
+        // ready (e.g. it elapsed while the app was closed and loaded as Refining). The tick both refreshes the
+        // live countdown and performs the auto-flip, so it must stay alive for the latter until the flip lands.
+        var needsTick = orders.Any(w => w.HasActiveTimer || w.ShouldAutoFlipToReady(DateTime.UtcNow));
+        if (needsTick && _listTicker == null)
         {
             _listTicker = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _listTicker.Tick += ListTicker_Tick;
             _listTicker.Start();
         }
-        else if (!hasTimers)
+        else if (!needsTick)
         {
             _listTicker?.Stop();
             _listTicker = null;
@@ -1782,6 +1785,28 @@ public partial class MainWindow : Window
 
     private void ListTicker_Tick(object? sender, EventArgs e)
     {
+        var now = DateTime.UtcNow;
+
+        // Auto-flip: any refine timer that has run out while the order still sits pre-ready flips to ready
+        // through the same canonical path the editor uses (WorkOrderEditorPanel.TryFlipToReady = store write
+        // + OrderReadyToCollect), so the gallery rebuilds and the v6.4.0 ready flash plays here on the main
+        // window instead of behind the editor modal. TryFlipToReady persists via SaveWorkOrder, which clears
+        // and re-adds WorkOrders (a CollectionChanged storm -> RebuildWorkOrderList), so the flip candidates
+        // are snapshotted first and the flip runs after the enumeration to avoid mutating the live collection.
+        // The status check inside TryFlipToReady keeps it idempotent: if the editor ticker (open) already
+        // flipped this order this second, TryFlipToReady returns false here and nothing double-writes.
+        List<WorkOrder>? toFlip = null;
+        foreach (var wo in _vm.WorkOrders)
+            if (wo.ShouldAutoFlipToReady(now))
+                (toFlip ??= new()).Add(wo);
+        if (toFlip != null)
+        {
+            foreach (var wo in toFlip)
+                if (WorkOrderEditorPanel.TryFlipToReady(wo, _vm))
+                    Logger.Info($"[UI] Refinery: order auto-marked ready ({wo.Label})");
+            return;   // each flip rebuilt the gallery; the live-countdown pass resumes on the next tick
+        }
+
         bool anyActive = false;
         foreach (var wo in _vm.WorkOrders)
         {

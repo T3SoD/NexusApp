@@ -39,6 +39,15 @@ public class WorkOrder
 
     public bool HasActiveTimer => TimerEnd.HasValue && TimerEnd.Value > DateTime.UtcNow;
 
+    // True when this order's refine timer has run out but the model still sits in a pre-ready state, so a
+    // gallery/overlay ticker should flip it to ReadyToCollect. Pure and time-injectable so the elapsed and
+    // idempotence rules can be asserted without WPF. Already-ready or complete orders return false (no
+    // double flip); a timerless order never auto-flips.
+    public bool ShouldAutoFlipToReady(DateTime utcNow)
+        => TimerEnd.HasValue
+           && TimerEnd.Value <= utcNow
+           && (Status == WorkOrderStatus.Refining || Status == WorkOrderStatus.Mining);
+
     public string SubtitleText       => HasActiveTimer ? TimerRemainingShort : CreatedAtDisplay;
     public string SubtitleForeground => HasActiveTimer ? "#E67E22" : "#8B949E";
 

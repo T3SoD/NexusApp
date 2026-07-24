@@ -2070,6 +2070,29 @@ public partial class OverlayWindow : Window
 
     private void OrdersTicker_Tick(object? sender, EventArgs e)
     {
+        var now = DateTime.UtcNow;
+
+        // Auto-flip owner (mirrors MainWindow.ListTicker_Tick): a refine timer that ran out while the order still
+        // sits pre-ready flips to ready through the canonical path (WorkOrderEditorPanel.TryFlipToReady = store
+        // write + OrderReadyToCollect), so a user watching only the overlay ORDERS tab gets live Ready flips even
+        // when the main work-orders page and the editor are both closed. TryFlipToReady persists via SaveWorkOrder,
+        // which clears and re-adds WorkOrders; because this ticker only runs while the ORDERS tab is active, that
+        // CollectionChanged storm rebuilds this panel (restarting the ticker), so the flip candidates are
+        // snapshotted before the flip runs to avoid mutating the live collection mid-enumeration. The status guard
+        // inside TryFlipToReady keeps it idempotent with the main ticker: both are UI-thread DispatcherTimers
+        // (serialized), so whichever reaches the order first flips it and the other's call returns false.
+        List<WorkOrder>? toFlip = null;
+        foreach (var wo in _vm.WorkOrders)
+            if (wo.ShouldAutoFlipToReady(now))
+                (toFlip ??= new()).Add(wo);
+        if (toFlip != null)
+        {
+            foreach (var wo in toFlip)
+                if (WorkOrderEditorPanel.TryFlipToReady(wo, _vm))
+                    NexusApp.Services.Logger.Info($"[UI] Refinery: order auto-marked ready ({wo.Label})");
+            return;   // each flip rebuilt the panel; the live-countdown pass resumes on the next tick
+        }
+
         bool anyActive = false;
         foreach (var wo in _vm.WorkOrders)
         {
