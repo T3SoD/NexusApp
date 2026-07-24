@@ -18,15 +18,19 @@ public sealed class CargoWebView : UserControl
 {
     private const int GapCells = 2;   // spacing between a ship's grids in the synthetic layout (matches the packer view)
 
-    // Hull outline buffers are local-only: never bundled with the app, loaded from the user's
-    // machine when present. Ships without a buffer render exactly as before.
+    // Hull outline buffers now ship with the app under Web/cargo/hulls, so every gold-standarded
+    // ship gets a hologram out of the box. A matching file under the user's %APPDATA% hulls folder,
+    // when present, acts as a local override and wins over the shipped copy. Ships with neither
+    // buffer render exactly as before.
     private static readonly string HullsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp", "hulls");
+    private static readonly string ShippedHullsDir = Path.Combine(AppContext.BaseDirectory, "Web", "cargo", "hulls");
     private static string? _lastHullLog;
 
     // Variants that share a physical hull (they differ only in cargo grids) point at one outline.
     // Ironclad Assault is the same Drake Ironclad airframe as the Ironclad, so it reuses its hologram.
-    private static readonly Dictionary<string, string> HullAlias = new()
+    // Internal so the shipped-hull coverage test can resolve the same mapping.
+    internal static readonly Dictionary<string, string> HullAlias = new()
     {
         ["drak-ironclad-assault"] = "drak-ironclad",
     };
@@ -109,7 +113,9 @@ public sealed class CargoWebView : UserControl
             core.SetVirtualHostNameToFolderMapping("nexus.cargo", siteFolder, CoreWebView2HostResourceAccessKind.Allow);
             Directory.CreateDirectory(HullsDir);
             core.SetVirtualHostNameToFolderMapping("nexus.hulls", HullsDir, CoreWebView2HostResourceAccessKind.Allow);
-            Logger.Info($"[UI] cargo hologram: hulls folder mapped, {Directory.GetFiles(HullsDir, "*.bin").Length} outline file(s) present");
+            int localHulls = Directory.GetFiles(HullsDir, "*.bin").Length;
+            int shippedHulls = Directory.Exists(ShippedHullsDir) ? Directory.GetFiles(ShippedHullsDir, "*.bin").Length : 0;
+            Logger.Info($"[UI] cargo hologram: hulls mapped, {localHulls} local override(s) + {shippedHulls} shipped outline file(s)");
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = _studio;   // dev tooling only; the shippable planner gets none
@@ -425,21 +431,21 @@ public sealed class CargoWebView : UserControl
         int count = trip?.Placed.Count ?? 0;
         int pct = cap > 0 ? (int)Math.Round(scu / (double)cap * 100) : 0;
 
-        // Hull hologram: only for real layouts, and only when the user's machine has the
-        // outline buffer. Nothing here is bundled or downloaded.
+        // Hull hologram: only for real layouts, and only when an outline buffer exists. Resolve
+        // local-first: a file under the user's %APPDATA% hulls folder is a local override and wins;
+        // otherwise the copy that ships under Web/cargo/hulls is used. Neither is ever downloaded.
         string? hull = null;
+        string? hullSrc = null;
         if (ship != null && origin != null)
         {
             var hullId = HullAlias.TryGetValue(ship.Id, out var alias) ? alias : ship.Id;
             var file = hullId + ".bin";
-            if (File.Exists(Path.Combine(HullsDir, file)))
+            if (File.Exists(Path.Combine(HullsDir, file))) { hull = file; hullSrc = "local"; }
+            else if (File.Exists(Path.Combine(ShippedHullsDir, file))) { hull = file; hullSrc = "shipped"; }
+            if (hull != null && _lastHullLog != hull + hullSrc)
             {
-                hull = file;
-                if (_lastHullLog != file)
-                {
-                    _lastHullLog = file;
-                    Logger.Info($"[UI] cargo hologram: local hull outline active for {ship.DisplayName}");
-                }
+                _lastHullLog = hull + hullSrc;
+                Logger.Info($"[UI] cargo hologram: {hullSrc} hull outline active for {ship.DisplayName}");
             }
         }
 
@@ -449,6 +455,7 @@ public sealed class CargoWebView : UserControl
             bounds = new { w = boundsW, d = boundsD, h = boundsH },
             origin,
             hull,
+            hullSrc,
             edit,
             studio,
             testSel,
