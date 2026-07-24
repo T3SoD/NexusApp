@@ -16,6 +16,13 @@ public sealed class NetworkFileService
 {
     public const int CurrentSchema = 1;
 
+    // A .nexuslib is untrusted third-party input (a member sharing their library, or a coordinator's
+    // combined roster). These caps mirror the .nexusgrid guards (see GridShareService) so a hostile or
+    // hand-mangled file cannot exhaust memory or flood the import.
+    public const int MaxFileBytes = 5_000_000;        // a member's full ~1,600-name catalog is roughly 60KB; a roster aggregates many, so 5MB is generous headroom
+    public const int MaxMembers = 100;                // a coordinator roster is dozens of people at most
+    public const int MaxBlueprintsPerMember = 5_000;  // the entire game blueprint catalog is only ~1,600
+
     /// <summary>Label written into the "app" field of exports (informational only). The UI sets it
     /// to include the version; defaults keep the service decoupled from AppInfo for tests.</summary>
     public string AppLabel { get; set; } = "NexusApp";
@@ -81,7 +88,15 @@ public sealed class NetworkFileService
 
     public void Save(string path, NetworkFile file) => File.WriteAllText(path, Serialize(file));
 
-    public NetworkFile Load(string path) => Parse(File.ReadAllText(path));
+    public NetworkFile Load(string path)
+    {
+        // Guard the file size before reading a single byte so a hostile or hand-mangled file cannot
+        // exhaust memory; member and per-member blueprint counts are capped downstream in Parse.
+        var len = new FileInfo(path).Length;
+        if (len > MaxFileBytes)
+            throw new NetworkFileException($"This file is too large ({len / 1024} KB) to be a Nexus library file.");
+        return Parse(File.ReadAllText(path));
+    }
 
     /// <summary>Parse + validate a .nexuslib payload. Throws <see cref="NetworkFileException"/> on
     /// anything malformed or made by a newer Nexus.</summary>
@@ -108,8 +123,31 @@ public sealed class NetworkFileService
         }
         else throw new NetworkFileException("Unrecognized file type.");
 
+        EnforceCaps(file);
+
         file.Kind = kind;   // normalize for downstream comparisons
         return file;
+    }
+
+    // Reject an untrusted file whose member or per-member blueprint counts exceed the caps. Enforced
+    // here (not just in Load) so a direct Parse caller cannot bypass the guard. The file-size cap is
+    // enforced in Load, before the bytes are read.
+    private static void EnforceCaps(NetworkFile file)
+    {
+        if (file.Members != null && file.Members.Count > MaxMembers)
+            throw new NetworkFileException($"This file has too many members ({file.Members.Count}); the limit is {MaxMembers}.");
+
+        if (file.Member != null) EnforceBlueprintCap(file.Member);
+        if (file.Members != null)
+            foreach (var m in file.Members)
+                if (m != null) EnforceBlueprintCap(m);
+    }
+
+    private static void EnforceBlueprintCap(NetworkFileMember m)
+    {
+        var count = m.OwnedBlueprints?.Count ?? 0;
+        if (count > MaxBlueprintsPerMember)
+            throw new NetworkFileException($"A member in this file lists too many blueprints ({count}); the limit is {MaxBlueprintsPerMember}.");
     }
 
     // ── Import ──────────────────────────────────────────────────────────────────

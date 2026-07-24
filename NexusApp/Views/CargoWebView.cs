@@ -113,6 +113,11 @@ public sealed class CargoWebView : UserControl
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = _studio;   // dev tooling only; the shippable planner gets none
+            // Defense-in-depth: the scene is fully local (our own virtual hosts). Cancel any navigation
+            // that leaves them and deny every new-window request, so a crafted page or an imported field
+            // cannot steer the WebView2 to an external or unsafe target.
+            core.NavigationStarting += OnNavigationStarting;
+            core.NewWindowRequested += OnNewWindowRequested;
             core.NavigationCompleted += (_, _) =>
             {
                 _ready = true;
@@ -137,6 +142,40 @@ public sealed class CargoWebView : UserControl
                 VerticalAlignment = System.Windows.VerticalAlignment.Center,
             };
         }
+    }
+
+    // Cancel any navigation off our own local virtual hosts. Fires for every navigation attempt
+    // (page-initiated or otherwise); denials are logged once per occurrence.
+    private static void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (IsAllowedNavigation(e.Uri)) return;
+        e.Cancel = true;
+        Logger.Info($"[CARGO] blocked navigation to {TextSanitizer.ForLog(e.Uri)}");
+    }
+
+    // Deny every new-window / popup request outright; the cargo scene never opens a second window.
+    private static void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        e.Handled = true;
+        Logger.Info($"[CARGO] blocked new-window request to {TextSanitizer.ForLog(e.Uri)}");
+    }
+
+    // Pure allow decision for a WebView2 navigation target. Only the app's own local https virtual
+    // hosts (nexus.cargo, nexus.hulls, both mapped in InitAsync) and the implicit initial about:blank
+    // are permitted; everything else (http downgrade, file:, javascript:, data:, external https) is
+    // denied. Kept internal + static so it is unit-testable without spinning up WebView2.
+    internal static bool IsAllowedNavigation(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return false;
+        // WebView2 may raise the implicit blank document before we navigate to our host.
+        if (string.Equals(uri, "about:blank", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
+        // Scheme must be exactly https (blocks http downgrade, file:, javascript:, data:, etc.); host
+        // must be one of our own virtual hosts. Uri lowercases scheme/host already; the comparers are
+        // belt-and-suspenders.
+        if (!string.Equals(u.Scheme, "https", StringComparison.OrdinalIgnoreCase)) return false;
+        return string.Equals(u.Host, "nexus.cargo", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(u.Host, "nexus.hulls", StringComparison.OrdinalIgnoreCase);
     }
 
     // Push one packed trip to the scene in the given mode. Queues until the page has loaded.
