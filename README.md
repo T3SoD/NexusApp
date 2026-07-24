@@ -56,7 +56,7 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 ## Screenshots
 
 ### Operations
-The landing dashboard during a live session. It shows the last scan decoded, the refinery queue with one order ready, cargo in transit, and your current shard. It links to every module.
+The landing dashboard. It shows the last scan decoded, the refinery queue with one order ready, cargo in transit, and the recent server shards. It links to every module.
 
 [![Nexus Operations dashboard with live KPI cards, refinery queue, active hauls, and server shard panel](docs/screenshots/operations.png)](docs/screenshots/operations.png)
 
@@ -71,14 +71,14 @@ The HUB tab floats over gameplay. It shows green status lights for session track
 [![Nexus overlay HUB tab floating over Star Citizen gameplay with status lights and shard panel](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
 ### RS Signal Decoder
-Type any RS value to get a ranked breakdown. The best match shows as a hero card with the node count and the refinery yield. Close matches show below. The re-runnable scan history shows on the right.
+Type any RS value to get a ranked breakdown. The best match shows as a hero card with the node count, the best refinery, and what the rock can contain. Close matches show below. The re-runnable scan history shows on the right.
 
-[![Nexus RS Decoder with a Lindinium exact match hero card and other close matches](docs/screenshots/rs-decoder.png)](docs/screenshots/rs-decoder.png)
+[![Nexus RS Decoder with a Torite exact match hero card, rock composition, and other close matches](docs/screenshots/rs-decoder.png)](docs/screenshots/rs-decoder.png)
 
 ### Blueprint Library
-Open any blueprint to see its full bill of materials and the contracts that unlock it. It also shows a ranked WHERE TO MINE plan for the ingredients. Track everything that you own.
+Open any blueprint to see its full bill of materials and the contracts that unlock it. It also shows a ranked WHERE TO MINE plan and byproduct sourcing for the ingredients. Track everything that you own.
 
-[![Nexus Blueprint Library showing a blueprint's bill of materials, unlock contracts, and where to mine panel](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
+[![Nexus Blueprint Library showing a blueprint's bill of materials, unlock contracts, where to mine plan, and byproduct sourcing](docs/screenshots/blueprint-library.png)](docs/screenshots/blueprint-library.png)
 
 ### Blueprint Network
 Group coverage: the coverage ring, per-member ownership, and a watch list. The watch list shows the gaps that nobody owns yet and the single-owner blueprints at risk.
@@ -86,17 +86,17 @@ Group coverage: the coverage ring, per-member ownership, and a watch list. The w
 [![Nexus Blueprint Network showing group blueprint coverage ring, per-member ownership, and watch list](docs/screenshots/blueprint-network.png)](docs/screenshots/blueprint-network.png)
 
 ### Mining Codex
-A full reference of every mineable resource. It is searchable. Filter it by star system (Stanton / Pyro / Nyx) and by mining method (Ship / ROC / FPS). A detail panel shows the RS value, refinery yields, locations, and the blueprints that use it.
+A full reference of every mineable resource. It is searchable. Filter it by star system (Stanton / Pyro / Nyx) and by mining method (Ship / ROC / FPS). A detail dossier shows the mining profile, the rock composition, byproduct sourcing, locations, and the blueprints that use it.
 
-[![Nexus Mining Codex resource list with rarity colors and a Gold detail panel showing refinery yields and locations](docs/screenshots/mining-codex.png)](docs/screenshots/mining-codex.png)
+[![Nexus Mining Codex resource list with rarity colors and a Gold dossier showing the mining profile and rock composition](docs/screenshots/mining-codex.png)](docs/screenshots/mining-codex.png)
 
 ### Refinery Tracker
-Live work orders show as cards. One is ready to collect. One is mid-refine, and its countdown runs. The timers survive when Nexus restarts.
+Live work orders show as cards. One is ready to collect. Two are mid-refine, and their countdowns run. The timers survive when Nexus restarts.
 
-[![Nexus Refinery Tracker with a ready work order and a refining order counting down](docs/screenshots/refinery-tracker.png)](docs/screenshots/refinery-tracker.png)
+[![Nexus Refinery Tracker with a ready work order and refining orders counting down](docs/screenshots/refinery-tracker.png)](docs/screenshots/refinery-tracker.png)
 
 ### Cargo Hauling
-Nexus tracks two live contracts automatically from `Game.log` and shows their rewards. The consolidated collect and deliver table turns every leg into one route plan for each location.
+Nexus tracks three live contracts automatically from `Game.log`, with the container size for each. The consolidated collect and deliver table turns every leg into one route plan for each location.
 
 [![Nexus Cargo Hauling page with live contract cards and the collect deliver consolidation table](docs/screenshots/cargo-hauling.png)](docs/screenshots/cargo-hauling.png)
 
