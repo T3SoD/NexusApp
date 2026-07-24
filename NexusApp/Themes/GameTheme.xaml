@@ -119,6 +119,33 @@
         </Setter>
     </Style>
 
+    <!-- ── HudSlider: compact gold slider (thin track + round thumb). Shared by the overlay
+         opacity control and the Settings scale rows. -->
+    <Style x:Key="HudSlider" TargetType="Slider">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Border Height="3" CornerRadius="2"
+                                Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
+                        <Track x:Name="PART_Track" Orientation="Horizontal">
+                            <Track.Thumb>
+                                <Thumb Width="13" Height="13">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Ellipse Fill="{DynamicResource AccentBrush}"
+                                                     Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="1"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ── AccentButton: primary action - teal bg, dark text -->
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource NexusButton}">
         <Setter Property="Background"  Value="{DynamicResource AccentBrush}"/>

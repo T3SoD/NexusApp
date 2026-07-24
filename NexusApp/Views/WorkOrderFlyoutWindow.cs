@@ -18,6 +18,13 @@ public class WorkOrderFlyoutWindow : Window
     private readonly Dictionary<string, (ScaleTransform? Scale, TextBlock? Subtitle)> _refs = new();
 
     private readonly TranslateTransform _slideTransform = new();
+
+    // Unscaled design width of the flyout column. The slide-in animation must travel in this
+    // local (pre-transform) space: the LayoutTransform overlay scale nests the slide's
+    // RenderTransform, so WPF magnifies a translate of BaseWidth back up to one full window
+    // width (BaseWidth * k) on screen. Using the scaled Width here would over-travel by k.
+    private const double BaseWidth = 260;
+
     private bool _dockRight;
     private bool _hideCompleted;
     private double _ownerLeft, _ownerTop, _ownerHeight, _ownerWidth;
@@ -43,7 +50,7 @@ public class WorkOrderFlyoutWindow : Window
         Topmost = true;
         ShowInTaskbar = false;
         ResizeMode = ResizeMode.NoResize;
-        Width = 260;
+        Width = BaseWidth;
 
         _listPanel = new StackPanel { Margin = new Thickness(10, 4, 10, 10) };
 
@@ -181,11 +188,11 @@ public class WorkOrderFlyoutWindow : Window
     {
         // Reset any in-progress hide animation before showing
         _slideTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        _slideTransform.X = _dockRight ? -Width : Width;
+        _slideTransform.X = _dockRight ? -BaseWidth : BaseWidth;
         Show();
 
         var anim = new DoubleAnimation(
-            _dockRight ? -Width : Width, 0,
+            _dockRight ? -BaseWidth : BaseWidth, 0,
             new Duration(TimeSpan.FromMilliseconds(220)))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
@@ -196,7 +203,7 @@ public class WorkOrderFlyoutWindow : Window
     public void HideWithAnimation()
     {
         var anim = new DoubleAnimation(
-            0, _dockRight ? -Width : Width,
+            0, _dockRight ? -BaseWidth : BaseWidth,
             new Duration(TimeSpan.FromMilliseconds(180)))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
@@ -250,6 +257,16 @@ public class WorkOrderFlyoutWindow : Window
         Left   = _dockRight ? _ownerLeft + _ownerWidth + 4 : _ownerLeft - Width - 4;
         Top    = _ownerTop;
         Height = _ownerHeight;
+    }
+
+    // Overlay scale (issue #20): scales the flyout content to match the overlay it docks
+    // against, and widens the fixed 260px column by the same factor. Uses LayoutTransform
+    // because RenderTransform is owned by the slide-in animation.
+    public void ApplyUiScale(double k)
+    {
+        UiScaleService.ApplyTransform((FrameworkElement)Content, k);
+        Width = BaseWidth * k;
+        Reposition();
     }
 
     // ── Work order list ──────────────────────────────────────────────────────

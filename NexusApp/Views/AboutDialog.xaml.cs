@@ -592,6 +592,7 @@ public class AboutDialog : Window
 
         Content = outer;
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, outer);   // App scale (issue #20)
     }
 
     private static void AddBadge(Panel parent, string text)

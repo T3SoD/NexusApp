@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -74,7 +75,9 @@ public sealed class GridExportDialog : Window
             tb.Padding = new Thickness(6, 4, 6, 4);
         }
 
-        Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var rootScroll = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Content = rootScroll;
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, rootScroll);   // App scale (issue #20)
     }
 }

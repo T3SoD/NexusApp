@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -299,6 +300,7 @@ public class HelpDialog : Window
         BuildTopicRows();
         SelectTopic(Topics.OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase).First());
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, outer);   // App scale (issue #20)
     }
 
     private UIElement BuildLeftPane()

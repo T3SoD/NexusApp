@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -110,6 +111,7 @@ public sealed class ImportResultDialog : Window
 
         Content = outer;
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, outer);   // App scale (issue #20)
     }
 
     private static TextBlock SectionLabel(string text) => new()

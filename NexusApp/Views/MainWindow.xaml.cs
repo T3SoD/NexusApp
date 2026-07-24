@@ -88,6 +88,8 @@ public partial class MainWindow : Window
         };
 
         RestoreWindowPosition();
+        ApplyUiScale();
+        UiScaleService.Changed += ApplyUiScale;
         SetActivePage("command");
         Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanChipTimer?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
 
@@ -108,6 +110,25 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
+    }
+
+    // Applies the persisted App scale (issue #20): scales all window content via a
+    // LayoutTransform on the root Grid, and raises the window minimums so the logical layout
+    // never drops below its designed 900x600 floor. The window's own Width/Height are the
+    // user's actual on-screen size and are left alone.
+    private void ApplyUiScale()
+    {
+        var k = UiScaleService.AppScale;
+        UiScaleService.ApplyTransform(RootLayout, k);
+        // Popups render in their own PopupRoot HWND, a separate visual tree that does not inherit
+        // RootLayout's LayoutTransform, so scale their content explicitly to match the window.
+        // The suggest dropdown's width is recomputed against the scaled box each time it opens
+        // (BlueprintSearch_TextChanged), so only the content transform is needed here.
+        if (BlueprintSuggestPopup.Child is FrameworkElement suggestChild) UiScaleService.ApplyTransform(suggestChild, k);
+        if (KeyPopup.Child is FrameworkElement keyChild) UiScaleService.ApplyTransform(keyChild, k);
+        MinWidth = 900 * k;
+        MinHeight = 600 * k;
+        if (k != 1.0) Logger.Info($"[UI] Popup scale applied: {Math.Round(k * 100)}%");
     }
 
     // ── First-run welcome wizard ───────────────────────────────────────────────
@@ -2987,6 +3008,10 @@ public partial class MainWindow : Window
             var item = new System.Windows.Controls.ListBoxItem { Tag = name, Content = BuildHighlightedText(name, text) };
             BlueprintSuggestList.Items.Add(item);
         }
+        // The popup sits in a separate visual tree that does not inherit the App-scale transform,
+        // so its content is scaled in ApplyUiScale. Match the popup width to the on-screen (scaled)
+        // search box so the scaled suggestions are never clipped to the unscaled logical width.
+        BlueprintSuggestPopup.Width = BlueprintSearchBox.ActualWidth * UiScaleService.AppScale;
         BlueprintSuggestPopup.IsOpen = true;
     }
 

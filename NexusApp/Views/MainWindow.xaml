@@ -23,7 +23,7 @@
         <conv:WorkOrderStatusColorConverter  x:Key="WoStatusColor"/>
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="RootLayout">
         <Grid.RowDefinitions>
             <RowDefinition Height="68"/>
             <RowDefinition Height="*"/>

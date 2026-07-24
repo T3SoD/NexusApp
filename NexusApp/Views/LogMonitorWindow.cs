@@ -199,6 +199,8 @@ public sealed class LogMonitorWindow : Window
             App.GameLog.StateChanged -= OnStateChanged;
             App.GameLog.SessionReset -= OnSessionReset;
         };
+
+        UiScaleService.ApplyToDialog(this, root);   // App scale (issue #20)
     }
 
     // Raw live tail display (the auto-mark itself now happens in the shared session).

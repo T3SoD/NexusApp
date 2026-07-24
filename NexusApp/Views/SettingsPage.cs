@@ -124,7 +124,15 @@ public sealed class SettingsPage : UserControl
                 "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
                 "but lets the mouse pass straight through, so a stray click can't land on it or pull focus " +
                 "from the game. It becomes clickable again the moment the game shows the cursor.",
-                overlayPassToggle, last: true)));
+                overlayPassToggle, last: false),
+            ScaleRow("Overlay scale",
+                "Make the in-game overlay and its work order flyout larger. The overlay grows " +
+                "from its top-left corner; drag it back into place if it no longer sits where " +
+                "you want it.",
+                App.Settings.Current.OverlayUiScale,
+                onTick: v => UiScaleService.SetOverlayScale(v),
+                onCommit: v => Logger.Info($"[UI] Overlay scale: {Math.Round(UiScaleService.ClampScale(v) * 100)}%"),
+                last: true)));
 
         // ── Appearance ──────────────────────────────────────────────────────────
         var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
@@ -153,7 +161,19 @@ public sealed class SettingsPage : UserControl
                 reduceToggle, last: false),
             SettingRow("24-hour clock",
                 "Show the top-bar clock in 24-hour time. Off uses 12-hour with AM/PM.",
-                clockToggle, last: true)));
+                clockToggle, last: false),
+            ScaleRow("App scale",
+                "Make everything in the main window larger. 100% is the standard size; higher " +
+                "values enlarge all text and controls together. Dialogs and tool windows pick " +
+                "up the new scale the next time they open.",
+                App.Settings.Current.AppUiScale,
+                onTick: null,
+                onCommit: v =>
+                {
+                    UiScaleService.SetAppScale(v);
+                    Logger.Info($"[UI] App scale: {Math.Round(UiScaleService.ClampScale(v) * 100)}%");
+                },
+                last: true)));
 
         // ── Data ──────────────────────────────────────────────────────────────
         var clearBtn = DangerButton("Clear saved data…");
@@ -338,6 +358,56 @@ public sealed class SettingsPage : UserControl
         Grid.SetColumn(browse, 1); ctl.Children.Add(browse);
 
         return SettingRow(label, requirement, ctl, last);
+    }
+
+    // A labelled scale slider row: HudSlider snapping in 5% steps plus a mono percentage
+    // readout. Restore-then-wire discipline (v6.4.1 lesson): the initial value is set BEFORE
+    // ValueChanged is attached, so construction-time coercion can never clobber the saved
+    // setting. The percentage label updates on every snapped tick regardless. onTick, when
+    // supplied, applies the scale live on each tick; onCommit runs once when the mouse
+    // releases, so nexus.log records the final value instead of every intermediate step.
+    //
+    // Overlay scale passes an onTick and previews live, because it rescales a SEPARATE window
+    // that cannot disturb this slider. App scale deliberately passes NO onTick and does its
+    // apply inside onCommit instead: the App scale transform rescales the main window's
+    // RootLayout, which hosts this very Settings page and the Thumb that is holding mouse
+    // capture during the drag. Applying it mid-tick would rescale the control under the cursor
+    // and break the gesture (the value jumps, and the window can jolt as its MinWidth grows).
+    // Committing on mouse release keeps the drag stable and still applies the final value.
+    private static FrameworkElement ScaleRow(
+        string title, string desc, double initial, Action<double>? onTick, Action<double> onCommit, bool last = false)
+    {
+        var label = new TextBlock
+        {
+            // Clamp the readout the same way the slider thumb (below) and the applied window
+            // scale do, so an out-of-range persisted value shows a label that agrees with the
+            // actual scale from construction instead of only after the first drag.
+            Text = $"{Math.Round(UiScaleService.ClampScale(initial) * 100)}%",
+            FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+            Foreground = Hud.Br("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0), MinWidth = 42, TextAlignment = TextAlignment.Right,
+        };
+        var slider = new Slider
+        {
+            Minimum = UiScaleService.Min, Maximum = UiScaleService.Max,
+            IsSnapToTickEnabled = true, TickFrequency = UiScaleService.Step,
+            SmallChange = UiScaleService.Step, LargeChange = UiScaleService.Step,
+            Width = 160, VerticalAlignment = VerticalAlignment.Center,
+            Style = (Style)Application.Current.FindResource("HudSlider"),
+        };
+        slider.Value = UiScaleService.ClampScale(initial);
+        slider.ValueChanged += (_, e) =>
+        {
+            label.Text = $"{Math.Round(e.NewValue * 100)}%";
+            onTick?.Invoke(e.NewValue);
+        };
+        slider.LostMouseCapture += (_, _) => onCommit(slider.Value);
+
+        var control = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        control.Children.Add(slider);
+        control.Children.Add(label);
+        return SettingRow(title, desc, control, last);
     }
 
     // Persist the Game.log path and re-point every Game.log-driven watcher so it takes effect immediately.

@@ -18,6 +18,9 @@ public partial class OverlayWindow : Window
     private RegionSelectorWindow? _regionSelector;   // single live draw-region overlay (issue #8)
     private RegionSelectorWindow? _contractRegionSelector;   // independent draw overlay for the contract region
     private bool _contractBoxVisible;
+    // Overlay UI scale currently applied to RootScale (issue #20). Tracked so SaveBounds can divide
+    // the on-screen size back to the persisted BASE size, and OnUiScaleChanged can resize live.
+    private double _uiScale = 1.0;
 
     // ── Deposit composition (Task 7, C3/C4) ────────────────────────────────────
     // One window-level cache: each resource's composition is loaded once, lazily, on
@@ -78,8 +81,15 @@ public partial class OverlayWindow : Window
         SizeChanged += (_, _) => UpdateChamfer();
 
         var s = App.Settings.Current;
-        Left = s.OverlayLeft; Top = s.OverlayTop;
-        Width = s.OverlayWidth; Height = s.OverlayHeight;
+        // Overlay scale (issue #20): persisted OverlayWidth/Height are the BASE (unscaled)
+        // size; the on-screen window is base * scale so the layout keeps its designed logical
+        // size and simply renders larger. SaveBounds divides by the same factor on the way out.
+        _uiScale = UiScaleService.OverlayScale;
+        Left = s.OverlayLeft;
+        Top = s.OverlayTop;
+        Width = s.OverlayWidth * _uiScale;
+        Height = s.OverlayHeight * _uiScale;
+        UiScaleService.ApplyTransform(RootScale, _uiScale);
         HistoryStripRow.Height = new GridLength(s.OverlayHistoryHeight);
 
         // Restore the saved opacity, THEN attach the save-on-change handler (it is deliberately
@@ -161,6 +171,9 @@ public partial class OverlayWindow : Window
             if (visible) Shown?.Invoke();
             else { SaveBounds(); Hidden?.Invoke(); }
         };
+
+        // Overlay scale (issue #20): re-apply live when the Settings slider moves. Detached in OnClosed.
+        UiScaleService.Changed += OnUiScaleChanged;
     }
 
     // ── Issue #7: click-through the overlay while the game hides the cursor (FPS / flight) ──────────
@@ -268,9 +281,27 @@ public partial class OverlayWindow : Window
     // clip on ContentRoot so inner content stays inside the TL + BR bevels. 16px chamfer = the mock frame.
     private void UpdateChamfer()
     {
-        var geo = Hud.ChamferGeometry(ActualWidth, ActualHeight, 16);
+        // ActualWidth/ActualHeight are window DIPs, which a content LayoutTransform does not change,
+        // but the geometry is applied to elements INSIDE the scaled tree whose local space is
+        // windowSize / _uiScale. Divide by the scale so the bevel lines up at any overlay scale (issue #20).
+        var geo = Hud.ChamferGeometry(ActualWidth / _uiScale, ActualHeight / _uiScale, 16);
         FramePath.Data = geo;
         ContentRoot.Clip = geo;
+    }
+
+    // Re-applies the overlay scale live when the Settings slider moves. The window grows or
+    // shrinks around its top-left corner so the logical layout size never changes.
+    private void OnUiScaleChanged()
+    {
+        var k = UiScaleService.OverlayScale;
+        if (k == _uiScale) return;
+        var old = _uiScale;
+        _uiScale = k;
+        UiScaleService.ApplyTransform(RootScale, k);
+        Width = Width / old * k;
+        Height = Height / old * k;
+        UpdateChamfer();
+        _woFlyout?.ApplyUiScale(k);
     }
 
     public void ReceiveOcrValue(int value)
@@ -597,7 +628,9 @@ public partial class OverlayWindow : Window
     private void SaveBounds()
     {
         App.Settings.Current.OverlayLeft = Left; App.Settings.Current.OverlayTop = Top;
-        App.Settings.Current.OverlayWidth = Width; App.Settings.Current.OverlayHeight = Height;
+        // Store the BASE (unscaled) size so the overlay does not compound larger every launch (issue #20):
+        // the on-screen Width/Height are base * _uiScale, and the ctor multiplies by the scale again on restore.
+        App.Settings.Current.OverlayWidth = Width / _uiScale; App.Settings.Current.OverlayHeight = Height / _uiScale;
         App.Settings.Current.OverlayHistoryHeight = _historyHidden ? _savedHistoryHeight.Value : HistoryStripRow.Height.Value;
         App.Settings.Save();
     }
@@ -897,6 +930,7 @@ public partial class OverlayWindow : Window
             {
                 _woFlyout = new WorkOrderFlyoutWindow(_vm);
                 _woFlyout.AnchorTo(this);
+                _woFlyout.ApplyUiScale(_uiScale);   // overlay scale (issue #20)
             }
             else
             {
@@ -1108,6 +1142,7 @@ public partial class OverlayWindow : Window
         App.ContractScan.StageChanged -= OnContractStageChanged;
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
+        UiScaleService.Changed -= OnUiScaleChanged;   // overlay scale (issue #20)
         base.OnClosed(e);
     }
 
