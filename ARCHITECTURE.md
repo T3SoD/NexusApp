@@ -27,8 +27,11 @@ disk in the per-user app-data folder. There is no network code.
 +----------------------------v------------------------------+
 |  Services                                                 |
 |  Data | Ocr | Scanner | Settings | Theme |                |
-|  GameLog(Session/Watcher/Importer) | Network(File/Store/  |
-|  Scope) | Logger / InteractionLog / ForegroundMonitor     |
+|  GameLog(Session/Watcher/Importer) |                      |
+|  Hauling(HaulTracker/Parser/Contract/Shard) |             |
+|  Network(File/Store/Scope) |                              |
+|  Diagnostics(CrashGuard/Breadcrumbs/Sanitizer/Notice) |   |
+|  Logger / InteractionLog / ForegroundMonitor              |
 +----------------------------+------------------------------+
                              |
 +----------------------------v------------------------------+
@@ -81,12 +84,21 @@ The view model controls these services. Each service holds little or no state.
   blueprint names back to their official names. They join the user's read-only
   `global.ini` to the bundled `components.ini`. The `Game.log` import path uses
   them.
+- **Hauling (HaulTracker / HaulLogParser / ContractOcrService / ContractScanner /
+  ShardTracker / ShardLogParser / ContractCapCatalog)** - the cargo-hauling
+  subsystem (see below). It reads `Game.log` read-only.
 - **Network (NetworkFileService / NetworkStore / NetworkScope)** - the
   file-exchange subsystem for the offline Blueprint Network (see below).
 - **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** - the
   diagnostics. These are a self-rotating event log, UI-interaction breadcrumbs,
   tracking of the foreground window and process, and the copy/save diagnostic
   bundle. This tracking records the process name only, never window titles.
+- **CrashGuard / SystemEventBreadcrumbs / TextSanitizer / RelaunchNotice** - the
+  newer diagnostics. CrashGuard restarts NexusApp one time after a display or
+  render error. SystemEventBreadcrumbs logs display, power, and session changes.
+  TextSanitizer cleans untrusted text from imported files before it reaches the
+  log. RelaunchNotice gives the auto-restart notice text to the dashboard and
+  the Settings page.
 
 ### Models (`Models/`)
 The Models are plain data types: `Blueprint`, `Resource`, `WorkOrder`,
@@ -120,7 +132,8 @@ types.
 4. NexusApp parses the recognized text into an RS integer. The view model
    decodes that integer into the matching resource and node count.
 
-### Session Tracking (Beta, opt-in)
+### Session Tracking (always on)
+Session Tracking is always on. NexusApp has no user toggle for it.
 `GameLogWatcher` reads the plain-text `Game.log` of the game as the game adds new
 lines. It opens the file read-only. `GameLogBlueprintImporter` finds the
 "Received Blueprint" notifications. It marks those blueprints as owned.
@@ -133,6 +146,22 @@ user sets the path.
 `GameLogSession` is an app-lifetime hub. It ties the watcher, the importer, and
 the per-session tally together.
 
+### Cargo hauling (always on)
+`HaulTracker` owns its own `GameLogWatcher`. It reads `Game.log` read-only. It
+builds a haul for each cargo mission. It runs separately from the blueprint
+watcher.
+
+`HaulLogParser` is a pure static parser. It turns the haul log lines into
+records. It does no file work. It reads no player identity.
+
+`ContractOcrService` and `ContractScanner` run a second scan region. The user
+draws this region over the in-game Contracts panel. This scan is optional. It
+adds the reward, the contractor, and the cargo details to the matching haul.
+
+`ShardTracker` and `ShardLogParser` read the shard join lines. They keep the
+recent server and shard list. `ContractCapCatalog` is an embedded table. It maps
+each contract to its container size in SCU. The `Haul` model holds the haul state.
+
 ### Blueprint Network (offline sharing)
 A user exports their owned-blueprint library to a `.nexuslib` file. The user
 shares the file out-of-band, for example on Discord or a drive. When the user
@@ -144,10 +173,11 @@ filter all of NexusApp to a single member. No server is involved.
 
 - **Build:** Run `dotnet build NexusApp/NexusApp.csproj -c Release`.
 - **Tests:** xUnit-style tests in `NexusApp.Tests/` cover the non-UI logic. This
-  logic is blueprint ownership, Game.log import, the network
-  file/store/scope/identity, RSI handle parsing, and diagnostics.
-- **CI:** GitHub Actions verify a clean Release build on every push and PR to
-  `main` (`build.yml`). On a version tag, GitHub Actions publish the installer
-  and the portable zip (`release.yml`). `release.yml` also posts the changelog to
-  Discord. GitHub's default code-scanning setup runs CodeQL static analysis, with
-  no workflow file. Dependabot keeps the NuGet packages and the Actions current.
+  logic is the log parsers, the trackers, blueprint ownership, import and export,
+  RSI handle parsing, the text sanitizers, the restart notices, and diagnostics.
+- **CI:** GitHub Actions build the app and run the full unit test suite on every
+  push and PR to `main` (`build.yml`). On a version tag, GitHub Actions run the
+  same test suite, then publish the installer and the portable zip (`release.yml`).
+  `release.yml` also posts the changelog to Discord. GitHub's default code-scanning
+  setup runs CodeQL static analysis, with no workflow file. Dependabot keeps the
+  NuGet packages and the Actions current.
