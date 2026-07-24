@@ -515,10 +515,12 @@ function applySep(f){
   });
 }
 
-// ---- ship hull hologram (local-only) ----
+// ---- ship hull hologram ----
 // Outline buffers are precomputed offline (Float32 xyz segment pairs, node transforms
-// composed) and served from the nexus.hulls virtual host, which maps to a folder on the
-// user's machine. No hull data ships with the app; ships without a buffer render as before.
+// composed). The shipped copies live alongside this page under hulls/ (same-origin on
+// nexus.cargo); a per-user override, when present, is served from the nexus.hulls virtual host,
+// which maps to a folder on the user's machine. The payload's hullSrc picks which source to
+// fetch. Ships without a buffer render as before.
 // fog off: scene fog would swallow the far half of a capital hull at grazing angles.
 // additive: stacked edges reinforce, so edge-on views glow instead of going flat.
 const HOLO_LINES = new THREE.LineBasicMaterial({
@@ -564,7 +566,10 @@ function setHull(data){
   hullctl.style.display = 'none';
   if (!want) return Promise.resolve(true);
   const org = data.origin;
-  return fetch('https://nexus.hulls/' + want)
+  // hullSrc chooses the source: 'local' = the per-user override on the nexus.hulls virtual host;
+  // 'shipped' = the copy that ships beside this page (relative, same-origin on nexus.cargo).
+  const url = data.hullSrc === 'local' ? 'https://nexus.hulls/' + want : 'hulls/' + want;
+  return fetch(url)
     .then(r => { if (!r.ok) throw new Error('hull fetch ' + r.status); return r.arrayBuffer(); })
     .then(ab => {
       if (hullKey !== want) return false;   // ship changed while the buffer was loading
