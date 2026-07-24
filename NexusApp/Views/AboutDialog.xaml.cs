@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.6.1  -  Jul 24, 2026",
+        [
+            "Beta feature update - the Cargo Planner's ship hull holograms now ship with the app",
+        ]),
         ("App  6.6.0  -  Jul 24, 2026",
         [
             "New in Settings: App scale and Overlay scale - grow the whole interface from 100% up to 150% in 5% steps for high-resolution displays; App scale enlarges the main window and every dialog, Overlay scale enlarges the in-game overlay and its work order flyout",
