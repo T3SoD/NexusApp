@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Services;
@@ -13,23 +14,345 @@ namespace NexusApp.Views;
 // at the bottom of the app dock),
 // not a pop-out dialog. Single theme (MOBIGLAS), so there is no appearance/theme picker: just
 // the Game.log paths, Blueprint Network identity, diagnostics, and the destructive clear-data action.
+//
+// The page is a HUD tab strip: GAME / DIAGNOSTICS / INTERFACE cluster to the left, the destructive
+// DATA tab docked to the right, and one category pane visible at a time. A traveling underline slides
+// between tabs (crossfading amber to danger red over DATA), the incoming pane fades and slides in the
+// direction of travel, and the GAME tab's needs-attention pip breathes while no Game.log is set. All
+// motion collapses to instant state changes under Reduce animations.
 public sealed class SettingsPage : UserControl
 {
     private readonly Action _openLogMonitor;
     private readonly Action _openAppLogMonitor;
 
+    // The destructive DATA tab's red, matching the literal SettingsPage already uses elsewhere.
+    private static readonly Color DangerColor = Color.FromRgb(0xE5, 0x53, 0x53);
+
+    // Tab strip state. These back the four-tab HUD strip so the switch logic (and the later motion
+    // pass) has one place to read the tabs, labels, panes, and the traveling underline from.
+    private readonly Border[] _tabButtons = new Border[4];
+    private readonly TextBlock[] _tabLabels = new TextBlock[4];
+    private readonly ScrollViewer[] _panes = new ScrollViewer[4];
+    private readonly TranslateTransform _underlineT = new();
+    private readonly SolidColorBrush _underlineBrush;               // local + unfrozen so it can be color-crossfaded on switch
+    private readonly SolidColorBrush _dangerFull = new(DangerColor);
+    private readonly SolidColorBrush _dangerDim = new(Color.FromArgb(0xB8, 0xE5, 0x53, 0x53)); // danger at ~72% for the idle DATA tab
+    private readonly ScaleTransform _gameDotScale = new(1, 1);      // the needs-attention pip's breathe scale
+    private Grid _stripHost = null!;
+    private Border _underline = null!;
+    private DropShadowEffect _underlineGlow = null!;               // the underline's glow, retinted amber/danger on switch
+    private Ellipse _gameDot = null!;
+    private int _activeIndex = -1;
+
+    // Clear-saved-data confirmation modal. A themed in-page scrim over a chamfered danger panel
+    // replaces the first Clear-saved-data MessageBox; the second (post-clear restart) prompt stays a
+    // MessageBox. Built once and shown/hidden, so the entrance can animate and reset on reopen.
+    private Border _modalScrim = null!;
+    private Grid _modalPanel = null!;
+    private readonly TranslateTransform _modalPanelT = new(0, 12);   // panel rise on entrance
+    private readonly ScaleTransform _modalPanelScale = new(0.98, 0.98);
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
         _openAppLogMonitor = openAppLogMonitor;
+        _underlineBrush = new SolidColorBrush(Hud.Col("AccentColor"));
 
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        var panel = new StackPanel { Margin = new Thickness(28, 22, 28, 40) };
+        var root = new Grid { Margin = new Thickness(28, 22, 28, 0) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                    // page header
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                    // tab strip
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });// pane host
 
-        panel.Children.Add(Hud.Header("Configuration", "Settings",
-            "Paths and data. Everything stays on this machine."));
+        var header = Hud.Header("Configuration", "Settings",
+            "Paths and data. Everything stays on this machine.");
+        Grid.SetRow(header, 0);
+        root.Children.Add(header);
 
-        // ── Game.log paths ─────────────────────────────────────────────────────
+        BuildStrip();
+        Grid.SetRow(_stripHost, 1);
+        root.Children.Add(_stripHost);
+
+        // ── Pane host: the four category panes stacked in one cell; only the active one is visible ──
+        var paneHost = new Grid { Margin = new Thickness(0, 16, 0, 0) };
+        _panes[0] = BuildGamePane();
+        _panes[1] = BuildDiagnosticsPane();
+        _panes[2] = BuildInterfacePane();
+        _panes[3] = BuildDataPane();
+        foreach (var pane in _panes) { pane.Visibility = Visibility.Collapsed; paneHost.Children.Add(pane); }
+        Grid.SetRow(paneHost, 2);
+        root.Children.Add(paneHost);
+
+        // Clear-saved-data confirmation modal: a full-page scrim over the whole page (all rows), drawn
+        // above the header, strip, and panes. Hidden until the Data tab's Clear button opens it.
+        var modal = BuildClearDataModal();
+        Grid.SetRowSpan(modal, 3);
+        Panel.SetZIndex(modal, 100);
+        root.Children.Add(modal);
+
+        Content = root;
+
+        RefreshGameDot();
+
+        // Restore the last tab, but never auto-open the destructive DATA tab. persist:false so simply
+        // opening the page never writes settings.json, mirroring the overlay's restore idiom.
+        int restore = Array.IndexOf(SettingsTabs.Ids,
+            SettingsTabs.NormalizeForRestore(App.Settings.Current.SettingsActiveTab));
+        SwitchTab(restore, persist: false);
+
+        // ActualWidth is 0 until layout runs, so place the underline once the strip is laid out, and
+        // keep it aligned as the window resizes. Both snap instantly; only a user tab switch animates.
+        _stripHost.Loaded += (_, _) => MoveUnderline(_activeIndex, animate: false);
+        _stripHost.SizeChanged += (_, _) => MoveUnderline(_activeIndex, animate: false);
+    }
+
+    // ── Tab strip ───────────────────────────────────────────────────────────────
+    // The strip: left cluster (GAME / DIAGNOSTICS / INTERFACE), a star spacer, and the DATA tab docked
+    // right, over a full-width hairline with the traveling underline drawn on top of it.
+    private void BuildStrip()
+    {
+        // No top margin here: Hud.Header already carries an 18px bottom margin, and stacking a
+        // second margin on the strip would double the header-to-strip gap.
+        _stripHost = new Grid { Height = 42 };
+        _stripHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                     // left cluster
+        _stripHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });// spacer
+        _stripHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                     // DATA (right)
+
+        var hairline = new Border
+        {
+            Height = 1, Background = Hud.Br("NavBorderBrush"), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        Grid.SetColumnSpan(hairline, 3);
+        _stripHost.Children.Add(hairline);
+
+        var cluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
+        cluster.Children.Add(MakeTab(0, "Game", danger: false));
+        cluster.Children.Add(MakeTab(1, "Diagnostics", danger: false));
+        cluster.Children.Add(MakeTab(2, "Interface", danger: false));
+        Grid.SetColumn(cluster, 0);
+        _stripHost.Children.Add(cluster);
+
+        var dataTab = MakeTab(3, "Data", danger: true);
+        Grid.SetColumn(dataTab, 2);
+        _stripHost.Children.Add(dataTab);
+
+        // Traveling underline over the hairline. A LOCAL unfrozen brush so its amber<->danger color can
+        // be crossfaded on switch; the transform is what slides it between tabs, and the glow is retinted
+        // to match the active tab.
+        _underlineGlow = new DropShadowEffect { Color = Hud.Col("AccentColor"), BlurRadius = 8, ShadowDepth = 0, Opacity = 0.5 };
+        _underline = new Border
+        {
+            Height = 2, Width = 0, CornerRadius = new CornerRadius(1),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+            Background = _underlineBrush, RenderTransform = _underlineT, Effect = _underlineGlow,
+        };
+        Grid.SetColumnSpan(_underline, 3);
+        _stripHost.Children.Add(_underline);
+    }
+
+    // One tab: a padded chamfer-topped click box whose whole area selects the tab. Index 0 also carries
+    // the needs-attention pip. Hover swaps to the bright text + faint fill; leave restores idle or active.
+    private Border MakeTab(int index, string label, bool danger)
+    {
+        var text = new TextBlock
+        {
+            Text = label.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"),
+            FontSize = 12, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = danger ? _dangerDim : Hud.Br("FgDimBrush"),
+        };
+        _tabLabels[index] = text;
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(text);
+
+        if (index == 0)
+        {
+            // Needs-attention pip: an amber dot 8px after the GAME label, shown only when no effective
+            // Game.log is set (see RefreshGameDot). It breathes (opacity + scale about its center) while
+            // visible, unless Reduce animations is on.
+            _gameDot = new Ellipse
+            {
+                Width = 7, Height = 7, Fill = Hud.Br("AccentBrush"), Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+                RenderTransform = _gameDotScale, RenderTransformOrigin = new Point(0.5, 0.5),
+                Effect = new DropShadowEffect { Color = Hud.Col("AccentColor"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.4 },
+            };
+            content.Children.Add(_gameDot);
+        }
+
+        var btn = new Border
+        {
+            Background = Brushes.Transparent, CornerRadius = new CornerRadius(3, 3, 0, 0),
+            Padding = new Thickness(15, 9, 15, 9), Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Bottom, Child = content,
+        };
+        _tabButtons[index] = btn;
+
+        btn.MouseEnter += (s, e) =>
+        {
+            if (danger) { text.Foreground = _dangerFull; btn.Background = new SolidColorBrush(Color.FromArgb(0x1F, 0xE5, 0x53, 0x53)); }
+            else { text.Foreground = Hud.Br("FgBrush"); btn.Background = Hud.Br("AccentFaintBrush"); }
+        };
+        btn.MouseLeave += (s, e) => { text.Foreground = TabColor(index); btn.Background = Brushes.Transparent; };
+        btn.MouseLeftButtonUp += (s, e) => SwitchTab(index);
+        return btn;
+    }
+
+    // The tab label's non-hover color: active (GoldBrush, or full red for DATA) or idle (FgDimBrush, or
+    // dim red for DATA).
+    private Brush TabColor(int index)
+    {
+        bool danger = index == 3;
+        bool active = index == _activeIndex;
+        if (danger) return active ? _dangerFull : _dangerDim;
+        return active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
+    }
+
+    // Show one category pane and mark its tab active. A no-op when the tab is already the active,
+    // shown one. Only user-driven switches persist and log; the restore-on-open call passes false.
+    private void SwitchTab(int index, bool persist = true)
+    {
+        if (index == _activeIndex && _panes[index].Visibility == Visibility.Visible) return;
+
+        // Direction of travel drives the pane slide, so capture the outgoing index before it is replaced.
+        int previous = _activeIndex;
+        _activeIndex = index;
+
+        for (int i = 0; i < _panes.Length; i++)
+            _panes[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+
+        for (int i = 0; i < _tabLabels.Length; i++)
+            _tabLabels[i].Foreground = TabColor(i);
+
+        MoveUnderline(index, animate: true);
+        RevealPane(index, previous);
+
+        if (persist)
+        {
+            App.Settings.Current.SettingsActiveTab = SettingsTabs.Ids[index];
+            App.Settings.Save();
+            Logger.Info($"[UI] Settings tab: {SettingsTabs.Ids[index].ToUpperInvariant()}");
+        }
+    }
+
+    // The active tab's left offset and full padded width, measured within the strip. Only valid after
+    // layout has run (ActualWidth is 0 before then).
+    private (double X, double Width) MeasureTab(int index)
+    {
+        var t = _tabButtons[index];
+        double x = t.TransformToAncestor(_stripHost).Transform(default).X;
+        return (x, t.ActualWidth);
+    }
+
+    // Places the traveling underline under the given tab: its X offset, its width, and its amber/danger
+    // color and glow. A user switch (animate true) slides the position and crossfades the color over
+    // 280ms; layout re-placement, and Reduce animations, snap straight to the final state.
+    private void MoveUnderline(int index, bool animate)
+    {
+        if (_stripHost.ActualWidth < 1) return;   // layout has not run yet; the Loaded handler will place it
+        var (x, w) = MeasureTab(index);
+        bool danger = index == 3;
+        var color = danger ? DangerColor : Hud.Col("AccentColor");
+
+        // The glow is retinted to the target color at the start; the brush crossfade carries the visual.
+        _underlineGlow.Color = color;
+        _underlineGlow.Opacity = danger ? 0.55 : 0.5;
+
+        if (!animate || Motion.Reduced)
+        {
+            _underlineT.BeginAnimation(TranslateTransform.XProperty, null);
+            _underlineT.X = x;
+            _underline.BeginAnimation(FrameworkElement.WidthProperty, null);
+            _underline.Width = w;
+            _underlineBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            _underlineBrush.Color = color;
+            return;
+        }
+
+        var dur = TimeSpan.FromMilliseconds(Motion.SlideMs);
+        _underlineT.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(x, dur) { EasingFunction = Motion.Reveal });
+        _underline.BeginAnimation(FrameworkElement.WidthProperty,
+            new DoubleAnimation(w, dur) { EasingFunction = Motion.Reveal });
+        _underlineBrush.BeginAnimation(SolidColorBrush.ColorProperty,
+            new ColorAnimation(color, dur) { EasingFunction = Motion.Reveal });
+    }
+
+    // Slides the incoming pane in from the direction of travel (higher index enters from the right,
+    // lower from the left) while fading it up over 240ms. The outgoing pane just collapses, matching the
+    // mock's lack of an exit animation. The first placement (no previous tab) and Reduce animations both
+    // show the pane immediately with no slide.
+    private void RevealPane(int index, int previous)
+    {
+        var pane = _panes[index];
+        if (Motion.Reduced || previous < 0)
+        {
+            pane.BeginAnimation(UIElement.OpacityProperty, null);
+            pane.Opacity = 1;
+            pane.RenderTransform = null;
+            return;
+        }
+
+        int dir = index > previous ? 1 : -1;
+        var slide = new TranslateTransform(12 * dir, 0);
+        pane.RenderTransform = slide;
+        pane.Opacity = 0;
+
+        var dur = TimeSpan.FromMilliseconds(Motion.DrillMs);
+        pane.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Reveal });
+        var glide = new DoubleAnimation(12 * dir, 0, dur) { EasingFunction = Motion.Reveal };
+        // Drop the transform once settled, but only if a newer switch has not already replaced it.
+        glide.Completed += (_, _) => { if (ReferenceEquals(pane.RenderTransform, slide)) pane.RenderTransform = null; };
+        slide.BeginAnimation(TranslateTransform.XProperty, glide);
+    }
+
+    // Show the GAME pip only when no effective Game.log exists: no manual path set and nothing
+    // auto-detected on disk. FindGameLog always returns a candidate (its LIVE default fallback), so the
+    // file itself is probed rather than trusting a null.
+    private void RefreshGameDot()
+    {
+        bool missing = string.IsNullOrWhiteSpace(App.Settings.Current.GameLogPath)
+            && !System.IO.File.Exists(GameLogWatcher.FindGameLog());
+        _gameDot.Visibility = missing ? Visibility.Visible : Visibility.Collapsed;
+
+        // The dot changes the GAME tab's width, so re-place the traveling underline when GAME is
+        // the active tab. Deferred to DispatcherPriority.Loaded so the tab's ActualWidth reflects
+        // the new dot state before MeasureTab reads it. Skipped at construction (_activeIndex is
+        // -1 then, and the initial placement is owned by the _stripHost.Loaded handler).
+        if (_activeIndex == 0)
+            Dispatcher.BeginInvoke(new Action(() => MoveUnderline(0, animate: false)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+
+        // Breathe the pip (opacity 0.45<->1.0, scale 0.82<->1.06) to draw the eye to the GAME tab while
+        // it needs attention; hold it solid when hidden or when Reduce animations is on. Reduced is read
+        // here, so a live toggle is honored the next time the effective path is re-checked, matching how
+        // the app applies Reduced lazily.
+        if (missing && !Motion.Reduced)
+        {
+            var dur = TimeSpan.FromMilliseconds(Motion.BreatheMs);
+            _gameDot.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.45, 1.0, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
+            _gameDotScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(0.82, 1.06, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
+            _gameDotScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(0.82, 1.06, dur) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe });
+        }
+        else
+        {
+            _gameDot.BeginAnimation(UIElement.OpacityProperty, null);
+            _gameDot.Opacity = 1.0;
+            _gameDotScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            _gameDotScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            _gameDotScale.ScaleX = 1;
+            _gameDotScale.ScaleY = 1;
+        }
+    }
+
+    // ── Category panes ──────────────────────────────────────────────────────────
+    // GAME: Game.log paths + Blueprint Network identity.
+    private ScrollViewer BuildGamePane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
+
         var openLogBtn = GhostButton("Open Game.log Monitor");
         openLogBtn.Click += (s, e) => _openLogMonitor?.Invoke();
         panel.Children.Add(SectionPanel("Game.log Paths", false,
@@ -52,7 +375,6 @@ public sealed class SettingsPage : UserControl
                 "(they're marked Owned in your library), or import the ones you already own from past logs.",
                 openLogBtn, last: true)));
 
-        // ── Blueprint Network ───────────────────────────────────────────────────
         var handleLabel = new TextBlock
         {
             Text = string.IsNullOrEmpty(App.Settings.Current.DetectedRsiHandle)
@@ -81,7 +403,14 @@ public sealed class SettingsPage : UserControl
                 "Citizen's Game.log (read-only). Detect it here, or just use a nickname at export instead.",
                 handleControl, last: true)));
 
-        // ── Diagnostics ─────────────────────────────────────────────────────────
+        return Pane(panel);
+    }
+
+    // DIAGNOSTICS: app log monitor, CPU rendering toggle, last automatic restart.
+    private ScrollViewer BuildDiagnosticsPane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
+
         var openAppLogBtn = GhostButton("Open App Log Monitor");
         openAppLogBtn.Click += (s, e) => _openAppLogMonitor?.Invoke();
         var cpuRenderToggle = new Hud.ToggleSwitch(App.Settings.Current.SoftwareRendering)
@@ -109,7 +438,14 @@ public sealed class SettingsPage : UserControl
                 "Windows reported a display error, usually while the game was crashing or quitting.",
                 RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
 
-        // ── Overlay ─────────────────────────────────────────────────────────────
+        return Pane(panel);
+    }
+
+    // INTERFACE: overlay click-through + appearance (reduce animations, 24-hour clock).
+    private ScrollViewer BuildInterfacePane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
+
         var overlayPassToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
         {
             OnToggled = on =>
@@ -126,7 +462,6 @@ public sealed class SettingsPage : UserControl
                 "from the game. It becomes clickable again the moment the game shows the cursor.",
                 overlayPassToggle, last: true)));
 
-        // ── Appearance ──────────────────────────────────────────────────────────
         var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
         {
             OnToggled = on =>
@@ -155,7 +490,14 @@ public sealed class SettingsPage : UserControl
                 "Show the top-bar clock in 24-hour time. Off uses 12-hour with AM/PM.",
                 clockToggle, last: true)));
 
-        // ── Data ──────────────────────────────────────────────────────────────
+        return Pane(panel);
+    }
+
+    // DATA: the destructive clear-saved-data action (red-framed section).
+    private ScrollViewer BuildDataPane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
+
         var clearBtn = DangerButton("Clear saved data…");
         clearBtn.MouseLeftButtonUp += (s, e) => ClearSavedData();
         panel.Children.Add(SectionPanel("Data", true,
@@ -165,9 +507,17 @@ public sealed class SettingsPage : UserControl
                 "mining reference data is not affected.",
                 clearBtn, last: true)));
 
-        scroll.Content = panel;
-        Content = scroll;
+        return Pane(panel);
     }
+
+    // Wraps a category's section stack in a vertically scrolling pane (the app's themed thin scrollbar
+    // applies automatically); the inner stack carries the bottom breathing room.
+    private static ScrollViewer Pane(StackPanel content) => new()
+    {
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        Content = content,
+    };
 
     // ── HUD section scaffolding ─────────────────────────────────────────────────
     // A chamfered Hud.Panel for one settings section: a small uppercase header bar
@@ -180,13 +530,13 @@ public sealed class SettingsPage : UserControl
         headBar.Children.Add(new Border
         {
             Width = 14, Height = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
-            Background = danger ? Hud.Br("DangerBrush") : Hud.Br("AccentBrush"),
+            Background = danger ? new SolidColorBrush(DangerColor) : Hud.Br("AccentBrush"),
         });
         headBar.Children.Add(new TextBlock
         {
             Text = header.ToUpperInvariant(), FontFamily = Hud.Font("DisplayFont"),
             FontSize = 13, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center,
-            Foreground = danger ? Hud.Br("DangerBrush") : Hud.Br("AccentBrush"),
+            Foreground = danger ? new SolidColorBrush(DangerColor) : Hud.Br("AccentBrush"),
         });
         content.Children.Add(headBar);
         content.Children.Add(new Border
@@ -341,8 +691,9 @@ public sealed class SettingsPage : UserControl
     }
 
     // Persist the Game.log path and re-point every Game.log-driven watcher so it takes effect immediately.
-    // Blank means "auto-detect". The actual path is not logged (it can contain a Windows username).
-    private static void ApplyGameLogPath(string path)
+    // Blank means "auto-detect". The actual path is not logged (it can contain a Windows username). Instance
+    // method so it can refresh the GAME tab's needs-attention pip after the effective path changes.
+    private void ApplyGameLogPath(string path)
     {
         if (App.Settings.Current.GameLogPath == path) return;
         App.Settings.Current.GameLogPath = path;
@@ -358,6 +709,7 @@ public sealed class SettingsPage : UserControl
         if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);   // Start preserves AutoMark
 
         Logger.Info("[UI] Game.log path updated in Settings");
+        RefreshGameDot();
     }
 
     // Persist the optional global.ini path. The localization map is rebuilt fresh on the next import, so no
@@ -372,21 +724,146 @@ public sealed class SettingsPage : UserControl
     }
 
     // ── Saved data ────────────────────────────────────────────────────────────
+    // The themed replacement for the first Clear-saved-data MessageBox: a full-page scrim over a
+    // centered chamfered danger panel that lists exactly what will be deleted. The scrim and Cancel
+    // dismiss without deleting anything; Clear runs the same destructive sequence the old flow gated.
+    private Border BuildClearDataModal()
+    {
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+        head.Children.Add(new Border
+        {
+            Width = 14, Height = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
+            Background = _dangerFull,
+            Effect = new DropShadowEffect { Color = DangerColor, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.5 },
+        });
+        head.Children.Add(new TextBlock
+        {
+            Text = "Clear all saved data?", FontFamily = Hud.Font("DisplayFont"),
+            FontSize = 16, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _dangerFull,
+        });
+
+        var body = new StackPanel();
+        body.Children.Add(ModalParagraph("This permanently deletes all of your saved data:", Hud.Br("FgBrush")));
+
+        // The deletion list, verbatim from the old MessageBox copy, rendered dim like the mock's list.
+        var list = new StackPanel { Margin = new Thickness(4, 0, 0, 8) };
+        foreach (var item in new[]
+        {
+            "Owned blueprints",
+            "Blueprint Network members and groups",
+            "Your detected RSI handle",
+            "Shopping cart",
+            "Work orders",
+            "Pinned resources",
+        })
+            list.Children.Add(new TextBlock
+            {
+                Text = "•   " + item, FontSize = 12.5, TextWrapping = TextWrapping.Wrap,
+                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 2),
+            });
+        body.Children.Add(list);
+
+        body.Children.Add(ModalParagraph("The mining reference data is kept.", Hud.Br("FgBrush")));
+        var warn = ModalParagraph("This cannot be undone. Are you sure?", Hud.Br("GoldBrush"));
+        warn.FontWeight = FontWeights.SemiBold;                 // mock: modal-warn is amber-bright, 600
+        warn.Margin = new Thickness(0, 0, 0, 0);                // last line; the actions row owns the gap below
+        body.Children.Add(warn);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 18, 0, 0),
+        };
+        var cancelBtn = GhostButton("Cancel");
+        cancelBtn.Click += (s, e) => CancelClearData();
+        var confirmBtn = DangerButton("Clear saved data");
+        confirmBtn.Margin = new Thickness(10, 0, 0, 0);
+        confirmBtn.MouseLeftButtonUp += (s, e) => ConfirmClearData();
+        actions.Children.Add(cancelBtn);
+        actions.Children.Add(confirmBtn);
+
+        var content = new StackPanel();
+        content.Children.Add(head);
+        content.Children.Add(body);
+        content.Children.Add(actions);
+
+        _modalPanel = Hud.Panel(content, chamfer: 14,
+            bg: Hud.Br("Bg2NavBrush"),
+            border: new SolidColorBrush(Color.FromArgb(0x66, 0xE5, 0x53, 0x53)),
+            padding: new Thickness(22, 20, 22, 22));
+        _modalPanel.MaxWidth = 470;
+        _modalPanel.HorizontalAlignment = HorizontalAlignment.Center;
+        _modalPanel.VerticalAlignment = VerticalAlignment.Center;
+        _modalPanel.RenderTransform = new TransformGroup { Children = { _modalPanelT, _modalPanelScale } };
+        _modalPanel.RenderTransformOrigin = new Point(0.5, 0.5);
+        // A click on the panel itself must not reach the scrim's dismiss handler behind it.
+        _modalPanel.MouseLeftButtonUp += (s, e) => e.Handled = true;
+
+        _modalScrim = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x9E, 0x03, 0x05, 0x08)),   // rgba(3,5,8,0.62)
+            Padding = new Thickness(24),
+            // Bleed over the page's own outer padding so the scrim darkens edge to edge, matching the mock.
+            Margin = new Thickness(-28, -22, -28, 0),
+            Visibility = Visibility.Collapsed,
+            Child = _modalPanel,
+        };
+        _modalScrim.MouseLeftButtonUp += (s, e) => CancelClearData();
+        return _modalScrim;
+    }
+
+    // One modal body paragraph: 12.5px text in the given color, with the mock's inter-paragraph gap.
+    private static TextBlock ModalParagraph(string text, Brush color) => new()
+    {
+        Text = text, FontSize = 12.5, TextWrapping = TextWrapping.Wrap,
+        Foreground = color, Margin = new Thickness(0, 0, 0, 8),
+    };
+
+    // Opens the confirmation over the page. Nothing is deleted until the user clicks Clear. Entrance
+    // matches the mock (scrim fades, panel fades up while rising 12px and settling from 0.98); Reduce
+    // animations shows it at once.
     private void ClearSavedData()
     {
-        var confirm = MessageBox.Show(
-            "This permanently deletes all of your saved data:\n\n" +
-            "    -  Owned blueprints\n" +
-            "    -  Blueprint Network members and groups\n" +
-            "    -  Your detected RSI handle\n" +
-            "    -  Shopping cart\n" +
-            "    -  Work orders\n" +
-            "    -  Pinned resources\n\n" +
-            "The mining reference data is kept.\n\n" +
-            "This cannot be undone. Are you sure?",
-            "Clear all saved data?",
-            MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-        if (confirm != MessageBoxResult.Yes) return;
+        _modalScrim.Visibility = Visibility.Visible;
+        Logger.Info("[UI] Clear saved data: confirm shown");
+
+        if (Motion.Reduced)
+        {
+            _modalScrim.BeginAnimation(UIElement.OpacityProperty, null); _modalScrim.Opacity = 1;
+            _modalPanel.BeginAnimation(UIElement.OpacityProperty, null); _modalPanel.Opacity = 1;
+            _modalPanelT.BeginAnimation(TranslateTransform.YProperty, null); _modalPanelT.Y = 0;
+            _modalPanelScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); _modalPanelScale.ScaleX = 1;
+            _modalPanelScale.BeginAnimation(ScaleTransform.ScaleYProperty, null); _modalPanelScale.ScaleY = 1;
+            return;
+        }
+
+        // Explicit From values so a reopen animates cleanly even if a prior entrance is still holding.
+        _modalScrim.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));   // scrim fade, mock 0.16s
+        var dur = TimeSpan.FromMilliseconds(Motion.DrillMs);
+        _modalPanel.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Reveal });
+        _modalPanelT.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Reveal });
+        _modalPanelScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.98, 1, dur) { EasingFunction = Motion.Reveal });
+        _modalPanelScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.98, 1, dur) { EasingFunction = Motion.Reveal });
+    }
+
+    // Dismisses the modal with no exit animation (the mock closes instantly).
+    private void HideClearDataModal() => _modalScrim.Visibility = Visibility.Collapsed;
+
+    // Cancel path: the scrim click or the Cancel button. Nothing is deleted.
+    private void CancelClearData()
+    {
+        HideClearDataModal();
+        Logger.Info("[UI] Clear saved data: cancelled");
+    }
+
+    // Confirm path: run the same destructive clear the old first MessageBox gated, then the existing
+    // restart prompt, verbatim.
+    private void ConfirmClearData()
+    {
+        HideClearDataModal();
+        Logger.Info("[UI] Clear saved data: confirmed");
 
         App.Data.ClearShoppingList();
         App.Data.ClearWorkOrders();
