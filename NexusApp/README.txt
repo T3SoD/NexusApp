@@ -14,10 +14,13 @@ DISCLAIMER
   NexusApp reads pixel data from your screen. NexusApp shows reference
   information from a local database.
 
-  Two optional features, Session Tracking and Blueprint Network, also
-  read Star Citizen's Game.log. These features read Game.log only. They
-  do not change Game.log. They read Game.log for two reasons:
+  Session Tracking, the hauling tracker, and the shard tracker are
+  always on. They also read Star Citizen's Game.log. These features
+  read Game.log only. They do not change Game.log. They read Game.log
+  for these reasons:
     - to collect blueprints automatically
+    - to track your hauling contracts
+    - to track your server and shard
     - to fill in your RSI handle for a shared-library export
 
   NexusApp does NOT do these things:
@@ -72,7 +75,7 @@ WINDOWS SMARTSCREEN WARNING
 FIRST TIME SETUP
 ----------------
 
-When NexusApp opens, it shows the RS SIGNAL DECODER page first.
+When NexusApp opens, it shows the OPERATIONS page first.
 To use the auto-scan overlay, do these steps:
 
   1. Click the overlay button (⧉) at the top-right of the main window.
@@ -91,10 +94,16 @@ PAGES
 
   RS SIGNAL DECODER  - Enter an RS value by hand, or use auto-scan.
                        NexusApp then shows the resource and the node
-                       count.
+                       count. Each result card shows a composition
+                       section (CAN CONTAIN) and the best refinery
+                       with its yield bonus.
 
-  BLUEPRINT LIBRARY  - Search for ship, weapon, and armor blueprints.
-                       See which raw resources each blueprint needs.
+  BLUEPRINT LIBRARY  - Search for ship, weapon, armor, and ammo
+                       blueprints. Select a blueprint to see its
+                       bill of materials and how to unlock it. A
+                       ranked WHERE TO MINE plan shows the best
+                       places to gather the resources, with
+                       byproduct sourcing.
 
   BLUEPRINT NETWORK  - Share your blueprints with your friends or
                        your org. You trade library files to do this.
@@ -105,6 +114,11 @@ PAGES
   MINING CODEX       - Full reference table of all mineable resources.
                        You can filter it by system (Stanton, Pyro, or
                        Nyx) and by mining method (Ship, ROC, or FPS).
+                       Select a resource to open its dossier. The
+                       dossier shows the resource class (Metal,
+                       Mineral, or Gem), a mining profile, the rock
+                       composition, byproduct sourcing, locations,
+                       blueprints, and refinery yields.
 
   REFINERY TRACKER   - Track your active refinery jobs. NexusApp shows
                        live countdown timers and status indicators.
@@ -120,8 +134,11 @@ TIPS
 
   - The overlay (⧉) stays on top of your game. To move the overlay,
     drag the NEXUS header bar.
-  - Use the opacity slider in the SCAN tab to change the overlay
+  - Use the opacity slider in the overlay header to change the overlay
     transparency.
+  - The overlay click-through is on by default. In FPS and flight, the
+    overlay passes the mouse through to the game while the game hides
+    the cursor. You can turn this off in Settings.
   - NexusApp marks resources in your shopping list with a teal glow.
     This glow appears in scan results and in recent scan history.
   - Shopping list: add resources or blueprint ingredients with the

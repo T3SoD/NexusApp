@@ -43,16 +43,18 @@ Nexus has a small attack surface by design. Because no software is free of all v
 - **No elevation.** Nexus installs and runs per user. Nexus never asks for admin rights.
 - **Reads the screen, not Star Citizen's memory.** Auto-scan uses the standard Windows APIs for screen capture and OCR. Nexus never reads Star Citizen's memory. Nexus never injects code, DLLs, or hooks into the Star Citizen process.
 - **No changes to game files.** Nexus includes the reference data. Nexus reads some Star Citizen files, but it never changes them:
-  - The Session Tracking feature is optional. Session Tracking reads the plain-text `Game.log` file of Star Citizen and its rotated backups. Session Tracking reads these files as read-only. Session Tracking opens the files in shared mode and never locks them.
+  - Session Tracking runs on every launch. There is no user toggle to turn it off. Session Tracking reads the plain-text `Game.log` file of Star Citizen and its rotated backups. Session Tracking reads these files as read-only. Session Tracking opens the files in shared mode and never locks them.
+  - The hauling tracker and the shard tracker also read `Game.log`. Both run on every launch. Both read `Game.log` as read-only in shared mode.
   - Session Tracking can also read the `global.ini` localization file of Star Citizen as read-only. Session Tracking uses `global.ini` to change mod-renamed blueprint names back to their official names.
   - The Blueprint Network feature also reads your RSI handle from `Game.log` as read-only. Blueprint Network uses your RSI handle to pre-fill an export. You can use a nickname instead of your RSI handle.
 - **Your data stays local.** Nexus stores your settings, work orders, and blueprint library on your PC. Nexus shares nothing unless you export a file yourself and give it to someone.
+- **Safe import of shared files.** Another player can share a `.nexuslib` library file with you. Nexus limits the size of this file before it reads the file. Nexus also limits the member count and the blueprint count in the file. Nexus cleans the text from the file before the text goes to the log.
 - **No personal data collected.** Diagnostic logs record app events only. These logs record no window titles and no game content. These logs self-rotate.
 
 ## How the project checks the code
 
 - **Open source.** This repository contains the entire codebase. This includes the OCR pipeline. The project welcomes you to read the code.
-- **CI build verification** runs on every push and pull request to `main`.
+- **CI build and test** runs on every push and pull request to `main`. The build compiles the app and runs the full unit test suite. The release workflow runs the same test suite before it publishes a release.
 - **CodeQL** runs static security analysis on the C# code.
 - **Dependabot** keeps the third-party dependencies and CI actions patched.
 

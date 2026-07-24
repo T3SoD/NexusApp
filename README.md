@@ -32,17 +32,17 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 | Page | What it does |
 |------|--------------|
 | **Operations** | The landing dashboard. It shows your last scan, the refinery queue, cargo in transit, session blueprints, and network coverage. It links to every module. |
-| **RS Signal Decoder** | Enter an RS value by hand, or use **auto-scan**. Nexus identifies the resource and the node count. |
+| **RS Signal Decoder** | Enter an RS value by hand, or use **auto-scan**. Nexus identifies the resource and the node count. Each result card shows a CAN CONTAIN section and the best refinery station for the yield. |
 | **Refinery Tracker** | Track your active refinery jobs. Nexus shows live countdown timers and status indicators. |
-| **Mining Codex** | A full reference table of all mineable resources. Filter it by system (Stanton / Pyro / Nyx) and by method (Ship / ROC / FPS). |
-| **Blueprint Library** | Search ship, weapon, armor, and ammo blueprints. See the raw resources that each one needs. Mark the blueprints that you own. Filter by owned or not owned. |
+| **Mining Codex** | A full reference table of all mineable resources. Filter it by system (Stanton / Pyro / Nyx) and by method (Ship / ROC / FPS). Open an ore to see full details: its class, a ship-mining profile, its rock composition, and byproduct sourcing. |
+| **Blueprint Library** | Search ship, weapon, armor, and ammo blueprints. See the raw resources that each one needs, the contracts that unlock it, a ranked WHERE TO MINE plan, and byproduct sourcing. Mark the blueprints that you own. Filter by owned or not owned. |
 | **Blueprint Network** | Share the blueprints that you own with friends or your org. Trade library files to do this. See who in your group owns what: coverage, the gaps to farm, and single-owner risk. Nexus works fully offline. You exchange files, and nothing syncs. |
 | **Cargo Hauling** | The hauling contracts that you accept in-game appear automatically from `Game.log`. Nexus consolidates them into collect stops and deliver stops for each location. An optional screen-scan adds the reward, the contractor, and the cargo details to each haul. |
 
 **Highlights**
 
 - **Auto-scan overlay:** Draw a region over the RS value on your screen. Nexus then reads the value automatically with the native OCR engine in Windows.
-- **Overlay:** The overlay floats over the game. You can move it and dim it as you prefer.
+- **Overlay:** The overlay floats over the game. You can move it and dim it as you prefer. It passes your mouse through to the game when Star Citizen hides the cursor in flight or on foot. You can turn this off in Settings. The HUB tab shows hero tiles for ready refinery orders and your haul totals.
 - **Blueprint ownership tracking:** Mark the blueprints that you own. Filter the library by owned or not owned. Track your collection completion for each category. Then you do not need to check in-game.
 - **Session Tracking:** Nexus reads your Star Citizen `Game.log`. It marks blueprints as Owned automatically the moment that you receive them in-game. It can also import everything that you already unlocked from past logs. Session Tracking is always on and read-only. It never writes to or modifies any game file.
 - **Cargo Hauling:** Accepted contracts appear on their own. Nexus makes a consolidated collect-and-deliver plan across all active hauls. It tracks the live shard. It cleans up automatically when you change shards.
@@ -50,6 +50,7 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 - **Blueprint Network:** Pool your owned-blueprint library with friends or your org. Trade files to see group coverage, gaps, and single-owner risk. See the full details in the Blueprint Network section below.
 - **Shopping list:** Add resources or blueprint ingredients. Nexus then highlights them in scan results and history.
 - **Persistent work orders:** Refinery timers survive when Nexus restarts.
+- **Crash recovery:** If Windows reports a display error, Nexus restarts itself once and shows a notice on the Operations dashboard. Your work orders and hauls are safe. The Diagnostics section in Settings has a CPU rendering toggle and a row for the last automatic restart.
 - Fully **offline:** You do not need an account or an internet connection. Nexus stores settings and work orders locally on your PC.
 
 ## Screenshots
