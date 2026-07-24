@@ -94,6 +94,8 @@ public sealed class AppLogMonitorWindow : Window
         Closed += (_, _) => _watcher.Dispose();
 
         _watcher.Start(Logger.LogPath, fromBeginning: false);   // backlog already shown; tail appends only
+
+        UiScaleService.ApplyToDialog(this, root);   // App scale (issue #20)
     }
 
     // One-shot bulk read of the existing log: fill the list without per-line scrolling, then land at

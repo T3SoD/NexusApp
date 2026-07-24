@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using NexusApp.Models;
+using NexusApp.Services;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -68,6 +69,7 @@ public sealed class WorkOrderEditorDialog : Window
 
         Content = root;
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, root);   // App scale (issue #20)
     }
 
     private static Button MakeButton(string text, string styleKey) => new()

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using NexusApp.Services;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -41,6 +42,7 @@ public class ShoppingDialog : Window
         Content = outer;
         Rebuild();
         DialogMotion.Attach(this);
+        UiScaleService.ApplyToDialog(this, outer);   // App scale (issue #20)
     }
 
     private void Rebuild()

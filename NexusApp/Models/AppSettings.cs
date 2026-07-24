@@ -13,6 +13,13 @@ public class AppSettings
     public double OverlayHeight { get; set; } = 480;
     public ScanRegion? ScanRegion { get; set; }
     public double OverlayOpacity { get; set; } = 1.0;
+
+    // UI scale factors (issue #20). 1.0 = standard size. AppUiScale drives the main window and
+    // every dialog opened from it; OverlayUiScale drives the in-game overlay and its work-order
+    // flyout. Range is enforced by UiScaleService.ClampScale on read, not here.
+    public double AppUiScale { get; set; } = 1.0;
+    public double OverlayUiScale { get; set; } = 1.0;
+
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
     public bool FirstRunComplete { get; set; }

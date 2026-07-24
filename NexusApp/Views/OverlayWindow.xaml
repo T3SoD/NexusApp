@@ -17,39 +17,13 @@
         <conv:RarityColorConverter x:Key="RarityColor"/>
         <conv:HexColorConverter x:Key="HexColor"/>
         <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
-
-        <!-- compact gold slider (visual only) -->
-        <Style x:Key="OverlaySlider" TargetType="Slider">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Slider">
-                        <Grid VerticalAlignment="Center">
-                            <Border Height="3" CornerRadius="2"
-                                    Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
-                            <Track x:Name="PART_Track" Orientation="Horizontal">
-                                <Track.Thumb>
-                                    <Thumb Width="13" Height="13">
-                                        <Thumb.Template>
-                                            <ControlTemplate TargetType="Thumb">
-                                                <Ellipse Fill="{DynamicResource AccentBrush}"
-                                                         Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="1"/>
-                                            </ControlTemplate>
-                                        </Thumb.Template>
-                                    </Thumb>
-                                </Track.Thumb>
-                            </Track>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <!-- ── Floating HUD panel: MOBIGLAS chamfered shell (TL + BR bevel, like the mock's clip-path).
          FramePath draws the bevelled fill + 1px slate border; ContentRoot is clipped to the same
          silhouette so inner content can't poke past the bevel. Both geometries recompute on resize
          in code-behind (UpdateChamfer). ── -->
-    <Grid>
+    <Grid x:Name="RootScale">
         <Path x:Name="FramePath" StrokeThickness="1" SnapsToDevicePixels="True"
               Stroke="{DynamicResource BorderBrush}">
             <Path.Fill>
@@ -94,7 +68,7 @@
                          a XAML-wired handler fires during InitializeComponent (Minimum coerces the
                          default Value 0 up to 0.2) and would persist that transient over the saved
                          setting before the restore can read it. -->
-                    <Slider x:Name="OpacitySlider" Style="{StaticResource OverlaySlider}"
+                    <Slider x:Name="OpacitySlider" Style="{DynamicResource HudSlider}"
                             Minimum="0.2" Maximum="1.0" SmallChange="0.05"
                             Width="74" VerticalAlignment="Center" Margin="0,0,6,0"
                             ToolTip="Overlay opacity"/>
