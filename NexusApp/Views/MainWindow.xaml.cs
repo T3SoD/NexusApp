@@ -112,6 +112,7 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
+        Loaded += (s, e) => App.MaybeStartUpdateCheck();
     }
 
     // Applies the persisted App scale (issue #20): scales all window content via a
