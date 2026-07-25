@@ -17,9 +17,7 @@ namespace NexusApp.Services;
 /// </summary>
 public sealed class NetworkStore : IDisposable
 {
-    private static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "NexusApp", "network.db");
+    private static string DefaultPath => Path.Combine(AppPaths.Root, "network.db");
 
     private readonly SqliteConnection _conn;
 

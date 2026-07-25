@@ -23,8 +23,7 @@ public sealed class CargoOverrideProvenanceStore
     public static CargoOverrideProvenanceStore LoadDefault()
     {
         if (_default != null) return _default;
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp");
+        var dir = AppPaths.Root;
         Directory.CreateDirectory(dir);
         return _default = new CargoOverrideProvenanceStore(Path.Combine(dir, "cargo_override_provenance.json"));
     }

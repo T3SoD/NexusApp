@@ -7,8 +7,7 @@ namespace NexusApp.Services;
 
 public class DataService : IDisposable
 {
-    private static readonly string _dataDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp");
+    private static readonly string _dataDir = AppPaths.Root;
 
     private static readonly string _dbPath = Path.Combine(_dataDir, "nexus.db");
 
