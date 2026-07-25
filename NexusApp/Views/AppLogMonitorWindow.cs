@@ -191,6 +191,8 @@ public sealed class AppLogMonitorWindow : Window
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))),
             ("Session Tracking", App.Settings.Current.GameLogTrackSession ? "on" : "off"),
             ("Auto-Track Blueprints", App.Settings.Current.GameLogAutoTrack ? "on" : "off"),
+            ("Update checks", App.Settings.Current.UpdateCheckEnabled switch { null => "Not asked", true => "On", false => "Off" }),
+            ("Last update check", RelaunchNotice.FormatTimestamp(App.Settings.Current.LastUpdateCheckUtc)),
         };
 
         return DiagnosticSnapshot.Build(

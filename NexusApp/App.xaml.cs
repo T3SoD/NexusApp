@@ -28,6 +28,14 @@ public partial class App : Application
     public static ContractOcrService ContractOcr { get; private set; } = null!;
     public static ContractScanner ContractScan { get; private set; } = null!;
 
+    // Auto-update state machine (checks, downloads, installs). Created right after Settings
+    // so the consent gate and throttle read real values; inert in the demo profile.
+    public static UpdateService Update { get; private set; } = null!;
+
+    // The app version that ran LAST session (null on fresh installs), captured before this
+    // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
+    public static string? PreviousSessionVersion { get; private set; }
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -50,6 +58,16 @@ public partial class App : Application
         if (ContractBoxVisible == on) return;
         ContractBoxVisible = on;
         ContractBoxVisibilityChanged?.Invoke(on);
+    }
+
+    // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
+    // never inside the 24-hour throttle, never in the demo profile. Fire-and-forget is safe:
+    // CheckAsync owns all its failure paths and reports through State/Changed.
+    public static void MaybeStartUpdateCheck()
+    {
+        if (!UpdateService.ShouldAutoCheck(Settings.Current.UpdateCheckEnabled,
+                Settings.Current.LastUpdateCheckUtc, DateTime.UtcNow, AppPaths.IsDemoProfile)) return;
+        _ = Update.CheckAsync(manual: false);
     }
 
     // True when this process was started by CrashGuard's auto-relaunch (render-thread-failure
@@ -169,6 +187,20 @@ public partial class App : Application
         // Establish the local Blueprint Network identity from first launch (not lazily at first
         // export), so the import self-skip can always recognise "you" and never double-count.
         Settings.EnsureLocalNetworkId();
+
+        // Auto-update service + first-launch-after-update bookkeeping. The strip decision uses
+        // the strictly-greater rule, so manual downgrades stay quiet; every start records the
+        // running version so the next upgrade can announce itself.
+        Update = new UpdateService(Settings);
+        Update.PurgeStaleDownloads();
+        PreviousSessionVersion = Settings.Current.LastSeenVersion;
+        if (Settings.Current.LastSeenVersion != AppInfo.Version)
+        {
+            if (UpdateNotice.ShouldShowPostUpdateStrip(Settings.Current.LastSeenVersion, AppInfo.Version))
+                Logger.Info($"[WIN] first launch after update: {Settings.Current.LastSeenVersion} -> {AppInfo.Version}");
+            Settings.Current.LastSeenVersion = AppInfo.Version;
+            Settings.Save();
+        }
 
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
         // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before

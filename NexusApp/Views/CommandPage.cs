@@ -40,6 +40,16 @@ public sealed class CommandPage : UserControl
     private bool _relaunchStripLogged;             // "shown" logged once, not on every rebuild
     private bool _relaunchEntrancePlayed;          // one-time fade-rise played this session
 
+    // ── Auto-update notice strips (consent, live update, updated-to) ──
+    // Same session-scoped rebuild contract as the relaunch strip above: Refresh() rebuilds every
+    // strip from scratch (on tab-open, on live data ticks, and on UpdateService.Changed), so the
+    // dismiss/logged flags are what keep one consistent strip across all rebuilds.
+    private bool _updateDismissed;                 // user dismissed the update strip this session
+    private bool _updateStripLogged;               // "shown" logged once, not on every rebuild
+    private bool _postUpdateDismissed;             // user dismissed the updated-to strip this session
+    private bool _postUpdateStripLogged;           // "shown" logged once, not on every rebuild
+    private FrameworkElement? _updateStrip;        // current update strip element
+
     // ── Operations entrance (tab-open only; never on data ticks) ──
     // Fires once per tab-open visit (MainWindow's SetActivePage calls PlayEntrance after
     // InitCommandPage/Refresh, and calls ResetEntrance whenever the page is not the active
@@ -57,6 +67,9 @@ public sealed class CommandPage : UserControl
 
     private Polyline? _sparklinePoly;
 
+    // Full-page overlay layer above the dashboard's ScrollViewer; hosts the install confirmation.
+    private readonly Grid _modalHost;
+
     private Brush Br(string k) => (Brush)Application.Current.FindResource(k);
     private FontFamily Ui => (FontFamily)Application.Current.FindResource("UiFont");
     private FontFamily Disp => (FontFamily)Application.Current.FindResource("DisplayFont");
@@ -66,9 +79,18 @@ public sealed class CommandPage : UserControl
     {
         _navigate = navigate;
         _vm = vm;
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root };
+        // The scrolling dashboard and a full-page modal layer share one host grid, so the
+        // install confirmation can scrim the whole page instead of scrolling with it.
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root };
+        _modalHost = new Grid { Visibility = Visibility.Collapsed };
+        var host = new Grid();
+        host.Children.Add(scroll);
+        host.Children.Add(_modalHost);
+        Content = host;
         // Keep the dashboard live (shard card + KPIs) when the shard changes while Operations is open.
         if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(Refresh);
+        // Update state changes arrive on a worker thread; marshal like the shard feed does.
+        if (App.Update != null) App.Update.Changed += () => Dispatcher.Invoke(Refresh);
     }
 
     public void Refresh()
@@ -77,6 +99,12 @@ public sealed class CommandPage : UserControl
         _root.Children.Add(HeaderRow());
         _relaunchStrip = RelaunchStrip();
         if (_relaunchStrip != null) _root.Children.Add(_relaunchStrip);
+        var postUpdate = PostUpdateStrip();
+        if (postUpdate != null) _root.Children.Add(postUpdate);
+        var consent = ConsentStrip();
+        if (consent != null) _root.Children.Add(consent);
+        _updateStrip = UpdateStrip();
+        if (_updateStrip != null) _root.Children.Add(_updateStrip);
         _root.Children.Add(KpiRow());
         _root.Children.Add(Panels());
     }
@@ -226,10 +254,21 @@ public sealed class CommandPage : UserControl
             Logger.Info("[UI] auto-relaunch notice shown on Operations");
         }
 
+        return NoticeStrip("AUTOMATIC RESTART",
+            "Nexus restarted itself after Windows reported a display error. Your work was not " +
+            "affected. If this keeps happening, enable CPU rendering in Settings > Diagnostics.",
+            Array.Empty<Button>(), DismissRelaunchStrip);
+    }
+
+    // Shared chrome for the amber notice strips (relaunch, consent, update, updated-to):
+    // icon box + eyebrow + wrapping body + optional action buttons + optional dismiss.
+    // Geometry and colors are the approved relaunch-strip values; only the words differ.
+    private FrameworkElement NoticeStrip(string eyebrow, string bodyText, IEnumerable<Button> actions, Action? onDismiss)
+    {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // amber icon
         grid.ColumnDefinitions.Add(new ColumnDefinition());                             // eyebrow + message
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // dismiss button
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // action + dismiss buttons
 
         // Glyph in a 30x30 amber-line box (mock .rs-icon: 1px amber-line border, radius 4,
         // bg rgba(255,178,62,0.06)); the 17px viewbox glyph is centered inside it.
@@ -254,28 +293,25 @@ public sealed class CommandPage : UserControl
         var body = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         body.Children.Add(new TextBlock
         {
-            Text = "AUTOMATIC RESTART", FontFamily = Disp, FontSize = 10, FontWeight = FontWeights.Bold,
+            Text = eyebrow, FontFamily = Disp, FontSize = 10, FontWeight = FontWeights.Bold,
             Foreground = Br("AccentBrush"), Margin = new Thickness(0, 0, 0, 5),
         });
         body.Children.Add(new TextBlock
         {
-            Text = "Nexus restarted itself after Windows reported a display error. Your work was not " +
-                   "affected. If this keeps happening, enable CPU rendering in Settings > Diagnostics.",
-            FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left,
+            Text = bodyText, FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"),
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left,
         });
         Grid.SetColumn(body, 1); grid.Children.Add(body);
 
-        var dismiss = new Button
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+        foreach (var b in actions) { b.Margin = new Thickness(14, 0, 0, 0); buttons.Children.Add(b); }
+        if (onDismiss != null)
         {
-            Content = "Dismiss",
-            Style = (Style)Application.Current.FindResource("NexusButton"),
-            Padding = new Thickness(13, 6, 13, 6),
-            Margin = new Thickness(14, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        dismiss.Click += (_, _) => DismissRelaunchStrip();
-        Grid.SetColumn(dismiss, 2); grid.Children.Add(dismiss);
+            var dismiss = StripButton("Dismiss");
+            dismiss.Click += (_, _) => onDismiss();
+            buttons.Children.Add(dismiss);
+        }
+        Grid.SetColumn(buttons, 2); grid.Children.Add(buttons);
 
         var panel = Hud.Panel(grid, chamfer: 12, padding: new Thickness(14, 12, 14, 12),
                               bg: new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xB2, 0x3E)),
@@ -292,6 +328,16 @@ public sealed class CommandPage : UserControl
         return panel;
     }
 
+    // The strips' shared action button (the approved relaunch-strip dismiss geometry).
+    private static Button StripButton(string label) => new()
+    {
+        Content = label,
+        Style = (Style)Application.Current.FindResource("NexusButton"),
+        Padding = new Thickness(13, 6, 13, 6),
+        Margin = new Thickness(14, 0, 0, 0),
+        VerticalAlignment = VerticalAlignment.Top,
+    };
+
     // Session-scoped dismiss: collapse the strip for the rest of this session. Setting the flag first
     // means any interleaving Refresh() already omits the strip; the short fade (unless motion is
     // reduced) just tidies the outgoing element before the rebuild drops it from layout.
@@ -306,6 +352,186 @@ public sealed class CommandPage : UserControl
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(Motion.HoverMs)) { EasingFunction = Motion.SlideOut };
         fade.Completed += (_, _) => Refresh();
         strip.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    // ── auto-update notice strips ──
+    // All three share the relaunch strip's amber chrome (NoticeStrip) and take every word from
+    // UpdateNotice. Each returns null when it should not show, so Refresh() simply omits it.
+
+    // One-time opt-in for update checks: shows until answered, never in the demo profile.
+    private FrameworkElement? ConsentStrip()
+    {
+        if (!UpdateNotice.ShouldShowConsentStrip(App.Settings.Current.UpdateCheckEnabled, AppPaths.IsDemoProfile)) return null;
+
+        var enable = StripButton(UpdateNotice.ConsentEnable);
+        enable.Click += (_, _) =>
+        {
+            App.Settings.Current.UpdateCheckEnabled = true;
+            App.Settings.Save();
+            Logger.Info("[UPDATE] consent: enabled");
+            Refresh();
+            _ = App.Update.CheckAsync(manual: false);
+        };
+        var decline = StripButton(UpdateNotice.ConsentDecline);
+        decline.Click += (_, _) =>
+        {
+            App.Settings.Current.UpdateCheckEnabled = false;
+            App.Settings.Save();
+            Logger.Info("[UPDATE] consent: declined");
+            Refresh();
+        };
+        return NoticeStrip(UpdateNotice.ConsentEyebrow, UpdateNotice.ConsentBody, new[] { enable, decline }, onDismiss: null);
+    }
+
+    // One-session announcement after a successful update.
+    private FrameworkElement? PostUpdateStrip()
+    {
+        if (_postUpdateDismissed) return null;
+        // The whole update feature is inert in the demo profile (spec section 7): the demo
+        // root keeps its own LastSeenVersion across app upgrades, and this strip must never
+        // appear in the public-screenshot profile.
+        if (AppPaths.IsDemoProfile) return null;
+        if (!UpdateNotice.ShouldShowPostUpdateStrip(App.PreviousSessionVersion, AppInfo.Version)) return null;
+
+        if (!_postUpdateStripLogged)
+        {
+            _postUpdateStripLogged = true;
+            Logger.Info("[UI] post-update notice shown on Operations");
+        }
+        return NoticeStrip(UpdateNotice.PostUpdateEyebrow, UpdateNotice.PostUpdateBody(AppInfo.Version),
+            Array.Empty<Button>(), () =>
+            {
+                _postUpdateDismissed = true;
+                Logger.Info("[UI] post-update notice dismissed");
+                Refresh();
+            });
+    }
+
+    // The live update strip: body and actions follow the service state. Dismiss is
+    // session-scoped; the Settings > Diagnostics rows remain the persistent surface.
+    private FrameworkElement? UpdateStrip()
+    {
+        var svc = App.Update;
+        if (svc == null || _updateDismissed || svc.Available is null) return null;
+        if (svc.State is not (UpdateState.UpdateAvailable or UpdateState.Downloading or UpdateState.Verifying or UpdateState.ReadyToInstall)) return null;
+
+        if (!_updateStripLogged)
+        {
+            _updateStripLogged = true;
+            Logger.Info("[UI] update notice shown on Operations");
+        }
+
+        var v = svc.Available.Version;
+        var actions = new List<Button>();
+        string bodyText;
+        switch (svc.State)
+        {
+            case UpdateState.Downloading:
+                bodyText = UpdateNotice.DownloadingBody(v, svc.DownloadedBytes, svc.TotalBytes);
+                break;
+            case UpdateState.Verifying:
+                bodyText = UpdateNotice.VerifyingBody(v);
+                break;
+            case UpdateState.ReadyToInstall when AppInfo.Distribution == "Installer":
+                bodyText = UpdateNotice.ReadyBodyInstaller(v);
+                var install = StripButton("Install update");
+                install.Click += (_, _) => ShowInstallConfirm(v);
+                actions.Add(install);
+                break;
+            case UpdateState.ReadyToInstall:
+                bodyText = UpdateNotice.ReadyBodyPortable(v);
+                var open = StripButton("Open folder");
+                open.Click += (_, _) => App.Update.OpenDownloadFolder();
+                actions.Add(open);
+                break;
+            default:
+                bodyText = UpdateNotice.UpdateBody(AppInfo.Version, v);
+                if (svc.Available.AssetFor(AppInfo.Distribution) != null)
+                {
+                    var download = StripButton("Download");
+                    download.Click += async (_, _) => { await App.Update.DownloadAsync(); ShowVerifyFailedIfNeeded(); };
+                    actions.Add(download);
+                }
+                break;
+        }
+        return NoticeStrip(UpdateNotice.UpdateEyebrow, bodyText, actions,
+            () => { _updateDismissed = true; Logger.Info("[UI] update notice dismissed"); Refresh(); });
+    }
+
+    // Themed in-page confirmation (SettingsPage danger-modal pattern, accent chrome): the
+    // click that hands control to the installer deserves more weight than a MessageBox.
+    private void ShowInstallConfirm(Version v)
+    {
+        Logger.Info("[UI] install update: confirm shown");
+        _modalHost.Children.Clear();
+
+        var scrim = new Border { Background = new SolidColorBrush(Color.FromArgb(0x9E, 0x03, 0x05, 0x08)) };
+        scrim.MouseLeftButtonDown += (_, _) => CloseInstallConfirm(cancelled: true);
+        _modalHost.Children.Add(scrim);
+
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock
+        {
+            Text = UpdateNotice.InstallConfirmTitle(v), FontFamily = Hud.Font("TechFont"),
+            FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush"),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = UpdateNotice.InstallConfirmBody, FontSize = 12.5, Foreground = Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0),
+        });
+        var actionRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
+        var cancel = StripButton("Cancel");
+        cancel.Margin = new Thickness(0);
+        cancel.Click += (_, _) => CloseInstallConfirm(cancelled: true);
+        var confirm = StripButton("Install update");
+        // Visual weight over Cancel: the two buttons are otherwise identical chrome, and the
+        // consequential one should read as the primary action.
+        confirm.Foreground = Br("AccentBrush");
+        confirm.FontWeight = FontWeights.SemiBold;
+        confirm.Click += (_, _) =>
+        {
+            Logger.Info("[UI] install update: confirmed");
+            CloseInstallConfirm(cancelled: false);
+            if (App.Update.LaunchInstaller())
+                Application.Current.Shutdown();
+            else
+                ShowVerifyFailedIfNeeded();
+        };
+        actionRow.Children.Add(cancel);
+        actionRow.Children.Add(confirm);
+        body.Children.Add(actionRow);
+
+        var panel = Hud.Panel(body, chamfer: 14, bg: Br("Bg2NavBrush"), border: Br("AccentStrongBrush"),
+                              padding: new Thickness(22, 20, 22, 22));
+        panel.MaxWidth = 470;
+        panel.VerticalAlignment = VerticalAlignment.Center;
+        panel.HorizontalAlignment = HorizontalAlignment.Center;
+        panel.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        _modalHost.Children.Add(panel);
+        _modalHost.Visibility = Visibility.Visible;
+    }
+
+    private void CloseInstallConfirm(bool cancelled)
+    {
+        if (cancelled) Logger.Info("[UI] install update: cancelled");
+        _modalHost.Visibility = Visibility.Collapsed;
+        _modalHost.Children.Clear();
+    }
+
+    // Spec-mandated warning when a download or install-time hash check refused the file.
+    // Keyed on LastFailureWasVerification so ordinary network failures stay quiet here.
+    private void ShowVerifyFailedIfNeeded()
+    {
+        if (App.Update?.LastFailureWasVerification != true) return;
+        var owner = Window.GetWindow(this);
+        if (owner != null)
+            MessageBox.Show(owner, UpdateNotice.VerifyFailedBody, UpdateNotice.VerifyFailedTitle,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        else
+            MessageBox.Show(UpdateNotice.VerifyFailedBody, UpdateNotice.VerifyFailedTitle,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     // ── 4 KPI cards: Last scan (hero, reticle) · Refinery queue · Cargo · Session ──

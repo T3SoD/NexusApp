@@ -398,6 +398,20 @@ public sealed class AdminPage : UserControl
                 CrashGuard.IsMarkerFresh(CrashGuard.DefaultMarkerPath, DateTime.UtcNow, CrashGuard.RelaunchLoopWindow)
                     ? "armed (marker fresh)" : "clear"))));
 
+        _diagHost.Children.Add(Section("UPDATES", Rows(
+            Row("Update checks", () => App.Settings.Current.UpdateCheckEnabled switch
+            {
+                null => "not asked",
+                true => "enabled",
+                false => "disabled",
+            }),
+            Row("Last check", () => App.Settings.Current.LastUpdateCheckUtc is { } t
+                ? t.ToString("yyyy-MM-dd HH:mm 'UTC'")
+                : "never"),
+            Row("State", () => App.Update.State.ToString()),
+            Row("Last failure", () => string.IsNullOrEmpty(App.Update.LastFailure) ? "none" : App.Update.LastFailure),
+            Row("Manifest version seen", () => App.Update.Available?.Version.ToString(3) ?? "none"))));
+
         var logRows = Rows(
             Row("nexus.log", () =>
             {

@@ -11,11 +11,11 @@
   </picture>
 </p>
 
-**Nexus is an offline, EAC-safe companion app for the mine, refine, craft, and haul loop in Star Citizen.**
+**Nexus is an offline-by-default, EAC-safe companion app for the mine, refine, craft, and haul loop in Star Citizen.**
 
 Nexus decodes RS scan values into a resource type and a node count. It times your refinery jobs. It also works as a searchable reference for resources, blueprints, and the blueprints that you own.
 
-Nexus reads `Game.log` for two purposes. It auto-collects blueprints the moment that you unlock them. It also merges your accepted hauling contracts into one consolidated route of pickup stops and delivery stops. An overlay shows all of this and floats over the game. Nexus works fully offline.
+Nexus reads `Game.log` for two purposes. It auto-collects blueprints the moment that you unlock them. It also merges your accepted hauling contracts into one consolidated route of pickup stops and delivery stops. An overlay shows all of this and floats over the game. None of this needs an internet connection.
 
 The **Blueprint Network** adds ownership tracking for friends or your org. You trade library files, and then everyone sees who owns what.
 
@@ -23,9 +23,9 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 
 > **EAC-safe by design:** Nexus runs fully outside Star Citizen. It does not inject code. It does not read memory. It does not modify game files.
 >
-> Nexus does only two operations. It captures your screen with the standard Windows OCR APIs. It reads the plain-text `Game.log` that the game writes to disk. It opens `Game.log` as read-only and in shared mode.
+> Nexus does only two kinds of operation on the game. It captures your screen with the standard Windows OCR APIs. It reads the plain-text `Game.log` that the game writes to disk, and the `global.ini` localization file when one is present. It opens both as read-only and in shared mode.
 >
-> Nexus installs per-user. It runs fully offline. The whole pipeline is open source in this repo. Easy Anti-Cheat has nothing to flag.
+> Nexus installs per-user. It makes no network calls unless you turn on update checks or click Check now yourself, and those contact GitHub only (github.com and GitHub's own file-download host). The whole pipeline is open source in this repo. Easy Anti-Cheat has nothing to flag.
 
 ## Features
 
@@ -36,7 +36,7 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 | **Refinery Tracker** | Track your active refinery jobs. Nexus shows live countdown timers and status indicators. |
 | **Mining Codex** | A full reference table of all mineable resources. Filter it by system (Stanton / Pyro / Nyx) and by method (Ship / ROC / FPS). Open an ore to see full details: its class, a ship-mining profile, its rock composition, and byproduct sourcing. |
 | **Blueprint Library** | Search ship, weapon, armor, and ammo blueprints. See the raw resources that each one needs, the contracts that unlock it, a ranked WHERE TO MINE plan, and byproduct sourcing. Mark the blueprints that you own. Filter by owned or not owned. |
-| **Blueprint Network** | Share the blueprints that you own with friends or your org. Trade library files to do this. See who in your group owns what: coverage, the gaps to farm, and single-owner risk. Nexus works fully offline. You exchange files, and nothing syncs. |
+| **Blueprint Network** | Share the blueprints that you own with friends or your org. Trade library files to do this. See who in your group owns what: coverage, the gaps to farm, and single-owner risk. Blueprint Network works fully offline. You exchange files, and nothing syncs. |
 | **Cargo Hauling** | The hauling contracts that you accept in-game appear automatically from `Game.log`. Nexus consolidates them into collect stops and deliver stops for each location. An optional screen-scan adds the reward, the contractor, and the cargo details to each haul. |
 
 **Highlights**
@@ -51,7 +51,8 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 - **Shopping list:** Add resources or blueprint ingredients. Nexus then highlights them in scan results and history.
 - **Persistent work orders:** Refinery timers survive when Nexus restarts.
 - **Crash recovery:** If Windows reports a display error, Nexus restarts itself once and shows a notice on the Operations dashboard. Your work orders and hauls are safe. The Diagnostics section in Settings has a CPU rendering toggle and a row for the last automatic restart.
-- Fully **offline:** You do not need an account or an internet connection. Nexus stores settings and work orders locally on your PC.
+- **Offline by default:** You do not need an account. Nexus makes no network calls unless you enable update checks or click Check now yourself. Nexus stores settings and work orders locally on your PC.
+- **Opt-in updates:** Nexus asks once whether it can check GitHub for new versions. If you say yes, it checks when Nexus starts, at most once a day, verifies every download, and asks before it installs anything.
 
 ## Screenshots
 
@@ -107,7 +108,7 @@ The same haul plan appears in-game. It shows totals, consolidated stops, and per
 
 ## Installation (end users)
 
-Nexus comes in two forms. Choose the one that suits you. Both forms are self-contained, because Nexus bundles the .NET runtime. Both need no admin rights. Both store settings and work orders locally. Both run fully offline.
+Nexus comes in two forms. Choose the one that suits you. Both forms are self-contained, because Nexus bundles the .NET runtime. Both need no admin rights. Both store settings and work orders locally. Both run offline unless you turn on update checks.
 
 ### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
 
@@ -142,6 +143,15 @@ Run Nexus directly. You do not need to install it.
 10. Double-click **`NexusApp.exe`** to start Nexus.
 
 > **Windows SmartScreen note (applies to both options):** Nexus is unsigned. Code-signing certificates cost several hundred dollars a year. Because Nexus is unsigned, Windows can show a blue *"Windows protected your PC"* dialog on the first run. To continue, click **More info**, then click **Run anyway**. You can also use the **Unblock** step above. If Defender flags Nexus, this is a false positive for an unsigned app.
+
+### Updating
+
+Nexus can check for new versions itself. The first time you run a version that supports it, Nexus asks once whether to enable update checks (Settings > Diagnostics has the toggle and a manual Check now button; nothing is contacted until you say yes or click Check now yourself).
+
+- **Installer:** when an update is available, Nexus offers to download it, verifies the download, and runs the installer for you. Your settings, work orders, and blueprints are kept.
+- **Portable:** Nexus downloads and verifies the new portable zip, then offers to open the folder. Close Nexus, extract the new `NexusApp` folder over the old one, and start it again.
+
+Every download and install asks first. You can always update by hand from the [Releases](../../releases) page instead.
 
 <details>
 <summary><strong>For developers - tech stack and project layout</strong></summary>

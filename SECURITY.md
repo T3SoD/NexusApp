@@ -1,6 +1,6 @@
 # Security Policy
 
-Nexus is an offline, open-source desktop app. This document explains three things:
+Nexus is an offline-by-default, open-source desktop app. This document explains three things:
 
 - how the design of Nexus keeps risk low
 - what Nexus can and cannot touch on your system
@@ -28,7 +28,7 @@ The project usually acknowledges reports in a few days. The project keeps you up
 
 ## Supported versions
 
-Nexus has one release only: the latest release. Security fixes go into the next release. The project does not patch older releases in place. Always update to the [latest release](https://github.com/T3SoD/NexusApp/releases/latest).
+Nexus has one release only: the latest release. Security fixes go into the next release. The project does not patch older releases in place. Always update to the [latest release](https://github.com/T3SoD/NexusApp/releases/latest). If you enable update checks, Nexus can find that release for you and offer to download it. You can always update by hand from the releases page instead.
 
 | Version        | Supported |
 |----------------|-----------|
@@ -39,7 +39,8 @@ Nexus has one release only: the latest release. Security fixes go into the next 
 
 Nexus has a small attack surface by design. Because no software is free of all vulnerabilities, Nexus limits what it can do from the start:
 
-- **Fully offline.** Nexus makes no network calls. There is no auto-update, no telemetry, and no account. You can confirm this with a firewall.
+- **Offline by default.** Nexus makes no network calls out of the box. Update checks are strictly opt-in: nothing is contacted unless you enable them or click Check now yourself, and you can confirm that with a firewall. With checks enabled, Nexus contacts GitHub only (github.com and GitHub's own file-download host), fetches the latest version number and release files, and sends nothing about you or your data beyond the connection itself (GitHub sees your IP address, as with any web request). The toggle lives in Settings > Diagnostics. There is no telemetry and no account.
+- **Signed updates.** Update information is a manifest signed with a key held offline by the maintainer. The app verifies the signature and the file hashes before anything is installed, refuses downgrades, and asks you before every download and every install. A compromised download source or repository cannot make Nexus install anything: at worst, updates stop appearing.
 - **No elevation.** Nexus installs and runs per user. Nexus never asks for admin rights.
 - **Reads the screen, not Star Citizen's memory.** Auto-scan uses the standard Windows APIs for screen capture and OCR. Nexus never reads Star Citizen's memory. Nexus never injects code, DLLs, or hooks into the Star Citizen process.
 - **No changes to game files.** Nexus includes the reference data. Nexus reads some Star Citizen files, but it never changes them:

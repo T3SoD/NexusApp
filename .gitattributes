@@ -1,0 +1,12 @@
+# Normalize all text files to LF in the repository; working copies follow each
+# machine's core.autocrlf setting. One-time renormalization done 2026-07-25.
+* text=auto
+
+# Never touch binary content.
+*.png binary
+*.ico binary
+*.db binary
+*.bin binary
+*.zip binary
+*.ttf binary
+*.otf binary

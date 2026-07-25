@@ -52,6 +52,12 @@ public sealed class SettingsPage : UserControl
     private readonly TranslateTransform _modalPanelT = new(0, 12);   // panel rise on entrance
     private readonly ScaleTransform _modalPanelScale = new(0.98, 0.98);
 
+    // Updates section (DIAGNOSTICS). Held so the rows can be refreshed as the update service
+    // moves between states; null in the demo profile, where the section is inert.
+    private TextBlock? _updateStatusText;
+    private StackPanel? _updateActionHost;
+    private Hud.ToggleSwitch? _updateCheckToggle;
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
@@ -438,7 +444,157 @@ public sealed class SettingsPage : UserControl
                 "Windows reported a display error, usually while the game was crashing or quitting.",
                 RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
 
+        // Updates: consent toggle, manual check, contextual action. Inert in the demo profile.
+        if (AppPaths.IsDemoProfile)
+        {
+            panel.Children.Add(SectionPanel("Updates", false,
+                SettingRow("Update checks",
+                    "Update checks are unavailable in the demo profile.",
+                    new TextBlock
+                    {
+                        Text = "Unavailable", FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+                        Foreground = Hud.Br("FgDimBrush"),
+                    }, last: true)));
+        }
+        else
+        {
+            _updateCheckToggle = new Hud.ToggleSwitch(App.Settings.Current.UpdateCheckEnabled == true)
+            {
+                OnToggled = on =>
+                {
+                    App.Settings.Current.UpdateCheckEnabled = on;
+                    App.Settings.Save();
+                    Logger.Info($"[UPDATE] auto-check setting: {(on ? "on" : "off")}");
+                },
+            };
+            var checkToggle = _updateCheckToggle;
+
+            var checkNow = GhostButton("Check now");
+            checkNow.Click += (_, _) => _ = App.Update.CheckAsync(manual: true);
+            _updateStatusText = new TextBlock
+            {
+                FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 260, TextAlignment = TextAlignment.Right,
+            };
+            var checkStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+            checkStack.Children.Add(checkNow);
+            checkStack.Children.Add(_updateStatusText);
+
+            _updateActionHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+
+            panel.Children.Add(SectionPanel("Updates", false,
+                SettingRow("Check for updates automatically",
+                    "Once a day when Nexus starts, Nexus asks github.com for the latest version " +
+                    "number. Nothing about you or your data is sent. Downloads and installs always " +
+                    "ask first.",
+                    checkToggle, last: false),
+                SettingRow("Check now",
+                    "Ask github.com for the latest version right now, regardless of the automatic " +
+                    "setting.",
+                    checkStack, last: false),
+                SettingRow("Update",
+                    "Download and install the latest version. Every step asks before acting.",
+                    _updateActionHost, last: true)));
+
+            RefreshUpdateRows();
+            if (App.Update != null)
+                App.Update.Changed += () => Dispatcher.Invoke(RefreshUpdateRows);
+        }
+
         return Pane(panel);
+    }
+
+    // Keeps the Updates rows honest as the service moves through its states. Subscribed to
+    // App.Update.Changed (worker thread), so it always marshals through the dispatcher.
+    private void RefreshUpdateRows()
+    {
+        if (_updateStatusText == null || _updateActionHost == null) return;
+        // The pane is built once and cached for the app lifetime, but consent can change
+        // elsewhere (the Operations strip): mirror the setting so the toggle never lies.
+        _updateCheckToggle?.SetOnSilently(App.Settings.Current.UpdateCheckEnabled == true);
+        var svc = App.Update;
+        _updateStatusText.Text = UpdateNotice.StatusLine(svc.State.ToString(), svc.Available?.Version,
+            App.Settings.Current.LastUpdateCheckUtc, svc.LastFailureWasUserInitiated);
+
+        _updateActionHost.Children.Clear();
+        switch (svc.State)
+        {
+            case UpdateState.UpdateAvailable:
+                var download = GhostButton("Download update");
+                download.Click += async (_, _) =>
+                {
+                    await App.Update.DownloadAsync();
+                    if (App.Update.LastFailureWasVerification) ShowVerifyFailed();
+                };
+                _updateActionHost.Children.Add(download);
+                break;
+            case UpdateState.ReadyToInstall when AppInfo.Distribution == "Installer":
+                var install = GhostButton("Install update");
+                // Captured while the row is built: the service can move on (a re-check clears
+                // Available) between the build and the click, and the prompt must name the
+                // version this button was made for.
+                var v = svc.Available!.Version;
+                install.Click += (_, _) =>
+                {
+                    // Same decision, MessageBox form: this pane already confirms its restart
+                    // prompt this way (post-clear restart precedent).
+                    var res = MessageBox.Show(
+                        UpdateNotice.InstallConfirmTitle(v) + "\n\n" + UpdateNotice.InstallConfirmBody,
+                        "Install update", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
+                    if (res != MessageBoxResult.Yes) return;
+                    Logger.Info("[UI] install update: confirmed");
+                    if (App.Update.LaunchInstaller())
+                        Application.Current.Shutdown();
+                    else if (App.Update.LastFailureWasVerification) ShowVerifyFailed();
+                };
+                _updateActionHost.Children.Add(install);
+                break;
+            case UpdateState.ReadyToInstall:
+                var open = GhostButton("Open download folder");
+                open.Click += (_, _) => App.Update.OpenDownloadFolder();
+                _updateActionHost.Children.Add(open);
+                break;
+            // The spec's rule for this row is "mirrors the strip": in-flight states show the
+            // same approved bodies the Operations strip shows, never "No update available."
+            case UpdateState.Downloading when svc.Available is { } dl:
+                _updateActionHost.Children.Add(new TextBlock
+                {
+                    Text = UpdateNotice.DownloadingBody(dl.Version, svc.DownloadedBytes, svc.TotalBytes),
+                    FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                });
+                break;
+            case UpdateState.Verifying when svc.Available is { } vf:
+                _updateActionHost.Children.Add(new TextBlock
+                {
+                    Text = UpdateNotice.VerifyingBody(vf.Version),
+                    FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                });
+                break;
+            default:
+                _updateActionHost.Children.Add(new TextBlock
+                {
+                    Text = "No update available.", FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                });
+                break;
+        }
+    }
+
+    // The verify-failed warning, owned by the app window so it cannot end up behind Nexus
+    // (the CommandPage twin does the same). Owner is null only if this pane is somehow
+    // unparented, which falls back to the ownerless overload rather than throwing.
+    private void ShowVerifyFailed()
+    {
+        var owner = Window.GetWindow(this);
+        if (owner != null)
+            MessageBox.Show(owner, UpdateNotice.VerifyFailedBody, UpdateNotice.VerifyFailedTitle,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        else
+            MessageBox.Show(UpdateNotice.VerifyFailedBody, UpdateNotice.VerifyFailedTitle,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     // INTERFACE: overlay click-through + appearance (reduce animations, 24-hour clock).
