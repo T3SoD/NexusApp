@@ -128,6 +128,14 @@ public partial class App : Application
 
         Logger.Info($"Nexus {AppInfo.Version} starting");
         Logger.Info($"Distribution: {AppInfo.Distribution}");
+        if (AppPaths.IsDemoProfile)
+        {
+            Logger.Info("[WIN] Nexus starting in demo profile mode");
+            // Normally the live instance seeds before launching, but a direct
+            // "NexusApp.exe --demo-profile" start must work too. Idempotent.
+            try { DemoProfile.EnsureSeeded(AppPaths.Root); }
+            catch (Exception ex) { Logger.Error("[WIN] demo mode: seeding failed; continuing with an empty profile", ex); }
+        }
         Logger.Info($"[WIN] process DPI awareness: {DpiAwarenessLabel()}");
         GpuInfo.LogAdapters();
         // Keyed on the relaunch argument, not marker freshness: a manual restart within the
@@ -144,8 +152,11 @@ public partial class App : Application
         // One-time migration of user data from the old %AppData%\Nexus_v4 folder
         // (pre-5.0.1) to the version-neutral %AppData%\NexusApp, so upgraders
         // keep their settings, work orders and history. Runs before anything reads.
-        SettingsService.MigrateLegacyAppData();
+        if (!AppPaths.IsDemoProfile) SettingsService.MigrateLegacyAppData();
         Settings = new SettingsService();
+        // Demo isolation includes the Game.log source; see DemoProfile.PinGameLogPath.
+        if (AppPaths.IsDemoProfile)
+            Settings.Current.GameLogPath = DemoProfile.PinGameLogPath(Settings.Current.GameLogPath, AppPaths.Root);
         // A render-relaunch start records when it happened (UTC) so Settings > Diagnostics can show
         // the last automatic restart across sessions. Written after Settings loads so it persists.
         if (RelaunchedThisSession)

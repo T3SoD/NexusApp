@@ -22,17 +22,24 @@ public static class AccessGate
         "Rorran198",
     };
 
+    // Read-only roster for the Admin tab (display only; onboarding still means editing the
+    // list above and cutting a release). Sorted for stable display.
+    public static IReadOnlyList<string> Testers =>
+        BetaTesters.OrderBy(h => h, StringComparer.OrdinalIgnoreCase).ToArray();
+
     // Approved = the owner (single-sourced from OwnerGate) or a beta tester on the list above.
     public static bool IsApproved(string? handle) =>
         OwnerGate.IsOwner(handle) ||
         (!string.IsNullOrWhiteSpace(handle) && BetaTesters.Contains(handle.Trim()));
 
     // The handle last detected from Game.log (cached in settings). Empty until a login line is
-    // seen, so the gate stays closed by default.
+    // seen, so the gate stays closed by default. Preview-aware: a BetaTester preview reports
+    // approved (the tester-visible tabs show), a Visitor preview reports not approved.
     public static bool IsApprovedActive
     {
         get
         {
+            if (GatePreview.IsActive) return GatePreview.Active == GatePreview.Role.BetaTester;
             try { return IsApproved(App.Settings?.Current?.DetectedRsiHandle); }
             catch { return false; }
         }

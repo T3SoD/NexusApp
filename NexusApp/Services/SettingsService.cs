@@ -9,9 +9,7 @@ public class SettingsService
 {
     private readonly string _path;
 
-    private static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "NexusApp", "settings.json");
+    private static string DefaultPath => Path.Combine(AppPaths.Root, "settings.json");
 
     private static readonly JsonSerializerOptions _opts = new() { WriteIndented = true };
 

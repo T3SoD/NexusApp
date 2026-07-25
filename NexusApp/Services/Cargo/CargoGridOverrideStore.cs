@@ -28,8 +28,7 @@ public sealed class CargoGridOverrideStore
     public static CargoGridOverrideStore LoadDefault()
     {
         if (_default != null) return _default;
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp");
+        var dir = AppPaths.Root;
         Directory.CreateDirectory(dir);
         return _default = new CargoGridOverrideStore(Path.Combine(dir, "cargo_grid_overrides.json"));
     }

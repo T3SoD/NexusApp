@@ -16,9 +16,7 @@ public static class Logger
     private static readonly string _path =
         Environment.GetEnvironmentVariable("NEXUS_LOG_PATH") is { Length: > 0 } custom
             ? custom
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "NexusApp", "logs", "nexus.log");
+            : Path.Combine(AppPaths.LogsDir, "nexus.log");
 
     /// <summary>Absolute path of the app log file (for the in-app log monitor / diagnostic snapshot).</summary>
     public static string LogPath => _path;
