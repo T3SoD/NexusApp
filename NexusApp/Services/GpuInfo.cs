@@ -16,23 +16,30 @@ public static class GpuInfo
 
     public static void LogAdapters()
     {
+        var lines = AdapterLines();
+        if (lines.Count == 0) { Logger.Info("[WIN] display adapter: none found in registry"); return; }
+        foreach (var line in lines) Logger.Info(line);
+    }
+
+    // Adapter description lines for the owner diagnostics dashboard (same registry source the
+    // startup log uses). Returns an empty list on any failure - diagnostics must never throw.
+    public static List<string> AdapterLines()
+    {
+        var lines = new List<string>();
         try
         {
             using var cls = Registry.LocalMachine.OpenSubKey(DisplayClassKey);
-            if (cls is null) { Logger.Info("[WIN] display adapter: unknown (registry class key missing)"); return; }
-            bool any = false;
+            if (cls is null) return lines;
             foreach (var sub in cls.GetSubKeyNames())
             {
                 if (sub.Length != 4 || !int.TryParse(sub, out _)) continue;
                 using var k = cls.OpenSubKey(sub);
                 var line = AdapterLine(k?.GetValue("DriverDesc") as string, k?.GetValue("DriverVersion") as string);
-                if (line is null) continue;
-                Logger.Info(line);
-                any = true;
+                if (line is not null) lines.Add(line);
             }
-            if (!any) Logger.Info("[WIN] display adapter: none found in registry");
         }
         catch { /* diagnostics must never throw */ }
+        return lines;
     }
 
     internal static string? AdapterLine(string? description, string? driverVersion) =>

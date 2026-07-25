@@ -33,10 +33,12 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionChip(); UpdateBlueprintChip(); });
-            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => { UpdateOperatorIdentity(h); RefreshApprovedTools(); });
+            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => { UpdateOperatorIdentity(h); RefreshApprovedTools(); RefreshOwnerTools(); });
         }
         UpdateOperatorIdentity();
         RefreshApprovedTools();
+        RefreshOwnerTools();
+        NexusApp.Services.GatePreview.Changed += () => Dispatcher.Invoke(OnGatePreviewChanged);
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
         _vm = new MainViewModel();
         DataContext = _vm;
@@ -237,6 +239,7 @@ public partial class MainWindow : Window
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
         PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
         PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
+        PageAdmin.Visibility      = page == "admin"      ? Visibility.Visible : Visibility.Collapsed;
         PageSettings.Visibility   = page == "settings"   ? Visibility.Visible : Visibility.Collapsed;
 
         NavCommand.IsChecked  = page == "command";
@@ -248,6 +251,7 @@ public partial class MainWindow : Window
         NavHauling.IsChecked  = page == "hauling";
         NavPlanner.IsChecked  = page == "planner";
         NavGridStudio.IsChecked = page == "gridstudio";
+        NavAdmin.IsChecked    = page == "admin";
         NavSettings.IsChecked = page == "settings";
 
         // Viewport (Wrist-OS launched-app window): update the module path readout and replay the boot
@@ -267,6 +271,7 @@ public partial class MainWindow : Window
             "hauling"    => "Nexus - Cargo Hauling",
             "planner"    => "Nexus - Cargo Planner",
             "gridstudio" => "Nexus - Grid Studio",
+            "admin"      => "Nexus - Admin",
             "settings"   => "Nexus - Settings",
             _            => "Nexus",
         };
@@ -281,6 +286,7 @@ public partial class MainWindow : Window
         if (page == "hauling") InitHaulingPage();
         if (page == "planner") InitPlannerPage();
         if (page == "gridstudio") InitGridStudioPage();
+        if (page == "admin") InitAdminPage();
         if (page == "settings") InitSettingsPage();
         UpdateNavBadges();
 
@@ -293,6 +299,7 @@ public partial class MainWindow : Window
             "workorders" => PageWorkOrders,
             "network"    => PageNetwork,
             "hauling"    => PageHauling,
+            "admin"      => PageAdmin,
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
         });
@@ -352,6 +359,7 @@ public partial class MainWindow : Window
         if (NavHauling.IsChecked == true)  return NavHauling;
         if (NavPlanner.IsChecked == true)  return NavPlanner;
         if (NavGridStudio.IsChecked == true) return NavGridStudio;
+        if (NavAdmin.IsChecked == true)    return NavAdmin;
         if (NavSettings.IsChecked == true) return NavSettings;
         return null;
     }
@@ -586,6 +594,17 @@ public partial class MainWindow : Window
         _gridStudioPage.OnShown();
     }
 
+    private AdminPage? _adminPage;
+    private void InitAdminPage()
+    {
+        if (_adminPage == null)
+        {
+            _adminPage = new AdminPage(ShowLogMonitor, ShowAppLogMonitor);
+            PageAdmin.Children.Add(_adminPage);
+        }
+        _adminPage.Refresh();
+    }
+
     // Approved-list gated tabs (Grid Studio dev tool, and the Cargo Planner until it is ship-ready)
     // show when the detected RSI handle is on the approved contributor list. Re-evaluated at
     // startup and whenever a handle is detected from Game.log.
@@ -594,6 +613,33 @@ public partial class MainWindow : Window
         var approved = NexusApp.Services.AccessGate.IsApprovedActive;
         NavGridStudio.Visibility = approved ? Visibility.Visible : Visibility.Collapsed;
         NavPlanner.Visibility = approved ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Owner-only Admin tab. Deliberately gated on the preview-BLIND owner check: the owner
+    // must never be able to preview themselves out of the way back (Exit preview lives there).
+    private void RefreshOwnerTools()
+    {
+        NavAdmin.Visibility = NexusApp.Services.OwnerGate.IsOwnerReal ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Preview flips what the gates report; the UI must tell the same story: re-gate the dock,
+    // drop cached pages that captured gate state at build time so they rebuild honestly, and
+    // if the page being viewed just vanished from the dock, land back on Operations.
+    private void OnGatePreviewChanged()
+    {
+        try
+        {
+            RefreshApprovedTools();
+            RefreshOwnerTools();
+            _plannerPage = null; PagePlanner.Children.Clear();
+            _gridStudioPage = null; PageGridStudio.Children.Clear();
+            // The two cached pages were just cleared; if one of them is what the user is looking
+            // at, land back on Operations regardless of the new gate state (a cleared page is
+            // blank either way, and a BetaTester preview keeps the approved gate open).
+            if (_activePage == "planner" || _activePage == "gridstudio")
+                SetActivePage("command");
+        }
+        catch (Exception ex) { Logger.Error("[UI] admin: preview transition failed", ex); }
     }
 
     // ── RS Scan ──────────────────────────────────────────────────────────────
