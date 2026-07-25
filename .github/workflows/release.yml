@@ -46,11 +46,24 @@ jobs:
         # -p:Version stamps the assembly so the in-app badges show the tag version.
         run: dotnet publish NexusApp/NexusApp.csproj -c Release -r win-x64 --self-contained true -o publish_out -p:Version=${{ steps.ver.outputs.version }}
 
+      # The portable gets its own single-file publish so the extracted folder is just the exe,
+      # the README, the Web content, and the handful of native libraries that must sit beside
+      # the exe (WPF/SQLite/WebView2 loaders cannot live inside the bundle). The installer
+      # keeps the multi-file publish above: installed users never browse that directory, and
+      # multi-file avoids the single-file startup decompression cost for them.
+      - name: Publish portable (single-file win-x64)
+        run: dotnet publish NexusApp/NexusApp.csproj -c Release -r win-x64 --self-contained true -o publish_portable -p:Version=${{ steps.ver.outputs.version }} -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+
       - name: Create portable zip
+        # Wrapped in a top-level NexusApp folder so an extract-here lands one folder, not a
+        # file soup, and the exe and README are immediately visible inside it.
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Compress-Archive -Path "publish_out/*" -DestinationPath "artifacts/NexusApp_portable.zip" -CompressionLevel Optimal
+          New-Item -ItemType Directory -Force -Path artifacts, staging/NexusApp | Out-Null
+          Copy-Item publish_portable/* staging/NexusApp/ -Recurse
+          # The WebView2 IntelliSense docs are build-time artifacts with no runtime purpose.
+          Remove-Item staging/NexusApp/*.xml
+          Compress-Archive -Path "staging/NexusApp" -DestinationPath "artifacts/NexusApp_portable.zip" -CompressionLevel Optimal
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
