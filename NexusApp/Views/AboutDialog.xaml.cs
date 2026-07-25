@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.7.0  -  Jul 25, 2026",
+        [
+            "Optional update checks - say yes once and Nexus looks for new versions at startup, at most once a day, and shows a notice when one is out",
+            "Every update is verified end to end - nothing downloads or installs without a click, and anything that fails the signature check is refused and deleted",
+            "New in Settings > Diagnostics: Updates - the automatic-check switch, a Check now button, and the download or install action",
+            "The privacy documents now match - offline by default, GitHub only when you allow it, nothing about you is sent",
+        ]),
         ("App  6.6.2  -  Jul 24, 2026",
         [
             "Cleaned the mining reference data - removed duplicate racing blueprint cards, unlock listings for missions that no longer exist in Alpha 4.9, and a stray placeholder faction header",
