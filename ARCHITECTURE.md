@@ -12,7 +12,8 @@ NexusApp uses the **MVVM** pattern with `CommunityToolkit.Mvvm`. A thin services
 layer sits under the UI.
 
 All data is local. The build bundles the reference data. The user data is on
-disk in the per-user app-data folder. There is no network code.
+disk in the per-user app-data folder. The opt-in update check is the only
+network code.
 
 ```
 +-----------------------------------------------------------+
@@ -30,6 +31,7 @@ disk in the per-user app-data folder. There is no network code.
 |  GameLog(Session/Watcher/Importer) |                      |
 |  Hauling(HaulTracker/Parser/Contract/Shard) |             |
 |  Network(File/Store/Scope) |                              |
+|  Update(Service/Verifier/Manifest/Notice) |               |
 |  Diagnostics(CrashGuard/Breadcrumbs/Sanitizer/Notice) |   |
 |  Logger / InteractionLog / ForegroundMonitor              |
 +----------------------------+------------------------------+
@@ -89,6 +91,11 @@ The view model controls these services. Each service holds little or no state.
   subsystem (see below). It reads `Game.log` read-only.
 - **Network (NetworkFileService / NetworkStore / NetworkScope)** - the
   file-exchange subsystem for the offline Blueprint Network (see below).
+- **Update (UpdateService / UpdateVerifier / UpdateManifest / UpdateNotice)** -
+  the opt-in update subsystem (see Data and storage). The update subsystem is the
+  only code in the app that touches the network, and only `UpdateService` (with
+  its HTTP transport) does. The other three do no network work: signature and
+  hash verification, manifest parsing, and the notice text.
 - **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** - the
   diagnostics. These are a self-rotating event log, UI-interaction breadcrumbs,
   tracking of the foreground window and process, and the copy/save diagnostic
@@ -109,9 +116,9 @@ types.
 
 - **Reference data** ships as `Data/seed_data.json`. The build embeds it into
   the assembly as a resource. It is the single source of mining and blueprint
-  data. There is no over-the-air update path. A second embedded reference,
-  `Data/components.ini`, maps internal component keys to their official names.
-  The build refreshes it for each game patch.
+  data. It ships inside each release. There is no data-only over-the-air path.
+  A second embedded reference, `Data/components.ini`, maps internal component
+  keys to their official names. The build refreshes it for each game patch.
 - **User data** (settings, work orders, and the owned-blueprint library) is on
   disk in the per-user app-data folder. NexusApp stores it with SQLite and JSON.
 - **Blueprint Network** uses a separate local `network.db`. It exchanges
@@ -119,6 +126,15 @@ types.
 - **Versioning** comes from one source: the `<Version>` in
   `NexusApp/NexusApp.csproj`. The in-app badges and the installer read it from
   the built executable. For releases, CI overrides it from the git tag.
+- **Updates** are opt-in. The app can check for new releases when the user turns
+  the check on. `scripts/sign_release.ps1` hashes the published release assets
+  locally, writes `update_manifest.json` and a detached `.sig` (ECDSA P-256 over
+  SHA-256), signs with a key kept off GitHub, and uploads both to the release.
+  In the app, `UpdateVerifier` holds the pinned public key, the hash checks, and
+  the strictly-greater version rule. It gates `UpdateService`. The update
+  subsystem is the only code in the app that touches the network. Downloads land
+  in `%AppData%\NexusApp\updates`. NexusApp checks their hash before the
+  installer ever runs.
 
 ## Key flows
 
@@ -178,6 +194,8 @@ filter all of NexusApp to a single member. No server is involved.
 - **CI:** GitHub Actions build the app and run the full unit test suite on every
   push and PR to `main` (`build.yml`). On a version tag, GitHub Actions run the
   same test suite, then publish the installer and the portable zip (`release.yml`).
-  `release.yml` also posts the changelog to Discord. GitHub's default code-scanning
+  `release.yml` also posts the changelog to Discord. After the tag build publishes,
+  the maintainer runs `scripts/sign_release.ps1 -Tag vX.Y.Z` on a local machine to
+  add the signed update manifest to the release. GitHub's default code-scanning
   setup runs CodeQL static analysis, with no workflow file. Dependabot keeps the
   NuGet packages and the Actions current.
