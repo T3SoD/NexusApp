@@ -62,6 +62,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Data\demo\**\*" />
+  </ItemGroup>
+
   <!-- Cargo Planner 3D scene (Three.js, vendored for offline) served to the WebView2 host. -->
   <ItemGroup>
     <None Remove="Web\cargo\**\*" />
