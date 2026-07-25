@@ -1,4 +1,4 @@
-#Requires -Version 7
+#Requires -Version 7.4
 # Per-release signing step, run AFTER the tag build has published its assets:
 #   pwsh scripts/sign_release.ps1 -Tag v6.7.0
 # Downloads the two published assets, hashes them LOCALLY (a compromised CI can therefore
@@ -44,8 +44,13 @@ try {
     $manifestPath = Join-Path $work "update_manifest.json"
     ($manifest | ConvertTo-Json -Depth 4) | Set-Content -Path $manifestPath -Encoding utf8NoBOM -NoNewline
 
+    # Read the key file outside the try, so a missing or unreadable file reports itself instead
+    # of being blamed on the passphrase.
+    $keyPem = Get-Content $KeyPath -Raw
+    $pass = ConvertFrom-SecureString (Read-Host -AsSecureString "Private key passphrase") -AsPlainText
     $ecdsa = [System.Security.Cryptography.ECDsa]::Create()
-    $ecdsa.ImportFromPem((Get-Content $KeyPath -Raw))
+    try { $ecdsa.ImportFromEncryptedPem($keyPem, $pass) }
+    catch { throw "Couldn't unlock the private key. Wrong passphrase, or the key is not protected yet (run scripts/protect_update_key.ps1 once)." }
     $bytes = [System.IO.File]::ReadAllBytes($manifestPath)
     $sig = $ecdsa.SignData($bytes, [System.Security.Cryptography.HashAlgorithmName]::SHA256)
     # Prove the signature verifies HERE, before anything is written or uploaded. A bad key file

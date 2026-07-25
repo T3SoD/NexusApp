@@ -129,12 +129,14 @@ types.
 - **Updates** are opt-in. The app can check for new releases when the user turns
   the check on. `scripts/sign_release.ps1` hashes the published release assets
   locally, writes `update_manifest.json` and a detached `.sig` (ECDSA P-256 over
-  SHA-256), signs with a key kept off GitHub, and uploads both to the release.
-  In the app, `UpdateVerifier` holds the pinned public key, the hash checks, and
-  the strictly-greater version rule. It gates `UpdateService`. The update
-  subsystem is the only code in the app that touches the network. Downloads land
-  in `%AppData%\NexusApp\updates`. NexusApp checks their hash before the
-  installer ever runs.
+  SHA-256), signs with a passphrase-protected key kept off GitHub, and uploads
+  both to the release. `scripts/generate_update_keys.ps1` creates the keypair,
+  and `scripts/protect_update_key.ps1` is the one-time step that locks the
+  private key behind that passphrase. In the app, `UpdateVerifier` holds the
+  pinned public key, the hash checks, and the strictly-greater version rule. It
+  gates `UpdateService`. The update subsystem is the only code in the app that
+  touches the network. Downloads land in `%AppData%\NexusApp\updates`. NexusApp
+  checks their hash before the installer ever runs.
 
 ## Key flows
 
@@ -195,7 +197,8 @@ filter all of NexusApp to a single member. No server is involved.
   push and PR to `main` (`build.yml`). On a version tag, GitHub Actions run the
   same test suite, then publish the installer and the portable zip (`release.yml`).
   `release.yml` also posts the changelog to Discord. After the tag build publishes,
-  the maintainer runs `scripts/sign_release.ps1 -Tag vX.Y.Z` on a local machine to
-  add the signed update manifest to the release. GitHub's default code-scanning
-  setup runs CodeQL static analysis, with no workflow file. Dependabot keeps the
-  NuGet packages and the Actions current.
+  the maintainer runs `scripts/sign_release.ps1 -Tag vX.Y.Z` on a local machine,
+  typing the key passphrase at the prompt, to add the signed update manifest to
+  the release. GitHub's default code-scanning setup runs CodeQL static analysis,
+  with no workflow file. Dependabot keeps the NuGet packages and the Actions
+  current.
