@@ -341,6 +341,19 @@
                                 </Grid>
                             </RadioButton>
 
+                            <RadioButton x:Name="NavAdmin" Tag="admin" Visibility="Collapsed" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="settings" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Admin" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="OWNER" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
                             <RadioButton x:Name="NavSettings" Tag="settings" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -435,6 +448,9 @@
                 <Grid x:Name="PageHauling" Visibility="Collapsed"/>
                 <Grid x:Name="PagePlanner" Visibility="Collapsed"/>
                 <Grid x:Name="PageGridStudio" Visibility="Collapsed"/>
+
+                <!-- ── ADMIN PAGE (owner-only, built in code - Views/AdminPage.cs) ── -->
+                <Grid x:Name="PageAdmin" Visibility="Collapsed"/>
 
                 <!-- ── SETTINGS PAGE (built in code - Views/SettingsPage.cs) ── -->
                 <Grid x:Name="PageSettings" Visibility="Collapsed"/>
