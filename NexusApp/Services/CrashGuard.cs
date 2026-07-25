@@ -20,13 +20,18 @@ public static class CrashGuard
     /// <summary>Argument passed to the relaunched instance so startup can log why it was started.</summary>
     public const string RelaunchArg = "--render-relaunch";
 
+    // Arguments for the auto-relaunched instance. The relaunch must preserve the profile the
+    // dying instance was running: a demo-profile session that lost the display (the game
+    // crashing is exactly when demo screenshots happen) must come back as the demo, never
+    // as the live profile.
+    internal static string[] RelaunchArgs(bool demoProfile) =>
+        demoProfile ? [RelaunchArg, AppPaths.DemoArg] : [RelaunchArg];
+
     /// <summary>A relaunch marker younger than this suppresses further auto-relaunches (loop guard).</summary>
     public static readonly TimeSpan RelaunchLoopWindow = TimeSpan.FromMinutes(2);
 
     /// <summary>Marker recording the last auto-relaunch, next to settings.json (file mtime is the clock).</summary>
-    public static string DefaultMarkerPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "NexusApp", "render_relaunch.marker");
+    public static string DefaultMarkerPath => Path.Combine(AppPaths.Root, "render_relaunch.marker");
 
     /// <summary>
     /// True when the exception (or anything in its inner/aggregate chain) is a render thread
@@ -112,7 +117,11 @@ public static class CrashGuard
                 Logger.Error("[WIN] render thread failure (0x88980406): display connection lost (usually the game crashing or quitting) - relaunching Nexus");
                 var exe = Environment.ProcessPath;
                 if (!string.IsNullOrEmpty(exe))
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { ArgumentList = { RelaunchArg } });
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo(exe);
+                    foreach (var a in RelaunchArgs(AppPaths.IsDemoProfile)) psi.ArgumentList.Add(a);
+                    System.Diagnostics.Process.Start(psi);
+                }
             }
             else
             {
