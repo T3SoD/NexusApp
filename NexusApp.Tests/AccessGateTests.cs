@@ -17,4 +17,11 @@ public class AccessGateTests
         Assert.False(AccessGate.IsApproved(""));
         Assert.False(AccessGate.IsApproved(null));
     }
+
+    [Fact] public void Testers_ContainsKnownTester() => Assert.Contains("Rorran198", AccessGate.Testers);
+    [Fact] public void Testers_ExcludesTheOwner() => Assert.DoesNotContain(OwnerGate.OwnerHandle, AccessGate.Testers);
+    [Fact] public void Testers_AreSortedCaseInsensitively()
+        => Assert.Equal(AccessGate.Testers.OrderBy(h => h, StringComparer.OrdinalIgnoreCase), AccessGate.Testers);
+    [Fact] public void EveryRosteredTester_IsApproved()
+        => Assert.All(AccessGate.Testers, h => Assert.True(AccessGate.IsApproved(h)));
 }
