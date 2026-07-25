@@ -1,8 +1,10 @@
-#Requires -Version 7
+#Requires -Version 7.4
 # One-time ceremony: create the update-signing keypair. The PRIVATE key stays on the
 # maintainer's machine (default %USERPROFILE%\.nexus-signing, outside any repo) and must be
 # backed up offline; the PUBLIC key gets pasted into NexusApp/Services/UpdateVerifier.cs.
 # Refuses to overwrite an existing private key: rotating the key is a deliberate act.
+# The private key is passphrase-protected from creation, so signing always needs a phrase
+# typed at a keyboard and nothing automated can sign.
 param(
     [string]$KeyDir = (Join-Path $env:USERPROFILE ".nexus-signing")
 )
@@ -14,7 +16,20 @@ if (Test-Path $priv) { throw "Refusing to overwrite the existing private key at 
 
 New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
 $ecdsa = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve+NamedCurves]::nistP256)
-Set-Content -Path $priv -Value $ecdsa.ExportPkcs8PrivateKeyPem() -Encoding ascii -NoNewline
+
+# 12 characters minimum, not 8: at this KDF cost an 8-character human-chosen phrase falls to
+# offline guessing in hours, and the phrase is the entire defence if any copy of this file leaks.
+$p1 = ConvertFrom-SecureString (Read-Host -AsSecureString "New passphrase (12 characters minimum)") -AsPlainText
+$p2 = ConvertFrom-SecureString (Read-Host -AsSecureString "Confirm the new passphrase") -AsPlainText
+if ($p1 -cne $p2) { throw "Passphrases do not match. Nothing was changed." }
+if ($p1.Length -lt 12) { throw "Use at least 12 characters. Nothing was changed." }
+
+$pbe = [System.Security.Cryptography.PbeParameters]::new(
+    [System.Security.Cryptography.PbeEncryptionAlgorithm]::Aes256Cbc,
+    [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+    600000)
+
+Set-Content -Path $priv -Value $ecdsa.ExportEncryptedPkcs8PrivateKeyPem($p1, $pbe) -Encoding ascii -NoNewline
 Set-Content -Path $pub  -Value $ecdsa.ExportSubjectPublicKeyInfoPem() -Encoding ascii -NoNewline
 
 # Best-effort: strip inherited ACLs so only the current user can access the private key.
