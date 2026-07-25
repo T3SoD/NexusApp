@@ -87,6 +87,19 @@ public class AppSettings
     // Admin page UI state (owner-only tab): which admin tab (roster / diagnostics / tools)
     // was last active. Restore is whitelist-guarded by AdminTabs.NormalizeForRestore.
     public string AdminActiveTab { get; set; } = "roster";
+
+    // Auto-update consent: null = the one-time opt-in strip has not been answered yet (and no
+    // network call ever happens), true/false = the user's standing choice, changeable anytime
+    // in Settings > Diagnostics. The check itself is throttled to once per 24h by UpdateService.
+    public bool? UpdateCheckEnabled { get; set; }
+
+    // UTC instant of the last completed update check (success or failure), driving both the
+    // 24-hour auto-check throttle and the "Last checked" row. Null until the first check ever.
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
+    // The app version that ran last session, updated at every startup. A jump upward triggers
+    // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
+    public string? LastSeenVersion { get; set; }
 }
 
 public class ScanRegion
