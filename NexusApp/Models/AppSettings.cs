@@ -83,6 +83,10 @@ public class AppSettings
     // last active, so the page reopens where the user left off. The destructive "data" tab is
     // deliberately never restored; SettingsTabs.NormalizeForRestore maps it back to the default.
     public string SettingsActiveTab { get; set; } = "game";
+
+    // Admin page UI state (owner-only tab): which admin tab (roster / diagnostics / tools)
+    // was last active. Restore is whitelist-guarded by AdminTabs.NormalizeForRestore.
+    public string AdminActiveTab { get; set; } = "roster";
 }
 
 public class ScanRegion

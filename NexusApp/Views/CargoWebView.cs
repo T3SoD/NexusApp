@@ -22,10 +22,13 @@ public sealed class CargoWebView : UserControl
     // ship gets a hologram out of the box. A matching file under the user's %APPDATA% hulls folder,
     // when present, acts as a local override and wins over the shipped copy. Ships with neither
     // buffer render exactly as before.
-    private static readonly string HullsDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NexusApp", "hulls");
+    private static readonly string HullsDir = Path.Combine(AppPaths.Root, "hulls");
     private static readonly string ShippedHullsDir = Path.Combine(AppContext.BaseDirectory, "Web", "cargo", "hulls");
     private static string? _lastHullLog;
+
+    // Read-only dir accessors for the owner diagnostics dashboard's hull inventory counts.
+    internal static string HullsDirPath => HullsDir;
+    internal static string ShippedHullsDirPath => ShippedHullsDir;
 
     // Variants that share a physical hull (they differ only in cargo grids) point at one outline.
     // Ironclad Assault is the same Drake Ironclad airframe as the Ironclad, so it reuses its hologram.
@@ -93,7 +96,8 @@ public sealed class CargoWebView : UserControl
         {
             // Keep the WebView2 profile in a writable per-user folder (the exe may live under Program Files).
             var dataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexusApp", "WebView2");
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexusApp",
+                AppPaths.IsDemoProfile ? "WebView2_demo" : "WebView2");
             Directory.CreateDirectory(dataFolder);
             _sharedEnv = CoreWebView2Environment.CreateAsync(null, dataFolder, null);
         }

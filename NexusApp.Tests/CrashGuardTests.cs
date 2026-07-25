@@ -231,6 +231,16 @@ public class CrashGuardTests
         finally { Cleanup(path); }
     }
 
+    // ── RelaunchArgs: the auto-relaunch must come back in the SAME profile ──────
+
+    [Fact]
+    public void RelaunchArgs_NormalLaunch_CarriesOnlyTheRelaunchMarker()
+        => Assert.Equal(new[] { CrashGuard.RelaunchArg }, CrashGuard.RelaunchArgs(false));
+
+    [Fact]
+    public void RelaunchArgs_DemoProfile_PreservesTheDemoFlag()
+        => Assert.Equal(new[] { CrashGuard.RelaunchArg, AppPaths.DemoArg }, CrashGuard.RelaunchArgs(true));
+
     private static string TempMarkerPath() =>
         Path.Combine(Path.GetTempPath(), "NexusCrashGuardTest_" + Guid.NewGuid().ToString("N") + ".marker");
 
