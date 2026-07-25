@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.6.2  -  Jul 24, 2026",
+        [
+            "Cleaned the mining reference data - removed duplicate racing blueprint cards, unlock listings for missions that no longer exist in Alpha 4.9, and a stray placeholder faction header",
+            "The portable download is reorganized - extracting now gives you one folder with the app and README easy to find, instead of hundreds of loose files",
+        ]),
         ("App  6.6.1  -  Jul 24, 2026",
         [
             "Beta feature update - the Cargo Planner's ship hull holograms now ship with the app",
