@@ -697,4 +697,40 @@ public class PortableUpdaterTests : IDisposable
         Assert.False(r.ShowSwapFailedNotice);
         Assert.True(File.Exists(Path.Combine(install, PortableUpdater.StagingDirName, "half-copied.dll")));
     }
+
+    // ---- UnpackForManual ----
+
+    [Fact]
+    public void UnpackForManual_ExtractsAndOpensBothFolders()
+    {
+        var (env, root) = FakeEnv();
+        var install = Path.Combine(root, "PortableApps", "NexusApp");
+        Directory.CreateDirectory(install);
+        var updates = Path.Combine(root, "AppData", "NexusApp", "updates");
+        var opened = new List<string>();
+        var (zip, hash) = MakeZip(GoodEntries());
+        var up = new PortableUpdater(install, Path.Combine(install, "NexusApp.exe"), updates,
+            Path.Combine(root, SwapJournal.FileName), () => "Portable", env,
+            retryDelaysMs: new[] { 1, 1 }, nexusProcessCount: () => 1, openFolder: opened.Add);
+        Assert.True(up.UnpackForManual(zip, hash, new Version(6, 9, 0)));
+        var staged = Path.Combine(updates, "6.9.0", "staged", "NexusApp");
+        Assert.Equal("new exe bytes", File.ReadAllText(Path.Combine(staged, "NexusApp.exe")));
+        Assert.Equal(new[] { staged, install }, opened);
+    }
+
+    [Fact]
+    public void UnpackForManual_BadHash_FailsAndOpensNothing()
+    {
+        var (env, root) = FakeEnv();
+        var install = Path.Combine(root, "PortableApps", "NexusApp");
+        Directory.CreateDirectory(install);
+        var opened = new List<string>();
+        var (zip, _) = MakeZip(GoodEntries());
+        var up = new PortableUpdater(install, Path.Combine(install, "NexusApp.exe"),
+            Path.Combine(root, "updates"), Path.Combine(root, SwapJournal.FileName),
+            () => "Portable", env, retryDelaysMs: new[] { 1, 1 }, nexusProcessCount: () => 1,
+            openFolder: opened.Add);
+        Assert.False(up.UnpackForManual(zip, new string('a', 64), new Version(6, 9, 0)));
+        Assert.Empty(opened);
+    }
 }

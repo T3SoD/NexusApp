@@ -797,7 +797,26 @@ public sealed class PortableUpdater : IPortableSwapper
         catch { return false; }
     }
 
-    // Completed by a later task; throws until then so the class compiles without lying
-    // about what works.
-    public bool UnpackForManual(string zipPath, string expectedSha256, Version version) => throw new NotImplementedException();
+    // The guided-manual fallback: the app does the verify and the unpack, the user does one
+    // Explorer copy. Strictly better than revealing the raw zip, and the floor every
+    // precondition failure lands on.
+    public bool UnpackForManual(string zipPath, string expectedSha256, Version version)
+    {
+        try
+        {
+            Logger.Info($"{UpdateService.Tag} unpack started");
+            var stagedRoot = Path.Combine(_updatesDir, version.ToString(3), "staged", "NexusApp");
+            VerifyAndExtract(zipPath, expectedSha256, stagedRoot);
+            Logger.Info($"{UpdateService.Tag} unpack complete, hash re-verified");
+            _openFolder(stagedRoot);
+            _openFolder(_installDir);
+            Logger.Info($"{UpdateService.Tag} manual handoff: unpacked and folders opened");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"{UpdateService.Tag} manual unpack failed: {ex.Message}", ex);
+            return false;
+        }
+    }
 }
