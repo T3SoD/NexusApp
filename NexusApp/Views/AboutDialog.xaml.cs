@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.8.0  -  Jul 26, 2026",
+        [
+            "New: Mission Guides - browse zoomable maps and tactical reference guides right in Nexus, in a new dock page and a GUIDES tab in the in-game overlay",
+            "The guide viewer zooms to your cursor with the scroll wheel, drags to pan, and double-clicks back to a full fit; all guides ship inside the app, fully offline",
+            "Community guide artwork is credited on the Mission Guides page",
+            "Small polish across the status strip and dialogs",
+            "Maintainer tooling - the update signing key is now passphrase protected",
+        ]),
         ("App  6.7.0  -  Jul 25, 2026",
         [
             "Optional update checks - say yes once and Nexus looks for new versions at startup, at most once a day, and shows a notice when one is out",
