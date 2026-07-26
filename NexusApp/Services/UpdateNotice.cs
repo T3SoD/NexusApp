@@ -21,6 +21,15 @@ public static class UpdateNotice
     public const string NeverChecked = "Never checked";
     public const string CheckFailed = "Couldn't check for updates. See nexus.log for details.";
 
+    // Named causes for the failures the app can actually classify. Anything else keeps the
+    // generic CheckFailed line above.
+    public const string CheckFailedNotSignedYet =
+        "The latest release is not signed yet. Updates stay hidden until it is signed.";
+    public const string CheckFailedSignatureMissing =
+        "The update manifest is missing its signature. Updates stay hidden until signing completes.";
+    public const string CheckFailedNetwork =
+        "Could not reach the update service. Check your connection and try again.";
+
     public const string VerifyFailedTitle = "Update verification failed";
     public const string VerifyFailedBody =
         "The downloaded file failed verification and was deleted. Nothing was installed.\n\n" +
@@ -60,14 +69,15 @@ public static class UpdateNotice
     public static bool ShouldShowPostUpdateStrip(string? lastSeenVersion, string currentVersion) =>
         UpdateVerifier.IsUpgrade(lastSeenVersion, currentVersion);
 
-    // The Settings "Check now" status text. Takes the state by NAME so this seam has no
-    // dependency on UpdateService; UpdateService's enum members must keep these names.
-    public static string StatusLine(string state, Version? availableVersion, DateTime? lastCheckedUtc, bool lastFailureWasUserInitiated)
+    // The Settings "Check now" status text. Takes the state and the failure kind by NAME so this
+    // seam has no dependency on UpdateService; UpdateService's enum members must keep these names.
+    public static string StatusLine(string state, Version? availableVersion, DateTime? lastCheckedUtc,
+                                    bool lastFailureWasUserInitiated, string failureKind = "")
     {
         switch (state)
         {
             case "Failed":
-                return lastFailureWasUserInitiated ? CheckFailed : FormatLastChecked(lastCheckedUtc);
+                return lastFailureWasUserInitiated ? FailureLine(failureKind) : FormatLastChecked(lastCheckedUtc);
             case "UpToDate":
                 return "Up to date";
             case "UpdateAvailable":
@@ -82,4 +92,15 @@ public static class UpdateNotice
                 return FormatLastChecked(lastCheckedUtc);
         }
     }
+
+    // A manual check that failed says WHY when the cause is one the service could classify.
+    // An unknown or unclassified kind falls back to the generic line, so a new failure kind
+    // can never leave the row blank.
+    private static string FailureLine(string failureKind) => failureKind switch
+    {
+        "NotSignedYet" => CheckFailedNotSignedYet,
+        "SignatureMissing" => CheckFailedSignatureMissing,
+        "Network" => CheckFailedNetwork,
+        _ => CheckFailed,
+    };
 }

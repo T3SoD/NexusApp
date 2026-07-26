@@ -515,7 +515,7 @@ public sealed class SettingsPage : UserControl
         _updateCheckToggle?.SetOnSilently(App.Settings.Current.UpdateCheckEnabled == true);
         var svc = App.Update;
         _updateStatusText.Text = UpdateNotice.StatusLine(svc.State.ToString(), svc.Available?.Version,
-            App.Settings.Current.LastUpdateCheckUtc, svc.LastFailureWasUserInitiated);
+            App.Settings.Current.LastUpdateCheckUtc, svc.LastFailureWasUserInitiated, svc.LastFailureKind.ToString());
 
         _updateActionHost.Children.Clear();
         switch (svc.State)
