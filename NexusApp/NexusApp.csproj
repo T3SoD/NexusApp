@@ -80,6 +80,9 @@
     <Resource Include="Assets\nexus_logo_classic.png" />
     <Resource Include="Assets\nexus.ico" />
     <Resource Include="Assets\RS_Signature.png" />
+    <!-- Mission Guides artwork. Embedded, never loose in the portable output.
+         Adding a guide = drop the PNG here and add one GuideCatalog entry. -->
+    <Resource Include="Assets\Guides\**\*.png" />
     <!-- UI overhaul type system: Rajdhani (display), JetBrains Mono (data) -->
     <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf" />
     <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf" />

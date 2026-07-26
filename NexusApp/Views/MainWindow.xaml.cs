@@ -238,6 +238,7 @@ public partial class MainWindow : Window
         PageWorkOrders.Visibility = page == "workorders" ? Visibility.Visible : Visibility.Collapsed;
         PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
+        PageGuides.Visibility     = page == "guides"     ? Visibility.Visible : Visibility.Collapsed;
         PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
         PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
         PageAdmin.Visibility      = page == "admin"      ? Visibility.Visible : Visibility.Collapsed;
@@ -250,6 +251,7 @@ public partial class MainWindow : Window
         NavWork.IsChecked     = page == "workorders";
         NavNetwork.IsChecked  = page == "network";
         NavHauling.IsChecked  = page == "hauling";
+        NavGuides.IsChecked   = page == "guides";
         NavPlanner.IsChecked  = page == "planner";
         NavGridStudio.IsChecked = page == "gridstudio";
         NavAdmin.IsChecked    = page == "admin";
@@ -270,6 +272,7 @@ public partial class MainWindow : Window
             "workorders" => "Nexus - Refinery Tracker",
             "network"    => "Nexus - Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
+            "guides"     => "Nexus - Mission Guides",
             "planner"    => "Nexus - Cargo Planner",
             "gridstudio" => "Nexus - Grid Studio",
             "admin"      => "Nexus - Admin",
@@ -285,6 +288,7 @@ public partial class MainWindow : Window
         if (page == "command") { InitCommandPage(); _commandPage?.PlayEntrance(); }
         if (page == "network") InitNetworkPage();
         if (page == "hauling") InitHaulingPage();
+        if (page == "guides") InitGuidesPage();
         if (page == "planner") InitPlannerPage();
         if (page == "gridstudio") InitGridStudioPage();
         if (page == "admin") InitAdminPage();
@@ -300,6 +304,7 @@ public partial class MainWindow : Window
             "workorders" => PageWorkOrders,
             "network"    => PageNetwork,
             "hauling"    => PageHauling,
+            "guides"     => PageGuides,
             "admin"      => PageAdmin,
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
@@ -358,6 +363,7 @@ public partial class MainWindow : Window
         if (NavBlue.IsChecked == true)     return NavBlue;
         if (NavNetwork.IsChecked == true)  return NavNetwork;
         if (NavHauling.IsChecked == true)  return NavHauling;
+        if (NavGuides.IsChecked == true)   return NavGuides;
         if (NavPlanner.IsChecked == true)  return NavPlanner;
         if (NavGridStudio.IsChecked == true) return NavGridStudio;
         if (NavAdmin.IsChecked == true)    return NavAdmin;
@@ -571,6 +577,18 @@ public partial class MainWindow : Window
             PageHauling.Children.Add(_haulingPage);
         }
         _haulingPage.Refresh();
+    }
+
+    // Mission Guides: lazily built on first visit, so nothing decodes until the page is opened.
+    private GuidesPage? _guidesPage;
+    private void InitGuidesPage()
+    {
+        if (_guidesPage == null)
+        {
+            _guidesPage = new GuidesPage();
+            PageGuides.Children.Add(_guidesPage);
+        }
+        _guidesPage.Activate();
     }
 
     private CargoPlannerPage? _plannerPage;
