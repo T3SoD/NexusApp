@@ -272,9 +272,370 @@ public sealed class PortableUpdater : IPortableSwapper
         return new ExtractResult(hashes, total, destDir);
     }
 
-    // Interface members are completed by later tasks; these throw until then so the class
-    // compiles without lying about what works.
-    public PortablePreflight Preflight(long zipBytes) => throw new NotImplementedException();
-    public PortableApplyResult Apply(string zipPath, string expectedSha256, Version version, string currentVersion) => throw new NotImplementedException();
+    // Every reason returned here routes the UI to the guided manual flow, never to an error:
+    // a precondition failure is a different intentional path, and the reason line lands in
+    // nexus.log as "[UPDATE] portable swap unavailable: <reason>, offering manual handoff".
+    public PortablePreflight Preflight(long zipBytes)
+    {
+        var issue = PreflightPathIssue(_processPath, _installDir, _env);
+        if (issue != null) return new(false, issue);
+        if (_distribution() != "Portable") return new(false, "this is not the portable distribution");
+        // Layout sanity: a real portable install has the native loaders beside the exe.
+        if (!File.Exists(Path.Combine(_installDir, "e_sqlite3.dll")) ||
+            !File.Exists(Path.Combine(_installDir, "wpfgfx_cor3.dll")))
+            return new(false, "this folder does not look like a portable Nexus install");
+        try
+        {
+            if ((File.GetAttributes(_installDir) & FileAttributes.ReparsePoint) != 0)
+                return new(false, "the install folder is a link, not a real folder");
+        }
+        catch (Exception ex) { return new(false, $"the install folder could not be inspected: {ex.Message}"); }
+        if (_nexusProcessCount() > 1) return new(false, "another Nexus window is open");
+        // Writability probe: create + rename + delete catches Controlled Folder Access,
+        // read-only media, and ACL denials in one shot. Explorer stays allowed under CFA,
+        // so the manual fallback this reason routes to still works.
+        var probe = Path.Combine(_installDir, "nexus-update-probe-" + Path.GetRandomFileName());
+        try
+        {
+            File.WriteAllText(probe, "probe");
+            File.Move(probe, probe + ".r");
+            File.Delete(probe + ".r");
+        }
+        catch
+        {
+            // Both probe generations: the failure can hit before or after the rename step,
+            // and a leftover probe file would violate the portable-cleanliness rule.
+            try { if (File.Exists(probe)) File.Delete(probe); } catch { }
+            try { if (File.Exists(probe + ".r")) File.Delete(probe + ".r"); } catch { }
+            return new(false, "Nexus cannot write to its own folder here (folder protection, permissions, or read-only media)");
+        }
+        // Free space: the staging copy coexists with the originals, so the install volume
+        // transiently needs roughly twice the payload; the data volume needs zip plus
+        // extraction. A query failure (SUBST, quotas) is attempt-anyway, not a refusal.
+        try
+        {
+            var installDrive = new DriveInfo(Path.GetPathRoot(_installDir)!);
+            if (installDrive.DriveType == DriveType.Network)
+                return new(false, "the install folder is on a network drive");
+            if (installDrive.DriveType == DriveType.Removable)
+                Logger.Info($"{UpdateService.Tag} install folder is on removable media; a power cut mid-swap can corrupt it (the .old set is the recovery)");
+            if (installDrive.AvailableFreeSpace < zipBytes * 2 + FreeSpaceSlackBytes)
+                return new(false, "not enough free space in the install folder's drive");
+            if (new DriveInfo(Path.GetPathRoot(_updatesDir)!).AvailableFreeSpace < zipBytes * 2 + FreeSpaceSlackBytes)
+                return new(false, "not enough free space on the Windows drive to unpack the update");
+        }
+        catch (Exception ex)
+        {
+            Logger.Info($"{UpdateService.Tag} free-space probe inconclusive ({ex.Message}); attempting anyway");
+        }
+        return new(true, "");
+    }
+
+    public PortableApplyResult Apply(string zipPath, string expectedSha256, Version version, string currentVersion)
+    {
+        long zipBytes = 0;
+        try { zipBytes = new FileInfo(zipPath).Length; } catch { }
+        var pre = Preflight(zipBytes);
+        if (!pre.Ok) return new(PortableApplyOutcome.FailedNothingChanged, pre.Reason);
+
+        // Upgrade re-asserted against the ON-DISK exe, not just this process: a stale
+        // instance must never re-apply its download over an already-updated folder.
+        var baseline = OnDiskVersionOrFallback(Path.Combine(_installDir, "NexusApp.exe"), currentVersion);
+        if (!UpdateVerifier.IsUpgrade(baseline, version.ToString(3)))
+            return new(PortableApplyOutcome.FailedNothingChanged, "the update is not newer than the installed version");
+
+        FileStream? lockFs = null;
+        try
+        {
+            // Exclusive for the whole swap; DeleteOnClose means a crash can never leave a
+            // stale lock (the handle's death releases and removes it).
+            try
+            {
+                lockFs = new FileStream(Path.Combine(_installDir, LockFileName),
+                    FileMode.Create, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose);
+            }
+            catch { return new(PortableApplyOutcome.FailedNothingChanged, "another update is already in progress"); }
+
+            Logger.Info($"{UpdateService.Tag} unpack started");
+            ExtractResult extracted;
+            var stagedRoot = Path.Combine(_updatesDir, version.ToString(3), "staged", "NexusApp");
+            try { extracted = VerifyAndExtract(zipPath, expectedSha256, stagedRoot); }
+            catch (Exception ex) { return new(PortableApplyOutcome.FailedNothingChanged, ex.Message); }
+            Logger.Info($"{UpdateService.Tag} unpack complete, hash re-verified ({extracted.FileHashes.Count} files)");
+
+            // Exact free-space check now that the true payload size is known.
+            try
+            {
+                if (new DriveInfo(Path.GetPathRoot(_installDir)!).AvailableFreeSpace < extracted.TotalBytes + FreeSpaceSlackBytes)
+                    return new(PortableApplyOutcome.FailedNothingChanged, "not enough free space in the install folder's drive");
+            }
+            catch { /* attempt anyway */ }
+
+            var stagingDir = Path.Combine(_installDir, StagingDirName);
+            try
+            {
+                if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, recursive: true);
+                CopyTree(extracted.PayloadRoot, stagingDir);
+            }
+            catch (Exception ex)
+            {
+                TryDeleteDir(stagingDir);
+                return new(PortableApplyOutcome.FailedNothingChanged, $"couldn't stage the update inside the install folder: {ex.Message}");
+            }
+            Logger.Info($"{UpdateService.Tag} staged copy placed inside the install folder");
+
+            return Flip(extracted, stagingDir, version, currentVersion);
+        }
+        finally { lockFs?.Dispose(); }
+    }
+
+    // Two-phase core. Phase order per file: journal the intent (write-ahead), clear any stale
+    // .old, rename current -> .old, rename staged -> current. NexusApp.exe goes strictly
+    // LAST so every earlier failure rolls back without ever touching the running image.
+    private PortableApplyResult Flip(ExtractResult extracted, string stagingDir, Version version, string currentVersion)
+    {
+        var rels = extracted.FileHashes.Keys
+            .Where(r => !string.Equals(r, "NexusApp.exe", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
+            .Append("NexusApp.exe")
+            .ToList();
+
+        // Reparse sweep over every directory a flip touches: a planted junction must never
+        // redirect a rename outside the install folder.
+        var installRoot = _installDir.TrimEnd('\\');
+        foreach (var dir in rels.Select(r => Path.GetDirectoryName(Path.Combine(_installDir, r))!)
+                                .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            for (var d = dir; d.Length > installRoot.Length; d = Path.GetDirectoryName(d)!)
+                if (Directory.Exists(d) && (File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0)
+                {
+                    TryDeleteDir(stagingDir);
+                    return new(PortableApplyOutcome.FailedNothingChanged, "a folder inside the install folder is a link");
+                }
+            Directory.CreateDirectory(dir);
+        }
+
+        var oneDrive = IsOneDriveManaged(_installDir);
+        var journal = new SwapJournal
+        {
+            AttemptedVersion = version.ToString(3),
+            PreviousVersion = currentVersion,
+            InstallDir = _installDir,
+        };
+        try { journal.Save(_journalPath); }
+        catch (Exception ex)
+        {
+            // Abort BEFORE any mutation if the write-ahead contract cannot be established,
+            // and take the staging folder back out of the install dir.
+            TryDeleteDir(stagingDir);
+            return new(PortableApplyOutcome.FailedNothingChanged, $"couldn't write the update journal: {ex.Message}");
+        }
+
+        foreach (var rel in rels)
+        {
+            var staged = Path.Combine(stagingDir, rel);
+            var target = Path.Combine(_installDir, rel);
+            var old = target + OldSuffix;
+            var nonCritical = string.Equals(rel, "README.txt", StringComparison.OrdinalIgnoreCase);
+            BeforeFlipHook?.Invoke(staged, rel);
+
+            // Re-verify the staged bytes against the hash captured during same-handle
+            // extraction, immediately before the rename: the staged tree sat in
+            // user-writable space between extraction and now.
+            string stagedHash;
+            try
+            {
+                using var sfs = File.OpenRead(staged);
+                stagedHash = Convert.ToHexString(SHA256.HashData(sfs)).ToLowerInvariant();
+            }
+            catch (Exception ex) { return Abort(journal, stagingDir, $"couldn't re-verify {rel}: {ex.Message}"); }
+            if (!string.Equals(stagedHash, extracted.FileHashes[rel], StringComparison.Ordinal))
+                return Abort(journal, stagingDir, $"{rel} changed between unpack and install");
+
+            var op = new SwapOp { Rel = rel, NonCritical = nonCritical };
+            journal.Ops.Add(op);
+            if (!SaveJournal(journal)) return Abort(journal, stagingDir, "couldn't update the journal");
+
+            if (File.Exists(old) && !RetryDelete(old, oneDrive))
+            {
+                if (nonCritical) { op.Skipped = true; SaveJournal(journal); Logger.Info($"{UpdateService.Tag} skipped {rel}: a leftover {rel}{OldSuffix} is in use"); continue; }
+                return Abort(journal, stagingDir, $"a leftover {rel}{OldSuffix} could not be removed");
+            }
+            if (File.Exists(target))
+            {
+                if (!RetryRename(target, old, oneDrive))
+                {
+                    if (nonCritical) { op.Skipped = true; SaveJournal(journal); Logger.Info($"{UpdateService.Tag} skipped {rel}: the current file is in use"); continue; }
+                    return Abort(journal, stagingDir, $"{rel} is held open by another program");
+                }
+                op.OldMoved = true;
+                if (!SaveJournal(journal)) return Abort(journal, stagingDir, "couldn't update the journal");
+            }
+            if (!RetryRename(staged, target, oneDrive))
+            {
+                if (nonCritical)
+                {
+                    if (op.OldMoved) { RetryRename(old, target, oneDrive); op.OldMoved = false; }
+                    op.Skipped = true; SaveJournal(journal);
+                    Logger.Info($"{UpdateService.Tag} skipped {rel}: couldn't place the new file");
+                    continue;
+                }
+                return Abort(journal, stagingDir, $"couldn't place the new {rel}");
+            }
+            op.NewPlaced = true;
+            if (!SaveJournal(journal)) return Abort(journal, stagingDir, "couldn't update the journal");
+        }
+
+        journal.Status = SwapJournal.StatusComplete;
+        if (!SaveJournal(journal)) return Abort(journal, stagingDir, "couldn't mark the journal complete");
+        TryDeleteDir(stagingDir);   // empty shells only: every file was renamed out of it
+        Logger.Info($"{UpdateService.Tag} flips complete, new version in place");
+        return new(PortableApplyOutcome.Completed, "");
+    }
+
+    // Roll back every completed pair in reverse. The running app cannot be file-locked out
+    // of its own renames, so this normally restores the folder exactly. If a rename still
+    // fails (AV holding a file), STOP: keep the complete .old set and the verified zip, keep
+    // the journal InProgress, and say exactly where it stuck; the next start finishes the
+    // restore. The folder is never left without a stated recovery path.
+    private PortableApplyResult Abort(SwapJournal journal, string stagingDir, string reason)
+    {
+        // The in-memory status may already read Complete (the final stamp's save is one of
+        // the failure paths that land here). It must never reach disk that way: a stuck
+        // rollback saves the journal below, and a Complete status over a half-rolled-back
+        // folder would send startup recovery down the cleanup branch, deleting the .old set
+        // instead of restoring it.
+        journal.Status = SwapJournal.StatusInProgress;
+        Logger.Error($"{UpdateService.Tag} portable swap failed: {reason}; rolling back");
+        var oneDrive = IsOneDriveManaged(_installDir);
+        for (int i = journal.Ops.Count - 1; i >= 0; i--)
+        {
+            var op = journal.Ops[i];
+            if (op.Skipped) continue;
+            var target = Path.Combine(_installDir, op.Rel);
+            var old = target + OldSuffix;
+            if (op.NewPlaced)
+            {
+                if (!RetryRename(target, Path.Combine(stagingDir, op.Rel), oneDrive))
+                    return RollbackStuck(journal, op.Rel, reason);
+                op.NewPlaced = false;
+                SaveJournal(journal);
+            }
+            if (op.OldMoved)
+            {
+                if (!RetryRename(old, target, oneDrive))
+                    return RollbackStuck(journal, op.Rel, reason);
+                op.OldMoved = false;
+                SaveJournal(journal);
+            }
+        }
+        TryDelete(_journalPath);
+        TryDeleteDir(stagingDir);
+        Logger.Info($"{UpdateService.Tag} rolled back, nothing changed");
+        return new(PortableApplyOutcome.FailedRolledBack, reason);
+    }
+
+    private PortableApplyResult RollbackStuck(SwapJournal journal, string rel, string reason)
+    {
+        SaveJournal(journal);
+        Logger.Error($"{UpdateService.Tag} rollback incomplete at {rel}; previous files are kept as {OldSuffix} and the verified download is retained; the next start finishes the restore");
+        return new(PortableApplyOutcome.FailedRollbackIncomplete, reason);
+    }
+
+    // ---- Small shared helpers ----
+
+    private bool SaveJournal(SwapJournal journal)
+    {
+        try { journal.Save(_journalPath); return true; }
+        catch (Exception ex) { Logger.Error($"{UpdateService.Tag} couldn't write the update journal", ex); return false; }
+    }
+
+    private bool RetryRename(string from, string to, bool oneDrive) =>
+        RetryMoveWith(from, to, EffectiveDelays(oneDrive));
+
+    private bool RetryDelete(string path, bool oneDrive) =>
+        RetryDeleteWith(path, EffectiveDelays(oneDrive));
+
+    // OneDrive-managed folders (Known Folder Move) hold transient sync locks longer than AV
+    // scans do; the backoff doubles rather than switching to a different strategy.
+    private int[] EffectiveDelays(bool oneDrive) =>
+        oneDrive ? _retryDelaysMs.Select(d => d * 2).ToArray() : _retryDelaysMs;
+
+    internal static bool RetryMoveWith(string from, string to, int[] delays)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try { File.Move(from, to); return true; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= delays.Length) return false;
+                Thread.Sleep(delays[attempt]);
+            }
+        }
+    }
+
+    internal static bool RetryDeleteWith(string path, int[] delays)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                // Zip extractors and users set ReadOnly on README/Web content; it blocks
+                // delete (not rename), so clear it first.
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= delays.Length) return false;
+                Thread.Sleep(delays[attempt]);
+            }
+        }
+    }
+
+    private static bool IsOneDriveManaged(string dir)
+    {
+        const FileAttributes RecallOnDataAccess = (FileAttributes)0x400000;
+        try { return (File.GetAttributes(dir) & RecallOnDataAccess) != 0; }
+        catch { return false; }
+    }
+
+    private static string OnDiskVersionOrFallback(string exePath, string fallback)
+    {
+        try
+        {
+            var fvi = FileVersionInfo.GetVersionInfo(exePath);
+            if (Version.TryParse(fvi.FileVersion, out var v) && v.Build >= 0) return v.ToString(3);
+        }
+        catch { }
+        // No readable version resource (dev builds, test fixtures): the caller's process
+        // version already gated this upgrade once.
+        return fallback;
+    }
+
+    private static void CopyTree(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+            File.Copy(file, Path.Combine(to, Path.GetRelativePath(from, file)));
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) { File.SetAttributes(path, FileAttributes.Normal); File.Delete(path); } }
+        catch { /* best effort; a later start retries */ }
+    }
+
+    private static bool TryDeleteDir(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); return true; }
+        catch { return false; }
+    }
+
+    // Completed by a later task; throws until then so the class compiles without lying
+    // about what works.
     public bool UnpackForManual(string zipPath, string expectedSha256, Version version) => throw new NotImplementedException();
 }
