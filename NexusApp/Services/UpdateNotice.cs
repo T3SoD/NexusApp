@@ -37,6 +37,15 @@ public static class UpdateNotice
 
     public const string InstallConfirmBody =
         "Nexus will close and the installer will open. Your settings, work orders, and blueprints are kept.";
+
+    public const string InstallConfirmBodyPortable =
+        "Nexus will close for a moment and reopen as the new version. Your settings, work orders, and blueprints are kept.";
+
+    // Post-confirm staging failure: the app is still open, nothing was touched, and both
+    // recovery paths are named (house pattern: what happened, what the app did, what to do).
+    public const string PrepareFailedBody =
+        "Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.";
+
     public static string InstallConfirmTitle(Version v) => $"Install Nexus {v.ToString(3)} now?";
 
     public static string UpdateBody(string current, Version available) =>
@@ -50,8 +59,29 @@ public static class UpdateNotice
     public static string ReadyBodyInstaller(Version v) =>
         $"Nexus {v.ToString(3)} is downloaded and verified.";
 
-    public static string ReadyBodyPortable(Version v) =>
-        $"Nexus {v.ToString(3)} is downloaded and verified. Close Nexus and swap in the new folder when you are ready.";
+    // Installer parity: same sentence as ReadyBodyInstaller. Kept as its own method so call
+    // sites and tests stay explicit about which flavor they are rendering.
+    public static string ReadyBodyPortable(Version v) => ReadyBodyInstaller(v);
+
+    public static string PreparingBody(Version v) =>
+        $"Preparing Nexus {v.ToString(3)}. Nexus will close and reopen in a moment.";
+
+    // The guided manual flow is a different, intentional flow, never an error: the app
+    // extracts and opens the folders, the user does one copy.
+    public static string ReadyBodyPortableManual(Version v) =>
+        $"Nexus {v.ToString(3)} is downloaded and verified. Nexus cannot replace its own files from " +
+        "this location, so this update finishes with one quick copy.";
+
+    public static string UnpackingBody(Version v) => $"Unpacking Nexus {v.ToString(3)}.";
+
+    public static string ManualHandoffBody(Version v) =>
+        $"Two folders are open: the new Nexus {v.ToString(3)} and your current Nexus. Close Nexus, " +
+        "then copy everything from the new folder into the current one, replacing files when asked.";
+
+    // Sentence order is the house pattern: what happened, what the app did, where you stand.
+    public static string SwapFailedBody(string attempted, string current) =>
+        $"The update to Nexus {attempted} could not finish. Nexus restored the previous version " +
+        $"and nothing changed. You are still on Nexus {current}.";
 
     public static string PostUpdateBody(string version) =>
         $"Nexus updated to v{version}. See what changed in About > Changelog.";
@@ -85,6 +115,7 @@ public static class UpdateNotice
             case "Verifying":
             case "ReadyToInstall":
             case "Installing":
+            case "ManualHandoff":
                 return availableVersion is null
                     ? FormatLastChecked(lastCheckedUtc)
                     : string.Create(CultureInfo.InvariantCulture, $"Nexus {availableVersion.ToString(3)} is available");
