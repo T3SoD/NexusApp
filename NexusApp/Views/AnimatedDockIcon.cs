@@ -22,7 +22,7 @@ namespace NexusApp.Views;
 /// </summary>
 public class AnimatedDockIcon : Viewbox
 {
-    /// <summary>Key into DockIconSpecs.Json (e.g. "operations", "rs", "settings").</summary>
+    /// <summary>Key into DockIconSpecs.Json, falling back to DockIconSpecsCustom.Json (e.g. "operations", "rs", "guides").</summary>
     public string IconKey { get; set; } = "";
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
@@ -91,7 +91,9 @@ public class AnimatedDockIcon : Viewbox
     private void Build()
     {
         using var doc = JsonDocument.Parse(DockIconSpecs.Json);
-        if (!doc.RootElement.TryGetProperty(IconKey, out var spec)) return;
+        using var custom = JsonDocument.Parse(DockIconSpecsCustom.Json);
+        if (!doc.RootElement.TryGetProperty(IconKey, out var spec) &&
+            !custom.RootElement.TryGetProperty(IconKey, out spec)) return;
 
         double minX = 0, minY = 0, w = 32, h = 32;
         var ve = spec.GetProperty("view");

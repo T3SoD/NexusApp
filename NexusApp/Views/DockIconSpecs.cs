@@ -1,8 +1,7 @@
 namespace NexusApp.Views;
 
 // AUTO-GENERATED from the chosen dock-icon picks. Edit the gallery/picks, do not hand-edit.
-// Exception: the "guides" entry (folded map) was added by hand for the Mission Guides dock tile,
-// adopting the glyph drawn in the approved mock. Keep it if this file is ever regenerated.
+// Hand-authored icons live in DockIconSpecs.Custom.cs (AnimatedDockIcon falls back to it).
 public static class DockIconSpecs
 {
     public const string Json = """
@@ -1435,103 +1434,6 @@ public static class DockIconSpecs
      ],
      "ease": "back",
      "delay": 0.3
-    }
-   ]
-  }
- },
- "guides": {
-  "view": [
-   -6,
-   -6,
-   36,
-   36
-  ],
-  "stroke": 1.5,
-  "parts": [
-   {
-    "id": "p0",
-    "el": "path",
-    "d": "M4,7 L9.5,5 L14.5,7 L20,5 L20,17 L14.5,19 L9.5,17 L4,19 Z"
-   },
-   {
-    "id": "p1",
-    "el": "path",
-    "d": "M9.5,5 L9.5,17"
-   },
-   {
-    "id": "p2",
-    "el": "path",
-    "d": "M14.5,7 L14.5,19"
-   }
-  ],
-  "hover": {
-   "duration": 0.22,
-   "ease": "easeOut",
-   "tracks": [
-    {
-     "part": "p0",
-     "scale": [
-      1,
-      1.06,
-      1
-     ],
-     "origin": [
-      12,
-      12
-     ]
-    },
-    {
-     "part": "p1",
-     "scale": [
-      1,
-      1.06,
-      1
-     ],
-     "origin": [
-      12,
-      12
-     ]
-    },
-    {
-     "part": "p2",
-     "scale": [
-      1,
-      1.06,
-      1
-     ],
-     "origin": [
-      12,
-      12
-     ]
-    }
-   ]
-  },
-  "selected": {
-   "duration": 0.55,
-   "ease": "settle",
-   "tracks": [
-    {
-     "part": "p0",
-     "draw": true,
-     "scale": [
-      0.94,
-      1
-     ],
-     "origin": [
-      12,
-      12
-     ],
-     "delay": 0.0
-    },
-    {
-     "part": "p1",
-     "draw": true,
-     "delay": 0.1
-    },
-    {
-     "part": "p2",
-     "draw": true,
-     "delay": 0.16
     }
    ]
   }
