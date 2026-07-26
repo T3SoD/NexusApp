@@ -32,6 +32,7 @@ network code.
 |  Hauling(HaulTracker/Parser/Contract/Shard) |             |
 |  Network(File/Store/Scope) |                              |
 |  Update(Service/Verifier/Manifest/Notice) |               |
+|  PortableUpdater / SwapJournal (portable self-update) |   |
 |  Diagnostics(CrashGuard/Breadcrumbs/Sanitizer/Notice) |   |
 |  Logger / InteractionLog / ForegroundMonitor              |
 +----------------------------+------------------------------+
@@ -96,6 +97,13 @@ The view model controls these services. Each service holds little or no state.
   only code in the app that touches the network, and only `UpdateService` (with
   its HTTP transport) does. The other three do no network work: signature and
   hash verification, manifest parsing, and the notice text.
+- **PortableUpdater / SwapJournal** - the portable self-update (see Key flows).
+  PortableUpdater verifies the download again on one open file handle, unpacks
+  it, and verifies each file. It then replaces the app's files with journaled
+  renames. It rolls the renames back if a step fails while the app is open.
+  SwapJournal is the write-ahead record of each rename. NexusApp reads
+  SwapJournal at the next start. It removes the `.old` files after a complete
+  swap. It puts the previous version back after an incomplete one.
 - **Logger / InteractionLog / ForegroundMonitor / DiagnosticSnapshot** - the
   diagnostics. These are a self-rotating event log, UI-interaction breadcrumbs,
   tracking of the foreground window and process, and the copy/save diagnostic
@@ -136,7 +144,9 @@ types.
   pinned public key, the hash checks, and the strictly-greater version rule. It
   gates `UpdateService`. The update subsystem is the only code in the app that
   touches the network. Downloads land in `%AppData%\NexusApp\updates`. NexusApp
-  checks their hash before the installer ever runs.
+  checks their hash before the installer ever runs. The installer flavor runs the
+  verified installer file. The portable flavor can install the update itself,
+  without a helper program and without a script. See Portable self-update below.
 
 ## Key flows
 
@@ -186,6 +196,35 @@ shares the file out-of-band, for example on Discord or a drive. When the user
 imports files from other people, NexusApp builds a roster. `NetworkScope` creates
 coverage views (who owns what, gaps, and single-owner risk). `NetworkScope` can
 filter all of NexusApp to a single member. No server is involved.
+
+### Portable self-update
+The portable flavor of NexusApp can install an update itself. NexusApp does the
+whole update while it is open. Then it restarts as the new version. No helper
+program runs, and no script runs. The signed manifest format does not change.
+
+1. NexusApp verifies the downloaded file against the signed manifest.
+2. NexusApp opens that file one time and verifies it again on the open handle.
+   So the bytes that NexusApp checks are the bytes that NexusApp unpacks.
+3. NexusApp unpacks the file and keeps the hash of each unpacked file.
+4. NexusApp copies the unpacked files into its own folder as a staged set.
+5. NexusApp then does one file at a time. It verifies the staged copy again. It
+   renames the current file to a `.old` name. It renames the staged file into
+   place. `NexusApp.exe` is always the last file.
+6. NexusApp restarts. The old process starts the new process as its last action.
+7. The next start removes the `.old` files and the download.
+
+A journal records each rename before that rename happens. NexusApp writes the
+journal to the per-user app-data folder, not to the install folder. If the
+update stops part way, the next start reads the journal and puts the previous
+version back from the `.old` files. NexusApp keeps the verified download until
+the new version starts one time. NexusApp treats the journal as untrusted input
+when it reads the journal back.
+
+NexusApp tries the self-update only when the conditions are safe. NexusApp does
+not try it in a protected folder, on a network drive, or with a second NexusApp
+window open. NexusApp then offers a manual update. When the user chooses it,
+NexusApp verifies and unpacks the update and opens the new folder and the
+current folder. The user then does one copy.
 
 ## Build, test, and CI
 
