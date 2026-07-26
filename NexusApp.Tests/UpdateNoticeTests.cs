@@ -64,6 +64,8 @@ public class UpdateNoticeTests
         var all = new[]
         {
             UpdateNotice.ConsentBody, UpdateNotice.CheckFailed, UpdateNotice.VerifyFailedBody,
+            UpdateNotice.CheckFailedNotSignedYet, UpdateNotice.CheckFailedSignatureMissing,
+            UpdateNotice.CheckFailedNetwork,
             UpdateNotice.UpdateBody("6.6.2", new Version(6, 7, 0)),
             UpdateNotice.DownloadingBody(new Version(6, 7, 0), 5 * 1048576, 100 * 1048576),
             UpdateNotice.VerifyingBody(new Version(6, 7, 0)),

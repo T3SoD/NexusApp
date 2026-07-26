@@ -7,6 +7,12 @@ namespace NexusApp.Services;
 // Names are load-bearing: UpdateNotice.StatusLine matches them as strings.
 public enum UpdateState { Idle, Checking, UpToDate, UpdateAvailable, Downloading, Verifying, ReadyToInstall, Installing, Failed }
 
+// Why a check failed, in terms a user can act on. Classified from the HTTP status and which
+// URL failed, never from a response body (nothing unauthenticated is read). None covers every
+// other failure and keeps the generic "see nexus.log" line. Names are load-bearing the same
+// way UpdateState's are: UpdateNotice.StatusLine matches them as strings.
+public enum UpdateFailureKind { None, NotSignedYet, SignatureMissing, Network }
+
 // Seam between the state machine and the network, so every state transition is testable
 // with a fake and the real HTTP code stays in one small class.
 internal interface IUpdateTransport
@@ -122,6 +128,10 @@ public sealed class UpdateService
     public string? LastFailure { get; private set; }
     public bool LastFailureWasUserInitiated { get; private set; }
 
+    // Classification of the most recent failure, so the Settings row can name the cause instead
+    // of sending every failure to nexus.log. Every Fail sets it; None means unclassified.
+    public UpdateFailureKind LastFailureKind { get; private set; } = UpdateFailureKind.None;
+
     // True when the most recent failure was the hash-verification refusal (as opposed to a
     // network or parse problem): the UI shows its "verification failed" warning only for this.
     public bool LastFailureWasVerification { get; private set; }
@@ -183,17 +193,24 @@ public sealed class UpdateService
         try
         {
             LastFailure = null;
+            LastFailureKind = UpdateFailureKind.None;
             LastFailureWasUserInitiated = manual;
             SetState(UpdateState.Checking);
             Logger.Info($"{Tag} check started ({(manual ? "manual" : "auto")})");
 
+            // Fetched in two blocks purely so a failure knows WHICH url it was: same order, same
+            // fail-closed handling, same LastUpdateCheckUtc stamp as one combined try.
             byte[] manifestBytes, sigText;
             try
             {
                 manifestBytes = await _transport.GetBytesAsync(ManifestUrl, UpdateManifest.MaxManifestBytes, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) { completed = true; FailFetch(ex, isManifest: true); return; }
+            try
+            {
                 sigText = await _transport.GetBytesAsync(SignatureUrl, MaxSignatureBytes, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (Exception ex) { completed = true; Fail($"check failed: {Reason(ex)}", ex); return; }
+            catch (Exception ex) { completed = true; FailFetch(ex, isManifest: false); return; }
             completed = true;   // a completed network attempt stamps LastUpdateCheckUtc either way
 
             byte[] sig;
@@ -402,9 +419,31 @@ public sealed class UpdateService
         catch (Exception ex) { Logger.Error($"{Tag} a state-change subscriber threw", ex); }
     }
 
-    private void Fail(string reason, Exception? ex = null)
+    // A failed manifest or signature fetch, said in plain words. The only inputs are the HTTP
+    // status and which url failed: no response body is read here, because nothing is authentic
+    // until the signature check. Both 404 lines are expected states of the release channel (a
+    // release published but not signed yet, or signed only halfway), so they carry no stack
+    // trace; the Logger has no Warn level, so they stay ERROR like every other Fail.
+    private void FailFetch(Exception ex, bool isManifest)
+    {
+        if ((ex as HttpRequestException)?.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            if (isManifest)
+                Fail("check failed: the latest release is not signed yet (no update manifest published); updates stay hidden until it is signed",
+                     kind: UpdateFailureKind.NotSignedYet);
+            else
+                Fail("check failed: the update manifest is present but its signature is missing (incomplete signing)",
+                     kind: UpdateFailureKind.SignatureMissing);
+            return;
+        }
+        // Timeout, DNS, TLS, any non-404 status: one story for the user, full detail in the log.
+        Fail($"check failed: network error: {Reason(ex)}", ex, UpdateFailureKind.Network);
+    }
+
+    private void Fail(string reason, Exception? ex = null, UpdateFailureKind kind = UpdateFailureKind.None)
     {
         LastFailure = TextSanitizer.ForLog(reason);
+        LastFailureKind = kind;
         Logger.Error($"{Tag} {LastFailure}", ex);
         SetState(UpdateState.Failed);
     }

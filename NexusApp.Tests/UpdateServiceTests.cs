@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using NexusApp.Services;
@@ -43,7 +44,10 @@ public class UpdateServiceTests : IDisposable
         {
             Requested.Add(url);
             if (ThrowOnGet is not null) throw ThrowOnGet;
-            if (!Responses.TryGetValue(url, out var b)) throw new InvalidOperationException("404");
+            // Missing asset means the real transport's EnsureSuccessStatusCode would throw an
+            // HttpRequestException carrying 404, which is exactly what the check classifies on.
+            if (!Responses.TryGetValue(url, out var b))
+                throw new HttpRequestException("Response status code does not indicate success: 404 (Not Found).", null, HttpStatusCode.NotFound);
             if (b.Length > maxBytes) throw new InvalidOperationException("response larger than expected");
             return Task.FromResult(b);
         }
@@ -120,6 +124,12 @@ public class UpdateServiceTests : IDisposable
             p => { started.Add(p); return true; });
         return (svc, t, settings, dir, started);
     }
+
+    // Exactly what SettingsPage feeds the Updates status row, so a test reads the line the user
+    // reads. The lastChecked stamp is irrelevant on a manual failure and never reached.
+    private static string StatusOf(UpdateService svc) =>
+        UpdateNotice.StatusLine(svc.State.ToString(), svc.Available?.Version, DateTime.UtcNow,
+                                svc.LastFailureWasUserInitiated, svc.LastFailureKind.ToString());
 
     private static string HashOf(byte[] b) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b)).ToLowerInvariant();
@@ -226,6 +236,69 @@ public class UpdateServiceTests : IDisposable
         t.ThrowOnGet = new InvalidOperationException("nope");
         await svc.CheckAsync(manual: true);
         Assert.True(svc.LastFailureWasUserInitiated);
+    }
+
+    // A raw "404 (Not Found)" in nexus.log needs the release layout to decode. These four pin the
+    // plain-words classification instead: the log reason (LastFailure is the exact text logged
+    // after the [UPDATE] tag) and the Settings line, for each cause the check can tell apart.
+    [Fact]
+    public async Task Check_ManifestMissing_ReadsAsNotSignedYet()
+    {
+        // Nothing published: the latest release exists but carries no update_manifest.json, which
+        // is what an unsigned release looks like from here. Not a fault of the app or the network.
+        var (svc, _, _, _) = Make();
+        await svc.CheckAsync(manual: true);
+        Assert.Equal(UpdateState.Failed, svc.State);
+        Assert.Null(svc.Available);
+        Assert.Equal(UpdateFailureKind.NotSignedYet, svc.LastFailureKind);
+        Assert.Equal("check failed: the latest release is not signed yet (no update manifest published); updates stay hidden until it is signed",
+            svc.LastFailure);
+        Assert.Equal(UpdateNotice.CheckFailedNotSignedYet, StatusOf(svc));
+    }
+
+    [Fact]
+    public async Task Check_SignatureMissing_ReadsAsIncompleteSigning()
+    {
+        // The manifest is up but the .sig never made it: signing ran halfway. Distinct from the
+        // unsigned case because the publisher has a different thing to fix.
+        var (svc, t, _, _) = Make();
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9"));
+        t.Responses.Remove(UpdateService.SignatureUrl);
+        await svc.CheckAsync(manual: true);
+        Assert.Equal(UpdateState.Failed, svc.State);
+        Assert.Null(svc.Available);
+        Assert.Equal(UpdateFailureKind.SignatureMissing, svc.LastFailureKind);
+        Assert.Equal("check failed: the update manifest is present but its signature is missing (incomplete signing)",
+            svc.LastFailure);
+        Assert.Equal(UpdateNotice.CheckFailedSignatureMissing, StatusOf(svc));
+    }
+
+    [Theory]
+    [InlineData(null)]                                 // DNS, TLS or timeout: no status at all
+    [InlineData(HttpStatusCode.InternalServerError)]   // a real response, just not a usable one
+    public async Task Check_NonNotFoundFailure_ReadsAsNetworkError(HttpStatusCode? status)
+    {
+        var (svc, t, _, _) = Make();
+        t.ThrowOnGet = new HttpRequestException("No such host is known.", null, status);
+        await svc.CheckAsync(manual: true);
+        Assert.Equal(UpdateState.Failed, svc.State);
+        Assert.Equal(UpdateFailureKind.Network, svc.LastFailureKind);
+        Assert.Equal("check failed: network error: No such host is known.", svc.LastFailure);
+        Assert.Equal(UpdateNotice.CheckFailedNetwork, StatusOf(svc));
+    }
+
+    [Fact]
+    public async Task Check_SignatureDidNotVerify_MessageAndGenericLineAreUnchanged()
+    {
+        // The refusal path is untouched by the classification work: same reason text, no named
+        // kind, and the generic line that sends the user to nexus.log.
+        var (svc, t, _, _) = Make();
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9"), validSignature: false);
+        await svc.CheckAsync(manual: true);
+        Assert.Equal(UpdateState.Failed, svc.State);
+        Assert.Equal("check failed: the manifest signature did not verify", svc.LastFailure);
+        Assert.Equal(UpdateFailureKind.None, svc.LastFailureKind);
+        Assert.Equal(UpdateNotice.CheckFailed, StatusOf(svc));
     }
 
     [Fact]
