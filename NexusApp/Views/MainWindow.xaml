@@ -54,15 +54,47 @@
                 <Border x:Name="AppVersionBadge"
                         Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="Transparent"
-                        BorderBrush="{StaticResource AccentDimBrush}"
                         BorderThickness="1"
                         Cursor="Hand"
+                        RenderTransformOrigin="0.5,0.5"
                         MouseLeftButtonDown="AppBadge_Click">
+                    <!-- Local brush + transforms + glow: the egg escalation animates these, and a frozen theme brush cannot animate. -->
+                    <Border.BorderBrush>
+                        <SolidColorBrush Color="{DynamicResource AccentDimColor}"/>
+                    </Border.BorderBrush>
+                    <Border.RenderTransform>
+                        <TransformGroup>
+                            <RotateTransform x:Name="AppBadgeRotate"/>
+                            <TranslateTransform x:Name="AppBadgeShift"/>
+                        </TransformGroup>
+                    </Border.RenderTransform>
+                    <Border.Effect>
+                        <DropShadowEffect x:Name="AppBadgeGlow" Color="{DynamicResource AccentColor}"
+                                          BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                    </Border.Effect>
                     <TextBlock x:Name="AppVersionText" FontSize="9"
                                Foreground="{StaticResource AccentBrush}"
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>
                 </Border>
+                <!-- Easter egg hint - floats below the badge so a narrow window never clips it.
+                     The Border carries the fade: a Popup's own Opacity does not render. -->
+                <Popup x:Name="EggHintPopup"
+                       PlacementTarget="{Binding ElementName=AppVersionBadge}"
+                       Placement="Bottom" VerticalOffset="6"
+                       AllowsTransparency="True" StaysOpen="True"
+                       IsHitTestVisible="False" Focusable="False">
+                    <Border x:Name="EggHintBox"
+                            Background="{StaticResource Bg2NavBrush}"
+                            BorderBrush="{StaticResource NavBorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="8,4"
+                            Opacity="0">
+                        <TextBlock x:Name="EggHintLabel"
+                                   Text="" FontSize="9" FontStyle="Italic"
+                                   Foreground="{StaticResource FgDimBrush}"
+                                   MaxWidth="260" TextWrapping="Wrap"/>
+                    </Border>
+                </Popup>
                 <!-- GAME version chip -->
                 <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
@@ -116,12 +148,6 @@
                         <TextBlock x:Name="ScanChipText" Text="off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- Easter egg hint - hidden until badge is clicked -->
-                <TextBlock x:Name="EggHintLabel"
-                           Text="" FontSize="9" FontStyle="Italic"
-                           Foreground="{StaticResource FgDimBrush}"
-                           VerticalAlignment="Center" Margin="0,0,8,0"
-                           Visibility="Collapsed"/>
             </StackPanel>
 
             <!-- Right: OS clock + action buttons -->
