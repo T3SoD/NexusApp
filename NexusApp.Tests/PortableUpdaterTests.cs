@@ -451,4 +451,250 @@ public class PortableUpdaterTests : IDisposable
         Assert.Equal(PortableApplyOutcome.Completed, result.Outcome);
         Assert.Equal("old exe", File.ReadAllText(Path.Combine(install, "NexusApp.exe.old")));   // the REAL previous exe, not the stale file
     }
+
+    // ---- RecoverAtStartup ----
+
+    private static readonly int[] FastDelays = { 1, 1 };
+
+    private (string install, string journalPath) MakeRecoveryRig()
+    {
+        var root = TempDir();
+        var install = Path.Combine(root, "NexusApp");
+        Directory.CreateDirectory(Path.Combine(install, "Web", "cargo"));
+        return (install, Path.Combine(root, SwapJournal.FileName));
+    }
+
+    [Fact]
+    public void Recover_NoJournal_DoesNothing()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+    }
+
+    [Fact]
+    public void Recover_NoJournalButOrphanStaging_SweepsIt()
+    {
+        // A crash during the staging copy predates the journal: the unclaimed folder must
+        // not sit in the portable root forever (portable-cleanliness rule).
+        var (install, journalPath) = MakeRecoveryRig();
+        Directory.CreateDirectory(Path.Combine(install, PortableUpdater.StagingDirName, "Web"));
+        File.WriteAllText(Path.Combine(install, PortableUpdater.StagingDirName, "half-copied.dll"), "partial");
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.False(Directory.Exists(Path.Combine(install, PortableUpdater.StagingDirName)));
+    }
+
+    [Fact]
+    public void Recover_CompleteJournal_CleansUpAndLeavesNewFiles()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "new");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe.old"), "previous");
+        Directory.CreateDirectory(Path.Combine(install, PortableUpdater.StagingDirName));
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
+        Assert.False(File.Exists(Path.Combine(install, "NexusApp.exe.old")));
+        Assert.False(Directory.Exists(Path.Combine(install, PortableUpdater.StagingDirName)));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_InProgressJournal_RestoresPreviousVersion()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        // Crash state: two files flipped (new in place, .old kept), one new-only file placed.
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll"), "new sqlite");
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll.old"), "old sqlite");
+        File.WriteAllText(Path.Combine(install, "Web", "cargo", "index.html"), "new page");
+        File.WriteAllText(Path.Combine(install, "Web", "cargo", "index.html.old"), "old page");
+        File.WriteAllText(Path.Combine(install, "brandnew.dll"), "added in 6.9.0");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "old exe");   // exe never flipped
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops =
+            {
+                new SwapOp { Rel = "brandnew.dll", NewPlaced = true },
+                new SwapOp { Rel = "e_sqlite3.dll", OldMoved = true, NewPlaced = true },
+                new SwapOp { Rel = @"Web\cargo\index.html", OldMoved = true, NewPlaced = true },
+            },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.True(r.ShowSwapFailedNotice);
+        Assert.Equal("6.9.0", r.AttemptedVersion);
+        Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+        Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
+        Assert.False(File.Exists(Path.Combine(install, "brandnew.dll")));
+        Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll.old")));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_InProgressButRunningTheNewVersion_HealsToComplete()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "new");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe.old"), "previous");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        // The crash fell between the last flip and the Complete stamp, but the process now
+        // RUNNING is the attempted version: the swap in fact finished.
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
+        Assert.False(File.Exists(Path.Combine(install, "NexusApp.exe.old")));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_HostileRelInJournal_IsIgnored()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        var outside = Path.Combine(Path.GetDirectoryName(install)!, "victim.txt");
+        File.WriteAllText(outside, "must survive");
+        File.WriteAllText(outside + ".old", "bait");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = @"..\victim.txt", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
+        Assert.True(File.Exists(outside));           // a tampered journal must never become
+        Assert.True(File.Exists(outside + ".old"));  // a delete primitive outside the install dir
+    }
+
+    [Fact]
+    public void Recover_JournalForAnotherExistingInstall_IsLeftAlone()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        var otherInstall = TempDir();
+        File.WriteAllText(Path.Combine(otherInstall, "NexusApp.exe.old"), "other install's rollback");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = otherInstall,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.True(File.Exists(journalPath));   // the right instance handles it; the purge guard keeps its zip safe
+        Assert.True(File.Exists(Path.Combine(otherInstall, "NexusApp.exe.old")));
+    }
+
+    [Fact]
+    public void Recover_JournalForAVanishedInstall_IsDiscarded()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = Path.Combine(Path.GetTempPath(), "nexus-gone-" + Path.GetRandomFileName()),
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_GarbageJournal_IsDiscarded()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(journalPath, "{ not a journal");
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_LockedOldFile_KeepsJournalForALaterStart()
+    {
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "new");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe.old"), "previous");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        using var holder = new FileStream(Path.Combine(install, "NexusApp.exe.old"),
+            FileMode.Open, FileAccess.Read, FileShare.Read);   // no delete sharing: purge must fail quietly
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.True(File.Exists(journalPath));   // retried on a later start (CFA / delete-lock tolerance)
+    }
+
+    [Fact]
+    public void Recover_SecondPassAfterPartialRestore_NeverDeletesRestoredFiles()
+    {
+        // Pass 1 restores index.html but cannot restore e_sqlite3.dll (its .old is held).
+        // Pass 2 must finish the blocked op WITHOUT deleting what pass 1 already restored:
+        // a restored file (old bytes at the live name, .old consumed, flags stale) must not
+        // be mistaken for a new-only file.
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll"), "new sqlite");
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll.old"), "old sqlite");
+        File.WriteAllText(Path.Combine(install, "Web", "cargo", "index.html"), "new page");
+        File.WriteAllText(Path.Combine(install, "Web", "cargo", "index.html.old"), "old page");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops =
+            {
+                new SwapOp { Rel = "e_sqlite3.dll", OldMoved = true, NewPlaced = true },
+                new SwapOp { Rel = @"Web\cargo\index.html", OldMoved = true, NewPlaced = true },
+            },
+        };
+        j.Save(journalPath);
+        using (var holder = new FileStream(Path.Combine(install, "e_sqlite3.dll.old"),
+            FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var first = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+            Assert.True(first.ShowSwapFailedNotice);
+            Assert.True(File.Exists(journalPath));   // blocked op keeps the journal for a later start
+            Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
+        }
+        var second = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.True(second.ShowSwapFailedNotice);
+        Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
+        Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_OrphanStagingWhileUpdateLockHeld_LeavesIt()
+    {
+        // The no-journal window includes a LIVE Apply mid-staging-copy; the sweep must yield
+        // to whoever holds the update lock instead of deleting their half-copied payload.
+        var (install, journalPath) = MakeRecoveryRig();
+        Directory.CreateDirectory(Path.Combine(install, PortableUpdater.StagingDirName));
+        File.WriteAllText(Path.Combine(install, PortableUpdater.StagingDirName, "half-copied.dll"), "partial");
+        using var lockHolder = new FileStream(Path.Combine(install, PortableUpdater.LockFileName),
+            FileMode.Create, FileAccess.Write, FileShare.None);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.True(File.Exists(Path.Combine(install, PortableUpdater.StagingDirName, "half-copied.dll")));
+    }
 }

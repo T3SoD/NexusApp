@@ -15,6 +15,8 @@ public enum PortableApplyOutcome { Completed, FailedNothingChanged, FailedRolled
 
 public sealed record PortableApplyResult(PortableApplyOutcome Outcome, string Reason);
 
+public sealed record SwapRecoveryResult(bool ShowSwapFailedNotice, string? AttemptedVersion);
+
 // Seam so UpdateService's state machine is testable without a filesystem or a real swap.
 internal interface IPortableSwapper
 {
@@ -540,6 +542,166 @@ public sealed class PortableUpdater : IPortableSwapper
         SaveJournal(journal);
         Logger.Error($"{UpdateService.Tag} rollback incomplete at {rel}; previous files are kept as {OldSuffix} and the verified download is retained; the next start finishes the restore");
         return new(PortableApplyOutcome.FailedRollbackIncomplete, reason);
+    }
+
+    // ---- Startup recovery ----
+
+    // Startup recovery: MUST run before UpdateService.PurgeStaleDownloads (which would delete
+    // the verified zip, the one artifact that can rebuild a broken folder). Reads the journal
+    // as untrusted input and either finishes a completed swap's cleanup or puts the previous
+    // version back after a crashed one.
+    public static SwapRecoveryResult RecoverAtStartup() =>
+        RecoverAtStartup(SwapJournal.DefaultPath, AppContext.BaseDirectory, NexusApp.AppInfo.Version);
+
+    internal static SwapRecoveryResult RecoverAtStartup(string journalPath, string baseDirectory,
+                                                        string runningVersion, int[]? retryDelaysMs = null)
+    {
+        var none = new SwapRecoveryResult(false, null);
+        if (!File.Exists(journalPath))
+        {
+            // A crash during the staging copy predates the journal, so a partial
+            // update-staging folder can sit in the install dir with nothing claiming it; the
+            // next Apply would wipe it, but the user may never run another update. The sweep
+            // must not race a LIVE Apply mid-copy (its journal does not exist yet either):
+            // Apply holds the exclusive lock for the whole swap, so take the same lock and
+            // treat failure as "an update is running or the folder is protected, not ours".
+            var orphan = Path.Combine(baseDirectory, StagingDirName);
+            if (Directory.Exists(orphan))
+            {
+                try
+                {
+                    using var sweepLock = new FileStream(Path.Combine(baseDirectory, LockFileName),
+                        FileMode.Create, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose);
+                    Logger.Info($"{UpdateService.Tag} swap recovery: removing an unclaimed staging folder from an interrupted update");
+                    TryDeleteDir(orphan);
+                }
+                catch { /* a live update owns it, or the folder is protected; leave it */ }
+            }
+            return none;
+        }
+        var journal = SwapJournal.TryLoad(journalPath);
+        if (journal is null)
+        {
+            // Garbage or future-schema content is not ours to act on; discard it so the
+            // purge guard cannot wedge updates forever on an unreadable file.
+            Logger.Info($"{UpdateService.Tag} swap recovery: unreadable journal discarded");
+            TryDelete(journalPath);
+            return none;
+        }
+        string ourDir, journalDir;
+        try
+        {
+            ourDir = Path.GetFullPath(baseDirectory).TrimEnd('\\');
+            journalDir = Path.GetFullPath(journal.InstallDir).TrimEnd('\\');
+        }
+        catch { TryDelete(journalPath); return none; }
+        if (!string.Equals(ourDir, journalDir, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Directory.Exists(journalDir))
+            {
+                Logger.Info($"{UpdateService.Tag} swap recovery: journal points at a folder that no longer exists; discarded");
+                TryDelete(journalPath);
+                return none;
+            }
+            // This profile also serves the installer flavor and other portable copies; the
+            // journal belongs to a different install and only ITS instance may touch it.
+            Logger.Info($"{UpdateService.Tag} swap recovery: journal belongs to another install, leaving it alone");
+            return none;
+        }
+        var delays = retryDelaysMs ?? new[] { 500, 1000, 2000 };
+        // Serialize against a concurrently starting second instance recovering the same dir.
+        FileStream? lockFs = null;
+        try
+        {
+            lockFs = new FileStream(Path.Combine(journalDir, LockFileName),
+                FileMode.Create, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose);
+        }
+        catch
+        {
+            Logger.Info($"{UpdateService.Tag} swap recovery: another instance holds the update lock; skipping this start");
+            return none;
+        }
+        try
+        {
+            // InProgress but the running exe IS the attempted version: the crash fell between
+            // the final flip and the Complete stamp, so the swap in fact finished.
+            if (journal.Status == SwapJournal.StatusComplete ||
+                string.Equals(runningVersion, journal.AttemptedVersion, StringComparison.Ordinal))
+                return CleanupCompleted(journal, journalPath, journalDir, delays);
+            return RestorePrevious(journal, journalPath, journalDir, delays);
+        }
+        finally { lockFs?.Dispose(); }
+    }
+
+    private static SwapRecoveryResult CleanupCompleted(SwapJournal journal, string journalPath,
+                                                       string installDir, int[] delays)
+    {
+        var allClean = true;
+        foreach (var op in journal.Ops)
+        {
+            if (!SwapJournal.IsSafeRel(installDir, op.Rel)) continue;   // tampered entry: touch nothing
+            var old = Path.Combine(installDir, op.Rel) + OldSuffix;
+            if (File.Exists(old) && !RetryDeleteWith(old, delays)) allClean = false;
+        }
+        if (!TryDeleteDir(Path.Combine(installDir, StagingDirName))) allClean = false;
+        if (allClean)
+        {
+            TryDelete(journalPath);
+            Logger.Info($"{UpdateService.Tag} portable swap complete");
+        }
+        else
+        {
+            // The old exe stays delete-locked for a few seconds after exit, and Controlled
+            // Folder Access can block the NEW exe's first purge. Housekeeping that will
+            // succeed on a later start never deserves an ERROR line.
+            journal.Status = SwapJournal.StatusComplete;
+            try { journal.Save(journalPath); } catch { }
+            Logger.Info($"{UpdateService.Tag} portable swap complete; some previous-version files are still in use and will be cleaned on a later start");
+        }
+        return new SwapRecoveryResult(false, null);
+    }
+
+    private static SwapRecoveryResult RestorePrevious(SwapJournal journal, string journalPath,
+                                                      string installDir, int[] delays)
+    {
+        var allRestored = true;
+        for (int i = journal.Ops.Count - 1; i >= 0; i--)
+        {
+            var op = journal.Ops[i];
+            if (op.Skipped || !SwapJournal.IsSafeRel(installDir, op.Rel)) continue;
+            var target = Path.Combine(installDir, op.Rel);
+            var old = target + OldSuffix;
+            if (File.Exists(old))
+            {
+                // The new file at the live name is reproducible from the kept zip; the .old
+                // set is not. Delete new, restore old.
+                if (File.Exists(target) && !RetryDeleteWith(target, delays)) { allRestored = false; continue; }
+                if (!RetryMoveWith(old, target, delays)) { allRestored = false; continue; }
+            }
+            // A new-only file (no .old pair) is deleted; but existence alone cannot tell a
+            // genuinely-added file from one this very method already restored on an earlier
+            // pass (previous bytes back at the live name, .old consumed, flags stale because
+            // the journal is only re-saved wholesale). OldMoved is the disambiguator: it was
+            // saved only after a real rename-out, so OldMoved=true in this branch means the
+            // .old was already moved back and the file on disk IS the previous version.
+            else if (!op.OldMoved && op.NewPlaced && File.Exists(target) && !RetryDeleteWith(target, delays))
+            {
+                allRestored = false;
+            }
+        }
+        TryDeleteDir(Path.Combine(installDir, StagingDirName));
+        if (allRestored)
+        {
+            TryDelete(journalPath);
+            Logger.Info($"{UpdateService.Tag} portable swap failed, previous version restored");
+        }
+        else
+        {
+            try { journal.Save(journalPath); } catch { }
+            Logger.Info($"{UpdateService.Tag} portable swap failed; some files are still in use, the restore finishes on a later start");
+        }
+        return new SwapRecoveryResult(true,
+            string.IsNullOrEmpty(journal.AttemptedVersion) ? null : journal.AttemptedVersion);
     }
 
     // ---- Small shared helpers ----
