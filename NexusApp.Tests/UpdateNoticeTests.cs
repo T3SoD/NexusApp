@@ -51,6 +51,8 @@ public class UpdateNoticeTests
     [InlineData("Downloading")]
     [InlineData("Verifying")]
     [InlineData("ReadyToInstall")]
+    [InlineData("Installing")]
+    [InlineData("ManualHandoff")]
     public void StatusLine_AvailableStates_NameTheVersion(string state) =>
         Assert.Equal("Nexus 9.9.9 is available", UpdateNotice.StatusLine(state, new Version(9, 9, 9), null, false));
 
@@ -72,6 +74,13 @@ public class UpdateNoticeTests
             UpdateNotice.ReadyBodyInstaller(new Version(6, 7, 0)),
             UpdateNotice.ReadyBodyPortable(new Version(6, 7, 0)),
             UpdateNotice.PostUpdateBody("6.7.0"),
+            UpdateNotice.InstallConfirmBodyPortable,
+            UpdateNotice.PrepareFailedBody,
+            UpdateNotice.PreparingBody(new Version(6, 9, 0)),
+            UpdateNotice.ReadyBodyPortableManual(new Version(6, 9, 0)),
+            UpdateNotice.UnpackingBody(new Version(6, 9, 0)),
+            UpdateNotice.ManualHandoffBody(new Version(6, 9, 0)),
+            UpdateNotice.SwapFailedBody("6.9.0", "6.8.1"),
         };
         foreach (var s in all)
         {
@@ -104,5 +113,30 @@ public class UpdateNoticeTests
             Assert.NotNull(again.Current.LastUpdateCheckUtc);
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ReadyBodyPortable_MatchesInstallerBody() =>
+        // Installer parity: the portable user should not need distribution vocabulary.
+        Assert.Equal(UpdateNotice.ReadyBodyInstaller(new Version(6, 9, 0)),
+                     UpdateNotice.ReadyBodyPortable(new Version(6, 9, 0)));
+
+    [Fact]
+    public void PortableSwapBodies_PinExactCopy()
+    {
+        Assert.Equal("Nexus will close for a moment and reopen as the new version. Your settings, work orders, and blueprints are kept.",
+            UpdateNotice.InstallConfirmBodyPortable);
+        Assert.Equal("Preparing Nexus 6.9.0. Nexus will close and reopen in a moment.",
+            UpdateNotice.PreparingBody(new Version(6, 9, 0)));
+        Assert.Equal("Nexus 6.9.0 is downloaded and verified. Nexus cannot replace its own files from this location, so this update finishes with one quick copy.",
+            UpdateNotice.ReadyBodyPortableManual(new Version(6, 9, 0)));
+        Assert.Equal("Unpacking Nexus 6.9.0.",
+            UpdateNotice.UnpackingBody(new Version(6, 9, 0)));
+        Assert.Equal("Two folders are open: the new Nexus 6.9.0 and your current Nexus. Close Nexus, then copy everything from the new folder into the current one, replacing files when asked.",
+            UpdateNotice.ManualHandoffBody(new Version(6, 9, 0)));
+        Assert.Equal("Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.",
+            UpdateNotice.PrepareFailedBody);
+        Assert.Equal("The update to Nexus 6.9.0 could not finish. Nexus restored the previous version and nothing changed. You are still on Nexus 6.8.1.",
+            UpdateNotice.SwapFailedBody("6.9.0", "6.8.1"));
     }
 }
