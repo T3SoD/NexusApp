@@ -5,7 +5,7 @@ using System.Text;
 namespace NexusApp.Services;
 
 // Names are load-bearing: UpdateNotice.StatusLine matches them as strings.
-public enum UpdateState { Idle, Checking, UpToDate, UpdateAvailable, Downloading, Verifying, ReadyToInstall, Installing, Failed }
+public enum UpdateState { Idle, Checking, UpToDate, UpdateAvailable, Downloading, Verifying, ReadyToInstall, Installing, ManualHandoff, Failed }
 
 // Why a check failed, in terms a user can act on. Classified from the HTTP status and which
 // URL failed, never from a response body (nothing unauthenticated is read). None covers every
@@ -120,6 +120,9 @@ public sealed class UpdateService
     private readonly string _updatesDir;
     private readonly bool _demo;
     private readonly Func<string, bool> _startProcess;
+    private readonly IPortableSwapper _swapper;
+    private readonly Func<bool> _purgeGuard;
+    private readonly Func<string?> _relaunchPath;
     private int _busy;   // Interlocked single-flight across check and download
 
     public UpdateState State { get; private set; } = UpdateState.Idle;
@@ -138,6 +141,23 @@ public sealed class UpdateService
     public long DownloadedBytes { get; private set; }
     public long TotalBytes { get; private set; }
 
+    // Portable self-swap surface. Availability is evaluated once per download (and honors
+    // PreferManualUpdate); the failure note renders PrepareFailedBody without leaving
+    // ReadyToInstall, because StatusLine's Failed arm narrates CHECK failures and would lie.
+    public bool PortableSwapAvailable { get; private set; }
+    public string? PortableSwapUnavailableReason { get; private set; }
+    public string? LastPortableApplyFailure { get; private set; }
+    public bool PortableApplyInProgress { get; private set; }
+    public bool ManualUnpackInProgress { get; private set; }
+
+    // Set only after a Completed swap; App.OnExit spawns this path as the process's LAST
+    // action so the new instance never overlaps this one's settings and database writes.
+    public string? PendingRelaunchPath { get; private set; }
+
+    // Session-scoped: the swap-failed strip's "Update manually" choice routes the next
+    // ReadyToInstall straight to the guided manual flow.
+    public bool PreferManualUpdate { get; set; }
+
     // Raised on the worker thread after every state change; UI subscribers marshal with
     // Dispatcher.Invoke themselves (the App.Shards.Changed pattern).
     public event Action? Changed;
@@ -150,7 +170,8 @@ public sealed class UpdateService
 
     internal UpdateService(SettingsService settings, IUpdateTransport transport, Func<byte[], byte[], bool> verify,
                            Func<string> distribution, string currentVersion, string updatesDir, bool isDemoProfile,
-                           Func<string, bool>? startProcess = null)
+                           Func<string, bool>? startProcess = null, IPortableSwapper? swapper = null,
+                           Func<bool>? purgeGuard = null, Func<string?>? relaunchPathProvider = null)
     {
         _settings = settings;
         _transport = transport;
@@ -164,6 +185,11 @@ public sealed class UpdateService
         // that is not running.
         _startProcess = startProcess ??
             (path => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }) is not null);
+        _swapper = swapper ?? new PortableUpdater();
+        // The journal existence check guards the purge: while one exists, recovery owns
+        // everything under updates\ (the verified zip is the crash-recovery artifact).
+        _purgeGuard = purgeGuard ?? (() => File.Exists(SwapJournal.DefaultPath));
+        _relaunchPath = relaunchPathProvider ?? (() => Environment.ProcessPath);
     }
 
     // Pure gate for the on-launch check: consent must be an explicit yes, the demo profile
@@ -320,6 +346,7 @@ public sealed class UpdateService
             catch (Exception ex) { TryDelete(partial); Fail($"couldn't finalize the download: {Reason(ex)}", ex); return; }
             DownloadedPath = dest;
             Logger.Info($"{Tag} download complete, hash verified");
+            if (_distribution() == "Portable") EvaluatePortablePreflight(asset.Size);
             SetState(UpdateState.ReadyToInstall);
         }
         finally { Interlocked.Exchange(ref _busy, 0); }
@@ -367,6 +394,127 @@ public sealed class UpdateService
         }
     }
 
+    // Decides which portable strip the UI shows the moment ReadyToInstall lands: the
+    // self-swap confirm, or the guided manual flow (with the reason logged, never shown as
+    // an error). Cheap probes only; Apply re-runs the full gate at click time.
+    private void EvaluatePortablePreflight(long zipBytes)
+    {
+        LastPortableApplyFailure = null;
+        if (PreferManualUpdate)
+        {
+            PortableSwapAvailable = false;
+            PortableSwapUnavailableReason = "manual update chosen";
+            Logger.Info($"{Tag} portable swap unavailable: manual update chosen, offering manual handoff");
+            return;
+        }
+        PortablePreflight pre;
+        try { pre = _swapper.Preflight(zipBytes); }
+        catch (Exception ex)
+        {
+            // The probes are individually defensive, but this call must never be able to
+            // strand a verified download short of ReadyToInstall: an escaped exception is a
+            // bug, and the honest landing is the manual flow with the cause in nexus.log.
+            pre = new PortablePreflight(false, "the update check could not inspect this install");
+            Logger.Error($"{Tag} portable preflight threw unexpectedly", ex);
+        }
+        PortableSwapAvailable = pre.Ok;
+        PortableSwapUnavailableReason = pre.Ok ? null : pre.Reason;
+        if (pre.Ok) Logger.Info($"{Tag} portable swap preconditions ok");
+        else Logger.Info($"{Tag} portable swap unavailable: {pre.Reason}, offering manual handoff");
+    }
+
+    // The portable twin of LaunchInstaller: same click-gated re-verify philosophy, but the
+    // whole verify-extract-stage-flip sequence runs here (via PortableUpdater) while the app
+    // stays alive to roll back. True = files flipped; the CALLER shuts the app down and
+    // App.OnExit spawns PendingRelaunchPath last.
+    public async Task<bool> ApplyPortableAsync()
+    {
+        if (_demo) return false;
+        if (State != UpdateState.ReadyToInstall || DownloadedPath is null || Available is null) return false;
+        if (_distribution() != "Portable")
+        {
+            Logger.Info($"{Tag} portable swap refused: not the portable distribution");
+            return false;
+        }
+        var asset = Available.AssetFor("Portable");
+        if (asset is null) return false;
+        if (Interlocked.Exchange(ref _busy, 1) != 0) return false;
+        try
+        {
+            LastPortableApplyFailure = null;
+            LastFailureWasUserInitiated = true;
+            var version = Available.Version;
+            var downloaded = DownloadedPath;
+            PortableApplyInProgress = true;
+            SetState(UpdateState.Installing);
+            PortableApplyResult result;
+            try
+            {
+                result = await Task.Run(() => _swapper.Apply(downloaded, asset.Sha256, version, _currentVersion)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // The engine reports failures as results; an exception escaping it is a bug,
+                // but the state machine must still land somewhere honest and recoverable.
+                result = new PortableApplyResult(PortableApplyOutcome.FailedNothingChanged, Reason(ex));
+                Logger.Error($"{Tag} portable swap threw unexpectedly", ex);
+            }
+            if (result.Outcome == PortableApplyOutcome.Completed)
+            {
+                PendingRelaunchPath = _relaunchPath();
+                Logger.Info($"{Tag} handing off to relaunch, closing");
+                return true;
+            }
+            LastPortableApplyFailure = TextSanitizer.ForLog(result.Reason);
+            // The engine logs its own rollback story, but the FailedNothingChanged returns
+            // are silent by design there; this line guarantees EVERY user-visible apply
+            // failure has a nexus.log counterpart (feature-logging rule).
+            Logger.Error($"{Tag} portable swap failed: {LastPortableApplyFailure}");
+            PortableApplyInProgress = false;
+            SetState(UpdateState.ReadyToInstall);
+            return false;
+        }
+        finally
+        {
+            if (State != UpdateState.Installing) PortableApplyInProgress = false;
+            Interlocked.Exchange(ref _busy, 0);
+        }
+    }
+
+    // The guided manual flow: verify + unpack + open both folders, then hold in
+    // ManualHandoff while the user does the copy and closes Nexus themselves.
+    public async Task UnpackForManualAsync()
+    {
+        if (_demo) return;
+        if (State != UpdateState.ReadyToInstall || DownloadedPath is null || Available is null) return;
+        if (_distribution() != "Portable") return;
+        var asset = Available.AssetFor("Portable");
+        if (asset is null) return;
+        if (Interlocked.Exchange(ref _busy, 1) != 0) return;
+        try
+        {
+            LastPortableApplyFailure = null;
+            LastFailureWasUserInitiated = true;
+            var version = Available.Version;
+            var downloaded = DownloadedPath;
+            ManualUnpackInProgress = true;
+            SetState(UpdateState.Installing);
+            var ok = await Task.Run(() => _swapper.UnpackForManual(downloaded, asset.Sha256, version)).ConfigureAwait(false);
+            ManualUnpackInProgress = false;
+            if (ok) SetState(UpdateState.ManualHandoff);
+            else
+            {
+                LastPortableApplyFailure = "couldn't unpack the update";
+                SetState(UpdateState.ReadyToInstall);
+            }
+        }
+        finally
+        {
+            ManualUnpackInProgress = false;
+            Interlocked.Exchange(ref _busy, 0);
+        }
+    }
+
     // Portable handoff: reveal the verified download so the user can do the folder swap.
     public void OpenDownloadFolder()
     {
@@ -384,6 +532,13 @@ public sealed class UpdateService
     // aborted .partial files) and gets removed wholesale before any new download starts.
     public void PurgeStaleDownloads()
     {
+        // While a swap journal exists, startup recovery owns everything under updates\ (the
+        // verified zip is the crash-recovery artifact); purging now would destroy it.
+        if (_purgeGuard())
+        {
+            Logger.Info($"{Tag} purge skipped: a swap journal is present");
+            return;
+        }
         // Not an error: the usual cause is an installer the user left open holding its own file.
         // Housekeeping that will succeed on a later start does not deserve an ERROR line.
         try { if (Directory.Exists(_updatesDir)) Directory.Delete(_updatesDir, recursive: true); }
