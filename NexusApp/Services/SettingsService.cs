@@ -119,7 +119,12 @@ public class SettingsService
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(settings, _opts));
+            // Write-temp-then-rename: a crash mid-write, or the portable self-swap's freshly
+            // spawned instance reading while the dying one writes, must never observe a
+            // truncated settings.json. The rename is atomic on the same volume.
+            var tmp = _path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(settings, _opts));
+            File.Move(tmp, _path, overwrite: true);
         }
         catch (Exception ex) { Logger.Error($"Failed to save settings to {_path}", ex); }
     }
