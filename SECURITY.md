@@ -41,6 +41,15 @@ Nexus has a small attack surface by design. Because no software is free of all v
 
 - **Offline by default.** Nexus makes no network calls out of the box. Update checks are strictly opt-in: nothing is contacted unless you enable them or click Check now yourself, and you can confirm that with a firewall. With checks enabled, Nexus contacts GitHub only (github.com and GitHub's own file-download host), fetches the latest version number and release files, and sends nothing about you or your data beyond the connection itself (GitHub sees your IP address, as with any web request). The toggle lives in Settings > Diagnostics. There is no telemetry and no account.
 - **Signed updates.** Update information is a manifest signed with a key held offline by the maintainer. The app verifies the signature and the file hashes before anything is installed, refuses downgrades, and asks you before every download and every install. A compromised download source or repository cannot make Nexus install anything: at worst, updates stop appearing.
+- **Portable self-update.** The portable version can install an update itself. Nexus does the update while it is open, and then restarts as the new version. No helper program runs, and no script runs. The signed manifest format does not change. Nexus does the update in this order:
+  - Nexus verifies the download against the signed manifest.
+  - Nexus opens the download one time and verifies it again on that open file handle. So the bytes that Nexus checks are the bytes that Nexus unpacks.
+  - Nexus unpacks the download, and then verifies each file again just before it puts that file in place.
+  - Nexus records each rename in a journal before that rename happens.
+  - Nexus replaces each file in the update with a rename. Nexus keeps each previous file as a `.old` file.
+  - Nexus restarts as the new version.
+- **Update recovery.** If an update stops part way, the next start puts the previous version back from the kept `.old` files. Nexus keeps the previous files and the verified download until the new version starts. The first start of the new version removes the `.old` files and the download.
+- **Safe conditions for the self-update.** Nexus tries the self-update only when the conditions are safe. Nexus does not try it in a protected folder, on a network drive, or with a second Nexus window open. Nexus then offers a manual update. When you choose it, Nexus verifies and unpacks the update and opens the new folder and your current folder. You then do one copy.
 - **No elevation.** Nexus installs and runs per user. Nexus never asks for admin rights.
 - **Reads the screen, not Star Citizen's memory.** Auto-scan uses the standard Windows APIs for screen capture and OCR. Nexus never reads Star Citizen's memory. Nexus never injects code, DLLs, or hooks into the Star Citizen process.
 - **No changes to game files.** Nexus includes the reference data. Nexus reads some Star Citizen files, but it never changes them:
