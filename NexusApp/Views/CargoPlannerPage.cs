@@ -55,6 +55,9 @@ public sealed class CargoPlannerPage : UserControl
         Render();
     }
 
+    // Portable self-swap: release the embedded browser's handles on Web\cargo before files are renamed.
+    internal void ShutdownWebViewForUpdate() => _viewport.ShutdownForUpdate();
+
     // The planner shows ONLY ships fully signed off in Grid Studio, with their saved overrides
     // (grid positions, sizes, accepted-container sets) applied to the model.
     private CargoShipCatalog LoadVisibleCatalog()
