@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.8.1  -  Jul 26, 2026",
+        [
+            "Clearer update messages - a failed update check now says why, in Settings and in the log: the release is not signed yet, the signature is missing, or the connection failed, instead of a raw error code",
+        ]),
         ("App  6.8.0  -  Jul 26, 2026",
         [
             "New: Mission Guides - browse zoomable maps and tactical reference guides right in Nexus, in a new dock page and a GUIDES tab in the in-game overlay",
