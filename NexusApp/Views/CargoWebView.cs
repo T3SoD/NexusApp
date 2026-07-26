@@ -154,6 +154,18 @@ public sealed class CargoWebView : UserControl
         }
     }
 
+    // Called once, right before the portable self-swap flips files: disposing the control
+    // ends the msedgewebview2 child processes so their read handles on Web\cargo release.
+    // Deliberately no re-init path; after a FAILED swap the 3D views stay degraded until the
+    // app restarts, which beats renaming files under a live embedded browser.
+    internal void ShutdownForUpdate()
+    {
+        try { _web.Dispose(); }
+        catch (Exception ex) { Logger.Error("[UI] WebView2 dispose before update failed", ex); }
+        _sharedEnv = null;
+        _ready = false;
+    }
+
     // Cancel any navigation off our own local virtual hosts. Fires for every navigation attempt
     // (page-initiated or otherwise); denials are logged once per occurrence.
     private static void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)

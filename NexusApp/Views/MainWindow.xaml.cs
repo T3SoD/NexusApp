@@ -613,6 +613,15 @@ public partial class MainWindow : Window
         _gridStudioPage.OnShown();
     }
 
+    // Ends both embedded browser viewports (Cargo Planner + Grid Studio) so the portable
+    // self-swap can rename Web\cargo files without msedgewebview2 holding them open.
+    public void ShutdownWebViewsForUpdate()
+    {
+        Logger.Info("[UPDATE] closing embedded browser views before the swap");
+        _plannerPage?.ShutdownWebViewForUpdate();
+        _gridStudioPage?.ShutdownWebViewForUpdate();
+    }
+
     private AdminPage? _adminPage;
     private void InitAdminPage()
     {
