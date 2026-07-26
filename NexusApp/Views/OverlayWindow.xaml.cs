@@ -121,8 +121,7 @@ public partial class OverlayWindow : Window
                 SyncScanControls();
         };
 
-        var savedTab = s.OverlayActiveTab;
-        SwitchTab(savedTab is "stats" or "scan" or "orders" or "shopping" or "hauling" ? savedTab : "stats");
+        SwitchTab(OverlayTabs.NormalizeForRestore(s.OverlayActiveTab));
 
         // BETA Game.log blueprint session - drive + mirror it from the STATS tab. The
         // overlay lives for the app's lifetime (created once, hidden/shown), so these
@@ -950,6 +949,7 @@ public partial class OverlayWindow : Window
     private void TabOrders_Click(object sender, RoutedEventArgs e) => SwitchTab("orders");
     private void TabShopping_Click(object sender, RoutedEventArgs e) => SwitchTab("shopping");
     private void TabHauling_Click(object sender, RoutedEventArgs e) => SwitchTab("hauling");
+    private void TabGuides_Click(object sender, RoutedEventArgs e) => SwitchTab("guides");
 
     // persist:false = a programmatic tab flip (the welcome tour) that must not overwrite the
     // user's saved tab preference; every user-driven switch keeps the default and persists.
@@ -966,6 +966,7 @@ public partial class OverlayWindow : Window
         OrdersTabContent.Visibility   = tab == "orders"   ? Visibility.Visible : Visibility.Collapsed;
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
         HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
+        GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
 
         var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
         var none   = Brushes.Transparent;
@@ -974,6 +975,7 @@ public partial class OverlayWindow : Window
         TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
         TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
         TabHaulingIndicator.Background  = tab == "hauling"  ? accent : none;
+        TabGuidesIndicator.Background   = tab == "guides"   ? accent : none;
 
         // RECENT scans belong to the SCAN tab only - hide the strip on every other tab.
         SetHistoryStripVisible(tab == "scan");
@@ -982,6 +984,7 @@ public partial class OverlayWindow : Window
         if (tab == "scan") SyncScanControls();
         if (tab == "shopping") RebuildShoppingPanel();
         if (tab == "hauling") RebuildHaulingPanel();
+        if (tab == "guides") ShowGuidesTab();
 
         if (tab == "orders")
         {
@@ -2177,5 +2180,228 @@ public partial class OverlayWindow : Window
                 Text = "Shopping list is empty", FontSize = 12,
                 Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
             });
+    }
+
+    // ── GUIDES tab (Mission Guides, compact) ────────────────────────────────────
+    // The overlay read of the Mission Guides page: the same GuideCatalog, rendered as a
+    // category-grouped title list instead of thumbnail cards (no room for art at 320px), handing
+    // the tab body to the shared GuideViewer when a row is picked. No credits here - the creator
+    // acknowledgement lives on the main page only. The viewer runs in compact mode, so its decode
+    // is capped and the overlay never holds a full-resolution bitmap.
+    //
+    // Everything is built on first entry to the tab, so a user who never opens GUIDES pays nothing.
+
+    private const double GuideCascadeMs     = 200;   // MainWindow CascadeIn duration
+    private const double GuideCascadeStepMs = 40;    // MainWindow CascadeIn stagger
+    private const double GuideCascadeRisePx = 12;    // page-in / cascade rise distance
+    private const double GuideRowSlidePx    = 3;     // DockTile hover slide (GameTheme.xaml DockTile)
+
+    private ScrollViewer? _guidesScroller;
+    private GuideViewer? _guidesViewer;
+    private readonly List<FrameworkElement> _guidesCascade = new();
+    private GuideEntry? _openGuide;
+
+    // Entry point from SwitchTab: build once, log the show, and replay the list cascade. A guide
+    // left open from a previous visit is closed so the tab always opens on the list.
+    private void ShowGuidesTab()
+    {
+        EnsureGuidesTab();
+        Logger.Info("[WIN] overlay guides tab shown");
+        if (_openGuide != null) CloseOverlayGuide(replayCascade: false);
+        PlayGuidesCascade();
+    }
+
+    private void EnsureGuidesTab()
+    {
+        if (_guidesScroller != null) return;
+
+        var list = new StackPanel();
+        bool firstSection = true;
+        foreach (var category in GuideCatalog.Categories)
+        {
+            var head = new TextBlock
+            {
+                Text = category.ToUpperInvariant(),
+                Style = (Style)FindResource("SectionLabel"),
+                Margin = new Thickness(0, firstSection ? 0 : 14, 0, 6),
+            };
+            firstSection = false;
+            list.Children.Add(head);
+            _guidesCascade.Add(head);
+
+            foreach (var guide in GuideCatalog.ByCategory(category))
+            {
+                var row = BuildGuideRow(guide);
+                list.Children.Add(row);
+                _guidesCascade.Add(row);
+            }
+        }
+
+        _guidesScroller = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(12, 10, 12, 12),   // the shared overlay tab-body padding
+            Content = list,
+        };
+        GuidesTabContent.Children.Add(_guidesScroller);
+
+        _guidesViewer = new GuideViewer(compact: true) { Visibility = Visibility.Collapsed };
+        _guidesViewer.BackRequested += (_, _) => CloseOverlayGuide(replayCascade: true);
+        GuidesTabContent.Children.Add(_guidesViewer);
+
+        // Leaving the tab, or hiding the whole overlay, must not park a decoded bitmap in memory.
+        GuidesTabContent.IsVisibleChanged += (_, _) =>
+        {
+            if (!GuidesTabContent.IsVisible && _openGuide != null) CloseOverlayGuide(replayCascade: false);
+        };
+    }
+
+    // One catalog row: chamfered card, amber edge tick, title, native pixel size. Hover mirrors the
+    // dock tile (3px slide + amber edge + tick glow); the slide is gated on Motion.Reduced.
+    private FrameworkElement BuildGuideRow(GuideEntry guide)
+    {
+        var line = new Grid();
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var tick = new Border
+        {
+            Width = 2, Height = 13, Background = Hud.Br("AccentStrongBrush"),
+            VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+        };
+        Grid.SetColumn(tick, 0);
+        line.Children.Add(tick);
+
+        var name = new TextBlock
+        {
+            Text = guide.Title, FontSize = 12, FontWeight = FontWeights.SemiBold,
+            Foreground = Hud.Br("FgDimBrush"), TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(name, 1);
+        line.Children.Add(name);
+
+        var px = new TextBlock
+        {
+            Text = $"{guide.NativeWidth}x{guide.NativeHeight}",
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9, Foreground = Hud.Br("FgDimBrush"),
+            Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(px, 2);
+        line.Children.Add(px);
+
+        var host = Hud.CardFrame(line, out var frame, out _, chamfer: 7, padding: new Thickness(10, 8, 10, 8));
+        host.Margin = new Thickness(0, 0, 0, 5);   // the 5px row gap
+        host.Cursor = Cursors.Hand;
+        var slide = new System.Windows.Media.TranslateTransform();
+        host.RenderTransform = slide;
+
+        var tickGlow = new System.Windows.Media.Effects.DropShadowEffect
+        { Color = Hud.Col("AccentBrush"), BlurRadius = 8, ShadowDepth = 0, Opacity = 0.85 };
+
+        host.MouseEnter += (_, _) =>
+        {
+            frame.Fill = Hud.Br("Bg3Brush");
+            frame.Stroke = Hud.Br("AccentStrongBrush");
+            tick.Background = Hud.Br("AccentBrush");
+            tick.Effect = tickGlow;
+            name.Foreground = Hud.Br("FgBrush");
+            // Reduce animations: the hover keeps its colour change but loses the slide.
+            if (Motion.Reduced) return;
+            SlideGuideRow(slide, GuideRowSlidePx);
+        };
+        host.MouseLeave += (_, _) =>
+        {
+            frame.Fill = Hud.Br("Bg2NavBrush");
+            frame.Stroke = Hud.Br("NavBorderBrush");
+            tick.Background = Hud.Br("AccentStrongBrush");
+            tick.Effect = null;
+            name.Foreground = Hud.Br("FgDimBrush");
+            if (Motion.Reduced)
+            {
+                slide.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null);
+                slide.X = 0;
+                return;
+            }
+            SlideGuideRow(slide, 0);
+        };
+        host.MouseLeftButtonDown += (_, _) => OpenOverlayGuide(guide, host);
+        return host;
+    }
+
+    private static void SlideGuideRow(System.Windows.Media.TranslateTransform slide, double x)
+        => slide.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(x, new Duration(TimeSpan.FromMilliseconds(Motion.HoverMs)))
+            { EasingFunction = Motion.SlideOut });
+
+    private void OpenOverlayGuide(GuideEntry guide, DependencyObject source)
+    {
+        if (_guidesScroller is null || _guidesViewer is null) return;
+        InteractionLog.Click(guide.Title, source);
+        _openGuide = guide;
+        _guidesScroller.Visibility = Visibility.Collapsed;
+        _guidesViewer.Visibility = Visibility.Visible;
+        _guidesViewer.Show(guide);
+        Logger.Info($"[UI] guide opened: {guide.Id} (overlay)");
+    }
+
+    private void CloseOverlayGuide(bool replayCascade)
+    {
+        var id = _openGuide?.Id;
+        _openGuide = null;
+        _guidesViewer?.Clear();                     // releases the decoded bitmap
+        if (_guidesViewer != null) _guidesViewer.Visibility = Visibility.Collapsed;
+        if (_guidesScroller != null) _guidesScroller.Visibility = Visibility.Visible;
+        if (id != null) Logger.Info($"[UI] guide closed: {id}");
+        if (replayCascade) PlayGuidesCascade();
+    }
+
+    // The same cascade the Mission Guides page plays (200ms, 40ms stagger, 12px rise, quad-out),
+    // category heads and rows sharing one continuous index. The rows carry the hover slide on the
+    // same transform, but that animates X while the cascade animates Y, so the two never fight.
+    private void PlayGuidesCascade()
+    {
+        if (_guidesCascade.Count == 0) return;
+
+        if (Motion.Reduced)
+        {
+            foreach (var fe in _guidesCascade)
+            {
+                fe.BeginAnimation(OpacityProperty, null);
+                fe.Opacity = 1;
+                var t = GuideRise(fe);
+                t.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+                t.Y = 0;
+            }
+            return;
+        }
+
+        var ease = new System.Windows.Media.Animation.QuadraticEase
+        { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        for (int i = 0; i < _guidesCascade.Count; i++)
+        {
+            var fe = _guidesCascade[i];
+            var rise = GuideRise(fe);
+            fe.Opacity = 0;
+            rise.Y = GuideCascadeRisePx;
+            var delay = TimeSpan.FromMilliseconds(i * GuideCascadeStepMs);
+            var dur = TimeSpan.FromMilliseconds(GuideCascadeMs);
+            fe.BeginAnimation(OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { BeginTime = delay, EasingFunction = ease });
+            rise.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(GuideCascadeRisePx, 0, dur) { BeginTime = delay, EasingFunction = ease });
+        }
+    }
+
+    // Rows already own a TranslateTransform for the hover slide; reuse it so the entrance and the
+    // hover never fight over RenderTransform.
+    private static System.Windows.Media.TranslateTransform GuideRise(FrameworkElement fe)
+    {
+        if (fe.RenderTransform is System.Windows.Media.TranslateTransform t) return t;
+        var created = new System.Windows.Media.TranslateTransform();
+        fe.RenderTransform = created;
+        return created;
     }
 }

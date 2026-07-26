@@ -100,6 +100,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
                     <Button x:Name="TabStatsBtn" Content="HUB"
@@ -141,7 +142,15 @@
                     <Border x:Name="TabHaulingIndicator" Height="2" Width="48"
                             CornerRadius="1" Background="Transparent"/>
                 </StackPanel>
-                <Border Grid.ColumnSpan="5" VerticalAlignment="Bottom" Height="1"
+                <StackPanel Grid.Column="5">
+                    <Button x:Name="TabGuidesBtn" Content="GUIDES"
+                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
+                            Background="Transparent" BorderThickness="0"
+                            Click="TabGuides_Click" Padding="0,5" Margin="0"/>
+                    <Border x:Name="TabGuidesIndicator" Height="2" Width="44"
+                            CornerRadius="1" Background="Transparent"/>
+                </StackPanel>
+                <Border Grid.ColumnSpan="6" VerticalAlignment="Bottom" Height="1"
                         Background="{DynamicResource NavBorderBrush}"/>
             </Grid>
 
@@ -499,6 +508,11 @@
                         <StackPanel x:Name="HaulingList"/>
                     </ScrollViewer>
                 </Grid>
+
+                <!-- GUIDES tab: the Mission Guides catalog as a compact title list that hands the
+                     tab body to the shared GuideViewer. Built in code on first entry (see the
+                     GUIDES tab region in the code-behind) so nothing exists until it is opened. -->
+                <Grid x:Name="GuidesTabContent" Visibility="Collapsed"/>
             </Grid>
 
             <!-- Drag handle to resize history strip -->
