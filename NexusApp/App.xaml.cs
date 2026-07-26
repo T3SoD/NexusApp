@@ -36,6 +36,10 @@ public partial class App : Application
     // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
     public static string? PreviousSessionVersion { get; private set; }
 
+    // Set when startup recovery restored the previous version after a crashed portable swap;
+    // drives the one-time swap-failed strip on Operations. Null when nothing happened.
+    public static string? SwapFailedAttemptedVersion { get; private set; }
+
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
@@ -192,6 +196,10 @@ public partial class App : Application
         // the strictly-greater rule, so manual downgrades stay quiet; every start records the
         // running version so the next upgrade can announce itself.
         Update = new UpdateService(Settings);
+        // Swap recovery MUST run before the purge: the journal decides whether updates\
+        // still holds the crash-recovery zip, and the purge itself skips while one exists.
+        var swapRecovery = PortableUpdater.RecoverAtStartup();
+        if (swapRecovery.ShowSwapFailedNotice) SwapFailedAttemptedVersion = swapRecovery.AttemptedVersion;
         Update.PurgeStaleDownloads();
         PreviousSessionVersion = Settings.Current.LastSeenVersion;
         if (Settings.Current.LastSeenVersion != AppInfo.Version)
@@ -363,6 +371,28 @@ public partial class App : Application
         GameLog?.Dispose();
         Network?.Dispose();
         Data?.Dispose();
+        // Portable self-swap handoff: spawn the NEW exe as the very LAST action, after every
+        // settings and database write above has finished, so the two instances never overlap
+        // on the same profile. Log BEFORE spawning (CrashGuard pattern): if Start throws, the
+        // log must still explain what happened. Spawn success is the only health check; the
+        // .old set plus the journal are the recovery story if the child dies.
+        if (Update is { PendingRelaunchPath: { Length: > 0 } relaunch })
+        {
+            Logger.Info("[UPDATE] relaunching as the new version");
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(relaunch)
+                {
+                    UseShellExecute = false,
+                    // A shortcut's "Start in" can point anywhere; anchor the child explicitly.
+                    WorkingDirectory = System.IO.Path.GetDirectoryName(relaunch)!,
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("[UPDATE] couldn't relaunch after the swap; start Nexus manually from its folder", ex);
+            }
+        }
         base.OnExit(e);
     }
 }
