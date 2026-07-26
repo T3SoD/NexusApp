@@ -153,4 +153,110 @@ public class PortableUpdaterTests : IDisposable
     [InlineData("")]
     public void NormalizeEntry_Rejects(string entry) =>
         Assert.NotNull(PortableUpdater.NormalizeEntry(entry, out _));
+
+    // ---- VerifyAndExtract (same-handle verify, hardened extraction) ----
+
+    private static string HashHex(byte[] data) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
+
+    // Builds a zip at a temp path from (entryName, content) pairs and returns (path, hash).
+    private (string path, string sha256) MakeZip(params (string name, string content)[] entries)
+    {
+        var path = Path.Combine(TempDir(), "payload.zip");
+        using (var fs = File.Create(path))
+        using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Create))
+            foreach (var (name, content) in entries)
+            {
+                var e = zip.CreateEntry(name);
+                using var s = e.Open();
+                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                s.Write(bytes, 0, bytes.Length);
+            }
+        return (path, HashHex(File.ReadAllBytes(path)));
+    }
+
+    private static (string name, string content)[] GoodEntries() => new[]
+    {
+        ("NexusApp/NexusApp.exe", "new exe bytes"),
+        ("NexusApp/e_sqlite3.dll", "new sqlite bytes"),
+        ("NexusApp/wpfgfx_cor3.dll", "new wpf bytes"),
+        ("NexusApp/README.txt", "new readme"),
+        ("NexusApp/Web/cargo/index.html", "new page"),
+    };
+
+    [Fact]
+    public void VerifyAndExtract_HappyPath_ExtractsAndHashes()
+    {
+        var (zip, hash) = MakeZip(GoodEntries());
+        var dest = Path.Combine(TempDir(), "staged", "NexusApp");
+        var result = PortableUpdater.VerifyAndExtract(zip, hash, dest);
+        Assert.Equal("new exe bytes", File.ReadAllText(Path.Combine(dest, "NexusApp.exe")));
+        Assert.Equal("new page", File.ReadAllText(Path.Combine(dest, "Web", "cargo", "index.html")));
+        Assert.Equal(5, result.FileHashes.Count);
+        Assert.Equal(HashHex(System.Text.Encoding.UTF8.GetBytes("new page")), result.FileHashes[@"Web\cargo\index.html"]);
+        Assert.Equal(dest, result.PayloadRoot);
+        Assert.True(result.TotalBytes > 0);
+    }
+
+    [Fact]
+    public void VerifyAndExtract_WrongZipHash_RefusesBeforeExtracting()
+    {
+        var (zip, _) = MakeZip(GoodEntries());
+        var dest = Path.Combine(TempDir(), "staged", "NexusApp");
+        Assert.Throws<InvalidOperationException>(() =>
+            PortableUpdater.VerifyAndExtract(zip, new string('a', 64), dest));
+        Assert.False(Directory.Exists(dest));   // nothing may land before the hash gate
+    }
+
+    [Theory]
+    [InlineData("NexusApp/../evil.txt")]
+    [InlineData("NexusApp/install.marker")]
+    [InlineData("NexusApp/x.dll.old")]
+    [InlineData("NexusApp/x.dll.new")]
+    [InlineData("NexusApp/update_journal.json")]
+    [InlineData("NexusApp/update.lock")]
+    [InlineData("NexusApp/update-staging/x.txt")]
+    [InlineData("loose.txt")]
+    public void VerifyAndExtract_HostileEntry_Refuses(string hostile)
+    {
+        var entries = GoodEntries().Append((hostile, "evil")).ToArray();
+        var (zip, hash) = MakeZip(entries);
+        var dest = Path.Combine(TempDir(), "staged", "NexusApp");
+        Assert.Throws<InvalidOperationException>(() => PortableUpdater.VerifyAndExtract(zip, hash, dest));
+    }
+
+    [Fact]
+    public void VerifyAndExtract_MissingExe_Refuses()
+    {
+        var (zip, hash) = MakeZip(("NexusApp/README.txt", "no exe here"));
+        Assert.Throws<InvalidOperationException>(() =>
+            PortableUpdater.VerifyAndExtract(zip, hash, Path.Combine(TempDir(), "s")));
+    }
+
+    [Fact]
+    public void VerifyAndExtract_TooManyEntries_Refuses()
+    {
+        var (zip, hash) = MakeZip(GoodEntries());
+        Assert.Throws<InvalidOperationException>(() =>
+            PortableUpdater.VerifyAndExtract(zip, hash, Path.Combine(TempDir(), "s"), maxEntries: 2));
+    }
+
+    [Fact]
+    public void VerifyAndExtract_ExpansionPastCap_Refuses()
+    {
+        var (zip, hash) = MakeZip(GoodEntries());
+        Assert.Throws<InvalidOperationException>(() =>
+            PortableUpdater.VerifyAndExtract(zip, hash, Path.Combine(TempDir(), "s"), maxBytes: 10));
+    }
+
+    [Fact]
+    public void VerifyAndExtract_ReplacesAStaleStagedTree()
+    {
+        var (zip, hash) = MakeZip(GoodEntries());
+        var dest = Path.Combine(TempDir(), "staged", "NexusApp");
+        Directory.CreateDirectory(dest);
+        File.WriteAllText(Path.Combine(dest, "stale.txt"), "from a crashed run");
+        PortableUpdater.VerifyAndExtract(zip, hash, dest);
+        Assert.False(File.Exists(Path.Combine(dest, "stale.txt")));   // fresh tree every run
+    }
 }

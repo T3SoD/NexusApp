@@ -38,6 +38,10 @@ internal sealed record PortableEnv(
         AppPaths.Root);
 }
 
+// What one verified extraction produced: every payload file's SHA-256 keyed by its backslash
+// path relative to the payload root, the actual decompressed byte count, and that root.
+internal sealed record ExtractResult(Dictionary<string, string> FileHashes, long TotalBytes, string PayloadRoot);
+
 // The portable self-swap engine: the running, already-verified app replaces its own files
 // with journaled same-volume renames (the Syncthing/yt-dlp pattern) and the new exe is
 // spawned by App.OnExit as the process's last action. Windows permits RENAMING a running
@@ -197,6 +201,75 @@ public sealed class PortableUpdater : IPortableSwapper
         if (string.Equals(file, LockFileName, StringComparison.OrdinalIgnoreCase))
             return "lock filename is not allowed in the payload";
         return null;
+    }
+
+    // ---- Same-handle verify and hardened extraction ----
+
+    // Same-handle verify and extract. The zip is opened denying writers AND deleters
+    // (FileShare.Read), hashed against the SIGNED manifest hash on that open stream, rewound,
+    // and extracted from the SAME handle: the bytes hashed and the bytes extracted are
+    // identical, so there is no zip-level TOCTOU window in the user-writable staging dir.
+    // Per-entry SHA-256 is computed DURING extraction and held in memory so the flip phase
+    // can re-verify each staged file immediately before renaming it into place, which chains
+    // every placed byte to the signed manifest without a manifest schema change.
+    internal static ExtractResult VerifyAndExtract(string zipPath, string expectedSha256, string destDir,
+                                                   int maxEntries = MaxZipEntries, long maxBytes = MaxExtractedBytes)
+    {
+        using var fs = new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var zipHash = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+        if (!string.Equals(zipHash, expectedSha256, StringComparison.Ordinal))
+            throw new InvalidOperationException("the downloaded file failed verification at install time");
+        fs.Position = 0;
+
+        // A stale tree from a crashed run must never contribute files to a swap.
+        if (Directory.Exists(destDir)) Directory.Delete(destDir, recursive: true);
+        Directory.CreateDirectory(destDir);
+        var destRoot = Path.GetFullPath(destDir).TrimEnd('\\') + "\\";
+
+        var hashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        long total = 0;
+        var exeSeen = false;
+        using var zip = new ZipArchive(fs, ZipArchiveMode.Read, leaveOpen: true);
+        if (zip.Entries.Count > maxEntries)
+            throw new InvalidOperationException("the update archive lists too many files");
+        foreach (var entry in zip.Entries)
+        {
+            var issue = NormalizeEntry(entry.FullName, out var rel);
+            if (issue != null)
+                throw new InvalidOperationException($"refused archive entry \"{entry.FullName}\": {issue}");
+            if (rel.Length == 0) continue;   // the top-level folder entry itself
+            var target = Path.GetFullPath(Path.Combine(destRoot, rel));
+            // Defense in depth beside NormalizeEntry (and .NET 8's own refusal): nothing
+            // canonicalizing outside the destination is ever created.
+            if (!target.StartsWith(destRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"refused archive entry \"{entry.FullName}\": escapes the destination");
+            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
+            {
+                Directory.CreateDirectory(target);
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (string.Equals(rel, "NexusApp.exe", StringComparison.OrdinalIgnoreCase)) exeSeen = true;
+            using var src = entry.Open();
+            using var dst = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var buffer = new byte[81920];
+            int read;
+            while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                total += read;
+                // Enforced on ACTUAL decompressed bytes: a zip header's declared sizes are
+                // metadata an accident (or a bomb) can misstate.
+                if (total > maxBytes)
+                    throw new InvalidOperationException("the update archive expands past the size cap");
+                hasher.AppendData(buffer, 0, read);
+                dst.Write(buffer, 0, read);
+            }
+            hashes[rel] = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+        }
+        if (!exeSeen)
+            throw new InvalidOperationException("the update archive does not contain NexusApp\\NexusApp.exe");
+        return new ExtractResult(hashes, total, destDir);
     }
 
     // Interface members are completed by later tasks; these throw until then so the class
