@@ -59,6 +59,7 @@ public sealed class GuidesPage : UserControl
     private readonly Ellipse[] _hangarDots = new Ellipse[5];
     private StackPanel? _hangarLine;
     private TextBlock? _hangarPhaseText;
+    private TextBlock? _hangarVerbText;
     private TextBlock? _hangarCountdownText;
     private TextBlock? _hangarTailText;
     private TextBlock? _hangarResetLink;
@@ -426,6 +427,15 @@ public sealed class GuidesPage : UserControl
         };
         line.Children.Add(_hangarPhaseText);
 
+        // Owner ruling (live run 2026-07-27): say what the number counts down TO ("closes in" /
+        // "opens in"); a bare countdown reads ambiguously against the 185m full-cycle mental model.
+        _hangarVerbText = new TextBlock
+        {
+            FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(HangarItemGap, 0, 0, 0),
+        };
+        line.Children.Add(_hangarVerbText);
+
         _hangarCountdownText = new TextBlock
         {
             FontFamily = Hud.Font("MonoFont"), FontSize = 11, Foreground = Hud.Br("FgBrush"),
@@ -507,6 +517,7 @@ public sealed class GuidesPage : UserControl
         _hangarPhaseText!.Text = s.IsOpen ? "OPEN" : "CLOSED";
         _hangarPhaseText!.Foreground = s.IsOpen ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
 
+        _hangarVerbText!.Text = s.IsOpen ? "closes in" : "opens in";
         _hangarCountdownText!.Text = ExecHangarCycle.FormatCountdown(s.TimeToTransition);
         _hangarTailText!.Visibility = s.IsFinalActiveTail ? Visibility.Visible : Visibility.Collapsed;
         _hangarResetLink!.Visibility = overrideUtc.HasValue ? Visibility.Visible : Visibility.Collapsed;
