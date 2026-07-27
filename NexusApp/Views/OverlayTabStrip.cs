@@ -30,6 +30,12 @@ public sealed class OverlayTabStrip : Grid
         public List<Path> IconPaths = [];    // both representations, recolored on state change
         public List<Border> BadgeChips = []; // one chip per representation, updated together
         public List<TextBlock> BadgeTexts = [];
+
+        // Bumped on every state change. Measured WPF behavior: an animation removed with
+        // BeginAnimation(prop, null) detaches from the property but its clock keeps running, and it
+        // still raises Completed at the ORIGINAL end time. Every Completed handler must therefore
+        // compare its generation against this, or a superseded clock will tear down the live state.
+        public int MotionGen;
     }
 
     private readonly List<TabHost> _hosts = [];
@@ -78,7 +84,10 @@ public sealed class OverlayTabStrip : Grid
             FontSize = 9.5,
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,   // spec: label may truncate below ~300px
+            TextTrimming = TextTrimming.None,   // the clip Border crops the label: trimming re-trims
+                                                // every animation frame (growing ellipsis instead of
+                                                // a wipe), so a hard clip at extreme narrow widths is
+                                                // accepted below ~300px.
         };
         host.Label.SetResourceReference(TextBlock.FontFamilyProperty, "UiFont");
         host.Label.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
@@ -185,14 +194,23 @@ public sealed class OverlayTabStrip : Grid
         };
     }
 
-    private FrameworkElement BuildHoverChip(string id)
+    private ToolTip BuildHoverChip(string id)
     {
         var text = new TextBlock { Text = OverlayTabs.LabelFor(id), FontSize = 8.5 };
         text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
         var chip = new Border { Padding = new Thickness(7, 2, 7, 2), BorderThickness = new Thickness(1), Child = text };
         chip.SetResourceReference(Border.BackgroundProperty, "Bg3Brush");
         chip.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        return chip;
+        // Explicit ToolTip with its chrome zeroed out. A bare element gets wrapped in a default-styled
+        // ToolTip (near-white fill, grey hairline, 6,4 padding), which would halo this dark HUD chip.
+        return new ToolTip
+        {
+            Content = chip,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            HasDropShadow = false,
+        };
     }
 
     private void SetIconBrush(TabHost host, string brushKey)
@@ -215,6 +233,7 @@ public sealed class OverlayTabStrip : Grid
 
     private void ShowPill(TabHost host, bool animate)
     {
+        var gen = ++host.MotionGen;
         SetIconBrush(host, "AccentBrush");
         host.IconOnly.Visibility = Visibility.Collapsed;
         host.Pill.Visibility = Visibility.Visible;
@@ -235,6 +254,7 @@ public sealed class OverlayTabStrip : Grid
         };
         expand.Completed += (_, _) =>
         {
+            if (gen != host.MotionGen) return;   // superseded by a later switch; this clock is orphaned
             host.LabelClip.BeginAnimation(WidthProperty, null);
             host.LabelClip.Width = double.NaN;
         };
@@ -243,6 +263,7 @@ public sealed class OverlayTabStrip : Grid
 
     private void ShowIcon(TabHost host, bool animate)
     {
+        var gen = ++host.MotionGen;
         SetIconBrush(host, host.Root.IsMouseOver ? "FgBrush" : "FgDimBrush");
         host.LabelClip.BeginAnimation(WidthProperty, null);
         if (!animate || Motion.Reduced)
@@ -259,6 +280,7 @@ public sealed class OverlayTabStrip : Grid
         };
         collapse.Completed += (_, _) =>
         {
+            if (gen != host.MotionGen) return;   // superseded by a later switch; this clock is orphaned
             host.LabelClip.BeginAnimation(WidthProperty, null);
             host.Pill.Visibility = Visibility.Collapsed;
             host.IconOnly.Visibility = Visibility.Visible;
