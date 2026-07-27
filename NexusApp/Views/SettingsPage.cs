@@ -955,6 +955,10 @@ public sealed class SettingsPage : UserControl
             {
                 Text = desc, FontSize = 11.5, TextWrapping = TextWrapping.Wrap,
                 Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0), MaxWidth = 430,
+                // Issue #25: a binding MaxWidth makes default Stretch render as CENTER, so each
+                // description centered at its own text-length-dependent offset. Pin them left,
+                // flush under the title, like every other row element.
+                HorizontalAlignment = HorizontalAlignment.Left,
             });
         Grid.SetColumn(info, 0); grid.Children.Add(info);
 
