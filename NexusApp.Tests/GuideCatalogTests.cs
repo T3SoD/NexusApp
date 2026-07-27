@@ -23,10 +23,10 @@ public class GuideCatalogTests
         Uri.UnescapeDataString(packUri.Replace("pack://application:,,,/", "")).ToLowerInvariant();
 
     [Fact]
-    public void Has_six_entries_with_unique_ids()
+    public void Has_eight_entries_with_unique_ids()
     {
-        Assert.Equal(6, GuideCatalog.All.Count);
-        Assert.Equal(6, GuideCatalog.All.Select(g => g.Id).Distinct().Count());
+        Assert.Equal(8, GuideCatalog.All.Count);
+        Assert.Equal(8, GuideCatalog.All.Select(g => g.Id).Distinct().Count());
     }
 
     [Fact]
@@ -50,8 +50,11 @@ public class GuideCatalogTests
     [Fact]
     public void Native_dimensions_match_spec()
     {
+        // 2026-07-27 asset refresh: all three original CZ maps replaced, Exchange + Supervisor added.
         var orb = GuideCatalog.All.Single(g => g.Id == "orbituary");
-        Assert.Equal((5496, 5296), (orb.NativeWidth, orb.NativeHeight));
+        Assert.Equal((6768, 4724), (orb.NativeWidth, orb.NativeHeight));
+        var exch = GuideCatalog.All.Single(g => g.Id == "exchange");
+        Assert.Equal((2652, 2539), (exch.NativeWidth, exch.NativeHeight));
     }
 
     [Fact]

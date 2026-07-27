@@ -12,9 +12,11 @@ public static class GuideCatalog
 {
     public static IReadOnlyList<GuideEntry> All { get; } =
     [
-        new("checkmate",   "Checkmate",           "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/CheckmateCZMap.png",             5500, 3593),
-        new("orbituary",   "Orbituary",           "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/OrbituaryCZMap.png",             5496, 5296),
-        new("ruin",        "Ruin",                "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/RuinCZMap.png",                  5600, 3594),
+        new("checkmate",   "Checkmate",           "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/CheckmateCZMap.png",             3843, 2491),
+        new("exchange",    "PYAM-EXHANG-0-1",     "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/ExchangeCZMap.png",              2652, 2539),
+        new("orbituary",   "Orbituary",           "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/OrbituaryCZMap.png",             6768, 4724),
+        new("ruin",        "Ruin",                "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/RuinCZMap.png",                  6768, 4724),
+        new("supervisor",  "PYAM-SUPVISR-3-4/5",  "Contested Zones",        "pack://application:,,,/Assets/Guides/ContestedZones/SupervisorCZMap.png",            2652, 2539),
         new("tsg-overview","Overview",            "Tactical Strike Groups", "pack://application:,,,/Assets/Guides/TacticalStrikeGroups/TacticalStrikeGroups.png", 4961, 3508),
         new("tsg-trench",  "Trench Runner",       "Tactical Strike Groups", "pack://application:,,,/Assets/Guides/TacticalStrikeGroups/TSGTrenchRunner.png",      4961, 3508),
         new("asd-onyx",    "ASD Onyx Facilities", "General",                "pack://application:,,,/Assets/Guides/General/ASDOnyxFacilities.png",                 3841, 4321),
