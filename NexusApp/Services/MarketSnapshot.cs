@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 
 namespace NexusApp.Services;
@@ -310,5 +311,94 @@ internal static class MarketParse
             }
         }
         return "";
+    }
+}
+
+// Atomic persistence for MarketSnapshot: write to .tmp, then atomic rename.
+// Load validates Schema and size before parsing.
+internal static class MarketSnapshotFile
+{
+    public const long MaxLoadBytes = 16 * 1024 * 1024;
+
+    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    // Serialize to path + ".tmp", then File.Move(tmp, path, overwrite: true). Creates the directory.
+    // Returns false (and logs via Logger.Error) on failure; never throws.
+    public static bool Save(string path, MarketSnapshot snapshot)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var tmp = path + ".tmp";
+            var json = JsonSerializer.Serialize(snapshot, SerializerOptions);
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to save market snapshot to {path}", ex);
+            return false;
+        }
+    }
+
+    // Null when missing, oversized, unparseable, or Schema != 1; reason describes why (for logging).
+    public static MarketSnapshot? Load(string path, out string? reason)
+    {
+        reason = null;
+
+        // Check if file exists
+        if (!File.Exists(path))
+        {
+            reason = $"Market snapshot file not found: {path}";
+            return null;
+        }
+
+        try
+        {
+            var info = new FileInfo(path);
+            if (info.Length > MaxLoadBytes)
+            {
+                reason = $"Market snapshot file exceeds max size ({info.Length} > {MaxLoadBytes} bytes): {path}";
+                return null;
+            }
+
+            var json = File.ReadAllText(path);
+            var snapshot = JsonSerializer.Deserialize<MarketSnapshot>(json, SerializerOptions);
+
+            if (snapshot == null)
+            {
+                reason = $"Failed to deserialize market snapshot: {path}";
+                return null;
+            }
+
+            if (snapshot.Schema != 1)
+            {
+                reason = $"Unsupported market snapshot schema (expected 1, got {snapshot.Schema}): {path}";
+                return null;
+            }
+
+            return snapshot;
+        }
+        catch (JsonException ex)
+        {
+            reason = $"Invalid JSON in market snapshot: {path} - {ex.Message}";
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            reason = $"Invalid market snapshot: {path} - {ex.Message}";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            reason = $"Error loading market snapshot: {path} - {ex.Message}";
+            return null;
+        }
     }
 }
