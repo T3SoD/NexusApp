@@ -33,7 +33,7 @@ public class HelpDialog : Window
                 "Drag the NEXUS header bar to reposition the overlay anywhere on screen.",
                 "The overlay stays on top of all windows including your game.",
                 "Close it with the ✕ button - position and size are saved for next time.",
-                "The overlay has five tabs: HUB, SCAN, REFINERY, SHOPPING, and HAULING - it opens on the HUB the first time, then reopens on the tab you last used.",
+                "The overlay has six tabs: HUB, SCAN, REFINERY, SHOPPING, HAULING, and GUIDES - it opens on the HUB the first time, then reopens on the tab you last used.",
                 "HUB - a read-only glance: SCAN STATUS lights (green = on, yellow = paused, red = off), the READY ORDERS and HAUL tiles, the SERVER / SHARD panel, and the Collection Log feed with a live blueprint count in its header (see Session Tracking).",
                 "SCAN - the Auto-scan RS switch, RS input, results, and the RECENT scan history (shown on this tab only).",
                 "REFINERY - your work orders at a glance, plus ▤ Open Refinery Tracker for the flyout panel.",
