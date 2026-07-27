@@ -139,6 +139,20 @@
                         <TextBlock x:Name="BlueprintChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
+                <!-- MARKET telemetry chip (live market data). Hidden entirely while the feature is
+                     off, matching the price surfaces' silence-over-placeholder rule; state, colours
+                     and click target are driven by RefreshMarketPill in code-behind. -->
+                <Border x:Name="MarketChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="{StaticResource Bg2NavBrush}"
+                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
+                        Visibility="Collapsed" Cursor="Hand"
+                        MouseLeftButtonDown="MarketChip_Click">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="MarketDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="MarketChipLabel" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="MarketChipText" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
                 <!-- SCAN telemetry chip (auto-scan state) -->
                 <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"

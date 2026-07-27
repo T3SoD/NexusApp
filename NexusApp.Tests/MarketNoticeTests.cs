@@ -85,6 +85,31 @@ public class MarketNoticeTests : IDisposable
         Assert.Contains("aUEC/SCU", MarketNotice.OverlaySellLine(8210, "Terminal", "12m ago"));
     }
 
+    // The dossier hero's twin of DecoderLine: same number, same never-a-bare-price rule, the
+    // dossier's own "Best sell" voice because the VALUE section below it lists the runners-up.
+    [Fact]
+    public void DossierHeroLine_FormatsCorrectly() =>
+        Assert.Equal("Best sell: 34,500 aUEC/SCU at Sacren's Plot (2h ago)",
+            MarketNotice.DossierHeroLine(34500, "Sacren's Plot", "2h ago"));
+
+    [Fact]
+    public void DossierHeroLine_AcceptsPatchTagAsAgeText() =>
+        Assert.Equal("Best sell: 1,000 aUEC/SCU at Terminal (patch 4.8)",
+            MarketNotice.DossierHeroLine(1000, "Terminal", MarketNotice.PatchTag("4.8")));
+
+    // An afternoon hour past 12, so the assertion actually distinguishes 24 hour from 12 hour.
+    [Fact]
+    public void PillClock_IsTwentyFourHour() =>
+        Assert.Equal("23:15", MarketNotice.PillClock(new DateTime(2026, 7, 27, 23, 15, 0, DateTimeKind.Local)));
+
+    [Theory]
+    [InlineData(26, "26h")]     // just past the 24h stale line
+    [InlineData(47, "47h")]
+    [InlineData(48, "2d")]      // two days and over reads in days, so the pill stays short
+    [InlineData(72, "3d")]
+    public void PillAge_HoursThenDays(int hours, string expected) =>
+        Assert.Equal(expected, MarketNotice.PillAge(TimeSpan.FromHours(hours)));
+
     [Fact]
     public void StatusLine_NeverFetched() =>
         Assert.Equal("Never refreshed", MarketNotice.StatusLine(null, null));
@@ -109,12 +134,18 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.SettingsTitle, MarketNotice.SettingsToggleTitle,
             MarketNotice.SettingsToggleDesc,
             MarketNotice.RefreshNow, MarketNotice.SourceNote, MarketNotice.CadenceNote,
-            MarketNotice.DossierFooter, MarketNotice.DossierSection,
+            MarketNotice.DossierFooter, MarketNotice.ValueSection,
+            MarketNotice.ValueDetailsShow, MarketNotice.ValueDetailsHide,
+            MarketNotice.BestRefineryLabel,
+            MarketNotice.PillLabel, MarketNotice.PillOffline, MarketNotice.PillSyncing,
+            MarketNotice.PillNoData, MarketNotice.PillTooltip,
+            MarketNotice.PillClock(DateTime.Now), MarketNotice.PillAge(TimeSpan.FromHours(26)),
             MarketNotice.NeverFetched,
             MarketNotice.PatchTag("4.8"),
             MarketNotice.FormatAge(TimeSpan.FromMinutes(12)),
             MarketNotice.DecoderLine(8210, "Terminal", "12m ago"),
             MarketNotice.OverlaySellLine(8210, "Terminal", "12m ago"),
+            MarketNotice.DossierHeroLine(8210, "Terminal", "12m ago"),
             MarketNotice.StatusLine(DateTime.Now, null),
             MarketNotice.StatusLine(DateTime.Now, "error"),
             MarketNotice.SnapshotAgeNote(TimeSpan.FromMinutes(30)),

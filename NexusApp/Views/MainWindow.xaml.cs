@@ -44,6 +44,11 @@ public partial class MainWindow : Window
         // BeginInvoke (not Invoke) matches the SettingsPage market subscription, since
         // Market.Dispose only drains an in-flight cycle for up to 3s.
         App.Market.Changed += () => Dispatcher.BeginInvoke(OnMarketDataChanged);
+        MarketChipLabel.Text = MarketNotice.PillLabel;
+        // Amber edge on hover, the mock's affordance for the one status chip that is clickable.
+        MarketChip.MouseEnter += (_, _) => MarketChip.BorderBrush = Hud.Br("AccentStrongBrush");
+        MarketChip.MouseLeave += (_, _) => MarketChip.BorderBrush = Hud.Br("NavBorderBrush");
+        RefreshMarketPill();
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -58,7 +63,10 @@ public partial class MainWindow : Window
         _vm.ScanHistory.CollectionChanged += OnScanHistoryChanged;
 
         _scanChipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        _scanChipTimer.Tick += (_, __) => UpdateScanChip();
+        // The status-strip refresh tick: the SCAN chip's poll, and the MARKET pill's only route to
+        // the two states nothing raises an event for (a cycle STARTING, and the Settings toggle
+        // being flipped). RefreshMarketPill returns immediately unless the state actually changed.
+        _scanChipTimer.Tick += (_, __) => { UpdateScanChip(); RefreshMarketPill(); };
         _scanChipTimer.Start();
         UpdateScanChip();
         // Flip the SCAN chip to/from the paused (yellow) state the instant foreground relevance changes.
@@ -356,6 +364,7 @@ public partial class MainWindow : Window
             App.Market.MaybeAutoRefresh();
             RefreshMarketConsent();
             RefreshCodexPrices();
+            RefreshMarketPill();   // the pill appears the moment the feature is turned on
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>
@@ -365,6 +374,7 @@ public partial class MainWindow : Window
             Logger.Info("[NET] market consent: declined");
             RefreshMarketConsent();
             RefreshCodexPrices();
+            RefreshMarketPill();
         };
         // Both buttons are ghost StripButtons by design (mock review ruling): the accent
         // "Turn on" from the mock is deliberately NOT copied.
@@ -969,6 +979,99 @@ public partial class MainWindow : Window
         RefreshHeroMarket();
         RefreshCodexPrices();
         RefreshWorkOrderSells();
+        RefreshMarketPill();
+    }
+
+    // ── MARKET status pill (top strip) ────────────────────────────────────────
+    // The strip's own chip chrome (MainWindow.xaml, between BLUEPRINTS and SCAN) carrying the state
+    // of the live market data channel, per the approved mock (nexus-design-lab/market-data section
+    // 07B). Not rendered at all when the feature is off - the same silence-over-placeholder rule
+    // the price surfaces follow. Every state differs in TEXT as well as colour, so none of them
+    // rides on colour alone.
+    //
+    // It is polled from the status-strip timer as well as fired from Changed because the service
+    // raises Changed only at the END of a cycle (the same reason SettingsPage disables its refresh
+    // button at click time): a cycle STARTING, and a Settings toggle flip - which raises nothing at
+    // all - would otherwise never reach the pill. The cached state below makes the poll free and,
+    // more importantly, keeps the breathing dot from being restarted every 1.5 seconds.
+    private string? _marketPillState;
+    private string? _marketPillText;
+    // The tooltip is part of the cache key, not just the visuals: in the error state it carries
+    // LastError, and two consecutive failures with DIFFERENT reasons produce the same state and the
+    // same "offline" text. Comparing state and text alone would leave the first failure's reason
+    // showing (a fast-failing cycle can start and fail between two 1.5s polls, so the busy state
+    // that would otherwise break the tie is not guaranteed to be observed).
+    private string? _marketPillTip;
+
+    private void RefreshMarketPill()
+    {
+        if (MarketChip == null) return;
+
+        var (state, text, tip) = MarketPillState();
+        if (state == _marketPillState && text == _marketPillText && tip == _marketPillTip) return;
+        _marketPillState = state;
+        _marketPillText = text;
+        _marketPillTip = tip;
+
+        if (state == "off")
+        {
+            MarketChip.Visibility = Visibility.Collapsed;
+            Hud.PulseDot(MarketDot, false);
+            return;
+        }
+
+        var (dot, value) = state switch
+        {
+            "busy"  => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
+            "error" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
+            "fresh" => (Hud.Br("CyanBrush"),   Hud.Br("FgBrush")),
+            _       => (Hud.Br("FgDimBrush"),  Hud.Br("FgDimBrush")),   // stale, nodata
+        };
+
+        MarketChip.Visibility = Visibility.Visible;
+        MarketChip.ToolTip = tip;
+        MarketChipText.Text = text;
+        MarketChipText.Foreground = value;
+        MarketDot.Fill = dot;
+        Hud.PulseDot(MarketDot, state == "busy");   // amber breathe while a cycle runs; solid otherwise
+    }
+
+    // Which state the pill is in, its value text, and its tooltip. Priority: a refresh in flight is
+    // the most current fact about the channel, so it outranks the previous cycle's error (which
+    // comes back by itself if this cycle fails too). Staleness is measured off the refined price
+    // stamp, not the snapshot's newest fetch, for the same reason the dossier's age note is: the
+    // daily reference datasets would otherwise report day-old prices as fresh.
+    private (string State, string Text, string Tip) MarketPillState()
+    {
+        // The demo profile never fetches (MarketDataService.ShouldFetch), so a pill there could
+        // only ever read "no data" forever - it stays hidden, exactly like the Settings section
+        // renders its inert Unavailable row instead of the live controls.
+        if (AppPaths.IsDemoProfile || App.Settings.Current.MarketDataEnabled != true)
+            return ("off", "", MarketNotice.PillTooltip);
+
+        var snap = App.Market.Snapshot;
+        var priced = snap is { } s && s.RefinedPrices.FetchedUtc != default;
+        DateTime? clock = App.Settings.Current.LastMarketFetchUtc?.ToLocalTime()
+                          ?? (priced ? DateTime.SpecifyKind(snap!.RefinedPrices.FetchedUtc, DateTimeKind.Utc).ToLocalTime() : null);
+
+        if (App.Market.FetchInProgress)
+            return ("busy", clock is { } c ? MarketNotice.PillClock(c) : MarketNotice.PillSyncing, MarketNotice.PillTooltip);
+        if (App.Market.LastError is { } err)
+            return ("error", MarketNotice.PillOffline, err);
+        if (!priced)
+            return ("nodata", MarketNotice.PillNoData, MarketNotice.PillTooltip);
+
+        var age = DateTime.UtcNow - snap!.RefinedPrices.FetchedUtc;
+        if (age > TimeSpan.FromHours(24))
+            return ("stale", MarketNotice.PillAge(age), MarketNotice.PillTooltip);
+        return ("fresh", clock is { } t ? MarketNotice.PillClock(t) : MarketNotice.PillNoData, MarketNotice.PillTooltip);
+    }
+
+    // The pill is a shortcut to the setting that governs it: mouse only, like every other control.
+    private void MarketChip_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("market status pill", MarketChip);
+        SetActivePage("settings");
     }
 
     // Rebuilds the Codex only while it is the page on screen; from anywhere else the prices are
@@ -1776,6 +1879,210 @@ public partial class MainWindow : Window
         return btn;
     }
 
+    // Dossier expander state (amendment 2026-07-27 item 6b/6c). Session-scoped and GLOBAL rather
+    // than per resource: a reader who opened the price detail (or the blueprint list) once is
+    // comparing ores, and re-clicking the same expander on every ore would be the restructure
+    // working against them. Fields, not settings: nothing here survives an app restart, and every
+    // dossier rebuild we cause ourselves (the hourly market publish rebuilds the Codex) reads them
+    // back so an open section is never yanked shut under the user - the same survives-a-rebuild
+    // contract as _expandedName and _expandedWorkOrderSells.
+    private bool _dossierValueExpanded;
+    private bool _dossierBlueprintsExpanded;
+    private bool _dossierFoundInExpanded;
+
+    // The always-visible line of the VALUE section (mock .vsum): the top refined terminal and its
+    // price on the left, the seed's best refinery and its yield modifier on the right, in the
+    // dossier's own row chrome (YieldRow: radius 6, padding 12,7,12,7, Bg2Nav on a NavBorder
+    // hairline). Either half may be absent - market data off or unpriced ore leaves the left side
+    // out, an ore with no refinery entries leaves the right side out - and the row is only ever
+    // built when at least one of them is present.
+    private Border ValueSummaryRow(PriceHit? top, NexusApp.Models.RefineryYield? bestYield)
+    {
+        var dim  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
+
+        var row = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(12, 7, 12, 7),
+            CornerRadius = new CornerRadius(6),
+            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1),
+        };
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        if (top is not null)
+        {
+            // Grid, not a horizontal StackPanel: a StackPanel measures with infinite width, so the
+            // terminal name would never trim (same reason the hero name row is a Grid).
+            var left = new Grid();
+            left.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            left.Children.Add(new TextBlock
+            {
+                Text = top.TerminalName, FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Foreground = top.Stale ? dim : fg, VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0),
+            });
+            var price = new TextBlock
+            {
+                Text = $"{top.Display:n0} aUEC/SCU", FontSize = 13, Foreground = top.Stale ? dim : gold,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(price, 1);
+            left.Children.Add(price);
+            // The hero line above carries this row's age, but a price from an older patch still
+            // says so here: staleness never rides on the dim colour alone.
+            if (top.Stale)
+            {
+                var chip = PatchTagChip(top.GameVersion);
+                Grid.SetColumn(chip, 2);
+                left.Children.Add(chip);
+            }
+            g.Children.Add(left);
+        }
+
+        if (bestYield is not null)
+        {
+            var right = new StackPanel
+            {
+                Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0),
+            };
+            right.Children.Add(new TextBlock
+            {
+                Text = MarketNotice.BestRefineryLabel, FontSize = 11, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+            });
+            right.Children.Add(new TextBlock
+            {
+                Text = bestYield.Station, FontSize = 12, Foreground = fg, MaxWidth = 230,
+                TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+            });
+            right.Children.Add(new TextBlock
+            {
+                Text = $"{(bestYield.ModifierPct > 0 ? "+" : "")}{bestYield.ModifierPct}%", FontSize = 13,
+                FontWeight = FontWeights.SemiBold, Foreground = ModifierBrush(bestYield.ModifierPct),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            Grid.SetColumn(right, 1);
+            g.Children.Add(right);
+        }
+
+        row.Child = g;
+        return row;
+    }
+
+    // ToggleLink's chrome (11 bold amber + caret, padding 12,5, radius 8, 1px NavBorder) with the
+    // three things the dossier restructure needs and the plain helper does not have: the app's
+    // drill-down reveal motion, a remembered state the caller owns, and a logged click. Mouse only.
+    private Border DossierExpanderLink(string showText, string hideText, FrameworkElement target,
+                                       bool expanded, string logLabel, Action<bool> onToggled)
+    {
+        var tb = new TextBlock
+        {
+            Text = (expanded ? hideText : showText) + (expanded ? "  ▴" : "  ▾"),
+            FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+        };
+        var btn = new Border
+        {
+            Child = tb, Padding = new Thickness(12, 5, 12, 5), CornerRadius = new CornerRadius(8),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 8),
+            Cursor = System.Windows.Input.Cursors.Hand, Background = System.Windows.Media.Brushes.Transparent,
+        };
+        bool open = expanded;
+        btn.MouseLeftButtonDown += (s, e) =>
+        {
+            e.Handled = true;
+            open = !open;
+            onToggled(open);
+            InteractionLog.Click($"dossier {logLabel} {(open ? "expand" : "collapse")}", btn);
+            if (open) ExpandRows(target, animate: !Motion.Reduced);
+            else CollapseRows(target, animate: !Motion.Reduced);
+            tb.Text = (open ? hideText : showText) + (open ? "  ▴" : "  ▾");
+        };
+        return btn;
+    }
+
+    // A long-tail section that is collapsed by default (mock .tailhdr): the RefSectionLabel
+    // treatment plus the count in parentheses, a caret, and a hairline running out to the right
+    // edge, with the whole row clickable. The body expands in place on the app's reveal motion.
+    private Border TailSectionHeader(string label, int count, FrameworkElement body,
+                                     bool expanded, string logLabel, Action<bool> onToggled)
+    {
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var fg  = (System.Windows.Media.Brush)FindResource("FgBrush");
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var text = new TextBlock
+        {
+            Text = $"{label} ({count})", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        g.Children.Add(text);
+
+        var caret = new TextBlock
+        {
+            Text = expanded ? "▴" : "▾", FontSize = 9,
+            Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(caret, 1);
+        g.Children.Add(caret);
+
+        var rule = new Border
+        {
+            Height = 1, Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(rule, 2);
+        g.Children.Add(rule);
+
+        var header = new Border
+        {
+            Child = g, Margin = new Thickness(0, 4, 0, 0), Padding = new Thickness(0, 6, 0, 6),
+            Background = System.Windows.Media.Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand,
+        };
+        header.MouseEnter += (s, e) => text.Foreground = fg;
+        header.MouseLeave += (s, e) => text.Foreground = dim;
+
+        bool open = expanded;
+        header.MouseLeftButtonDown += (s, e) =>
+        {
+            e.Handled = true;
+            open = !open;
+            onToggled(open);
+            InteractionLog.Click($"dossier {logLabel} {(open ? "expand" : "collapse")}", header);
+            if (open) ExpandRows(body, animate: !Motion.Reduced);
+            else CollapseRows(body, animate: !Motion.Reduced);
+            caret.Text = open ? "▴" : "▾";
+        };
+        return header;
+    }
+
+    // Puts a freshly built expander body into the state its remembered flag says it is in, without
+    // animating: a dossier rebuild we cause (an hourly market publish) must not replay the reveal
+    // on a section the user already has open. Same static-on-rebuild handling the work order sell
+    // block uses.
+    private static void ApplyExpanderState(FrameworkElement body, bool expanded)
+    {
+        body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        body.Height = expanded ? double.NaN : 0;
+        body.Opacity = expanded ? 1 : 0;
+    }
+
     private NexusHologram? _codexHologram;   // the one ambient element in the Codex dossier
 
     private void ShowResourceDetail(Resource r)
@@ -1789,6 +2096,19 @@ public partial class MainWindow : Window
         var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
 
         var profile = App.Data.GetMiningProfile(r.Name);
+
+        // Live REFINED prices for this ore, resolved ONCE for the whole dossier so the hero's
+        // best-sell line and the VALUE section under it can never disagree (both read this ranked,
+        // best-first list). Gated on three things together - feature on, a snapshot landed, and
+        // this ore actually having priced rows - so an unmapped or unpriced ore adds nothing at
+        // all, matching every price surface's silence-over-placeholder rule. Refined and not raw
+        // because UEX's raw ore-sales dataset has had no reports since patch 4.8 (amendment
+        // 2026-07-27).
+        var marketSnap = App.Settings.Current.MarketDataEnabled == true ? App.Market.Snapshot : null;
+        var priceHits = marketSnap is null
+            ? new List<PriceHit>()
+            : MarketQueries.TopRefinedSells(marketSnap, r.Name, 3);
+        var topHit = priceHits.Count > 0 ? priceHits[0] : null;
 
         // hero header
         var hg = new Grid();
@@ -1831,13 +2151,105 @@ public partial class MainWindow : Window
         rsStack.Children.Add(new TextBlock { Text = r.BaseRs > 0 ? $"{r.BaseRs:N0}" : "-", FontSize = 32, FontFamily = monoFont, Foreground = gold, HorizontalAlignment = HorizontalAlignment.Right });
         Grid.SetColumn(rsStack, 1); hg.Children.Add(rsStack);
 
+        // One best-sell line inside the hero (amendment 2026-07-27 item 6a, mock .dbest): the same
+        // hairline-then-line treatment the decoder hero's sell line uses, so the ore's headline
+        // worth is answered before the reader scrolls at all. Silent when there is no priced row.
+        var heroContent = new StackPanel();
+        heroContent.Children.Add(hg);
+        if (topHit is not null)
+        {
+            heroContent.Children.Add(new Border
+            {
+                Height = 1, Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+                Margin = new Thickness(0, 12, 0, 11),
+            });
+            // Age, or the patch the price was captured in when the row is stale: a price never
+            // renders without one of the two.
+            var heroAge = topHit.Stale
+                ? MarketNotice.PatchTag(topHit.GameVersion)
+                : MarketNotice.FormatAge(DateTime.UtcNow - topHit.ModifiedUtc);
+            heroContent.Children.Add(new TextBlock
+            {
+                Text = MarketNotice.DossierHeroLine(topHit.Display, topHit.TerminalName, heroAge),
+                FontSize = 12, Foreground = topHit.Stale ? dim : gold,
+                TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+            });
+        }
+
         // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).
-        var hero = Hud.Panel(hg, chamfer: 13, brackets: true,
+        var hero = Hud.Panel(heroContent, chamfer: 13, brackets: true,
             bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
             border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
             padding: new Thickness(20, 14, 18, 14));
         hero.Margin = new Thickness(0, 0, 0, 12);
         ReferenceDetailPanel.Children.Add(hero);
+
+        // ── VALUE: live prices and refinery yields as one section, directly under the hero ──
+        // (amendment 2026-07-27 item 6b, mock section 07A). It replaces the separate MARKET PRICES
+        // and REFINERY YIELDS sections that used to sit at the very bottom of the dossier.
+        //
+        // The two halves are gated INDEPENDENTLY, and that is the whole point: the price half is
+        // market data and comes and goes with the feature, the yield half is SEED data and must
+        // never disappear with it. So the section renders in three forms - both halves; prices
+        // only (an ore with no refinery entries); yields only (market data off, no snapshot, or no
+        // priced row for this ore) - and is skipped entirely only when the ore has neither.
+        var yields = r.Refineries.OrderByDescending(x => x.ModifierPct).ToList();
+        if (topHit is not null || yields.Count > 0)
+        {
+            ReferenceDetailPanel.Children.Add(RefSectionLabel(MarketNotice.ValueSection));
+            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, yields.Count > 0 ? yields[0] : null));
+
+            var valueDetails = new StackPanel { ClipToBounds = true };   // clips mid-reveal, like the work order sell rows
+            if (priceHits.Count > 0)
+            {
+                valueDetails.Children.Add(MarketPriceColumnHeader());
+                foreach (var hit in priceHits)
+                    valueDetails.Children.Add(MarketPriceRow(hit));
+
+                valueDetails.Children.Add(new TextBlock
+                {
+                    Text = MarketNotice.DossierFooter, FontSize = 10.5, Foreground = dim,
+                    Margin = new Thickness(0, 2, 0, 10),
+                });
+
+                // The dossier is the one surface that carries the snapshot-age note (the decoder
+                // line and the overlay card line are single-line and show age per row instead) -
+                // only when the price data as a whole, not just this ore's rows, is more than a
+                // day old. Measured off the RefinedPrices stamp alone, not the snapshot's
+                // NewestFetchUtc: that one spans all five datasets, including the daily reference
+                // sets and the permanently frozen RawPrices, so a daily refresh could report the
+                // prices as fresh while the hourly price leg had been failing for a day. The
+                // commodity catalogue is excluded for the same reason - it is identity data, and a
+                // partial cycle that lands the catalogue but fails the refined leg (the exact case
+                // the ShouldFetch rewrite was written for) would otherwise hide this note while
+                // day-old prices sit on screen (amendment 2026-07-27).
+                var snapshotAge = DateTime.UtcNow - marketSnap!.RefinedPrices.FetchedUtc;
+                if (snapshotAge > TimeSpan.FromHours(24))
+                {
+                    valueDetails.Children.Add(new TextBlock
+                    {
+                        Text = MarketNotice.SnapshotAgeNote(snapshotAge), FontSize = 10.5, FontFamily = monoFont,
+                        Foreground = dim, Margin = new Thickness(0, 0, 0, 10),
+                    });
+                }
+            }
+
+            if (yields.Count > 0)
+            {
+                // Every refinery, not the old first-page-of-five plus a nested "Show all": the
+                // rows are already behind one click here, and a second expander inside the first
+                // would hide seed data the dossier shows today.
+                valueDetails.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {yields.Count}"));
+                foreach (var y in yields)
+                    valueDetails.Children.Add(YieldRow(y));
+            }
+
+            ApplyExpanderState(valueDetails, _dossierValueExpanded);
+            ReferenceDetailPanel.Children.Add(DossierExpanderLink(
+                MarketNotice.ValueDetailsShow, MarketNotice.ValueDetailsHide, valueDetails,
+                _dossierValueExpanded, "value details", open => _dossierValueExpanded = open));
+            ReferenceDetailPanel.Children.Add(valueDetails);
+        }
 
         // mining profile - ship-mining minigame parameters (datamined). Gems/refined show a note.
         ReferenceDetailPanel.Children.Add(RefSectionLabel("MINING PROFILE"));
@@ -1925,31 +2337,79 @@ public partial class MainWindow : Window
             }
         }
 
+        // ── Long tail: the two counted, collapsed-by-default sections, then LOCATIONS ──
+        // Order per mock section 07 (amendment 2026-07-27 item 6c): the two collapsed headers sit
+        // together and LOCATIONS closes the dossier as the last open block. Each collapsed body
+        // keeps its own first-page-plus-"Show all" pagination exactly as it was, so nothing the
+        // dossier shows today is unreachable.
+
+        // blueprints - collapsed behind a counted header
+        var bps = App.Data.GetBlueprintsForResource(r.Name);
+        if (bps.Count == 0)
+        {
+            ReferenceDetailPanel.Children.Add(RefSectionLabel("USED IN BLUEPRINTS  ·  0"));
+            ReferenceDetailPanel.Children.Add(new TextBlock { Text = "None", FontSize = 12, Foreground = dim });
+        }
+        else
+        {
+            var bpList = bps.OrderBy(b => b.Name).ToList();
+            var accentBr = (System.Windows.Media.Brush)FindResource("AccentBrush");
+            UIElement BpRow(string nm)
+            {
+                var tb = new TextBlock { Text = $"▪  {nm}", FontSize = 12, Foreground = fg, Margin = new Thickness(0, 0, 0, 4), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
+                var b = new Border { Child = tb, Background = System.Windows.Media.Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Open in Blueprint Library" };
+                b.MouseEnter += (s, _) => tb.Foreground = accentBr;
+                b.MouseLeave += (s, _) => tb.Foreground = fg;
+                b.MouseLeftButtonDown += (s, _) => NavigateToBlueprint(nm);
+                return b;
+            }
+            var bpBody = new StackPanel { ClipToBounds = true, Margin = new Thickness(0, 8, 0, 0) };
+            const int bpShow = 8;
+            for (int i = 0; i < System.Math.Min(bpShow, bpList.Count); i++)
+                bpBody.Children.Add(BpRow(bpList[i].Name));
+            if (bpList.Count > bpShow)
+            {
+                var moreBp = new StackPanel { Visibility = Visibility.Collapsed };
+                for (int i = bpShow; i < bpList.Count; i++) moreBp.Children.Add(BpRow(bpList[i].Name));
+                bpBody.Children.Add(moreBp);
+                bpBody.Children.Add(ToggleLink($"Show all {bpList.Count}", "Show fewer", moreBp));
+            }
+            ApplyExpanderState(bpBody, _dossierBlueprintsExpanded);
+            ReferenceDetailPanel.Children.Add(TailSectionHeader("USED IN BLUEPRINTS", bpList.Count, bpBody,
+                _dossierBlueprintsExpanded, "blueprints", open => _dossierBlueprintsExpanded = open));
+            ReferenceDetailPanel.Children.Add(bpBody);
+        }
+
         // found in other deposits - byproduct sourcing (datamined). Only shown when this ore
-        // actually appears in another ore's rock; headline-only ores and hand/vehicle gems have none.
+        // actually appears in another ore's rock; headline-only ores and hand/vehicle gems have
+        // none. Collapsed behind a counted header, same treatment as USED IN BLUEPRINTS above.
         var found = App.Data.GetFoundInForResource(r.Name);
         if (found.Count > 0)
         {
-            ReferenceDetailPanel.Children.Add(RefSectionLabel($"FOUND IN OTHER DEPOSITS  ·  {found.Count}"));
-            ReferenceDetailPanel.Children.Add(new TextBlock
+            var foundBody = new StackPanel { ClipToBounds = true };
+            foundBody.Children.Add(new TextBlock
             {
                 Text = $"Other ores whose rock also yields {r.Name} - its share of that rock, and how often the rock carries it.",
                 FontSize = 11, Foreground = dim, TextWrapping = System.Windows.TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8),
+                Margin = new Thickness(0, 8, 0, 8),
             });
             const int fShow = 6;
             for (int i = 0; i < System.Math.Min(fShow, found.Count); i++)
-                ReferenceDetailPanel.Children.Add(FoundInRow(found[i]));
+                foundBody.Children.Add(FoundInRow(found[i]));
             if (found.Count > fShow)
             {
                 var moreF = new StackPanel { Visibility = Visibility.Collapsed };
                 for (int i = fShow; i < found.Count; i++) moreF.Children.Add(FoundInRow(found[i]));
-                ReferenceDetailPanel.Children.Add(moreF);
-                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {found.Count}", "Show fewer", moreF));
+                foundBody.Children.Add(moreF);
+                foundBody.Children.Add(ToggleLink($"Show all {found.Count}", "Show fewer", moreF));
             }
+            ApplyExpanderState(foundBody, _dossierFoundInExpanded);
+            ReferenceDetailPanel.Children.Add(TailSectionHeader("FOUND IN OTHER DEPOSITS", found.Count, foundBody,
+                _dossierFoundInExpanded, "found in", open => _dossierFoundInExpanded = open));
+            ReferenceDetailPanel.Children.Add(foundBody);
         }
 
-        // locations - top 6 + show all
+        // locations - top 6 + show all. Stays open, and closes the dossier per the mock.
         ReferenceDetailPanel.Children.Add(RefSectionLabel($"LOCATIONS  ·  {r.Locations.Count}"));
         if (r.Locations.Count == 0)
             ReferenceDetailPanel.Children.Add(new TextBlock { Text = "None", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 0, 0, 8) });
@@ -1967,97 +2427,8 @@ public partial class MainWindow : Window
             }
         }
 
-        // blueprints - full list
-        var bps = App.Data.GetBlueprintsForResource(r.Name);
-        ReferenceDetailPanel.Children.Add(RefSectionLabel($"USED IN BLUEPRINTS  ·  {bps.Count}"));
-        if (bps.Count == 0)
-            ReferenceDetailPanel.Children.Add(new TextBlock { Text = "None", FontSize = 12, Foreground = dim });
-        else
-        {
-            var bpList = bps.OrderBy(b => b.Name).ToList();
-            var accentBr = (System.Windows.Media.Brush)FindResource("AccentBrush");
-            UIElement BpRow(string nm)
-            {
-                var tb = new TextBlock { Text = $"▪  {nm}", FontSize = 12, Foreground = fg, Margin = new Thickness(0, 0, 0, 4), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
-                var b = new Border { Child = tb, Background = System.Windows.Media.Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Open in Blueprint Library" };
-                b.MouseEnter += (s, _) => tb.Foreground = accentBr;
-                b.MouseLeave += (s, _) => tb.Foreground = fg;
-                b.MouseLeftButtonDown += (s, _) => NavigateToBlueprint(nm);
-                return b;
-            }
-            const int bpShow = 8;
-            for (int i = 0; i < System.Math.Min(bpShow, bpList.Count); i++)
-                ReferenceDetailPanel.Children.Add(BpRow(bpList[i].Name));
-            if (bpList.Count > bpShow)
-            {
-                var moreBp = new StackPanel { Visibility = Visibility.Collapsed };
-                for (int i = bpShow; i < bpList.Count; i++) moreBp.Children.Add(BpRow(bpList[i].Name));
-                ReferenceDetailPanel.Children.Add(moreBp);
-                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {bpList.Count}", "Show fewer", moreBp));
-            }
-        }
-
-        // refinery yields - best first, top 5 + show all (moved below blueprints)
-        if (r.Refineries.Count > 0)
-        {
-            ReferenceDetailPanel.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {r.Refineries.Count}"));
-            var sorted = r.Refineries.OrderByDescending(x => x.ModifierPct).ToList();
-            const int show = 5;
-            for (int i = 0; i < System.Math.Min(show, sorted.Count); i++)
-                ReferenceDetailPanel.Children.Add(YieldRow(sorted[i]));
-            if (sorted.Count > show)
-            {
-                var more = new StackPanel { Visibility = Visibility.Collapsed };
-                for (int i = show; i < sorted.Count; i++) more.Children.Add(YieldRow(sorted[i]));
-                ReferenceDetailPanel.Children.Add(more);
-                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {sorted.Count}", "Show fewer", more));
-            }
-        }
-
-        // live market prices - top REFINED sells for this ore, UEX community data (Tasks 9-11;
-        // refined and not raw because UEX's raw ore-sales dataset has had no reports since patch
-        // 4.8, amendment 2026-07-27). Gated on three things together: feature on, a snapshot has
-        // landed, and this ore actually has priced rows - a resource with no UEX mapping or no
-        // qualifying rows adds nothing here at all, matching every other price surface's
-        // silence-over-placeholder rule (no empty label).
-        if (App.Settings.Current.MarketDataEnabled == true && App.Market.Snapshot is { } marketSnap)
-        {
-            var priceHits = MarketQueries.TopRefinedSells(marketSnap, r.Name, 3);
-            if (priceHits.Count > 0)
-            {
-                ReferenceDetailPanel.Children.Add(RefSectionLabel(MarketNotice.DossierSection));
-                ReferenceDetailPanel.Children.Add(MarketPriceColumnHeader());
-                foreach (var hit in priceHits)
-                    ReferenceDetailPanel.Children.Add(MarketPriceRow(hit));
-
-                ReferenceDetailPanel.Children.Add(new TextBlock
-                {
-                    Text = MarketNotice.DossierFooter, FontSize = 10.5, Foreground = dim,
-                    Margin = new Thickness(0, 2, 0, 0),
-                });
-
-                // The dossier is the one surface that carries the snapshot-age note (the decoder
-                // line and the overlay card line are single-line and show age per row instead) -
-                // only when the price data as a whole, not just this ore's rows, is more than a
-                // day old. Measured off the RefinedPrices stamp alone, not the snapshot's
-                // NewestFetchUtc: that one spans all five datasets, including the daily reference
-                // sets and the permanently frozen RawPrices, so a daily refresh could report the
-                // prices as fresh while the hourly price leg had been failing for a day. The
-                // commodity catalogue is excluded for the same reason - it is identity data, and a
-                // partial cycle that lands the catalogue but fails the refined leg (the exact case
-                // the ShouldFetch rewrite was written for) would otherwise hide this note while
-                // day-old prices sit on screen (amendment 2026-07-27).
-                var snapshotAge = DateTime.UtcNow - marketSnap.RefinedPrices.FetchedUtc;
-                if (snapshotAge > TimeSpan.FromHours(24))
-                {
-                    ReferenceDetailPanel.Children.Add(new TextBlock
-                    {
-                        Text = MarketNotice.SnapshotAgeNote(snapshotAge), FontSize = 10.5, FontFamily = monoFont,
-                        Foreground = dim, Margin = new Thickness(0, 2, 0, 0),
-                    });
-                }
-            }
-        }
+        // Refinery yields and market prices used to close the dossier here as two separate
+        // sections; both now live in the VALUE section under the hero (amendment 2026-07-27).
 
         CascadeIn(ReferenceDetailPanel.Children, maxAnimated: 8);
     }
@@ -2465,13 +2836,13 @@ public partial class MainWindow : Window
                 {
                     _expandedWorkOrderSells.Add(wo.Id);
                     InteractionLog.Click("work order sell expand", moreBtn);
-                    ExpandWorkOrderSellRows(extra, animate: !Motion.Reduced);
+                    ExpandRows(extra, animate: !Motion.Reduced);
                 }
                 else
                 {
                     _expandedWorkOrderSells.Remove(wo.Id);
                     InteractionLog.Click("work order sell collapse", moreBtn);
-                    CollapseWorkOrderSellRows(extra, animate: !Motion.Reduced);
+                    CollapseRows(extra, animate: !Motion.Reduced);
                 }
                 moreLabel.Text = MoreLessText(extraCount, willExpand);
             };
@@ -2565,11 +2936,12 @@ public partial class MainWindow : Window
         return g;
     }
 
-    // Expand/collapse the extra sell rows: height (0 <-> measured) + opacity over Motion.DrillMs on
+    // Expand/collapse a revealed block: height (0 <-> measured) + opacity over Motion.DrillMs on
     // Motion.Reveal - the app's drill-down reveal vocabulary (Motion.cs:27,31), same pairing the mock's
     // AnimatePresence uses for this exact affordance. Motion.Reduced snaps straight to the final state
-    // instead of animating, per the app's one motion-reduction rule (Motion.cs:42).
-    private static void ExpandWorkOrderSellRows(FrameworkElement rows, bool animate)
+    // instead of animating, per the app's one motion-reduction rule (Motion.cs:42). Shared by the work
+    // order sell block and the Codex dossier's VALUE and long-tail expanders.
+    private static void ExpandRows(FrameworkElement rows, bool animate)
     {
         rows.Visibility = Visibility.Visible;
         if (!animate)
@@ -2604,7 +2976,7 @@ public partial class MainWindow : Window
         rows.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
-    private static void CollapseWorkOrderSellRows(FrameworkElement rows, bool animate)
+    private static void CollapseRows(FrameworkElement rows, bool animate)
     {
         if (!animate)
         {
