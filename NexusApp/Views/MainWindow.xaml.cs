@@ -968,6 +968,7 @@ public partial class MainWindow : Window
     {
         RefreshHeroMarket();
         RefreshCodexPrices();
+        RefreshWorkOrderSells();
     }
 
     // Rebuilds the Codex only while it is the page on screen; from anywhere else the prices are
@@ -975,6 +976,14 @@ public partial class MainWindow : Window
     private void RefreshCodexPrices()
     {
         if (_activePage == "reference") BuildReferenceTree(staggerEntry: false);
+    }
+
+    // Rebuilds the work order gallery only while it is the page on screen (Task 12), same gating
+    // as RefreshCodexPrices above; from anywhere else the new sell lines are picked up by
+    // SetActivePage's own RebuildWorkOrderList call when the user next opens Refinery Tracker.
+    private void RefreshWorkOrderSells()
+    {
+        if (_activePage == "workorders") RebuildWorkOrderList();
     }
 
     // ── RS Decoder live sell line (market data, Task 9) ────────────────────────
@@ -2242,6 +2251,11 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, WoCardParts> _woCardParts = new();   // final card refs by id, rebuilt each pass
     private bool _woAnimQueued;                                    // coalesces the deferred animation pass across the storm
 
+    // Refined sell line (Task 12): ids whose "+N more" expander is open, so an incidental rebuild
+    // (e.g. an hourly market refresh via OnMarketDataChanged) does not collapse it - same survives-
+    // a-rebuild contract as OtherMatches' _expandedName above.
+    private readonly HashSet<string> _expandedWorkOrderSells = new();
+
     // The animatable pieces of a work-order card, captured at build time so the deferred pass can add/flash them.
     private sealed class WoCardParts
     {
@@ -2417,6 +2431,10 @@ public partial class MainWindow : Window
         Grid.SetColumn(timerTb, 1); footer.Children.Add(timerTb);
         inner.Children.Add(footer);
 
+        // Refined sell line (market data, Task 12; mock variant B) - silent unless the order is
+        // ready/complete, market data is on, and at least one recognized ore in Resources prices out.
+        if (BuildWorkOrderSellBlock(wo) is { } sellBlock) inner.Children.Add(sellBlock);
+
         _rowLiveRefs[wo.Id] = timerTb;
 
         // Chamfered card with persistent corner brackets (the mock shows them always); hover highlight; click -> editor.
@@ -2456,6 +2474,237 @@ public partial class MainWindow : Window
         };
 
         return host;
+    }
+
+    // ── Refined sell line (market data, Task 12) ───────────────────────────────
+    // Mock: nexus-design-lab/market-data/index.html, WorkOrderCard variant="B" (.woSell/.woSellRow/
+    // .moreBtn, CSS lines 231-244; manifest rows "Work order sell block" / "+1 more affordance").
+    // Placement is the coordinator's explicit, deliberate override of the mock's markup order (mock
+    // puts .woSell before .woFoot; this block is inserted AFTER the footer Grid per the brief and
+    // committed context, both citing the exact insertion point) - a structural exception, not a
+    // silent drift from "mock governs structure".
+    //
+    // Only for a ready/complete order, with market data on, a snapshot landed, and at least one
+    // recognized ore in Resources pricing out via RefinedSellsForOrder - any other case renders
+    // nothing at all, so the card is byte-for-byte identical to today's (data-honesty silence rule,
+    // same contract as FillHeroMarket/BuildSellHits). Line 1 is always the top-value ore
+    // (RefinedSellsForOrder is already ordered by Hit.Display desc); when more recognized ores
+    // exist, a "+N more" ghost affordance expands the rest in place. Expanded state is tracked per
+    // order id in _expandedWorkOrderSells so an incidental rebuild (an hourly market refresh while
+    // this page is open) does not collapse a card the user has open - same contract as OtherMatches'
+    // _expandedName survives a cart-toggle rebuild.
+    private FrameworkElement? BuildWorkOrderSellBlock(WorkOrder wo)
+    {
+        if (wo.Status is not (WorkOrderStatus.ReadyToCollect or WorkOrderStatus.Complete)) return null;
+        if (App.Settings.Current.MarketDataEnabled != true) return null;
+        if (App.Market.Snapshot is not { } snap) return null;
+
+        var sells = MarketQueries.RefinedSellsForOrder(snap, wo.Resources);
+        if (sells.Count == 0) return null;
+
+        // 1px NavBorder top rule, margin-top 11, padding-top 10 (mock .woSell, manifest "Work order
+        // sell block") - same hairline-before-content idiom FillHeroMarket uses for the decoder line.
+        var block = new StackPanel { Margin = new Thickness(0, 11, 0, 0) };
+        block.Children.Add(new Border { Height = 1, Background = Hud.Br("NavBorderBrush"), Margin = new Thickness(0, 0, 0, 10) });
+        block.Children.Add(BuildWorkOrderSellRow(sells[0].SeedName, sells[0].Hit, showSellLabel: true));
+
+        if (sells.Count > 1)
+        {
+            var extraCount = sells.Count - 1;
+            var extra = new StackPanel { ClipToBounds = true };   // clips mid-reveal, same as the mock's overflow:hidden wrapper
+            for (int i = 1; i < sells.Count; i++)
+                extra.Children.Add(BuildWorkOrderSellRow(sells[i].SeedName, sells[i].Hit, showSellLabel: false));
+
+            bool expanded = _expandedWorkOrderSells.Contains(wo.Id);
+            extra.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            extra.Height = expanded ? double.NaN : 0;   // static on rebuild when already open - no re-entrance, matching ScanCardComposition
+            extra.Opacity = expanded ? 1 : 0;
+            block.Children.Add(extra);
+
+            var moreLabel = new TextBlock
+            {
+                Text = MoreLessText(extraCount, expanded),
+                FontFamily = Hud.Font("HeadFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
+            };
+            var moreBtn = new Border
+            {
+                Child = moreLabel, Padding = new Thickness(0, 3, 0, 0), Cursor = System.Windows.Input.Cursors.Hand,
+                Background = System.Windows.Media.Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            // Ghost text button, amber on hover (mock .moreBtn:hover) - mouse-only, no keyboard affordance.
+            moreBtn.MouseEnter += (s, e) => moreLabel.Foreground = Hud.Br("AccentBrush");
+            moreBtn.MouseLeave += (s, e) => moreLabel.Foreground = Hud.Br("FgDimBrush");
+            moreBtn.MouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                bool willExpand = !_expandedWorkOrderSells.Contains(wo.Id);
+                if (willExpand)
+                {
+                    _expandedWorkOrderSells.Add(wo.Id);
+                    InteractionLog.Click("work order sell expand", moreBtn);
+                    ExpandWorkOrderSellRows(extra, animate: !Motion.Reduced);
+                }
+                else
+                {
+                    _expandedWorkOrderSells.Remove(wo.Id);
+                    InteractionLog.Click("work order sell collapse", moreBtn);
+                    CollapseWorkOrderSellRows(extra, animate: !Motion.Reduced);
+                }
+                moreLabel.Text = MoreLessText(extraCount, willExpand);
+            };
+            block.Children.Add(moreBtn);
+        }
+
+        return block;
+    }
+
+    private static string MoreLessText(int extraCount, bool expanded) =>
+        expanded ? "Show less  ▴" : $"+{extraCount} more  ▾";   // same glyph pair as ToggleLink/ReferenceSortCaret above
+
+    // One priced ore line (mock .woSellRow): SELL label (line 1 only, mono 9 bold FgDim, matching
+    // the card's meta-label idiom) + ore name in its rarity colour (12 SemiBold, mock .ore) + the
+    // refined sell price (12, GoldBrush, FgDimBrush when stale, mock .val) + terminal name
+    // (11, FgDimBrush, ellipsis-truncated, mock .term) + age or - when the freshest row is from an
+    // older game patch - the same PatchTagChip the Codex sell column and dossier price rows use
+    // (mock .age; data-honesty rule: a price never renders without one of the two).
+    private FrameworkElement BuildWorkOrderSellRow(string seedName, PriceHit hit, bool showSellLabel)
+    {
+        var dim  = Hud.Br("FgDimBrush");
+        var gold = Hud.Br("GoldBrush");
+        var headFont = Hud.Font("HeadFont");
+        var monoFont = Hud.Font("MonoFont");
+
+        var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // SELL label
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // ore
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // value
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });     // terminal
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // age / patch tag
+
+        if (showSellLabel)
+        {
+            var lbl = new TextBlock
+            {
+                Text = "SELL", FontFamily = monoFont, FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = dim, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            };
+            Grid.SetColumn(lbl, 0);
+            g.Children.Add(lbl);
+        }
+
+        var ore = new TextBlock
+        {
+            Text = seedName, FontFamily = headFont, FontSize = 12, FontWeight = FontWeights.SemiBold,
+            Foreground = RarityBrush(RarityOf(seedName)), MinWidth = 78,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(ore, 1);
+        g.Children.Add(ore);
+
+        var val = new TextBlock
+        {
+            Text = $"{hit.Display:n0}/SCU", FontFamily = headFont, FontSize = 12,
+            Foreground = hit.Stale ? dim : gold, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        Grid.SetColumn(val, 2);
+        g.Children.Add(val);
+
+        var term = new TextBlock
+        {
+            Text = hit.TerminalName, FontFamily = headFont, FontSize = 11, Foreground = dim,
+            TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        Grid.SetColumn(term, 3);
+        g.Children.Add(term);
+
+        FrameworkElement age;
+        if (hit.Stale)
+        {
+            var chip = PatchTagChip(hit.GameVersion);
+            chip.HorizontalAlignment = HorizontalAlignment.Right;
+            age = chip;
+        }
+        else
+        {
+            age = new TextBlock
+            {
+                Text = MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc), FontSize = 10,
+                Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+        Grid.SetColumn(age, 4);
+        g.Children.Add(age);
+
+        return g;
+    }
+
+    // Expand/collapse the extra sell rows: height (0 <-> measured) + opacity over Motion.DrillMs on
+    // Motion.Reveal - the app's drill-down reveal vocabulary (Motion.cs:27,31), same pairing the mock's
+    // AnimatePresence uses for this exact affordance. Motion.Reduced snaps straight to the final state
+    // instead of animating, per the app's one motion-reduction rule (Motion.cs:42).
+    private static void ExpandWorkOrderSellRows(FrameworkElement rows, bool animate)
+    {
+        rows.Visibility = Visibility.Visible;
+        if (!animate)
+        {
+            rows.BeginAnimation(FrameworkElement.HeightProperty, null);
+            rows.BeginAnimation(UIElement.OpacityProperty, null);
+            rows.Height = double.NaN;
+            rows.Opacity = 1;
+            return;
+        }
+
+        // Measure while Height is still Auto (NaN) FIRST, then pin Height = 0 to animate from. An
+        // explicit Height feeds WPF's MinMax as an effective MaxHeight, so MeasureCore clamps
+        // DesiredSize.Height to whatever Height already holds - measuring after setting Height = 0
+        // (the original bug) always yields target = 0, a no-op DoubleAnimation(0, 0) that leaves the
+        // rows invisible for the full 240ms and then pops to full size on the Completed NaN-restore.
+        rows.BeginAnimation(FrameworkElement.HeightProperty, null);   // clear any prior collapse animation/explicit value
+        rows.Height = double.NaN;
+        double availableWidth = rows.Parent is FrameworkElement parent && parent.ActualWidth > 0
+            ? parent.ActualWidth : double.PositiveInfinity;
+        rows.Measure(new Size(availableWidth, double.PositiveInfinity));
+        var target = rows.DesiredSize.Height;
+
+        rows.Height = 0;
+        rows.Opacity = 0;
+
+        var dur = TimeSpan.FromMilliseconds(Motion.DrillMs);
+        var heightAnim = new System.Windows.Media.Animation.DoubleAnimation(0, target, dur) { EasingFunction = Motion.Reveal };
+        heightAnim.Completed += (_, _) => { rows.BeginAnimation(FrameworkElement.HeightProperty, null); rows.Height = double.NaN; };
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Reveal };
+        rows.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+        rows.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    private static void CollapseWorkOrderSellRows(FrameworkElement rows, bool animate)
+    {
+        if (!animate)
+        {
+            rows.BeginAnimation(FrameworkElement.HeightProperty, null);
+            rows.BeginAnimation(UIElement.OpacityProperty, null);
+            rows.Height = 0;
+            rows.Opacity = 0;
+            rows.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var current = double.IsNaN(rows.Height) ? rows.ActualHeight : rows.Height;
+        rows.Height = current;
+        var dur = TimeSpan.FromMilliseconds(Motion.DrillMs);
+        var heightAnim = new System.Windows.Media.Animation.DoubleAnimation(current, 0, dur) { EasingFunction = Motion.Reveal };
+        heightAnim.Completed += (_, _) =>
+        {
+            rows.Visibility = Visibility.Collapsed;
+            rows.BeginAnimation(FrameworkElement.HeightProperty, null);
+            rows.Height = 0;
+        };
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, dur) { EasingFunction = Motion.Reveal };
+        rows.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+        rows.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
     // Coalesced deferred animation pass. LoadWorkOrders clears + re-adds every order, so a single save fires many
