@@ -2309,9 +2309,10 @@ public partial class OverlayWindow : Window
     private GuideViewer? _guidesViewer;
     private readonly List<FrameworkElement> _guidesCascade = new();
     private GuideEntry? _openGuide;
-    // Executive Hangar status line (issue #26 amendment): the shared compact control, hosted in a
-    // chamfered block above the catalog. Built once with the rest of the tab (EnsureGuidesTab);
-    // its lifecycle is independent of the guide list/viewer - see SwitchTab and OnClosed.
+    // Executive Hangar status line (issue #26 amendment): the shared compact control, hosted
+    // inside the Contested Zones section of the catalog list (owner ruling: mirror the main
+    // Guides page placement). Built once with the rest of the tab (EnsureGuidesTab); its
+    // tick lifecycle is independent of the guide list/viewer - see SwitchTab and OnClosed.
     private ExecHangarStatusLine? _guidesHangarLine;
 
     // Entry point from SwitchTab: build once, log the show, and replay the list cascade. A guide
@@ -2328,20 +2329,6 @@ public partial class OverlayWindow : Window
     {
         if (_guidesScroller != null) return;
 
-        // Two rows: the hangar block (Auto) stays visible above the list even while a guide is
-        // open, since the viewer only takes over the row below it (issue #26 amendment).
-        GuidesTabContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        GuidesTabContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-        _guidesHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay");
-        var hangarPanel = new ChamferPanel
-        {
-            Chamfer = 9, Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(10, 10, 10, 0),
-            Content = _guidesHangarLine,
-        };
-        Grid.SetRow(hangarPanel, 0);
-        GuidesTabContent.Children.Add(hangarPanel);
-
         var list = new StackPanel();
         bool firstSection = true;
         foreach (var category in GuideCatalog.Categories)
@@ -2355,6 +2342,20 @@ public partial class OverlayWindow : Window
             firstSection = false;
             list.Children.Add(head);
             _guidesCascade.Add(head);
+
+            // Executive Hangar status (issue #26 amendment, owner ruling live run 2026-07-27):
+            // the compact line lives INSIDE the Contested Zones section, directly under its
+            // header, mirroring the main Guides page (not a block above the whole tab). It
+            // scrolls with the list and is covered by the viewer like any other list content.
+            if (category == "Contested Zones")
+            {
+                _guidesHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay")
+                {
+                    Margin = new Thickness(2, 0, 0, 8),
+                };
+                list.Children.Add(_guidesHangarLine);
+                _guidesCascade.Add(_guidesHangarLine);
+            }
 
             foreach (var guide in GuideCatalog.ByCategory(category))
             {
@@ -2371,12 +2372,10 @@ public partial class OverlayWindow : Window
             Margin = new Thickness(12, 10, 12, 12),   // the shared overlay tab-body padding
             Content = list,
         };
-        Grid.SetRow(_guidesScroller, 1);
         GuidesTabContent.Children.Add(_guidesScroller);
 
         _guidesViewer = new GuideViewer(compact: true) { Visibility = Visibility.Collapsed };
         _guidesViewer.BackRequested += (_, _) => CloseOverlayGuide(replayCascade: true);
-        Grid.SetRow(_guidesViewer, 1);
         GuidesTabContent.Children.Add(_guidesViewer);
 
         // Leaving the tab, or hiding the whole overlay, must not park a decoded bitmap in memory.
