@@ -139,6 +139,20 @@
                         <TextBlock x:Name="BlueprintChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
+                <!-- MARKET telemetry chip (live market data). Hidden entirely while the feature is
+                     off, matching the price surfaces' silence-over-placeholder rule; state, colours
+                     and click target are driven by RefreshMarketPill in code-behind. -->
+                <Border x:Name="MarketChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                        Background="{StaticResource Bg2NavBrush}"
+                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
+                        Visibility="Collapsed" Cursor="Hand"
+                        MouseLeftButtonDown="MarketChip_Click">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="MarketDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="MarketChipLabel" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="MarketChipText" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
                 <!-- SCAN telemetry chip (auto-scan state) -->
                 <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
@@ -437,6 +451,7 @@
                 <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="34"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -474,8 +489,17 @@
                     </Border>
                 </Grid>
 
+                <!-- ── Market data consent host: one amber notice strip above whichever price-capable
+                     page is active (RS Decoder, Mining Codex, Refinery Tracker). Filled and cleared by
+                     SetActivePage / RefreshMarketConsent; collapsed (zero height) whenever there is
+                     nothing to ask, so every page renders exactly as it did without it. The page-tinted
+                     wrapper keeps the strip's translucent amber fill reading the same as on Operations. ── -->
+                <Border Grid.Row="1" Background="{DynamicResource PageBgBrush}">
+                    <ContentControl x:Name="MarketConsentHost" Visibility="Collapsed" Margin="20,16,20,0"/>
+                </Border>
+
                 <!-- viewport stage: the existing page content + boot/sweep overlays -->
-                <Grid Grid.Row="1" Background="{DynamicResource PageBgBrush}">
+                <Grid Grid.Row="2" Background="{DynamicResource PageBgBrush}">
 
                 <!-- ── BLUEPRINT NETWORK PAGE (built in code - Views/NetworkPage.cs) ── -->
                 <!-- ── OPERATIONS / COMMAND DASHBOARD (built in code - Views/CommandPage.cs) ── -->
@@ -581,6 +605,7 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
                                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -674,6 +699,12 @@
                                                  carries the entrance, so the rows render static/open. -->
                                             <StackPanel x:Name="HeroCompositionHost" Grid.Row="4" Grid.ColumnSpan="2"
                                                         Margin="0,6,0,0" Loaded="HeroComposition_Loaded"/>
+
+                                            <!-- Live sell line (Task 9): built in code-behind (HeroMarket_Loaded), silent
+                                                 (hairline included) unless market data is on, a snapshot has landed, and
+                                                 UEX has a priced row for this resource. -->
+                                            <StackPanel x:Name="HeroMarketHost" Grid.Row="5" Grid.ColumnSpan="2"
+                                                        Margin="0,6,0,0" Loaded="HeroMarket_Loaded"/>
                                         </Grid>
                                     </views:ChamferPanel>
                                 </DataTemplate>
@@ -1135,6 +1166,16 @@
                             Background="{StaticResource NavBorderBrush}"
                             Margin="20,0,20,0"/>
 
+                    <!-- Sell-column opt-in (mock section 01 .offnote): the row itself exists only
+                         while live market data is on, and the switch alone decides whether the list
+                         carries prices. Both off = the Codex list is exactly what it has always been. -->
+                    <StackPanel x:Name="CodexSellToggleRow" Grid.Row="6" Orientation="Horizontal"
+                                Margin="20,8,20,2" VerticalAlignment="Center" Visibility="Collapsed">
+                        <ContentControl x:Name="CodexSellToggleHost" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                        <TextBlock x:Name="CodexSellToggleLabel" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
                     <!-- two-panel: resource list | rich detail -->
                     <Grid Grid.Row="7" Margin="20,4,20,12">
                         <Grid.ColumnDefinitions>
@@ -1142,9 +1183,43 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel x:Name="ReferenceList"/>
-                            </ScrollViewer>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <!-- Sticky sell-column header, shown only when the sell column itself is
+                                     rendered (BuildReferenceTree drives it). Collapsed it costs zero
+                                     height, so with the column off the list fills the border exactly as
+                                     before. Right inset 26 = card padding 12 + card margin 8 + the themed
+                                     6px scrollbar, so the label sits over the price values. -->
+                                <Border x:Name="ReferenceSortHeader" Grid.Row="0" Visibility="Collapsed"
+                                        Background="Transparent" HorizontalAlignment="Right"
+                                        Margin="0,0,26,6" Padding="6,2,0,2" Cursor="Hand"
+                                        ToolTip="Sort by sell price: highest, then lowest, then back to codex order"
+                                        MouseLeftButtonDown="ReferenceSortHeader_Click">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="TextElement.Foreground" Value="{StaticResource FgDimBrush}"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="TextElement.Foreground" Value="{StaticResource FgBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- The unit is stated once, here, so every cell below can stay a bare number. -->
+                                        <TextBlock Text="Sell avg (aUEC/SCU)" FontFamily="{StaticResource UiFont}"
+                                                   FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ReferenceSortCaret" Text="" FontSize="10"
+                                                   VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="ReferenceList"/>
+                                </ScrollViewer>
+                            </Grid>
                         </Border>
                         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="16,0,0,0">
                             <StackPanel x:Name="ReferenceDetailPanel"/>

@@ -12,8 +12,9 @@ NexusApp uses the **MVVM** pattern with `CommunityToolkit.Mvvm`. A thin services
 layer sits under the UI.
 
 All data is local. The build bundles the reference data. The user data is on
-disk in the per-user app-data folder. The opt-in update check is the only
-network code.
+disk in the per-user app-data folder. Two subsystems are opt-in and touch the
+network: the update check and the live market data fetch. Nothing else in the
+app makes a network call.
 
 ```
 +-----------------------------------------------------------+
@@ -32,6 +33,7 @@ network code.
 |  Hauling(HaulTracker/Parser/Contract/Shard) |             |
 |  Network(File/Store/Scope) |                              |
 |  Update(Service/Verifier/Manifest/Notice) |               |
+|  Market(DataService/Snapshot/NameMap/Queries/Notice) |    |
 |  PortableUpdater / SwapJournal (portable self-update) |   |
 |  Diagnostics(CrashGuard/Breadcrumbs/Sanitizer/Notice) |   |
 |  Logger / InteractionLog / ForegroundMonitor              |
@@ -93,10 +95,25 @@ The view model controls these services. Each service holds little or no state.
 - **Network (NetworkFileService / NetworkStore / NetworkScope)** - the
   file-exchange subsystem for the offline Blueprint Network (see below).
 - **Update (UpdateService / UpdateVerifier / UpdateManifest / UpdateNotice)** -
-  the opt-in update subsystem (see Data and storage). The update subsystem is the
-  only code in the app that touches the network, and only `UpdateService` (with
-  its HTTP transport) does. The other three do no network work: signature and
-  hash verification, manifest parsing, and the notice text.
+  the opt-in update subsystem (see Data and storage). Only `UpdateService` (with
+  its HTTP transport) touches the network. The other three do no network work:
+  signature and hash verification, manifest parsing, and the notice text.
+- **Market (MarketDataService / MarketSnapshot / MarketSnapshotFile /
+  MarketNameMap / MarketQueries / MarketNotice)** - the opt-in live market data
+  subsystem. `MarketDataService` runs the hourly fetch cycle against the UEX
+  community API (see SECURITY.md); it and `UpdateService` are the only two
+  places in the app that touch the network. `MarketSnapshot` is the in-memory
+  price cache; `MarketSnapshotFile` persists it to
+  `%AppData%\NexusApp\cache\uex_snapshot.json` and reloads it at startup, so the
+  last fetched prices still show when Nexus is offline. `MarketNameMap` links
+  the seed's raw resource names to UEX's commodity names and their refined
+  counterparts. `MarketQueries` is the pure read layer that the RS Signal
+  Decoder, the Mining Codex, and the Refinery Tracker call for a priced hit.
+  `MarketNotice` holds the feature's user-facing copy (the consent strip, the
+  Settings section, the source note), mirroring `UpdateNotice`. Consent is a
+  tri-state setting, `MarketDataEnabled` (null = unanswered, true/false = the
+  user's standing choice), the same pattern as the update-check toggle, and it
+  lives in its own Settings section rather than under Diagnostics.
 - **PortableUpdater / SwapJournal** - the portable self-update (see Key flows).
   PortableUpdater verifies the download again on one open file handle, unpacks
   it, and verifies each file. It then replaces the app's files with journaled
@@ -142,11 +159,21 @@ types.
   and `scripts/protect_update_key.ps1` is the one-time step that locks the
   private key behind that passphrase. In the app, `UpdateVerifier` holds the
   pinned public key, the hash checks, and the strictly-greater version rule. It
-  gates `UpdateService`. The update subsystem is the only code in the app that
-  touches the network. Downloads land in `%AppData%\NexusApp\updates`. NexusApp
+  gates `UpdateService`. Downloads land in `%AppData%\NexusApp\updates`. NexusApp
   checks their hash before the installer ever runs. The installer flavor runs the
   verified installer file. The portable flavor can install the update itself,
   without a helper program and without a script. See Portable self-update below.
+- **Live market prices** are opt-in, gated by the tri-state `MarketDataEnabled`
+  setting (null = the one-time consent strip has not been answered, true/false =
+  the user's standing choice). When enabled, `MarketDataService` fetches sell
+  prices from the UEX community API about once an hour while NexusApp is open,
+  and this fetch is the only other network code in the app besides the update
+  check. The fetched snapshot is cached at
+  `%AppData%\NexusApp\cache\uex_snapshot.json` (`MarketSnapshotFile`), so the
+  last fetched prices load back on the next start and NexusApp works from them
+  fully offline between fetches. The bundled mining seed data itself is not
+  fetched from anywhere; only its prices are enriched from UEX when the user
+  opts in.
 
 ## Key flows
 

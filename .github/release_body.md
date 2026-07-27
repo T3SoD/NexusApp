@@ -3,7 +3,7 @@
 Both downloads are self-contained, because Nexus includes the .NET runtime. Both downloads:
 - need **no admin rights**
 - store settings and work orders on your computer
-- run offline unless you turn on update checks
+- run offline unless you turn on optional online features (update checks, live market prices)
 
 Select the download that you want.
 

@@ -266,81 +266,14 @@ public sealed class CommandPage : UserControl
 
     // Shared chrome for the amber notice strips (relaunch, consent, update, updated-to):
     // icon box + eyebrow + wrapping body + optional action buttons + optional dismiss.
-    // Geometry and colors are the approved relaunch-strip values; only the words differ.
-    private FrameworkElement NoticeStrip(string eyebrow, string bodyText, IEnumerable<Button> actions, Action? onDismiss)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // amber icon
-        grid.ColumnDefinitions.Add(new ColumnDefinition());                             // eyebrow + message
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // action + dismiss buttons
-
-        // Glyph in a 30x30 amber-line box (mock .rs-icon: 1px amber-line border, radius 4,
-        // bg rgba(255,178,62,0.06)); the 17px viewbox glyph is centered inside it.
-        var icon = new Border
-        {
-            Width = 30, Height = 30, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(4, 0, 14, 0),
-            BorderBrush = Br("AccentStrongBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
-            Background = new SolidColorBrush(Color.FromArgb(0x0F, 0xFF, 0xB2, 0x3E)),
-            Child = new Viewbox
-            {
-                Width = 17, Height = 17,
-                Child = new Path
-                {
-                    Data = Geometry.Parse("M21,12 A9,9 0 1 1 18,5.3 M21,4 L21,9 L16,9"),
-                    Stroke = Br("AccentBrush"), StrokeThickness = 1.7, Fill = Brushes.Transparent,
-                    Width = 24, Height = 24, Stretch = Stretch.Uniform,
-                },
-            },
-        };
-        Grid.SetColumn(icon, 0); grid.Children.Add(icon);
-
-        var body = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        body.Children.Add(new TextBlock
-        {
-            Text = eyebrow, FontFamily = Disp, FontSize = 10, FontWeight = FontWeights.Bold,
-            Foreground = Br("AccentBrush"), Margin = new Thickness(0, 0, 0, 5),
-        });
-        body.Children.Add(new TextBlock
-        {
-            Text = bodyText, FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"),
-            TextWrapping = TextWrapping.Wrap, MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left,
-        });
-        Grid.SetColumn(body, 1); grid.Children.Add(body);
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
-        foreach (var b in actions) { b.Margin = new Thickness(14, 0, 0, 0); buttons.Children.Add(b); }
-        if (onDismiss != null)
-        {
-            var dismiss = StripButton("Dismiss");
-            dismiss.Click += (_, _) => onDismiss();
-            buttons.Children.Add(dismiss);
-        }
-        Grid.SetColumn(buttons, 2); grid.Children.Add(buttons);
-
-        var panel = Hud.Panel(grid, chamfer: 12, padding: new Thickness(14, 12, 14, 12),
-                              bg: new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xB2, 0x3E)),
-                              border: Br("AccentStrongBrush"));
-        // Left amber edge accent (mock .relaunch-strip::before: 2px bar, 10px top/bottom inset, radius 2, amber glow).
-        panel.Children.Add(new Border
-        {
-            Width = 2, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch,
-            Margin = new Thickness(0, 10, 0, 10), CornerRadius = new CornerRadius(2),
-            Background = Br("AccentBrush"), IsHitTestVisible = false,
-            Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("AccentBrush")).Color, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 },
-        });
-        panel.Margin = new Thickness(0, 0, 0, 16);
-        return panel;
-    }
+    // The chrome itself lives on Hud (Hud.NoticeStrip / Hud.StripButton) because the market
+    // data consent host on the decoder, codex and tracker pages renders the same strip;
+    // these two keep the local names this page's strip builders already call.
+    private static FrameworkElement NoticeStrip(string eyebrow, string bodyText, IEnumerable<Button> actions, Action? onDismiss)
+        => Hud.NoticeStrip(eyebrow, bodyText, actions, onDismiss);
 
     // The strips' shared action button (the approved relaunch-strip dismiss geometry).
-    private static Button StripButton(string label) => new()
-    {
-        Content = label,
-        Style = (Style)Application.Current.FindResource("NexusButton"),
-        Padding = new Thickness(13, 6, 13, 6),
-        Margin = new Thickness(14, 0, 0, 0),
-        VerticalAlignment = VerticalAlignment.Top,
-    };
+    private static Button StripButton(string label) => Hud.StripButton(label);
 
     // Session-scoped dismiss: collapse the strip for the rest of this session. Setting the flag first
     // means any interleaving Refresh() already omits the strip; the short fade (unless motion is

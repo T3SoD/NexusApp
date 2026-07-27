@@ -25,7 +25,7 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 >
 > Nexus does only two kinds of operation on the game. It captures your screen with the standard Windows OCR APIs. It reads the plain-text `Game.log` that the game writes to disk, and the `global.ini` localization file when one is present. It opens both as read-only and in shared mode.
 >
-> Nexus installs per-user. It makes no network calls unless you turn on update checks or click Check now yourself, and those contact GitHub only (github.com and GitHub's own file-download host). The whole pipeline is open source in this repo. Easy Anti-Cheat has nothing to flag.
+> Nexus installs per-user. It makes no network calls unless you turn on one of two optional online features: update checks (contacts GitHub only: github.com and GitHub's own file-download host) or live market prices (contacts UEX's community API at api.uexcorp.uk). Both features stay off until you say yes. The whole pipeline is open source in this repo. Easy Anti-Cheat has nothing to flag.
 
 ## Features
 
@@ -51,8 +51,9 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 - **Shopping list:** Add resources or blueprint ingredients. Nexus then highlights them in scan results and history.
 - **Persistent work orders:** Refinery timers survive when Nexus restarts.
 - **Crash recovery:** If Windows reports a display error, Nexus restarts itself once and shows a notice on the Operations dashboard. Your work orders and hauls are safe. The Diagnostics section in Settings has a CPU rendering toggle and a row for the last automatic restart.
-- **Offline by default:** You do not need an account. Nexus makes no network calls unless you enable update checks or click Check now yourself. Nexus stores settings and work orders locally on your PC.
+- **Offline by default:** You do not need an account. Nexus makes no network calls unless you enable one of two optional online features (update checks or live market prices). Nexus stores settings and work orders locally on your PC.
 - **Opt-in updates:** Nexus asks once whether it can check GitHub for new versions. If you say yes, it checks when Nexus starts, at most once a day, verifies every download, and asks before it installs anything.
+- **Opt-in live market prices:** Nexus asks once whether it can show live sell prices from UEX, a community-run price database. If you say yes, Nexus fetches prices about once an hour while it is open and caches them locally, so prices still show when you are offline. Prices show on the RS Signal Decoder, the Mining Codex, and the Refinery Tracker. UEX prices are community-reported and can be stale; Nexus marks the age of each price rather than presenting it as guaranteed-current.
 
 ## Screenshots
 
@@ -108,7 +109,7 @@ The same haul plan appears in-game. It shows totals, consolidated stops, and per
 
 ## Installation (end users)
 
-Nexus comes in two forms. Choose the one that suits you. Both forms are self-contained, because Nexus bundles the .NET runtime. Both need no admin rights. Both store settings and work orders locally. Both run offline unless you turn on update checks.
+Nexus comes in two forms. Choose the one that suits you. Both forms are self-contained, because Nexus bundles the .NET runtime. Both need no admin rights. Both store settings and work orders locally. Both run offline unless you turn on optional online features (update checks, live market prices).
 
 ### Option 1 - Installer (`Nexus_Setup.exe`) - *recommended, user friendly*
 

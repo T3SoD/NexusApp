@@ -97,6 +97,21 @@ public class AppSettings
     // 24-hour auto-check throttle and the "Last checked" row. Null until the first check ever.
     public DateTime? LastUpdateCheckUtc { get; set; }
 
+    // Live market data consent: null = the one-time strip has not been answered, true/false =
+    // the standing choice, changeable anytime in Settings. Off or unanswered means the market
+    // service never touches the network.
+    public bool? MarketDataEnabled { get; set; }
+
+    // UTC instant of the last completed market fetch cycle (success or failure). Null until
+    // the first cycle ever runs. Drives the Settings status line.
+    public DateTime? LastMarketFetchUtc { get; set; }
+
+    // Sell prices as an extra column in the Mining Codex list, off by default: the list is a
+    // reference table first, so prices are opt-in per reader. A plain bool and not a tri-state
+    // because there is no consent question here - MarketDataEnabled already gates the feature,
+    // and this only chooses whether the list shows what the dossier already has.
+    public bool CodexSellColumn { get; set; }
+
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
     public string? LastSeenVersion { get; set; }

@@ -83,6 +83,8 @@
     <!-- Mission Guides artwork. Embedded, never loose in the portable output.
          Adding a guide = drop the PNG here and add one GuideCatalog entry. -->
     <Resource Include="Assets\Guides\**\*.png" />
+    <!-- Official "Powered by UEX" attribution badge (Task 13), unmodified brand asset. -->
+    <Resource Include="Assets\uex_badge.png" />
     <!-- UI overhaul type system: Rajdhani (display), JetBrains Mono (data) -->
     <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf" />
     <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf" />

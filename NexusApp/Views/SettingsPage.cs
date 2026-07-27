@@ -58,6 +58,12 @@ public sealed class SettingsPage : UserControl
     private StackPanel? _updateActionHost;
     private Hud.ToggleSwitch? _updateCheckToggle;
 
+    // Market data section (DIAGNOSTICS). Held so the rows can be refreshed as the fetch cycle
+    // moves between states; null in the demo profile, where the section is inert.
+    private Hud.ToggleSwitch? _marketToggle;
+    private Button? _marketRefreshBtn;
+    private TextBlock? _marketStatusText;
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
@@ -502,7 +508,99 @@ public sealed class SettingsPage : UserControl
                 App.Update.Changed += () => Dispatcher.Invoke(RefreshUpdateRows);
         }
 
+        // Market data: consent toggle, manual refresh, source note. Inert in the demo profile.
+        // The UEX badge (Task 13) replaces the source row's plain text.
+        if (AppPaths.IsDemoProfile)
+        {
+            panel.Children.Add(SectionPanel(MarketNotice.SettingsTitle, false,
+                SettingRow("Market data",
+                    "Market data is unavailable in the demo profile.",
+                    new TextBlock
+                    {
+                        Text = "Unavailable", FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+                        Foreground = Hud.Br("FgDimBrush"),
+                    }, last: true)));
+        }
+        else
+        {
+            _marketToggle = new Hud.ToggleSwitch(App.Settings.Current.MarketDataEnabled == true)
+            {
+                OnToggled = on =>
+                {
+                    App.Settings.Current.MarketDataEnabled = on;
+                    App.Settings.Save();
+                    Logger.Info("[UI] Toggle: market data " + (on ? "on" : "off"));
+                    if (on) App.Market.MaybeAutoRefresh();
+                    // No cycle-start event: reflect the toggle's effect on the refresh button
+                    // (and status line) immediately rather than waiting on Changed.
+                    RefreshMarketRows();
+                },
+            };
+
+            _marketRefreshBtn = GhostButton(MarketNotice.RefreshNow);
+            _marketRefreshBtn.Click += (_, _) =>
+            {
+                // Disabled at click time: Changed only fires at the END of a cycle, so there is
+                // no cycle-start signal to react to instead.
+                _marketRefreshBtn!.IsEnabled = false;
+                _ = App.Market.RefreshAsync(manual: true);
+            };
+            _marketStatusText = new TextBlock
+            {
+                FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 260, TextAlignment = TextAlignment.Right,
+            };
+            var marketRefreshStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+            marketRefreshStack.Children.Add(_marketRefreshBtn);
+            marketRefreshStack.Children.Add(_marketStatusText);
+            // Second dim line under the status: how often the app goes to the network. Same mono
+            // 11.5 right-aligned treatment as the status line above it, and static (the cadence
+            // does not change with state), matching how the toggle description already states it
+            // unconditionally. Wraps to two lines inside the shared 260 cap.
+            marketRefreshStack.Children.Add(new TextBlock
+            {
+                Text = MarketNotice.CadenceNote,
+                FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Right,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 260, TextAlignment = TextAlignment.Right,
+            });
+
+            panel.Children.Add(SectionPanel(MarketNotice.SettingsTitle, false,
+                SettingRow(MarketNotice.SettingsToggleTitle,
+                    MarketNotice.SettingsToggleDesc,
+                    _marketToggle, last: false),
+                SettingRow("Refresh now",
+                    "Fetch the latest sell prices from UEX right now, regardless of the hourly " +
+                    "schedule. Prices can go stale (and keep their visible age) when UEX stops " +
+                    "listing a commodity, rather than disappearing.",
+                    marketRefreshStack, last: false),
+                SettingRow("Source",
+                    "Where these prices come from.",
+                    UexBadge(), last: true)));
+
+            RefreshMarketRows();
+            App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshMarketRows);
+        }
+
         return Pane(panel);
+    }
+
+    // Keeps the Market data rows honest as the fetch cycle moves through its states. Subscribed
+    // to App.Market.Changed (worker thread): the subscription above uses Dispatcher.BeginInvoke,
+    // not Invoke, because Market.Dispose only drains an in-flight cycle for up to 3s and a
+    // blocking handler here would eat into that budget.
+    private void RefreshMarketRows()
+    {
+        if (_marketToggle == null || _marketRefreshBtn == null || _marketStatusText == null) return;
+
+        var on = App.Settings.Current.MarketDataEnabled == true;
+        // Mirrors the setting rather than trusting its own prior state: consent can in principle
+        // change elsewhere, same reasoning as the Updates toggle re-sync above.
+        _marketToggle.SetOnSilently(on);
+        _marketRefreshBtn.IsEnabled = on && !App.Market.FetchInProgress;
+        _marketStatusText.Text = MarketNotice.StatusLine(
+            App.Settings.Current.LastMarketFetchUtc?.ToLocalTime(), App.Market.LastError);
     }
 
     // Right-aligned dim note, the pattern the Downloading/Verifying mirrors already use.
@@ -513,6 +611,37 @@ public sealed class SettingsPage : UserControl
         TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
         MaxWidth = 260, TextAlignment = TextAlignment.Right,
     };
+
+    // Official "Powered by UEX" attribution badge (Task 13). Replaces the plain SourceNote
+    // text row: the black rounded mark sits directly on the panel fill, no border, and is
+    // never recolored or restyled (brand asset rule). SourceNote still carries the
+    // accessible name and tooltip so screen readers get the same information sighted users
+    // read off the badge.
+    private static Image UexBadge()
+    {
+        // Capped decode, mirroring GuidesPage.Thumbnail's pattern: the source PNG is
+        // 3840x1138 (~17.5 MB decoded RGBA) but this row only ever shows it at 26px tall.
+        // DecodePixelHeight = 52 (2x display height) keeps it crisp at high DPI without
+        // decoding the full-resolution bitmap.
+        var bmp = new System.Windows.Media.Imaging.BitmapImage();
+        bmp.BeginInit();
+        bmp.UriSource = new Uri("pack://application:,,,/Assets/uex_badge.png", UriKind.Absolute);
+        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        bmp.DecodePixelHeight = 52;
+        bmp.EndInit();
+        bmp.Freeze();
+
+        var badge = new Image
+        {
+            Source = bmp, Height = 26, Stretch = Stretch.Uniform,
+            ToolTip = MarketNotice.SourceNote,
+        };
+        // Note: SettingRow (:939) unconditionally right-aligns any FrameworkElement control it
+        // hosts, so no HorizontalAlignment is set here - it would be dead/contradictory.
+        RenderOptions.SetBitmapScalingMode(badge, BitmapScalingMode.HighQuality);
+        System.Windows.Automation.AutomationProperties.SetName(badge, MarketNotice.SourceNote);
+        return badge;
+    }
 
     // The power-user secondary action on every portable ReadyToInstall row (approved UX:
     // Settings is the surface for hand-managing the swap).
