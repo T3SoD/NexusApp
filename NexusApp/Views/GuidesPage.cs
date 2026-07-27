@@ -51,8 +51,10 @@ public sealed class GuidesPage : UserControl
     private GuideEntry? _openGuide;
 
     // Executive Hangar status line (issue #26): live PYAM contested-zone hangar cycle, slotted
-    // into the Contested Zones section head. One DispatcherTimer owned by the page; see
-    // HangarSection_Loaded/Unloaded.
+    // into the Contested Zones section head. One DispatcherTimer owned by the page, started and
+    // stopped from the IsVisibleChanged handler below (GuidesPage is a lazy singleton kept
+    // permanently in MainWindow's tree; page switches are pure Visibility toggling, which never
+    // fires Loaded/Unloaded - see HangarPageEntered/HangarPageLeft).
     private DispatcherTimer? _hangarTimer;
     private readonly Ellipse[] _hangarDots = new Ellipse[5];
     private StackPanel? _hangarLine;
@@ -80,6 +82,12 @@ public sealed class GuidesPage : UserControl
         // Leaving the page while a guide is open must not park a full-size bitmap in memory
         // (the largest guide decodes to about 116 MB).
         IsVisibleChanged += (_, _) => { if (!IsVisible && _openGuide != null) CloseGuide(replayCascade: false); };
+
+        // IsVisible correctly reflects an ancestor's Visibility toggling (unlike Loaded/Unloaded,
+        // which never fire for a lazy-singleton page whose host just flips Visibility - see the
+        // field comment on _hangarTimer), so it drives the hangar timer's start/stop on every
+        // entry and exit, not just the first one.
+        IsVisibleChanged += (_, _) => { if (IsVisible) HangarPageEntered(); else HangarPageLeft(); };
     }
 
     /// <summary>Called by MainWindow every time the dock activates this page.</summary>
@@ -204,10 +212,10 @@ public sealed class GuidesPage : UserControl
 
         if (isContestedZones)
         {
-            section.Children.Add(BuildHangarNextOpensLine());
-            RefreshHangarStatus();   // paint the initial state before the timer's first tick
-            section.Loaded += HangarSection_Loaded;
-            section.Unloaded += HangarSection_Unloaded;
+            var nextOpens = BuildHangarNextOpensLine();
+            section.Children.Add(nextOpens);
+            _cascade.Add(nextOpens);
+            RefreshHangarStatus();   // paint the initial state; IsVisibleChanged drives it from here
         }
 
         var grid = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
@@ -457,8 +465,10 @@ public sealed class GuidesPage : UserControl
         return line;
     }
 
-    // Next-opens readout under the head, right-aligned to echo the status line above it (one line).
-    private UIElement BuildHangarNextOpensLine()
+    // Next-opens readout under the head, right-aligned to echo the status line above it (one
+    // line). Returns FrameworkElement (not just UIElement) so it can join _cascade like every
+    // other visible section element (issue #26 review, minor finding).
+    private FrameworkElement BuildHangarNextOpensLine()
     {
         _hangarNextOpensText = new TextBlock
         {
@@ -526,21 +536,33 @@ public sealed class GuidesPage : UserControl
         return $"{utc.ToLocalTime():d MMM yyyy} {FormatClockTime(utc)}";
     }
 
-    private void HangarSection_Loaded(object sender, RoutedEventArgs e)
+    // Called from IsVisibleChanged every time the Guides page becomes visible (first visit and
+    // every return trip - GuidesPage is a lazy singleton that is never removed from the visual
+    // tree, so this is the only reliable "page entry" signal; Loaded fires once, ever). Recomputes
+    // immediately so a stale value never shows while the timer was stopped, logs the once-per-entry
+    // line, then starts the timer if it is not already running.
+    private void HangarPageEntered()
     {
-        if (_hangarTimer != null) return;   // self-detaching-safe: never stack a second timer
-        _hangarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _hangarTimer.Tick += (_, _) => RefreshHangarStatus();
-        _hangarTimer.Start();
+        if (_hangarLine == null) return;   // defensive: only wired once BuildSection has run
+        RefreshHangarStatus();
 
         var overrideUtc = App.Settings.Current.ExecHangarAnchorOverrideUtc;
         var s = ExecHangarCycle.At(DateTime.UtcNow, overrideUtc);
         Logger.Info($"[UI] Exec hangar timer: {(s.IsOpen ? "OPEN" : "CLOSED")}, " +
             $"{ExecHangarCycle.FormatCountdown(s.TimeToTransition)} to {(s.IsOpen ? "close" : "open")} " +
             $"(anchor: {(overrideUtc.HasValue ? "custom" : "built-in " + ExecHangarCycle.CalibrationLabel)})");
+
+        if (_hangarTimer != null) return;   // already running - never stack a second timer
+        _hangarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _hangarTimer.Tick += (_, _) => RefreshHangarStatus();
+        _hangarTimer.Start();
     }
 
-    private void HangarSection_Unloaded(object sender, RoutedEventArgs e)
+    // Called from IsVisibleChanged every time the Guides page is hidden (dock switch away). Stops
+    // the timer so it never ticks for a page that is not on screen - this is the fix for the
+    // Critical finding: Loaded/Unloaded never fires for this lazy-singleton page, so Unloaded-based
+    // stopping never ran past the very first visit.
+    private void HangarPageLeft()
     {
         _hangarTimer?.Stop();
         _hangarTimer = null;
@@ -563,8 +585,11 @@ public sealed class GuidesPage : UserControl
         Logger.Info("[UI] Exec hangar re-anchored by user");
     }
 
-    // Compact themed confirm dialog, modeled on NetworkPage's small prompt/choice dialogs (plain
-    // themed Background/Foreground, mouse only - no default/cancel key bindings, no open/close motion).
+    // Compact themed confirm dialog. Chrome (themed Background/Foreground, ResizeMode, sizing)
+    // is modeled on NetworkPage's small prompt/choice dialogs; DialogMotion.Attach and
+    // UiScaleService.ApplyToDialog are added below to match the app's near-universal dialog
+    // idiom (every dedicated *Dialog.cs, e.g. WorkOrderEditorDialog's identical
+    // SizeToContent.Height sizing) - mouse only, still no default/cancel key bindings.
     private static bool ShowReanchorConfirm(Window? owner)
     {
         var win = new Window
@@ -607,6 +632,8 @@ public sealed class GuidesPage : UserControl
         win.Content = panel;
         confirm.Click += (_, _) => win.DialogResult = true;
         cancel.Click += (_, _) => win.DialogResult = false;
+        DialogMotion.Attach(win);
+        UiScaleService.ApplyToDialog(win, panel);   // App scale (issue #20)
         return win.ShowDialog() == true;
     }
 
