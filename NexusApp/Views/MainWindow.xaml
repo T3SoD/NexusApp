@@ -591,6 +591,7 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
                                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -684,6 +685,12 @@
                                                  carries the entrance, so the rows render static/open. -->
                                             <StackPanel x:Name="HeroCompositionHost" Grid.Row="4" Grid.ColumnSpan="2"
                                                         Margin="0,6,0,0" Loaded="HeroComposition_Loaded"/>
+
+                                            <!-- Live sell line (Task 9): built in code-behind (HeroMarket_Loaded), silent
+                                                 (hairline included) unless market data is on, a snapshot has landed, and
+                                                 UEX has a priced row for this resource. -->
+                                            <StackPanel x:Name="HeroMarketHost" Grid.Row="5" Grid.ColumnSpan="2"
+                                                        Margin="0,6,0,0" Loaded="HeroMarket_Loaded"/>
                                         </Grid>
                                     </views:ChamferPanel>
                                 </DataTemplate>

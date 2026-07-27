@@ -40,6 +40,10 @@ public partial class MainWindow : Window
         RefreshOwnerTools();
         NexusApp.Services.GatePreview.Changed += () => Dispatcher.Invoke(OnGatePreviewChanged);
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
+        // Keeps the hero decoder card's live sell line current as fetch cycles land. Fired on a
+        // worker thread; BeginInvoke (not Invoke) matches the SettingsPage market subscription,
+        // since Market.Dispose only drains an in-flight cycle for up to 3s.
+        App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshHeroMarket);
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -951,6 +955,56 @@ public partial class MainWindow : Window
         var rows = ScanCardComposition.BuildExpandRows(parts);
         rows.Opacity = 1;   // open + static; the hero FadeRise animates the whole card
         host.Children.Add(rows);
+    }
+
+    // ── RS Decoder live sell line (market data, Task 9) ────────────────────────
+    // One line under the hero card: the best raw-ore sell UEX has for this resource, with its age
+    // or (when stale) the patch it was captured in - data honesty means a price never renders
+    // without one of the two. Silent (hairline included) unless market data is on, a snapshot has
+    // landed, there is a best match, and UEX has a priced row for it.
+    private StackPanel? _heroMarketHost;
+
+    private void HeroMarket_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not StackPanel host) return;
+        _heroMarketHost = host;
+        // New decodes recreate the template (and re-fire Loaded), but a page switch away just
+        // unloads this instance - drop the reference so Changed does not fill a detached panel.
+        host.Unloaded += (_, _) => { if (_heroMarketHost == host) _heroMarketHost = null; };
+        FillHeroMarket(host);
+    }
+
+    // Re-fills the hero market line whenever a fetch cycle publishes a new snapshot. A no-op
+    // between decodes or while another page is active, when the field is null.
+    private void RefreshHeroMarket()
+    {
+        if (_heroMarketHost is { } host) FillHeroMarket(host);
+    }
+
+    private void FillHeroMarket(StackPanel host)
+    {
+        host.Children.Clear();
+        if (App.Settings.Current.MarketDataEnabled != true) return;
+        if (App.Market.Snapshot is not { } snap) return;
+        if (_vm.BestMatch is not { } m) return;
+
+        var hit = MarketQueries.BestRawSell(snap, m.Resource.Name);
+        if (hit is null) return;   // no priced row for this resource: render nothing, not a blank line
+
+        host.Children.Add(new Border
+        {
+            Height = 1, Background = Hud.Br("NavBorderBrush"), Margin = new Thickness(0, 0, 0, 6),
+        });
+
+        var ageText = hit.Stale
+            ? MarketNotice.PatchTag(hit.GameVersion)
+            : MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc);
+        host.Children.Add(new TextBlock
+        {
+            Text = MarketNotice.DecoderLine(hit.Display, hit.TerminalName, ageText),
+            FontSize = 12,
+            Foreground = hit.Stale ? Hud.Br("FgDimBrush") : Hud.Br("GoldBrush"),
+        });
     }
 
     // OTHER MATCHES composition: bar + collapsed rows, tap-to-expand. Idempotent - clears and
