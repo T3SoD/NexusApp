@@ -49,6 +49,8 @@ public sealed class CommandPage : UserControl
     private bool _postUpdateDismissed;             // user dismissed the updated-to strip this session
     private bool _postUpdateStripLogged;           // "shown" logged once, not on every rebuild
     private FrameworkElement? _updateStrip;        // current update strip element
+    private bool _swapFailedDismissed;             // user dismissed the swap-failed strip this session
+    private bool _swapFailedStripLogged;           // "shown" logged once, not on every rebuild
 
     // ── Operations entrance (tab-open only; never on data ticks) ──
     // Fires once per tab-open visit (MainWindow's SetActivePage calls PlayEntrance after
@@ -101,6 +103,8 @@ public sealed class CommandPage : UserControl
         if (_relaunchStrip != null) _root.Children.Add(_relaunchStrip);
         var postUpdate = PostUpdateStrip();
         if (postUpdate != null) _root.Children.Add(postUpdate);
+        var swapFailed = SwapFailedStrip();
+        if (swapFailed != null) _root.Children.Add(swapFailed);
         var consent = ConsentStrip();
         if (consent != null) _root.Children.Add(consent);
         _updateStrip = UpdateStrip();
@@ -407,13 +411,56 @@ public sealed class CommandPage : UserControl
             });
     }
 
+    // One-session notice after startup recovery restored the previous version (a swap
+    // crashed mid-flight last session). Try again re-enters the normal flow with a fresh
+    // check; Update manually routes the next ReadyToInstall to the guided manual flow.
+    private FrameworkElement? SwapFailedStrip()
+    {
+        if (_swapFailedDismissed || AppPaths.IsDemoProfile) return null;
+        if (App.SwapFailedAttemptedVersion is not { } attempted) return null;
+        if (!_swapFailedStripLogged)
+        {
+            _swapFailedStripLogged = true;
+            Logger.Info("[UI] swap-failed notice shown on Operations");
+        }
+        var tryAgain = StripButton("Try again");
+        tryAgain.Click += (_, _) =>
+        {
+            _swapFailedDismissed = true;
+            Logger.Info("[UI] swap-failed notice: try again");
+            _ = App.Update.CheckAsync(manual: true);
+            Refresh();
+        };
+        var manual = StripButton("Update manually");
+        manual.Click += (_, _) =>
+        {
+            _swapFailedDismissed = true;
+            Logger.Info("[UI] swap-failed notice: update manually");
+            App.Update.PreferManualUpdate = true;
+            _ = App.Update.CheckAsync(manual: true);
+            Refresh();
+        };
+        return NoticeStrip(UpdateNotice.UpdateEyebrow, UpdateNotice.SwapFailedBody(attempted, AppInfo.Version),
+            new[] { tryAgain, manual }, () =>
+            {
+                _swapFailedDismissed = true;
+                Logger.Info("[UI] swap-failed notice dismissed");
+                Refresh();
+            });
+    }
+
     // The live update strip: body and actions follow the service state. Dismiss is
     // session-scoped; the Settings > Diagnostics rows remain the persistent surface.
     private FrameworkElement? UpdateStrip()
     {
         var svc = App.Update;
         if (svc == null || _updateDismissed || svc.Available is null) return null;
-        if (svc.State is not (UpdateState.UpdateAvailable or UpdateState.Downloading or UpdateState.Verifying or UpdateState.ReadyToInstall)) return null;
+        // Installing is admitted only for the portable flows (the installer sets Installing
+        // right before shutdown and must not flash a strip); ManualHandoff holds the
+        // instruction line until the user closes Nexus themselves.
+        var portableBusy = svc.State == UpdateState.Installing && (svc.PortableApplyInProgress || svc.ManualUnpackInProgress);
+        if (svc.State is not (UpdateState.UpdateAvailable or UpdateState.Downloading or UpdateState.Verifying
+                or UpdateState.ReadyToInstall or UpdateState.ManualHandoff) && !portableBusy) return null;
 
         if (!_updateStripLogged)
         {
@@ -438,11 +485,45 @@ public sealed class CommandPage : UserControl
                 install.Click += (_, _) => ShowInstallConfirm(v);
                 actions.Add(install);
                 break;
-            case UpdateState.ReadyToInstall:
+            // A stuck rollback is not retryable in this session: the previous version is in
+            // .old files and only the next start's recovery can put it back. Say that, and
+            // offer no button that would fail.
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null && svc.LastApplyLeftRestorePending:
+                bodyText = UpdateNotice.RestorePendingBody;
+                break;
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null:
+                bodyText = UpdateNotice.PrepareFailedBody;
+                var retry = StripButton("Try again");
+                // Retry whichever path failed: the self-swap when it is available, otherwise
+                // the guided manual unpack (its failure sets the same note).
+                retry.Click += (_, _) =>
+                {
+                    Logger.Info("[UI] portable update: try again");
+                    if (App.Update.PortableSwapAvailable) _ = RunPortableApply(v);
+                    else _ = App.Update.UnpackForManualAsync();
+                };
+                actions.Add(retry);
+                break;
+            case UpdateState.ReadyToInstall when svc.PortableSwapAvailable:
                 bodyText = UpdateNotice.ReadyBodyPortable(v);
-                var open = StripButton("Open folder");
-                open.Click += (_, _) => App.Update.OpenDownloadFolder();
-                actions.Add(open);
+                var installPortable = StripButton("Install update");
+                installPortable.Click += (_, _) => ShowInstallConfirm(v);
+                actions.Add(installPortable);
+                break;
+            case UpdateState.ReadyToInstall:
+                bodyText = UpdateNotice.ReadyBodyPortableManual(v);
+                var manual = StripButton("Set up manual update");
+                manual.Click += (_, _) => { Logger.Info("[UI] portable update: manual handoff chosen"); _ = App.Update.UnpackForManualAsync(); };
+                actions.Add(manual);
+                break;
+            case UpdateState.Installing when svc.ManualUnpackInProgress:
+                bodyText = UpdateNotice.UnpackingBody(v);
+                break;
+            case UpdateState.Installing:
+                bodyText = UpdateNotice.PreparingBody(v);
+                break;
+            case UpdateState.ManualHandoff:
+                bodyText = UpdateNotice.ManualHandoffBody(v);
                 break;
             default:
                 bodyText = UpdateNotice.UpdateBody(AppInfo.Version, v);
@@ -454,8 +535,11 @@ public sealed class CommandPage : UserControl
                 }
                 break;
         }
-        return NoticeStrip(UpdateNotice.UpdateEyebrow, bodyText, actions,
-            () => { _updateDismissed = true; Logger.Info("[UI] update notice dismissed"); Refresh(); });
+        // No buttons, no dismiss while the swap is preparing or unpacking: the phase is
+        // terminal and the strip is the progress line.
+        Action? onDismiss = portableBusy ? null :
+            () => { _updateDismissed = true; Logger.Info("[UI] update notice dismissed"); Refresh(); };
+        return NoticeStrip(UpdateNotice.UpdateEyebrow, bodyText, actions, onDismiss);
     }
 
     // Themed in-page confirmation (SettingsPage danger-modal pattern, accent chrome): the
@@ -478,7 +562,8 @@ public sealed class CommandPage : UserControl
         });
         body.Children.Add(new TextBlock
         {
-            Text = UpdateNotice.InstallConfirmBody, FontSize = 12.5, Foreground = Br("FgDimBrush"),
+            Text = AppInfo.Distribution == "Installer" ? UpdateNotice.InstallConfirmBody : UpdateNotice.InstallConfirmBodyPortable,
+            FontSize = 12.5, Foreground = Br("FgDimBrush"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0),
         });
         var actionRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
@@ -494,10 +579,17 @@ public sealed class CommandPage : UserControl
         {
             Logger.Info("[UI] install update: confirmed");
             CloseInstallConfirm(cancelled: false);
-            if (App.Update.LaunchInstaller())
-                Application.Current.Shutdown();
+            if (AppInfo.Distribution == "Installer")
+            {
+                if (App.Update.LaunchInstaller())
+                    Application.Current.Shutdown();
+                else
+                    ShowVerifyFailedIfNeeded();
+            }
             else
-                ShowVerifyFailedIfNeeded();
+            {
+                _ = RunPortableApply(v);
+            }
         };
         actionRow.Children.Add(cancel);
         actionRow.Children.Add(confirm);
@@ -516,6 +608,54 @@ public sealed class CommandPage : UserControl
     private void CloseInstallConfirm(bool cancelled)
     {
         if (cancelled) Logger.Info("[UI] install update: cancelled");
+        _modalHost.Visibility = Visibility.Collapsed;
+        _modalHost.Children.Clear();
+    }
+
+    // Confirm already given: quiesce the UI (version-skew guard: nothing may lazily load
+    // PenImc or WebView2 natives after files change), release WebView2's file handles, then
+    // run the swap off-thread. On success the shutdown path relaunches; on failure the
+    // window comes back alive and the strip explains via LastPortableApplyFailure.
+    private async Task RunPortableApply(Version v)
+    {
+        var owner = Window.GetWindow(this);
+        ShowInstallingOverlay(v);
+        if (owner != null) owner.IsEnabled = false;
+        (owner as MainWindow)?.ShutdownWebViewsForUpdate();
+        var ok = await App.Update.ApplyPortableAsync();
+        if (ok)
+        {
+            Application.Current.Shutdown();
+            return;
+        }
+        if (owner != null) owner.IsEnabled = true;
+        CloseInstallingOverlay();
+    }
+
+    // Non-dismissible by design: the scrim doubles as the interaction guard while files are
+    // being flipped, and a one-second dark gap after it reads as an ordinary restart.
+    private void ShowInstallingOverlay(Version v)
+    {
+        _modalHost.Children.Clear();
+        _modalHost.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(0x9E, 0x03, 0x05, 0x08)) });
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock
+        {
+            Text = UpdateNotice.PreparingBody(v), FontFamily = Hud.Font("TechFont"),
+            FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush"),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        var panel = Hud.Panel(body, chamfer: 14, bg: Br("Bg2NavBrush"), border: Br("AccentStrongBrush"),
+                              padding: new Thickness(22, 20, 22, 22));
+        panel.MaxWidth = 470;
+        panel.VerticalAlignment = VerticalAlignment.Center;
+        panel.HorizontalAlignment = HorizontalAlignment.Center;
+        _modalHost.Children.Add(panel);
+        _modalHost.Visibility = Visibility.Visible;
+    }
+
+    private void CloseInstallingOverlay()
+    {
         _modalHost.Visibility = Visibility.Collapsed;
         _modalHost.Children.Clear();
     }

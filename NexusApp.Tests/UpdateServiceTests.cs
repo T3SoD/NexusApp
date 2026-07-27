@@ -70,6 +70,25 @@ public class UpdateServiceTests : IDisposable
         }
     }
 
+    private sealed class FakeSwapper : IPortableSwapper
+    {
+        public PortablePreflight PreflightResult { get; set; } = new(true, "");
+        public PortableApplyResult ApplyResult { get; set; } = new(PortableApplyOutcome.Completed, "");
+        public bool UnpackResult { get; set; } = true;
+        public Exception? PreflightThrows { get; set; }
+        public int PreflightCalls; public int ApplyCalls; public int UnpackCalls;
+        public PortablePreflight Preflight(long zipBytes)
+        {
+            PreflightCalls++;
+            if (PreflightThrows is not null) throw PreflightThrows;
+            return PreflightResult;
+        }
+        public PortableApplyResult Apply(string zipPath, string expectedSha256, Version version, string currentVersion)
+        { ApplyCalls++; return ApplyResult; }
+        public bool UnpackForManual(string zipPath, string expectedSha256, Version version)
+        { UnpackCalls++; return UnpackResult; }
+    }
+
     private static readonly (string priv, string pub) Key = NewKeyPair();
 
     private static (string, string) NewKeyPair()
@@ -104,7 +123,8 @@ public class UpdateServiceTests : IDisposable
         var settings = new SettingsService(Path.Combine(dir, "settings.json"));
         var svc = new UpdateService(settings, t,
             (m, s) => UpdateVerifier.VerifySignature(m, s, Key.pub),
-            () => distribution, currentVersion, Path.Combine(dir, "updates"), demo);
+            () => distribution, currentVersion, Path.Combine(dir, "updates"), demo,
+            swapper: new FakeSwapper(), purgeGuard: () => false);
         return (svc, t, settings, dir);
     }
 
@@ -121,8 +141,25 @@ public class UpdateServiceTests : IDisposable
         var svc = new UpdateService(settings, t,
             (m, s) => UpdateVerifier.VerifySignature(m, s, Key.pub),
             () => distribution, currentVersion, Path.Combine(dir, "updates"), demo,
-            p => { started.Add(p); return true; });
+            p => { started.Add(p); return true; }, swapper: new FakeSwapper(), purgeGuard: () => false);
         return (svc, t, settings, dir, started);
+    }
+
+    // Make2 plus the portable swapper seam and a deterministic purge guard.
+    private (UpdateService svc, FakeTransport t, SettingsService settings, string dir, FakeSwapper swapper) Make3(
+        string currentVersion = "6.6.2", string distribution = "Portable", bool demo = false,
+        Func<bool>? purgeGuard = null)
+    {
+        var t = new FakeTransport();
+        var dir = Path.Combine(Path.GetTempPath(), "nexus-updates-test-" + Path.GetRandomFileName());
+        _tempDirs.Add(dir);
+        var settings = new SettingsService(Path.Combine(dir, "settings.json"));
+        var swapper = new FakeSwapper();
+        var svc = new UpdateService(settings, t,
+            (m, s) => UpdateVerifier.VerifySignature(m, s, Key.pub),
+            () => distribution, currentVersion, Path.Combine(dir, "updates"), demo,
+            p => true, swapper, purgeGuard ?? (() => false), () => @"C:\fake\NexusApp.exe");
+        return (svc, t, settings, dir, swapper);
     }
 
     // Exactly what SettingsPage feeds the Updates status row, so a test reads the line the user
@@ -565,5 +602,230 @@ public class UpdateServiceTests : IDisposable
         File.WriteAllText(Path.Combine(updates, "9.9.9", "old.partial"), "junk");
         svc.PurgeStaleDownloads();
         Assert.False(Directory.Exists(updates));
+    }
+
+    // ---- Portable self-swap state machine ----
+
+    // Both assets are published and served so the helper reaches ReadyToInstall for EITHER
+    // distribution: the installer variant exists to prove ApplyPortableAsync refuses from a
+    // healthy ReadyToInstall, which a 404'd download would hide behind a Failed state.
+    private async Task<(UpdateService svc, FakeSwapper swapper)> ReadyPortable(
+        string distribution = "Portable", Func<bool>? purgeGuard = null)
+    {
+        var (svc, t, _, _, swapper) = Make3(distribution: distribution, purgeGuard: purgeGuard);
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        var setup = Encoding.UTF8.GetBytes("setup bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9",
+            setupHash: HashOf(setup), setupSize: setup.Length,
+            portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "Nexus_Setup.exe")] = setup;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        return (svc, swapper);
+    }
+
+    [Fact]
+    public async Task Download_Portable_EvaluatesPreflightAndPublishesAvailability()
+    {
+        var (svc, swapper) = await ReadyPortable();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.Equal(1, swapper.PreflightCalls);
+        Assert.True(svc.PortableSwapAvailable);
+        Assert.Null(svc.PortableSwapUnavailableReason);
+    }
+
+    [Fact]
+    public async Task Download_PortablePreflightFails_OffersManualWithReason()
+    {
+        var (svc, t, _, _, swapper) = Make3();
+        swapper.PreflightResult = new PortablePreflight(false, "the app file has been renamed");
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.PortableSwapAvailable);
+        Assert.Equal("the app file has been renamed", svc.PortableSwapUnavailableReason);
+    }
+
+    [Fact]
+    public async Task Download_Installer_NeverTouchesThePreflight()
+    {
+        var (svc, t, _, _, swapper) = Make3(distribution: "Installer");
+        var payload = Encoding.UTF8.GetBytes("setup bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", setupHash: HashOf(payload), setupSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "Nexus_Setup.exe")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.Equal(0, swapper.PreflightCalls);
+        Assert.False(svc.PortableSwapAvailable);
+    }
+
+    [Fact]
+    public async Task Download_PendingJournal_OffersManualWithoutProbing()
+    {
+        // A pending journal means Apply will refuse anyway: the strip must route to the guided
+        // manual flow rather than an Install button whose Try again cannot work until restart.
+        var (svc, t, _, _, swapper) = Make3(purgeGuard: () => true);
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.PortableSwapAvailable);
+        Assert.Contains("previous update", svc.PortableSwapUnavailableReason);
+        Assert.Equal(0, swapper.PreflightCalls);
+    }
+
+    [Fact]
+    public async Task Download_PreflightThrows_StillLandsReadyWithManualFlow()
+    {
+        // The one place an engine exception could strand a verified download short of
+        // ReadyToInstall: it must land in the manual flow instead, with the cause logged.
+        var (svc, t, _, _, swapper) = Make3();
+        swapper.PreflightThrows = new InvalidOperationException("boom");
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.PortableSwapAvailable);
+        Assert.NotNull(svc.PortableSwapUnavailableReason);
+    }
+
+    [Fact]
+    public async Task ApplyPortable_HappyPath_LandsInInstallingWithRelaunchPending()
+    {
+        var (svc, swapper) = await ReadyPortable();
+        Assert.True(await svc.ApplyPortableAsync());
+        Assert.Equal(1, swapper.ApplyCalls);
+        Assert.Equal(UpdateState.Installing, svc.State);
+        Assert.True(svc.PortableApplyInProgress);
+        Assert.Equal(@"C:\fake\NexusApp.exe", svc.PendingRelaunchPath);
+        Assert.Equal("Nexus 9.9.9 is available", StatusOf(svc));   // Installing keeps the available line
+    }
+
+    [Fact]
+    public async Task ApplyPortable_Failure_ReturnsToReadyWithTheReason()
+    {
+        var (svc, swapper) = await ReadyPortable();
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRolledBack, "e_sqlite3.dll is held open by another program");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.PortableApplyInProgress);
+        Assert.Null(svc.PendingRelaunchPath);
+        Assert.Equal("e_sqlite3.dll is held open by another program", svc.LastPortableApplyFailure);
+        // A later successful attempt must clear the note.
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.Completed, "");
+        Assert.True(await svc.ApplyPortableAsync());
+        Assert.Null(svc.LastPortableApplyFailure);
+    }
+
+    [Fact]
+    public async Task ApplyPortable_RollbackIncomplete_FlagsTheRestoreAsPending()
+    {
+        // The stuck-rollback state drives different copy and drops the Try again button: the
+        // previous version can only be put back by the next start's recovery.
+        var (svc, swapper) = await ReadyPortable();
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRollbackIncomplete,
+            "e_sqlite3.dll changed between unpack and install");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.True(svc.LastApplyLeftRestorePending);
+        Assert.NotNull(svc.LastPortableApplyFailure);
+        // An ordinary rollback is not the pending state, and a later run clears the flag.
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRolledBack, "held open by another program");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.False(svc.LastApplyLeftRestorePending);
+    }
+
+    [Fact]
+    public async Task ApplyPortable_InstallerDistribution_Refuses()
+    {
+        var (svc, swapper) = await ReadyPortable(distribution: "Installer");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.Equal(0, swapper.ApplyCalls);
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+    }
+
+    [Fact]
+    public async Task ApplyPortable_WrongState_Refuses()
+    {
+        var (svc, _, _, _, swapper) = Make3();
+        Assert.False(await svc.ApplyPortableAsync());   // Idle: nothing downloaded
+        Assert.Equal(0, swapper.ApplyCalls);
+    }
+
+    [Fact]
+    public async Task ApplyPortable_Demo_IsInert()
+    {
+        var (svc, _, _, _, swapper) = Make3(demo: true);
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.Equal(0, swapper.ApplyCalls);
+    }
+
+    [Fact]
+    public async Task UnpackForManual_Success_LandsInManualHandoff()
+    {
+        var (svc, swapper) = await ReadyPortable();
+        await svc.UnpackForManualAsync();
+        Assert.Equal(1, swapper.UnpackCalls);
+        Assert.Equal(UpdateState.ManualHandoff, svc.State);
+        Assert.Equal("Nexus 9.9.9 is available", StatusOf(svc));
+    }
+
+    [Fact]
+    public async Task UnpackForManual_Failure_ReturnsToReadyWithNote()
+    {
+        var (svc, swapper) = await ReadyPortable();
+        swapper.UnpackResult = false;
+        await svc.UnpackForManualAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.NotNull(svc.LastPortableApplyFailure);
+    }
+
+    [Fact]
+    public async Task UnpackForManual_AfterAStuckRollback_ClearsTheRestorePendingFlag()
+    {
+        // The manual unpack is its own attempt: its failure must regain the Try again
+        // affordance instead of keeping the earlier swap's restart-to-restore copy.
+        var (svc, swapper) = await ReadyPortable();
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRollbackIncomplete, "rollback incomplete at e_sqlite3.dll");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.True(svc.LastApplyLeftRestorePending);
+        swapper.UnpackResult = false;
+        await svc.UnpackForManualAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.LastApplyLeftRestorePending);
+        Assert.NotNull(svc.LastPortableApplyFailure);
+    }
+
+    [Fact]
+    public async Task PreferManualUpdate_ForcesTheManualFlow()
+    {
+        var (svc, t, _, _, swapper) = Make3();
+        svc.PreferManualUpdate = true;
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.False(svc.PortableSwapAvailable);
+        Assert.Equal(0, swapper.PreflightCalls);   // the choice is honored without probing
+    }
+
+    [Fact]
+    public void PurgeStaleDownloads_SkipsWhileAJournalExists()
+    {
+        var (svc, _, _, dir, _) = Make3(purgeGuard: () => true);
+        var updates = Path.Combine(dir, "updates");
+        Directory.CreateDirectory(Path.Combine(updates, "9.9.9"));
+        File.WriteAllText(Path.Combine(updates, "9.9.9", "NexusApp_portable.zip"), "the recovery artifact");
+        svc.PurgeStaleDownloads();
+        Assert.True(File.Exists(Path.Combine(updates, "9.9.9", "NexusApp_portable.zip")));
     }
 }

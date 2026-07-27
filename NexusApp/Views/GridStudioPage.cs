@@ -81,6 +81,9 @@ public sealed class GridStudioPage : UserControl
         Render();
     }
 
+    // Portable self-swap: release the embedded browser's handles on Web\cargo before files are renamed.
+    internal void ShutdownWebViewForUpdate() => _viewport.ShutdownForUpdate();
+
     // -- layout --------------------------------------------------------------------
 
     private void Build()

@@ -505,6 +505,38 @@ public sealed class SettingsPage : UserControl
         return Pane(panel);
     }
 
+    // Right-aligned dim note, the pattern the Downloading/Verifying mirrors already use.
+    private static TextBlock RightNote(string text, bool wrap = false) => new()
+    {
+        Text = text, FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+        HorizontalAlignment = HorizontalAlignment.Right,
+        TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
+        MaxWidth = 260, TextAlignment = TextAlignment.Right,
+    };
+
+    // The power-user secondary action on every portable ReadyToInstall row (approved UX:
+    // Settings is the surface for hand-managing the swap).
+    private void AddOpenDownloadFolder()
+    {
+        var open = GhostButton("Open download folder");
+        open.Margin = new Thickness(0, 6, 0, 0);
+        open.Click += (_, _) => App.Update.OpenDownloadFolder();
+        _updateActionHost!.Children.Add(open);
+    }
+
+    // Settings twin of CommandPage.RunPortableApply: disable the window (interaction guard
+    // against version-skew lazy loads), release WebView2 handles, apply off-thread, shut
+    // down on success. No overlay here; the row text mirrors the Installing state.
+    private async Task RunPortableApplyFromSettings()
+    {
+        var owner = Window.GetWindow(this);
+        if (owner != null) owner.IsEnabled = false;
+        (owner as MainWindow)?.ShutdownWebViewsForUpdate();
+        var ok = await App.Update.ApplyPortableAsync();
+        if (ok) { Application.Current.Shutdown(); return; }
+        if (owner != null) owner.IsEnabled = true;
+    }
+
     // Keeps the Updates rows honest as the service moves through its states. Subscribed to
     // App.Update.Changed (worker thread), so it always marshals through the dispatcher.
     private void RefreshUpdateRows()
@@ -550,10 +582,47 @@ public sealed class SettingsPage : UserControl
                 };
                 _updateActionHost.Children.Add(install);
                 break;
+            // Stuck rollback (the CommandPage twin does the same): restoring is the next
+            // start's job, so the row says so and offers no Try again that would fail.
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null && svc.LastApplyLeftRestorePending:
+                _updateActionHost.Children.Add(RightNote(UpdateNotice.RestorePendingBody, wrap: true));
+                AddOpenDownloadFolder();
+                break;
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null:
+                _updateActionHost.Children.Add(RightNote(UpdateNotice.PrepareFailedBody, wrap: true));
+                var retryPortable = GhostButton("Try again");
+                // Retry whichever path failed (the CommandPage twin does the same).
+                retryPortable.Click += (_, _) =>
+                {
+                    Logger.Info("[UI] portable update: try again");
+                    if (App.Update.PortableSwapAvailable) _ = RunPortableApplyFromSettings();
+                    else _ = App.Update.UnpackForManualAsync();
+                };
+                _updateActionHost.Children.Add(retryPortable);
+                AddOpenDownloadFolder();
+                break;
+            case UpdateState.ReadyToInstall when svc.PortableSwapAvailable:
+                var installPortable = GhostButton("Install update");
+                // Captured while the row is built (the LaunchInstaller row's precedent): the
+                // prompt must name the version this button was made for.
+                var vPortable = svc.Available!.Version;
+                installPortable.Click += (_, _) =>
+                {
+                    var res = MessageBox.Show(
+                        UpdateNotice.InstallConfirmTitle(vPortable) + "\n\n" + UpdateNotice.InstallConfirmBodyPortable,
+                        "Install update", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
+                    if (res != MessageBoxResult.Yes) return;
+                    Logger.Info("[UI] install update: confirmed");
+                    _ = RunPortableApplyFromSettings();
+                };
+                _updateActionHost.Children.Add(installPortable);
+                AddOpenDownloadFolder();
+                break;
             case UpdateState.ReadyToInstall:
-                var open = GhostButton("Open download folder");
-                open.Click += (_, _) => App.Update.OpenDownloadFolder();
-                _updateActionHost.Children.Add(open);
+                var manualPortable = GhostButton("Set up manual update");
+                manualPortable.Click += (_, _) => { Logger.Info("[UI] portable update: manual handoff chosen"); _ = App.Update.UnpackForManualAsync(); };
+                _updateActionHost.Children.Add(manualPortable);
+                AddOpenDownloadFolder();
                 break;
             // The spec's rule for this row is "mirrors the strip": in-flight states show the
             // same approved bodies the Operations strip shows, never "No update available."
@@ -572,6 +641,15 @@ public sealed class SettingsPage : UserControl
                     FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
                     HorizontalAlignment = HorizontalAlignment.Right,
                 });
+                break;
+            case UpdateState.Installing when svc.Available is { } ip && (svc.PortableApplyInProgress || svc.ManualUnpackInProgress):
+                // wrap: PreparingBody exceeds the row's 260px note width and must not clip.
+                _updateActionHost.Children.Add(RightNote(
+                    svc.ManualUnpackInProgress ? UpdateNotice.UnpackingBody(ip.Version) : UpdateNotice.PreparingBody(ip.Version),
+                    wrap: true));
+                break;
+            case UpdateState.ManualHandoff when svc.Available is { } mh:
+                _updateActionHost.Children.Add(RightNote(UpdateNotice.ManualHandoffBody(mh.Version), wrap: true));
                 break;
             default:
                 _updateActionHost.Children.Add(new TextBlock
