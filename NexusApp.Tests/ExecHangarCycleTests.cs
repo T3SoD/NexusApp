@@ -123,4 +123,32 @@ public class ExecHangarCycleTests
     [InlineData(2, 0, 0, "2h 00m 00s")]
     public void FormatCountdown_HourAndMinuteForms(int h, int m, int s, string expected)
         => Assert.Equal(expected, ExecHangarCycle.FormatCountdown(new TimeSpan(h, m, s)));
+
+    [Fact]
+    public void Override_LocalKind_NormalizesToSameInstant()
+    {
+        var utc = new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
+        var local = utc.ToLocalTime();   // same instant, Local kind
+        var now = utc.AddMinutes(5);
+        var expected = ExecHangarCycle.At(now, utc);
+        var actual = ExecHangarCycle.At(now, local);
+        Assert.Equal(expected.IsOpen, actual.IsOpen);
+        Assert.Equal(expected.GreensLit, actual.GreensLit);
+        Assert.Equal(expected.TimeToTransition, actual.TimeToTransition);
+        Assert.Equal(expected.NextOpenUtc, actual.NextOpenUtc);
+    }
+
+    [Fact]
+    public void Override_UnspecifiedKind_TreatedAsUtc()
+    {
+        var utc = new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
+        var unspecified = DateTime.SpecifyKind(utc, DateTimeKind.Unspecified);
+        var now = utc.AddMinutes(5);
+        var expected = ExecHangarCycle.At(now, utc);
+        var actual = ExecHangarCycle.At(now, unspecified);
+        Assert.Equal(expected.IsOpen, actual.IsOpen);
+        Assert.Equal(expected.GreensLit, actual.GreensLit);
+        Assert.Equal(expected.TimeToTransition, actual.TimeToTransition);
+        Assert.Equal(expected.NextOpenUtc, actual.NextOpenUtc);
+    }
 }

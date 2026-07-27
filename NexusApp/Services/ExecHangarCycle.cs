@@ -33,7 +33,11 @@ public static class ExecHangarCycle
 
     public static ExecHangarSnapshot At(DateTime utcNow, DateTime? anchorOverrideUtc)
     {
-        var anchor = anchorOverrideUtc ?? AnchorOpenUtc;
+        // Defensive: the override round-trips through JSON settings and callers could hand us a
+        // Local or Unspecified kind. Local converts to UTC; Unspecified is trusted as stored-UTC.
+        var anchor = anchorOverrideUtc is { } o
+            ? (o.Kind == DateTimeKind.Local ? o.ToUniversalTime() : DateTime.SpecifyKind(o, DateTimeKind.Utc))
+            : AnchorOpenUtc;
         var deltaMs = (utcNow.Ticks - anchor.Ticks) / TimeSpan.TicksPerMillisecond;
         var pos = ((deltaMs % CycleMs) + CycleMs) % CycleMs;
 
