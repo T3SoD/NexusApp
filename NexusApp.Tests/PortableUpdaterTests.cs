@@ -452,6 +452,57 @@ public class PortableUpdaterTests : IDisposable
         Assert.Equal("old exe", File.ReadAllText(Path.Combine(install, "NexusApp.exe.old")));   // the REAL previous exe, not the stale file
     }
 
+    [Fact]
+    public void Apply_JournalPresent_RefusesAndKeepsItByteIdentical()
+    {
+        // A journal on disk is unfinished business only startup recovery may resolve: its
+        // .old files can be the only copy of a previous version, and a fresh swap would
+        // overwrite the journal and delete them.
+        var (up, install, _, journal, zip, hash) = MakeApplyRig();
+        new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "e_sqlite3.dll", OldMoved = true } },
+        }.Save(journal);
+        var before = File.ReadAllBytes(journal);
+        var result = up.Apply(zip, hash, new Version(6, 9, 0), "6.8.1");
+        Assert.Equal(PortableApplyOutcome.FailedNothingChanged, result.Outcome);
+        Assert.Contains("previous update has not finished", result.Reason);
+        Assert.Equal("old exe", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
+        Assert.Equal(before, File.ReadAllBytes(journal));
+        Assert.False(Directory.Exists(Path.Combine(install, PortableUpdater.StagingDirName)));
+    }
+
+    [Fact]
+    public void Apply_RollbackStuck_KeepsTheJournalInProgressAndTheOldFiles()
+    {
+        // The one path that leaves the folder mid-rollback: e_sqlite3.dll has already flipped
+        // when the exe's re-hash fails, and its new file is held so the reverse rename cannot
+        // unwind it. The journal must stay on disk as InProgress (a Complete stamp would send
+        // the next start down the cleanup branch and delete the .old set) with the blocked
+        // op's previous bytes intact.
+        var (up, install, _, journal, zip, hash) = MakeApplyRig();
+        FileStream? hold = null;
+        up.BeforeFlipHook = (stagedPath, rel) =>
+        {
+            if (rel != "NexusApp.exe") return;   // the exe flips last, after every other file
+            hold = new FileStream(Path.Combine(install, "e_sqlite3.dll"),
+                FileMode.Open, FileAccess.Read, FileShare.Read);
+            File.WriteAllText(stagedPath, "tampered after extraction");
+        };
+        try
+        {
+            var result = up.Apply(zip, hash, new Version(6, 9, 0), "6.8.1");
+            Assert.Equal(PortableApplyOutcome.FailedRollbackIncomplete, result.Outcome);
+            var back = SwapJournal.TryLoad(journal);
+            Assert.NotNull(back);
+            Assert.Equal(SwapJournal.StatusInProgress, back!.Status);
+            Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll.old")));
+        }
+        finally { hold?.Dispose(); }
+    }
+
     // ---- RecoverAtStartup ----
 
     private static readonly int[] FastDelays = { 1, 1 };
@@ -537,6 +588,55 @@ public class PortableUpdaterTests : IDisposable
         Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
         Assert.False(File.Exists(Path.Combine(install, "brandnew.dll")));
         Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll.old")));
+        // The restore vacates the live name by RENAMING the new file aside (a mapped image
+        // can never be deleted), so the parked .new must be gone by the end of a clean pass.
+        Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
+        Assert.False(File.Exists(Path.Combine(install, "Web", "cargo", "index.html" + PortableUpdater.NewSuffix)));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_StaleNewFile_DoesNotBreakTheRestore()
+    {
+        // Residue from an earlier interrupted pass sits at the name the vacate rename needs;
+        // it is cleared first instead of wedging the restore.
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll"), "new sqlite");
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll.old"), "old sqlite");
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix), "residue");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "e_sqlite3.dll", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.True(r.ShowSwapFailedNotice);
+        Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+        Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_CompleteJournal_SweepsALeftoverNewFile()
+    {
+        // A restore attempt that parked a .new can later heal into the completed branch (the
+        // running exe turns out to BE the attempted version); the cleanup owns the residue.
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "new");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe" + PortableUpdater.NewSuffix), "parked by an earlier pass");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusComplete, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
+        Assert.False(File.Exists(Path.Combine(install, "NexusApp.exe" + PortableUpdater.NewSuffix)));
         Assert.False(File.Exists(journalPath));
     }
 
@@ -558,6 +658,28 @@ public class PortableUpdaterTests : IDisposable
         var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.0", FastDelays);
         Assert.False(r.ShowSwapFailedNotice);
         Assert.Equal("new", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
+        Assert.False(File.Exists(Path.Combine(install, "NexusApp.exe.old")));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_InProgressButRunningANewerVersion_HealsToComplete()
+    {
+        // The guided manual flow can land a copy NEWER than the crashed swap attempted;
+        // restoring the .old set over it would build a mixed folder.
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe"), "manually copied 6.9.1");
+        File.WriteAllText(Path.Combine(install, "NexusApp.exe.old"), "previous");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "NexusApp.exe", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        var r = PortableUpdater.RecoverAtStartup(journalPath, install, "6.9.1", FastDelays);
+        Assert.False(r.ShowSwapFailedNotice);
+        Assert.Equal("manually copied 6.9.1", File.ReadAllText(Path.Combine(install, "NexusApp.exe")));
         Assert.False(File.Exists(Path.Combine(install, "NexusApp.exe.old")));
         Assert.False(File.Exists(journalPath));
     }
@@ -675,11 +797,49 @@ public class PortableUpdaterTests : IDisposable
             Assert.True(first.ShowSwapFailedNotice);
             Assert.True(File.Exists(journalPath));   // blocked op keeps the journal for a later start
             Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
+            // The blocked op vacated the live name and then could not restore: the new file
+            // goes BACK so the folder stays bootable and no .new residue is left behind.
+            Assert.Equal("new sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+            Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
         }
         var second = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
         Assert.True(second.ShowSwapFailedNotice);
         Assert.Equal("old page", File.ReadAllText(Path.Combine(install, "Web", "cargo", "index.html")));
         Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+        Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
+        Assert.False(File.Exists(journalPath));
+    }
+
+    [Fact]
+    public void Recover_ReEntryWithAnEmptyLiveName_PutsTheParkedFileBack()
+    {
+        // A crash inside the vacate-then-restore window leaves a start that BEGINS with an
+        // empty live name and the new file waiting at .new. If the .old restore fails again,
+        // the parked file must go back: a hole where a native the app loads used to be would
+        // be worse than the wrong version sitting there.
+        var (install, journalPath) = MakeRecoveryRig();
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix), "new sqlite");
+        File.WriteAllText(Path.Combine(install, "e_sqlite3.dll.old"), "old sqlite");
+        var j = new SwapJournal
+        {
+            Status = SwapJournal.StatusInProgress, AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1",
+            InstallDir = install,
+            Ops = { new SwapOp { Rel = "e_sqlite3.dll", OldMoved = true, NewPlaced = true } },
+        };
+        j.Save(journalPath);
+        using (var holder = new FileStream(Path.Combine(install, "e_sqlite3.dll.old"),
+            FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var first = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+            Assert.True(first.ShowSwapFailedNotice);
+            Assert.Equal("new sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+            Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
+            Assert.True(File.Exists(journalPath));   // still blocked: a later start finishes it
+        }
+        var second = PortableUpdater.RecoverAtStartup(journalPath, install, "6.8.1", FastDelays);
+        Assert.True(second.ShowSwapFailedNotice);
+        Assert.Equal("old sqlite", File.ReadAllText(Path.Combine(install, "e_sqlite3.dll")));
+        Assert.False(File.Exists(Path.Combine(install, "e_sqlite3.dll" + PortableUpdater.NewSuffix)));
         Assert.False(File.Exists(journalPath));
     }
 

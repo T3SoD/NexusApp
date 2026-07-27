@@ -46,11 +46,18 @@ public class SwapJournalTests : IDisposable
         Assert.False(back.Ops[0].NewPlaced);
     }
 
+    // Both versions must parse or TryLoad refuses the file, so every fixture that expects a
+    // readable journal back carries them.
+    private static SwapJournal Fixture() => new()
+    {
+        AttemptedVersion = "6.9.0", PreviousVersion = "6.8.1", InstallDir = @"C:\Somewhere\NexusApp",
+    };
+
     [Fact]
     public void Save_LeavesNoTempAndSurvivesOverwrite()
     {
         var path = Path.Combine(TempDir(), SwapJournal.FileName);
-        var j = new SwapJournal { InstallDir = @"C:\Somewhere\NexusApp" };
+        var j = Fixture();
         j.Save(path);
         j.Ops.Add(new SwapOp { Rel = "NexusApp.exe" });
         j.Save(path);
@@ -63,7 +70,7 @@ public class SwapJournalTests : IDisposable
     {
         var path = Path.Combine(TempDir(), SwapJournal.FileName);
         File.WriteAllText(path + ".tmp", "{ truncated by a crash");
-        new SwapJournal { InstallDir = @"C:\Somewhere\NexusApp" }.Save(path);
+        Fixture().Save(path);
         Assert.False(File.Exists(path + ".tmp"));
         Assert.NotNull(SwapJournal.TryLoad(path));
     }
@@ -72,7 +79,32 @@ public class SwapJournalTests : IDisposable
     public void TryLoad_RejectsNullOpElement()
     {
         var path = Path.Combine(TempDir(), SwapJournal.FileName);
-        File.WriteAllText(path, """{ "Schema": 1, "Status": "InProgress", "InstallDir": "C:\\x", "Ops": [null] }""");
+        File.WriteAllText(path, """{ "Schema": 1, "Status": "InProgress", "AttemptedVersion": "6.9.0", "PreviousVersion": "6.8.1", "InstallDir": "C:\\x", "Ops": [null] }""");
+        Assert.Null(SwapJournal.TryLoad(path));
+    }
+
+    [Theory]
+    // Both versions flow into UpdateNotice.SwapFailedBody verbatim: a journal that cannot
+    // supply real ones is refused rather than rendered.
+    [InlineData("""{ "Schema": 1, "Status": "InProgress", "AttemptedVersion": "6.9.0; DROP", "PreviousVersion": "6.8.1", "InstallDir": "C:\\x" }""")]
+    [InlineData("""{ "Schema": 1, "Status": "InProgress", "AttemptedVersion": "6.9.0", "PreviousVersion": "not a version", "InstallDir": "C:\\x" }""")]
+    [InlineData("""{ "Schema": 1, "Status": "InProgress", "AttemptedVersion": "", "PreviousVersion": "", "InstallDir": "C:\\x" }""")]
+    [InlineData("""{ "Schema": 1, "Status": "InProgress", "InstallDir": "C:\\x" }""")]   // both missing
+    public void TryLoad_RejectsUnparseableVersions(string content)
+    {
+        var path = Path.Combine(TempDir(), SwapJournal.FileName);
+        File.WriteAllText(path, content);
+        Assert.Null(SwapJournal.TryLoad(path));
+    }
+
+    [Fact]
+    public void TryLoad_RejectsAnOversizedFile()
+    {
+        // Refused on the file length, before the bytes are read into memory.
+        var path = Path.Combine(TempDir(), SwapJournal.FileName);
+        Fixture().Save(path);
+        Assert.NotNull(SwapJournal.TryLoad(path));
+        File.WriteAllText(path, File.ReadAllText(path) + new string(' ', SwapJournal.MaxJournalBytes));
         Assert.Null(SwapJournal.TryLoad(path));
     }
 

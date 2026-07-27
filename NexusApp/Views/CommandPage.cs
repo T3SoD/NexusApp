@@ -485,6 +485,12 @@ public sealed class CommandPage : UserControl
                 install.Click += (_, _) => ShowInstallConfirm(v);
                 actions.Add(install);
                 break;
+            // A stuck rollback is not retryable in this session: the previous version is in
+            // .old files and only the next start's recovery can put it back. Say that, and
+            // offer no button that would fail.
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null && svc.LastApplyLeftRestorePending:
+                bodyText = UpdateNotice.RestorePendingBody;
+                break;
             case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null:
                 bodyText = UpdateNotice.PrepareFailedBody;
                 var retry = StripButton("Try again");

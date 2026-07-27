@@ -147,6 +147,11 @@ public sealed class UpdateService
     public bool PortableSwapAvailable { get; private set; }
     public string? PortableSwapUnavailableReason { get; private set; }
     public string? LastPortableApplyFailure { get; private set; }
+
+    // True when the last apply ended with the rollback stuck: the previous version is sitting
+    // in .old files that only startup recovery can put back, so the surfaces show the
+    // restart-to-restore copy instead of an unusable Try again.
+    public bool LastApplyLeftRestorePending { get; private set; }
     public bool PortableApplyInProgress { get; private set; }
     public bool ManualUnpackInProgress { get; private set; }
 
@@ -407,6 +412,18 @@ public sealed class UpdateService
             Logger.Info($"{Tag} portable swap unavailable: manual update chosen, offering manual handoff");
             return;
         }
+        // A pending journal means the engine will refuse this swap anyway (its .old files can
+        // be the only copy of a previous version), so the strip routes straight to the guided
+        // manual flow instead of offering a Try again that cannot work until a restart. The
+        // manual copy converges safely: startup recovery heals the journal to Complete once
+        // the running version equals the attempted one.
+        if (_purgeGuard())
+        {
+            PortableSwapAvailable = false;
+            PortableSwapUnavailableReason = "a previous update has not finished; restart Nexus to complete it";
+            Logger.Info($"{Tag} portable swap unavailable: {PortableSwapUnavailableReason}, offering manual handoff");
+            return;
+        }
         PortablePreflight pre;
         try { pre = _swapper.Preflight(zipBytes); }
         catch (Exception ex)
@@ -442,6 +459,7 @@ public sealed class UpdateService
         try
         {
             LastPortableApplyFailure = null;
+            LastApplyLeftRestorePending = false;
             LastFailureWasUserInitiated = true;
             var version = Available.Version;
             var downloaded = DownloadedPath;
@@ -466,6 +484,7 @@ public sealed class UpdateService
                 return true;
             }
             LastPortableApplyFailure = TextSanitizer.ForLog(result.Reason);
+            LastApplyLeftRestorePending = result.Outcome == PortableApplyOutcome.FailedRollbackIncomplete;
             // The engine logs its own rollback story, but the FailedNothingChanged returns
             // are silent by design there; this line guarantees EVERY user-visible apply
             // failure has a nexus.log counterpart (feature-logging rule).
@@ -494,6 +513,9 @@ public sealed class UpdateService
         try
         {
             LastPortableApplyFailure = null;
+            // A manual unpack is a different attempt: its own failure must regain the Try again
+            // affordance instead of inheriting the earlier swap's restart-to-restore copy.
+            LastApplyLeftRestorePending = false;
             LastFailureWasUserInitiated = true;
             var version = Available.Version;
             var downloaded = DownloadedPath;
