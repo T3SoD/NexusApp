@@ -92,67 +92,10 @@
                 </Border>
             </Grid>
 
-            <!-- ── Tab bar ── -->
-            <Grid Grid.Row="1" Margin="0,2,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                    <Button x:Name="TabStatsBtn" Content="HUB"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabStats_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabStatsIndicator" Height="2" Width="34"
-                            CornerRadius="1" Background="Transparent"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1">
-                    <Button x:Name="TabScanBtn" Content="SCAN"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabScan_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabScanIndicator" Height="2" Width="34"
-                            CornerRadius="1" Background="{DynamicResource AccentBrush}"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2">
-                    <Button x:Name="TabOrdersBtn" Content="REFINERY"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabOrders_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabOrdersIndicator" Height="2" Width="54"
-                            CornerRadius="1" Background="Transparent"/>
-                </StackPanel>
-                <StackPanel Grid.Column="3">
-                    <Button x:Name="TabShoppingBtn" Content="SHOPPING"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabShopping_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabShoppingIndicator" Height="2" Width="54"
-                            CornerRadius="1" Background="Transparent"/>
-                </StackPanel>
-                <StackPanel Grid.Column="4">
-                    <Button x:Name="TabHaulingBtn" Content="HAULING"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabHauling_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabHaulingIndicator" Height="2" Width="48"
-                            CornerRadius="1" Background="Transparent"/>
-                </StackPanel>
-                <StackPanel Grid.Column="5">
-                    <Button x:Name="TabGuidesBtn" Content="GUIDES"
-                            Style="{StaticResource NexusButton}" FontSize="9" FontWeight="Bold"
-                            Background="Transparent" BorderThickness="0"
-                            Click="TabGuides_Click" Padding="0,5" Margin="0"/>
-                    <Border x:Name="TabGuidesIndicator" Height="2" Width="44"
-                            CornerRadius="1" Background="Transparent"/>
-                </StackPanel>
-                <Border Grid.ColumnSpan="6" VerticalAlignment="Bottom" Height="1"
-                        Background="{DynamicResource NavBorderBrush}"/>
-            </Grid>
+            <!-- ── Tab strip: Active Pill (mock: nexus-design-lab/overlay-redesign concept 02).
+                 Icons are the app's dock glyphs via TabGlyphSpecs; active tab expands into a
+                 chamfered amber icon+label pill; counts ride the icon corner as chips. ── -->
+            <views:OverlayTabStrip x:Name="TabStrip" Grid.Row="1" Margin="0,2,0,0"/>
 
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
