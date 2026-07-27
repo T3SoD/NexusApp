@@ -148,7 +148,7 @@ public class HelpDialog : Window
                 "The guide catalog is organized by category - click a category to see all its guides.",
                 "Click a guide card to open it in full view.",
                 "Drag to pan around the guide, and use your scroll wheel to zoom in and out.",
-                "Click Back or press Escape to return to the guide list.",
+                "Click Back to return to the guide list. Double click fits the guide to the window.",
                 "The Contested Zones section shows the Executive Hangar status: five lights, OPEN or CLOSED, and the time to the next change. Click Re-anchor at the moment the hangar opens to correct the timer after a game patch.",
             ]),
 
