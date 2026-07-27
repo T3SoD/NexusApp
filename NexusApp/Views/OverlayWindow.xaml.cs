@@ -14,9 +14,8 @@ public partial class OverlayWindow : Window
     private readonly MainViewModel _vm;
     private bool _boxVisible = false;
     private string _activeTab = "scan";
-    // Guards SwitchTab's first call (the saved-tab restore at construction): the strip's expand
-    // measures a resource-referenced font that only resolves once the control is in the visual
-    // tree, so that call must place the pill without animating.
+    // Guards SwitchTab's first call: the saved-tab restore at construction is not a user switch,
+    // so it places the pill without motion and without logging (see SwitchTab).
     private bool _tabStripReady;
     private WorkOrderFlyoutWindow? _woFlyout;
     private RegionSelectorWindow? _regionSelector;   // single live draw-region overlay (issue #8)
