@@ -554,6 +554,17 @@ public sealed class SettingsPage : UserControl
             var marketRefreshStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
             marketRefreshStack.Children.Add(_marketRefreshBtn);
             marketRefreshStack.Children.Add(_marketStatusText);
+            // Second dim line under the status: how often the app goes to the network. Same mono
+            // 11.5 right-aligned treatment as the status line above it, and static (the cadence
+            // does not change with state), matching how the toggle description already states it
+            // unconditionally. Wraps to two lines inside the shared 260 cap.
+            marketRefreshStack.Children.Add(new TextBlock
+            {
+                Text = MarketNotice.CadenceNote,
+                FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 2, 0, 0), HorizontalAlignment = HorizontalAlignment.Right,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 260, TextAlignment = TextAlignment.Right,
+            });
 
             panel.Children.Add(SectionPanel(MarketNotice.SettingsTitle, false,
                 SettingRow(MarketNotice.SettingsToggleTitle,

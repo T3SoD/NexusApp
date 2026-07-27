@@ -12,6 +12,10 @@ internal static class MarketNotice
     public const string SettingsToggleDesc = "Sell prices for ores and refined goods from UEX community reports. Refreshed about once an hour while Nexus is open.";
     public const string RefreshNow = "Refresh now";
     public const string SourceNote = "Data: UEX community reports";
+    // Shown in the Settings status area, under the last-refresh line: the cadence is a promise
+    // about network activity, so it belongs where a reader checking on the feature is already
+    // looking and not only in the toggle description (owner ruling 2026-07-27).
+    public const string CadenceNote = "Checks about once an hour while Nexus is open.";
     public const string DossierFooter = "Prices: UEX community data";
     public const string DossierSection = "MARKET PRICES";
     public const string NeverFetched = "No price data yet. Turn on live market prices and refresh.";
@@ -27,9 +31,11 @@ internal static class MarketNotice
         : $"{(int)age.TotalDays}d ago";
 
     // Refined, not raw: UEX's raw ore-sales dataset has had no community reports since patch 4.8,
-    // so every price surface quotes the refined counterpart (amendment 2026-07-27).
+    // so every price surface quotes the refined counterpart (amendment 2026-07-27). The value
+    // carries the game's currency unit, "aUEC/SCU", on every surface that renders a price
+    // (owner ruling 2026-07-27 after live review).
     public static string DecoderLine(double weekAvg, string terminalName, string ageText) =>
-        $"Sell (refined, avg): {weekAvg:n0}/SCU at {terminalName} ({ageText})";
+        $"Sell (refined, avg): {weekAvg:n0} aUEC/SCU at {terminalName} ({ageText})";
 
     // The overlay scan card's compact twin of DecoderLine (amendment 2026-07-27 item 5). The card
     // is 452px wide and already carries a "Best refinery" line, so the label sheds the
@@ -37,7 +43,7 @@ internal static class MarketNotice
     // the same never-a-bare-price rule: the caller passes age, or the patch tag when the row is
     // stale, exactly as it does for the decoder line.
     public static string OverlaySellLine(double display, string terminalName, string ageText) =>
-        $"Sell: {display:n0}/SCU at {terminalName} ({ageText})";
+        $"Sell: {display:n0} aUEC/SCU at {terminalName} ({ageText})";
 
     public static string StatusLine(DateTime? lastFetchLocal, string? lastError) =>
         lastFetchLocal is not { } t ? "Never refreshed"

@@ -265,12 +265,16 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
+                        <!-- Sized down from the original 42/16 pair to sit with the overlay's
+                             10-11px density (owner ruling 2026-07-27). Padding drops to 10,4
+                             because the ChamferTextBox base carries 10,8: a 16.5px mono line at
+                             12.5 plus 16px of padding would not fit a 30px row. -->
                         <TextBox x:Name="OverlayRsInput" Style="{StaticResource ChamferTextBox}"
-                                 Height="42" FontSize="16" FontFamily="{StaticResource MonoFont}"
+                                 Height="30" FontSize="12.5" Padding="10,4" FontFamily="{StaticResource MonoFont}"
                                  KeyDown="OverlayRsInput_KeyDown"
                                  Tag="Enter RS value…"/>
                         <Button Grid.Column="1" Content="→" Style="{StaticResource ChamferAccentButton}"
-                                Height="42" Margin="6,0,0,0" Padding="13,0" FontSize="16"
+                                Height="30" Margin="6,0,0,0" Padding="10,0" FontSize="13"
                                 Click="OverlayScan_Click"/>
                     </Grid>
 

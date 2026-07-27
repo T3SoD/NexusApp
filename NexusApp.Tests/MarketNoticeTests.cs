@@ -58,23 +58,32 @@ public class MarketNoticeTests : IDisposable
     public void PatchTag_FormatsVersion() =>
         Assert.Equal("patch 4.8", MarketNotice.PatchTag("4.8"));
 
+    // Every rendered price carries the game's currency unit, "aUEC/SCU" (owner ruling 2026-07-27).
     [Fact]
     public void DecoderLine_FormatsCorrectly() =>
-        Assert.Equal("Sell (refined, avg): 8,210/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
+        Assert.Equal("Sell (refined, avg): 8,210 aUEC/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
             MarketNotice.DecoderLine(8210, "Refinery Ore Sales - ARC-L1", "12m ago"));
 
     // The overlay card line drops the "(refined, avg)" qualifier the app-window surfaces carry
-    // (the 452px card has no room for it) but keeps the value, the terminal and the age.
+    // (the card has no room for it) but keeps the value with its unit, the terminal and the age.
     [Fact]
     public void OverlaySellLine_FormatsCorrectly() =>
-        Assert.Equal("Sell: 8,210/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
+        Assert.Equal("Sell: 8,210 aUEC/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
             MarketNotice.OverlaySellLine(8210, "Refinery Ore Sales - ARC-L1", "12m ago"));
 
     // Stale rows show the patch tag where a fresh row shows its age, so a price never renders bare.
     [Fact]
     public void OverlaySellLine_AcceptsPatchTagAsAgeText() =>
-        Assert.Equal("Sell: 1,000/SCU at Terminal (patch 4.8)",
+        Assert.Equal("Sell: 1,000 aUEC/SCU at Terminal (patch 4.8)",
             MarketNotice.OverlaySellLine(1000, "Terminal", MarketNotice.PatchTag("4.8")));
+
+    // The unit is part of the copy contract on both lines: a value must never render bare.
+    [Fact]
+    public void PriceLines_CarryTheCurrencyUnit()
+    {
+        Assert.Contains("aUEC/SCU", MarketNotice.DecoderLine(8210, "Terminal", "12m ago"));
+        Assert.Contains("aUEC/SCU", MarketNotice.OverlaySellLine(8210, "Terminal", "12m ago"));
+    }
 
     [Fact]
     public void StatusLine_NeverFetched() =>
@@ -99,7 +108,7 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.ConsentEnable, MarketNotice.ConsentDecline,
             MarketNotice.SettingsTitle, MarketNotice.SettingsToggleTitle,
             MarketNotice.SettingsToggleDesc,
-            MarketNotice.RefreshNow, MarketNotice.SourceNote,
+            MarketNotice.RefreshNow, MarketNotice.SourceNote, MarketNotice.CadenceNote,
             MarketNotice.DossierFooter, MarketNotice.DossierSection,
             MarketNotice.NeverFetched,
             MarketNotice.PatchTag("4.8"),

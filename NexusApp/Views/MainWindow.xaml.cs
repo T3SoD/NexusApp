@@ -1412,17 +1412,24 @@ public partial class MainWindow : Window
 
     // Column header above the dossier price rows (Task 11 fix round, mock CSS .colhdr @
     // nexus-design-lab/market-data/index.html:172-175): dim, bold, 9px, uppercase labels in the
-    // SAME 4-column layout as MarketPriceRow (Star/104/96/132, 10px gaps) so the header lines up
+    // SAME 4-column layout as MarketPriceRow (Star/128/116/132, 10px gaps) so the header lines up
     // with the numeric columns below it. Callers only add this alongside actual rows (see the
     // gate in ShowResourceDetail) - it never renders alone over an empty section.
+    //
+    // Both numeric columns were widened when their values gained currency units (owner rulings
+    // 2026-07-27), sized by measuring the widest realistic string in the rendering font:
+    // week avg 104 -> 128 ("999,999 aUEC/SCU" is 115.4px in the inherited UiFont at 13, plus the
+    // cell's 10px left gap), now 96 -> 116 ("999,999 aUEC" is 77.9px at 12, plus the 10px gap, the
+    // 5px label gap and the 18.4px "now" label). Both this header and MarketPriceRow below must be
+    // changed together or the columns drift apart.
     private FrameworkElement MarketPriceColumnHeader()
     {
         var dimBrush = (System.Windows.Media.Brush)FindResource("FgDimBrush");
 
         var g = new Grid { Margin = new Thickness(12, 0, 12, 5) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(116) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });
 
         TextBlock Hdr(string text, Thickness margin) => new TextBlock
@@ -1446,9 +1453,10 @@ public partial class MainWindow : Window
 
     // One row in the dossier's MARKET PRICES section (Task 11; restructured in the fix round to
     // match the approved mock, nexus-design-lab/market-data/index.html:592-623 markup / :157-175
-    // CSS - see task-11-report.md for the full mapping): a single-line 4-column grid (Star/104
-    // week avg/96 now/132 updated, matching MarketPriceColumnHeader) instead of the original
-    // 3-column stacked layout. Week average falls back to instant per PriceHit.Display so a
+    // CSS - see task-11-report.md for the full mapping): a single-line 4-column grid (Star/128
+    // week avg/116 now/132 updated, matching MarketPriceColumnHeader) instead of the original
+    // 3-column stacked layout. The mock's 104/96 widths grew to 128/116 to fit the currency units;
+    // keep both builders in step with MarketPriceColumnHeader. Week average falls back to instant per PriceHit.Display so a
     // week-less row never shows a bare 0; the raw instant price still shows separately as "now".
     // Either the row's age or - when its price is from an older game patch - the shared patch-tag
     // chip (PatchTagChip above) fills the Updated column. A stale row goes fully dim: every
@@ -1472,8 +1480,8 @@ public partial class MainWindow : Window
 
         var g = new Grid();
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });   // terminal name
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });                    // week avg
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });                     // now
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });                    // week avg (fits "999,999 aUEC/SCU")
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(116) });                    // now (fits "999,999 aUEC" + the label)
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });                    // updated / patch tag
 
         // Terminal name keeps TextWrapping.Wrap (brief's explicit, deliberate override of the
@@ -1485,9 +1493,12 @@ public partial class MainWindow : Window
         };
         g.Children.Add(name);
 
+        // Both value cells carry a unit (owner rulings 2026-07-27): the week average spells out
+        // "aUEC/SCU", the instant price beside it takes the shorter "aUEC" because its own dim
+        // "now" label already says what it is and a second "/SCU" on the same row is clutter.
         var avg = new TextBlock
         {
-            Text = hit.Display.ToString("n0"), FontSize = 13, Foreground = goldBrush,
+            Text = $"{hit.Display:n0} aUEC/SCU", FontSize = 13, Foreground = goldBrush,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(10, 0, 0, 0),
         };
@@ -1501,7 +1512,7 @@ public partial class MainWindow : Window
             Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
         };
-        nowRow.Children.Add(new TextBlock { Text = hit.Instant.ToString("n0"), FontSize = 12, Foreground = cyanBrush, VerticalAlignment = VerticalAlignment.Bottom });
+        nowRow.Children.Add(new TextBlock { Text = $"{hit.Instant:n0} aUEC", FontSize = 12, Foreground = cyanBrush, VerticalAlignment = VerticalAlignment.Bottom });
         nowRow.Children.Add(new TextBlock { Text = "now", FontSize = 10, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 0, 0) });
         Grid.SetColumn(nowRow, 2);
         g.Children.Add(nowRow);
@@ -2476,7 +2487,8 @@ public partial class MainWindow : Window
     // One priced ore line (mock .woSellRow): SELL label (line 1 only, mono 9 bold FgDim, matching
     // the card's meta-label idiom) + ore name in its rarity colour (12 SemiBold, mock .ore) + the
     // refined sell price (12, GoldBrush, FgDimBrush when stale, mock .val) + terminal name
-    // (11, FgDimBrush, ellipsis-truncated, mock .term) + age or - when the freshest row is from an
+    // (11, FgDimBrush, ellipsis-truncated, mock .term; the value column is Auto, so the unit added
+    // by the 2026-07-27 owner ruling simply narrows the terminal's star column) + age or - when the freshest row is from an
     // older game patch - the same PatchTagChip the dossier price rows use
     // (mock .age; data-honesty rule: a price never renders without one of the two).
     private FrameworkElement BuildWorkOrderSellRow(string seedName, PriceHit hit, bool showSellLabel)
@@ -2516,7 +2528,7 @@ public partial class MainWindow : Window
 
         var val = new TextBlock
         {
-            Text = $"{hit.Display:n0}/SCU", FontFamily = headFont, FontSize = 12,
+            Text = $"{hit.Display:n0} aUEC/SCU", FontFamily = headFont, FontSize = 12,
             Foreground = hit.Stale ? dim : gold, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0),
         };
