@@ -106,6 +106,12 @@ public class AppSettings
     // the first cycle ever runs. Drives the Settings status line.
     public DateTime? LastMarketFetchUtc { get; set; }
 
+    // Sell prices as an extra column in the Mining Codex list, off by default: the list is a
+    // reference table first, so prices are opt-in per reader. A plain bool and not a tri-state
+    // because there is no consent question here - MarketDataEnabled already gates the feature,
+    // and this only chooses whether the list shows what the dossier already has.
+    public bool CodexSellColumn { get; set; }
+
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
     public string? LastSeenVersion { get; set; }

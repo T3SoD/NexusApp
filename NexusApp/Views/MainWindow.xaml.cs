@@ -45,6 +45,7 @@ public partial class MainWindow : Window
         // Market.Dispose only drains an in-flight cycle for up to 3s.
         App.Market.Changed += () => Dispatcher.BeginInvoke(OnMarketDataChanged);
         MarketChipLabel.Text = MarketNotice.PillLabel;
+        InitCodexSellToggle();
         // Amber edge on hover, the mock's affordance for the one status chip that is clickable.
         MarketChip.MouseEnter += (_, _) => MarketChip.BorderBrush = Hud.Br("AccentStrongBrush");
         MarketChip.MouseLeave += (_, _) => MarketChip.BorderBrush = Hud.Br("NavBorderBrush");
@@ -1136,12 +1137,26 @@ public partial class MainWindow : Window
         var ageText = hit.Stale
             ? MarketNotice.PatchTag(hit.GameVersion)
             : MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc);
-        host.Children.Add(new TextBlock
-        {
-            Text = MarketNotice.DecoderLine(hit.Display, hit.TerminalName, ageText),
-            FontSize = 12,
-            Foreground = hit.Stale ? Hud.Br("FgDimBrush") : Hud.Br("GoldBrush"),
-        });
+        var line = new TextBlock { FontSize = 12 };
+        SellLineRuns(line, MarketNotice.DecoderLabel, hit, ageText);
+        host.Children.Add(line);
+    }
+
+    // The mock renders every one-line sell surface SEGMENTED (mock .sellline: label dim, value
+    // gold, terminal name Fg, age dim), and the first implementation flattened it to one brush
+    // (owner ruling 2026-07-27, live run 5). The runs are composed from MarketNotice's own parts,
+    // which the full-line formatters are also built from, so the rendered text and the string the
+    // copy tests pin can never drift. A STALE line still drops to dim as a whole, so staleness
+    // never has to be read off one segment's colour.
+    private static void SellLineRuns(TextBlock line, string label, PriceHit hit, string ageText)
+    {
+        var dim = Hud.Br("FgDimBrush");
+        line.Inlines.Add(new System.Windows.Documents.Run(label) { Foreground = dim });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.PriceValue(hit.Display))
+        { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
+        { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
     // OTHER MATCHES composition: bar + collapsed rows, tap-to-expand. Idempotent - clears and
@@ -1316,6 +1331,36 @@ public partial class MainWindow : Window
     private Action? _deselectRefCard;   // resets the currently-selected resource card's chamfer visuals
     private readonly Dictionary<string, Action> _refSelectByName = new(StringComparer.OrdinalIgnoreCase);   // select a resource card by name
 
+    // Codex list sort: "default" (rarity rank then RS desc), "sellDesc", "sellAsc". Only the sell
+    // column is sortable, and only while that column exists - the gate in BuildSellHits resets this
+    // to "default" the moment live market prices, the column toggle or the snapshot goes away.
+    private string _refSort = "default";
+
+    // The Codex list's sell column is opt-in (owner ruling 2026-07-27, live run 5): the toggle row
+    // above the list only exists while live market data is on, and the column itself needs the
+    // toggle ON as well. Built once here; its visibility is driven per rebuild by BuildReferenceTree.
+    private Hud.ToggleSwitch? _codexSellToggle;
+
+    private void InitCodexSellToggle()
+    {
+        CodexSellToggleLabel.Text = MarketNotice.CodexColumnToggle;
+        _codexSellToggle = new Hud.ToggleSwitch(App.Settings.Current.CodexSellColumn)
+        {
+            OnToggled = on =>
+            {
+                App.Settings.Current.CodexSellColumn = on;
+                App.Settings.Save();
+                InteractionLog.Toggle("codex sell column " + (on ? "on" : "off"), _codexSellToggle!);
+                // Rebuild in place: no stagger (this is not a page entrance) and the open dossier
+                // is carried across, so turning the column on does not throw the reader back to the
+                // first ore - same contract as the hourly market publish's rebuild.
+                BuildReferenceTree(staggerEntry: false,
+                                   preserveSelection: (_selectedRefCard?.Tag as Resource)?.Name);
+            },
+        };
+        CodexSellToggleHost.Content = _codexSellToggle;
+    }
+
     private Dictionary<string, string>? _oreClassByName;   // ore -> Metal/Mineral/Gem ("" when unknown)
 
     private string OreClass(string name)
@@ -1393,6 +1438,28 @@ public partial class MainWindow : Window
             .ThenByDescending(r => r.BaseRs)
             .ToList();
 
+        // Sell prices are resolved once per rebuild, here: the sort keys and the cards' price cells
+        // both read this dictionary, so a rebuild never queries the snapshot twice for one ore.
+        // Null = the column does not exist this rebuild (feature off, column toggle off, or no
+        // snapshot yet). The toggle ROW is a separate gate: it appears with the feature, whether or
+        // not the column is switched on.
+        CodexSellToggleRow.Visibility = App.Settings.Current.MarketDataEnabled == true
+            ? Visibility.Visible : Visibility.Collapsed;
+        _codexSellToggle?.SetOnSilently(App.Settings.Current.CodexSellColumn);
+
+        var sellHits = BuildSellHits(filtered);
+        if (sellHits != null && _refSort != "default")
+        {
+            // Unmapped ores (no dictionary entry, or no priced row) sink to the bottom in BOTH
+            // directions. OrderBy is stable, so the rarity/RS order above survives as the tiebreak.
+            double Price(Resource r) => sellHits.TryGetValue(r.Name, out var h) && h != null ? h.Display : -1;
+            filtered = (_refSort == "sellDesc"
+                    ? filtered.OrderBy(r => Price(r) < 0 ? 1 : 0).ThenByDescending(Price)
+                    : filtered.OrderBy(r => Price(r) < 0 ? 1 : 0).ThenBy(Price))
+                .ToList();
+        }
+        UpdateReferenceSortHeader(sellHits != null && filtered.Count > 0);
+
         if (filtered.Count == 0)
         {
             _codexHologram?.Stop();   // the detail panel is going away - do not rely on Unloaded timing
@@ -1409,7 +1476,7 @@ public partial class MainWindow : Window
         Action? selectFirst = null;
         for (int i = 0; i < filtered.Count; i++)
         {
-            var card = BuildResourceCard(filtered[i], out var select);
+            var card = BuildResourceCard(filtered[i], sellHits, out var select);
             ReferenceList.Children.Add(card);
             _refSelectByName[filtered[i].Name] = select;
             if (i == 0) selectFirst = select;
@@ -1443,7 +1510,90 @@ public partial class MainWindow : Window
         }
     }
 
-    private FrameworkElement BuildResourceCard(Resource r, out Action select)
+    /// <summary>
+    /// Best REFINED sell per resource for one Codex rebuild, or null when the sell column must not
+    /// exist at all: live market prices off, the reader's own column toggle off, or on with no
+    /// snapshot fetched yet. Gated off, the sort state goes back to "default" too, so the list is
+    /// byte-for-byte the pre-feature codex. Refined and not raw for the same reason every other
+    /// price surface is: UEX's raw ore-sales dataset has had no reports since patch 4.8.
+    /// </summary>
+    private Dictionary<string, PriceHit?>? BuildSellHits(List<Resource> resources)
+    {
+        if (App.Settings.Current.MarketDataEnabled != true
+            || !App.Settings.Current.CodexSellColumn
+            || App.Market.Snapshot is not { } snap)
+        {
+            _refSort = "default";
+            return null;
+        }
+
+        var hits = new Dictionary<string, PriceHit?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in resources) hits[r.Name] = MarketQueries.BestRefinedSell(snap, r.Name);
+        return hits;
+    }
+
+    // Shows/hides the sticky sell header and paints its state: amber label plus a direction caret
+    // while a sell sort is active, the inherited dim/hover treatment otherwise.
+    private void UpdateReferenceSortHeader(bool show)
+    {
+        if (ReferenceSortHeader == null) return;
+        ReferenceSortHeader.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ReferenceSortCaret.Text = _refSort switch { "sellDesc" => "▾", "sellAsc" => "▴", _ => "" };
+        if (_refSort == "default")
+            ReferenceSortHeader.ClearValue(System.Windows.Documents.TextElement.ForegroundProperty);
+        else
+            System.Windows.Documents.TextElement.SetForeground(ReferenceSortHeader, (System.Windows.Media.Brush)FindResource("AccentBrush"));
+    }
+
+    // The Codex's one sortable column. Click cycles codex order -> highest sell -> lowest sell ->
+    // codex order. The rebuild's own 120ms settle fade is the sort animation; there is deliberately
+    // no per-row reorder choreography.
+    private void ReferenceSortHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        _refSort = _refSort switch
+        {
+            "default"  => "sellDesc",
+            "sellDesc" => "sellAsc",
+            _          => "default",
+        };
+        InteractionLog.Click("codex sort: " + _refSort, ReferenceSortHeader);
+        BuildReferenceTree(staggerEntry: false, preserveSelection: (_selectedRefCard?.Tag as Resource)?.Name);
+    }
+
+    // One Codex row's price: the best refined sell, a BARE number - the column header states the
+    // unit once (owner ruling 2026-07-27) so 39 rows do not repeat it. When the freshest priced row
+    // for that ore comes from an older game patch the number goes dim and carries the patch tag, so
+    // a stale price is never signalled by colour alone.
+    private static FrameworkElement SellCell(PriceHit hit)
+    {
+        var value = new TextBlock
+        {
+            Text = hit.Display.ToString("n0"),
+            FontSize = 12,
+            FontFamily = Hud.Font("HeadFont"),
+            Foreground = Hud.Br(hit.Stale ? "FgDimBrush" : "GoldBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        if (!hit.Stale)
+        {
+            value.Margin = new Thickness(12, 0, 0, 0);
+            return value;
+        }
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(12, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        row.Children.Add(value);
+        row.Children.Add(PatchTagChip(hit.GameVersion));
+        return row;
+    }
+
+    private FrameworkElement BuildResourceCard(Resource r, IReadOnlyDictionary<string, PriceHit?>? sellHits, out Action select)
     {
         var rb          = RarityBrush(r.Rarity);   // semantic rarity color (kept)
         var bg2         = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
@@ -1467,6 +1617,21 @@ public partial class MainWindow : Window
         var rs = new TextBlock { Text = r.BaseRs > 0 ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(rs, 3); grid.Children.Add(rs);
 
+        // Sell column: added only when the column is switched on with the feature on and a snapshot
+        // loaded (sellHits != null), so otherwise the card keeps its original four columns exactly.
+        // An ore the snapshot has no price for keeps the column but leaves the cell empty, never a
+        // placeholder.
+        if (sellHits != null)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            sellHits.TryGetValue(r.Name, out var hit);
+            if (hit != null)
+            {
+                var cell = SellCell(hit);
+                Grid.SetColumn(cell, 4); grid.Children.Add(cell);
+            }
+        }
+
         var host = Hud.CardFrame(grid, out var frame, out _, chamfer: 8, padding: new Thickness(12, 9, 12, 9));
         host.Margin = new Thickness(0, 0, 8, 6);
         host.Cursor = System.Windows.Input.Cursors.Hand;
@@ -1488,8 +1653,9 @@ public partial class MainWindow : Window
     }
 
     // Stale-price marker in the dock count-chip geometry: mono 9 bold on a 0x1F tint of the dim
-    // text colour, 0x66 border, radius 3. Used by the dossier price rows and the work order sell
-    // line (the Codex list carries no price column: amendment 2026-07-27).
+    // text colour, 0x66 border, radius 3. Used by the dossier price rows, the work order sell
+    // line, and the Codex sell column cells (the column returned as an off-by-default toggle
+    // preference after first being removed for clutter; both were owner rulings on 2026-07-27).
     private static Border PatchTagChip(string gameVersion)
     {
         var c = ((System.Windows.Media.SolidColorBrush)Hud.Br("FgDimBrush")).Color;
@@ -2168,12 +2334,14 @@ public partial class MainWindow : Window
             var heroAge = topHit.Stale
                 ? MarketNotice.PatchTag(topHit.GameVersion)
                 : MarketNotice.FormatAge(DateTime.UtcNow - topHit.ModifiedUtc);
-            heroContent.Children.Add(new TextBlock
+            // Segmented like the decoder line (owner ruling 2026-07-27): label dim, value gold,
+            // terminal Fg, age dim, and the whole line dim when the price is stale.
+            var heroSell = new TextBlock
             {
-                Text = MarketNotice.DossierHeroLine(topHit.Display, topHit.TerminalName, heroAge),
-                FontSize = 12, Foreground = topHit.Stale ? dim : gold,
-                TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
-            });
+                FontSize = 12, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+            };
+            SellLineRuns(heroSell, MarketNotice.DossierHeroLabel, topHit, heroAge);
+            heroContent.Children.Add(heroSell);
         }
 
         // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).

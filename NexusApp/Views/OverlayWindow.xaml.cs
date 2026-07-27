@@ -747,17 +747,34 @@ public partial class OverlayWindow : Window
         var ageText = hit.Stale
             ? MarketNotice.PatchTag(hit.GameVersion)
             : MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc);
-        host.Children.Add(new TextBlock
+        var line = new TextBlock
         {
-            Text = MarketNotice.OverlaySellLine(hit.Display, hit.TerminalName, ageText),
             // Same 10.5 as the "Best refinery" line above it; the card is 452px wide, so the line
-            // trims rather than wraps. Stale goes dim, fresh takes the app's price gold.
+            // trims rather than wraps.
             FontSize = 10.5,
-            Foreground = hit.Stale ? Hud.Br("FgDimBrush") : Hud.Br("GoldBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(0, 3, 0, 0),
-        });
+        };
+        SellLineRuns(line, MarketNotice.OverlayLabel, hit, ageText);
+        host.Children.Add(line);
         return true;
+    }
+
+    // The overlay card's sell line follows the decoder line's roles (owner ruling 2026-07-27, live
+    // run 5, mock .sellline): label dim, value gold, terminal name Fg, age or patch tag dim, and
+    // the whole line dim when the price is stale. The runs are composed from MarketNotice's own
+    // parts - the same parts OverlaySellLine is built from - so the rendered text stays identical
+    // to the string the copy tests pin. The main window carries its own twin of this helper: the
+    // two windows share no view-helper class for market rendering.
+    private static void SellLineRuns(TextBlock line, string label, PriceHit hit, string ageText)
+    {
+        var dim = Hud.Br("FgDimBrush");
+        line.Inlines.Add(new System.Windows.Documents.Run(label) { Foreground = dim });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.PriceValue(hit.Display))
+        { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
+        { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
     // ── Deposit composition bar + tap-to-expand (Task 7, C3/C4) ─────────────────

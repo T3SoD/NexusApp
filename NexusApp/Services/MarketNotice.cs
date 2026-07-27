@@ -30,6 +30,11 @@ internal static class MarketNotice
     // Seed data, so it renders whether or not live market data is on.
     public const string BestRefineryLabel = "Best refinery";
 
+    // The Mining Codex list's optional sell column (owner ruling 2026-07-27, live run 5): the
+    // column is opt-in and off by default, so a reader who wants prices in the list asks for them
+    // once. The toggle row itself only exists while live market data is on.
+    public const string CodexColumnToggle = "Show sell prices";
+
     // MARKET status pill in the top status strip (amendment 2026-07-27 item 6d, mock section 07B).
     // The pill is not rendered at all when the feature is off, so there is no "off" string here:
     // silence over placeholder, the same rule every price surface follows.
@@ -49,28 +54,43 @@ internal static class MarketNotice
         : age.TotalDays < 1 ? $"{(int)age.TotalHours}h ago"
         : $"{(int)age.TotalDays}d ago";
 
+    // ── Sell line parts ───────────────────────────────────────────────────────
+    // The one-line sell surfaces are rendered SEGMENTED (owner ruling 2026-07-27, live run 5,
+    // mock .sellline): the label is dim, the value gold, the terminal name Fg, the age or patch
+    // tag dim. The whole line still drops to dim when the price is stale. The parts below are the
+    // single source of that text: the full-line formatters are composed FROM them, so a renderer
+    // building runs part by part can never drift from the string a test pins.
+    public const string DecoderLabel = "Sell (refined, avg):";
+    public const string OverlayLabel = "Sell:";
+    public const string DossierHeroLabel = "Best sell:";
+
+    // The value always carries the game's currency unit, "aUEC/SCU", on every surface that renders
+    // a price (owner ruling 2026-07-27 after live review).
+    public static string PriceValue(double display) => $"{display:n0} aUEC/SCU";
+
+    public static string AtTerminal(string terminalName) => $"at {terminalName}";
+
+    // Age, or the patch tag when the row is stale. Either way it is parenthesised, because a price
+    // never renders without one of the two.
+    public static string AgePart(string ageText) => $"({ageText})";
+
     // Refined, not raw: UEX's raw ore-sales dataset has had no community reports since patch 4.8,
-    // so every price surface quotes the refined counterpart (amendment 2026-07-27). The value
-    // carries the game's currency unit, "aUEC/SCU", on every surface that renders a price
-    // (owner ruling 2026-07-27 after live review).
+    // so every price surface quotes the refined counterpart (amendment 2026-07-27).
     public static string DecoderLine(double weekAvg, string terminalName, string ageText) =>
-        $"Sell (refined, avg): {weekAvg:n0} aUEC/SCU at {terminalName} ({ageText})";
+        $"{DecoderLabel} {PriceValue(weekAvg)} {AtTerminal(terminalName)} {AgePart(ageText)}";
 
     // The overlay scan card's compact twin of DecoderLine (amendment 2026-07-27 item 5). The card
     // is 452px wide and already carries a "Best refinery" line, so the label sheds the
     // "(refined, avg)" qualifier that the roomier app-window surfaces spell out. Same number and
-    // the same never-a-bare-price rule: the caller passes age, or the patch tag when the row is
-    // stale, exactly as it does for the decoder line.
+    // the same never-a-bare-price rule.
     public static string OverlaySellLine(double display, string terminalName, string ageText) =>
-        $"Sell: {display:n0} aUEC/SCU at {terminalName} ({ageText})";
+        $"{OverlayLabel} {PriceValue(display)} {AtTerminal(terminalName)} {AgePart(ageText)}";
 
     // The Codex dossier hero's own sell line (amendment 2026-07-27 item 6a): the same fact the
     // decoder hero states, in the dossier's voice. "Best sell" because the dossier's VALUE section
-    // right below it lists the runners-up, where the decoder only ever shows one. Refined, like
-    // every price in the app, and the caller passes age or the patch tag as ageText so the number
-    // never renders bare.
+    // right below it lists the runners-up, where the decoder only ever shows one.
     public static string DossierHeroLine(double display, string terminalName, string ageText) =>
-        $"Best sell: {display:n0} aUEC/SCU at {terminalName} ({ageText})";
+        $"{DossierHeroLabel} {PriceValue(display)} {AtTerminal(terminalName)} {AgePart(ageText)}";
 
     // MARKET pill value, fresh and busy states: the local time of the last successful refresh.
     // HH:mm regardless of the app's 12/24 hour clock setting, matching StatusLine above (the two

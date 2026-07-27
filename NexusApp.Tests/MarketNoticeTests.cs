@@ -98,6 +98,35 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.DossierHeroLine(1000, "Terminal", MarketNotice.PatchTag("4.8")));
 
     // An afternoon hour past 12, so the assertion actually distinguishes 24 hour from 12 hour.
+    // The one-line sell surfaces render segmented (label dim, value gold, terminal Fg, age dim),
+    // and each renderer builds its runs from these parts. If a formatter ever stopped being
+    // composed from them, the rendered line and the pinned string would drift apart silently, so
+    // the composition is asserted for all three lines.
+    [Theory]
+    [InlineData("decoder")]
+    [InlineData("overlay")]
+    [InlineData("dossier")]
+    public void SellLines_AreComposedFromTheirParts(string surface)
+    {
+        var (label, line) = surface switch
+        {
+            "decoder" => (MarketNotice.DecoderLabel, MarketNotice.DecoderLine(8210, "Terminal", "12m ago")),
+            "overlay" => (MarketNotice.OverlayLabel, MarketNotice.OverlaySellLine(8210, "Terminal", "12m ago")),
+            _         => (MarketNotice.DossierHeroLabel, MarketNotice.DossierHeroLine(8210, "Terminal", "12m ago")),
+        };
+        var parts = string.Join(" ", label, MarketNotice.PriceValue(8210),
+                                MarketNotice.AtTerminal("Terminal"), MarketNotice.AgePart("12m ago"));
+        Assert.Equal(line, parts);
+    }
+
+    [Fact]
+    public void SellLineParts_CarryUnitTerminalAndAge()
+    {
+        Assert.Equal("8,210 aUEC/SCU", MarketNotice.PriceValue(8210));
+        Assert.Equal("at Sacren's Plot", MarketNotice.AtTerminal("Sacren's Plot"));
+        Assert.Equal("(patch 4.8)", MarketNotice.AgePart(MarketNotice.PatchTag("4.8")));
+    }
+
     [Fact]
     public void PillClock_IsTwentyFourHour() =>
         Assert.Equal("23:15", MarketNotice.PillClock(new DateTime(2026, 7, 27, 23, 15, 0, DateTimeKind.Local)));
@@ -136,7 +165,10 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.RefreshNow, MarketNotice.SourceNote, MarketNotice.CadenceNote,
             MarketNotice.DossierFooter, MarketNotice.ValueSection,
             MarketNotice.ValueDetailsShow, MarketNotice.ValueDetailsHide,
-            MarketNotice.BestRefineryLabel,
+            MarketNotice.BestRefineryLabel, MarketNotice.CodexColumnToggle,
+            MarketNotice.DecoderLabel, MarketNotice.OverlayLabel, MarketNotice.DossierHeroLabel,
+            MarketNotice.PriceValue(8210), MarketNotice.AtTerminal("Terminal"),
+            MarketNotice.AgePart("12m ago"),
             MarketNotice.PillLabel, MarketNotice.PillOffline, MarketNotice.PillSyncing,
             MarketNotice.PillNoData, MarketNotice.PillTooltip,
             MarketNotice.PillClock(DateTime.Now), MarketNotice.PillAge(TimeSpan.FromHours(26)),

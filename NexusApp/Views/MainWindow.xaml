@@ -1166,6 +1166,16 @@
                             Background="{StaticResource NavBorderBrush}"
                             Margin="20,0,20,0"/>
 
+                    <!-- Sell-column opt-in (mock section 01 .offnote): the row itself exists only
+                         while live market data is on, and the switch alone decides whether the list
+                         carries prices. Both off = the Codex list is exactly what it has always been. -->
+                    <StackPanel x:Name="CodexSellToggleRow" Grid.Row="6" Orientation="Horizontal"
+                                Margin="20,8,20,2" VerticalAlignment="Center" Visibility="Collapsed">
+                        <ContentControl x:Name="CodexSellToggleHost" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                        <TextBlock x:Name="CodexSellToggleLabel" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
                     <!-- two-panel: resource list | rich detail -->
                     <Grid Grid.Row="7" Margin="20,4,20,12">
                         <Grid.ColumnDefinitions>
@@ -1173,9 +1183,43 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel x:Name="ReferenceList"/>
-                            </ScrollViewer>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <!-- Sticky sell-column header, shown only when the sell column itself is
+                                     rendered (BuildReferenceTree drives it). Collapsed it costs zero
+                                     height, so with the column off the list fills the border exactly as
+                                     before. Right inset 26 = card padding 12 + card margin 8 + the themed
+                                     6px scrollbar, so the label sits over the price values. -->
+                                <Border x:Name="ReferenceSortHeader" Grid.Row="0" Visibility="Collapsed"
+                                        Background="Transparent" HorizontalAlignment="Right"
+                                        Margin="0,0,26,6" Padding="6,2,0,2" Cursor="Hand"
+                                        ToolTip="Sort by sell price: highest, then lowest, then back to codex order"
+                                        MouseLeftButtonDown="ReferenceSortHeader_Click">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="TextElement.Foreground" Value="{StaticResource FgDimBrush}"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="TextElement.Foreground" Value="{StaticResource FgBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- The unit is stated once, here, so every cell below can stay a bare number. -->
+                                        <TextBlock Text="Sell avg (aUEC/SCU)" FontFamily="{StaticResource UiFont}"
+                                                   FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ReferenceSortCaret" Text="" FontSize="10"
+                                                   VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="ReferenceList"/>
+                                </ScrollViewer>
+                            </Grid>
                         </Border>
                         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="16,0,0,0">
                             <StackPanel x:Name="ReferenceDetailPanel"/>
