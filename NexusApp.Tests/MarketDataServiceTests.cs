@@ -534,8 +534,8 @@ public class MarketDataServiceTests : IDisposable
 
         // Dispose returned only after the cancelled cycle finished unwinding and writing.
         // The task's own completion flag settles on the pool thread, so give it a bounded
-        // wait instead of asserting the instantaneous state.
-        Assert.True(cycle.Wait(TimeSpan.FromSeconds(5)));
+        // asynchronous wait instead of asserting the instantaneous state.
+        Assert.Same(cycle, await Task.WhenAny(cycle, Task.Delay(TimeSpan.FromSeconds(5))));
         Assert.True(File.Exists(snapshotPath));
         Assert.NotNull(settings.Current.LastMarketFetchUtc);
         Assert.False(svc.FetchInProgress);
