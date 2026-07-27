@@ -15,6 +15,10 @@ namespace NexusApp.Services;
 public sealed class SwapJournal
 {
     public const int CurrentSchema = 1;
+    // A real journal is a few KB even with a full payload's ops. The cap is the
+    // UpdateManifest.MaxManifestBytes philosophy applied to the other untrusted file the
+    // update path reads: refuse before the bytes are pulled into memory.
+    public const int MaxJournalBytes = 64 * 1024;
     public const string FileName = "update_journal.json";
     public const string StatusInProgress = "InProgress";
     public const string StatusComplete = "Complete";
@@ -53,11 +57,15 @@ public sealed class SwapJournal
     {
         try
         {
-            if (!File.Exists(path)) return null;
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length > MaxJournalBytes) return null;
             var j = JsonSerializer.Deserialize<SwapJournal>(File.ReadAllText(path));
             if (j is null || j.Schema != CurrentSchema) return null;
             if (j.Status is not (StatusInProgress or StatusComplete)) return null;
             if (string.IsNullOrWhiteSpace(j.InstallDir) || !Path.IsPathRooted(j.InstallDir)) return null;
+            // Both versions reach the user verbatim through UpdateNotice.SwapFailedBody, so
+            // they are validated like any other untrusted string that becomes UI copy.
+            if (!Version.TryParse(j.AttemptedVersion, out _) || !Version.TryParse(j.PreviousVersion, out _)) return null;
             // A JSON null survives deserialization as a null element (the UpdateManifest.Parse
             // lesson); one would NRE recovery mid-restore, so the whole journal is refused.
             if (j.Ops is null || j.Ops.Any(o => o is null)) return null;

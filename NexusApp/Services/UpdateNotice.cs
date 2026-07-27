@@ -46,6 +46,13 @@ public static class UpdateNotice
     public const string PrepareFailedBody =
         "Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.";
 
+    // The stuck-rollback state: the swap failed AND the rollback could not put every file
+    // back, so the previous version lives in .old files that only startup recovery can
+    // restore. Retrying in this session would be a lie, so this copy asks for the restart the
+    // recovery needs and no Try again button is offered beside it.
+    public const string RestorePendingBody =
+        "The update could not finish. Nexus will finish restoring the previous version the next time it starts. Close Nexus and start it again.";
+
     public static string InstallConfirmTitle(Version v) => $"Install Nexus {v.ToString(3)} now?";
 
     public static string UpdateBody(string current, Version available) =>

@@ -664,6 +664,23 @@ public class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Download_PendingJournal_OffersManualWithoutProbing()
+    {
+        // A pending journal means Apply will refuse anyway: the strip must route to the guided
+        // manual flow rather than an Install button whose Try again cannot work until restart.
+        var (svc, t, _, _, swapper) = Make3(purgeGuard: () => true);
+        var payload = Encoding.UTF8.GetBytes("zip bytes");
+        Publish(t, UpdateManifestTests.ValidJson(version: "9.9.9", portableHash: HashOf(payload), portableSize: payload.Length));
+        t.Files[UpdateService.AssetUrl(new Version(9, 9, 9), "NexusApp_portable.zip")] = payload;
+        await svc.CheckAsync(manual: true);
+        await svc.DownloadAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.PortableSwapAvailable);
+        Assert.Contains("previous update", svc.PortableSwapUnavailableReason);
+        Assert.Equal(0, swapper.PreflightCalls);
+    }
+
+    [Fact]
     public async Task Download_PreflightThrows_StillLandsReadyWithManualFlow()
     {
         // The one place an engine exception could strand a verified download short of
@@ -709,6 +726,24 @@ public class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyPortable_RollbackIncomplete_FlagsTheRestoreAsPending()
+    {
+        // The stuck-rollback state drives different copy and drops the Try again button: the
+        // previous version can only be put back by the next start's recovery.
+        var (svc, swapper) = await ReadyPortable();
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRollbackIncomplete,
+            "e_sqlite3.dll changed between unpack and install");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.True(svc.LastApplyLeftRestorePending);
+        Assert.NotNull(svc.LastPortableApplyFailure);
+        // An ordinary rollback is not the pending state, and a later run clears the flag.
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRolledBack, "held open by another program");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.False(svc.LastApplyLeftRestorePending);
+    }
+
+    [Fact]
     public async Task ApplyPortable_InstallerDistribution_Refuses()
     {
         var (svc, swapper) = await ReadyPortable(distribution: "Installer");
@@ -750,6 +785,22 @@ public class UpdateServiceTests : IDisposable
         swapper.UnpackResult = false;
         await svc.UnpackForManualAsync();
         Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.NotNull(svc.LastPortableApplyFailure);
+    }
+
+    [Fact]
+    public async Task UnpackForManual_AfterAStuckRollback_ClearsTheRestorePendingFlag()
+    {
+        // The manual unpack is its own attempt: its failure must regain the Try again
+        // affordance instead of keeping the earlier swap's restart-to-restore copy.
+        var (svc, swapper) = await ReadyPortable();
+        swapper.ApplyResult = new PortableApplyResult(PortableApplyOutcome.FailedRollbackIncomplete, "rollback incomplete at e_sqlite3.dll");
+        Assert.False(await svc.ApplyPortableAsync());
+        Assert.True(svc.LastApplyLeftRestorePending);
+        swapper.UnpackResult = false;
+        await svc.UnpackForManualAsync();
+        Assert.Equal(UpdateState.ReadyToInstall, svc.State);
+        Assert.False(svc.LastApplyLeftRestorePending);
         Assert.NotNull(svc.LastPortableApplyFailure);
     }
 

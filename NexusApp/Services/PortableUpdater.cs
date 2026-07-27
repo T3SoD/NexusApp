@@ -54,6 +54,9 @@ public sealed class PortableUpdater : IPortableSwapper
     public const string StagingDirName = "update-staging";
     public const string LockFileName = "update.lock";
     public const string OldSuffix = ".old";
+    // Where startup recovery parks a new-version file while it renames the previous one back
+    // over the live name. Reserved against payload collision by NormalizeEntry.
+    public const string NewSuffix = ".new";
     internal const int MaxZipEntries = 4096;
     internal const long MaxExtractedBytes = 600L * 1024 * 1024;
     internal const long FreeSpaceSlackBytes = 50L * 1024 * 1024;
@@ -191,7 +194,7 @@ public sealed class PortableUpdater : IPortableSwapper
         foreach (var s in relSegs)
         {
             if (s.EndsWith(OldSuffix, StringComparison.OrdinalIgnoreCase)) return "entry name ends in .old";
-            if (s.EndsWith(".new", StringComparison.OrdinalIgnoreCase)) return "entry name ends in .new";
+            if (s.EndsWith(NewSuffix, StringComparison.OrdinalIgnoreCase)) return "entry name ends in .new";
             if (string.Equals(s, StagingDirName, StringComparison.OrdinalIgnoreCase))
                 return "entry collides with the staging folder";
         }
@@ -358,6 +361,15 @@ public sealed class PortableUpdater : IPortableSwapper
             }
             catch { return new(PortableApplyOutcome.FailedNothingChanged, "another update is already in progress"); }
 
+            // A journal on disk means unfinished business that only startup recovery may
+            // resolve: a sibling install's in-flight swap (the journal path is per profile,
+            // not per folder), this install's own stuck rollback whose .old files are the ONLY
+            // copy of the previous version, or a Complete journal whose cleanup is pending.
+            // Starting a new swap would overwrite the journal and take those files with it.
+            if (File.Exists(_journalPath))
+                return new(PortableApplyOutcome.FailedNothingChanged,
+                           "a previous update has not finished; restart Nexus and try again");
+
             Logger.Info($"{UpdateService.Tag} unpack started");
             ExtractResult extracted;
             var stagedRoot = Path.Combine(_updatesDir, version.ToString(3), "staged", "NexusApp");
@@ -391,9 +403,10 @@ public sealed class PortableUpdater : IPortableSwapper
         finally { lockFs?.Dispose(); }
     }
 
-    // Two-phase core. Phase order per file: journal the intent (write-ahead), clear any stale
-    // .old, rename current -> .old, rename staged -> current. NexusApp.exe goes strictly
-    // LAST so every earlier failure rolls back without ever touching the running image.
+    // Two-phase core. Phase order per file: re-verify the staged bytes, clear any stale .old,
+    // journal the intent (write-ahead), rename current -> .old, rename staged -> current.
+    // NexusApp.exe goes strictly LAST so every earlier failure rolls back without ever
+    // touching the running image.
     private PortableApplyResult Flip(ExtractResult extracted, string stagingDir, Version version, string currentVersion)
     {
         var rels = extracted.FileHashes.Keys
@@ -454,15 +467,22 @@ public sealed class PortableUpdater : IPortableSwapper
             if (!string.Equals(stagedHash, extracted.FileHashes[rel], StringComparison.Ordinal))
                 return Abort(journal, stagingDir, $"{rel} changed between unpack and install");
 
+            // A leftover .old from an older failed swap goes BEFORE the op is journaled, never
+            // after: a crash between the two would leave recovery a journal entry pointing at
+            // stale bytes and it would restore THOSE as "the previous version". Nothing is
+            // claimed until the only .old that can exist is this swap's own. A non-critical
+            // file that cannot be cleared is skipped without a journal entry, because nothing
+            // was mutated for it and there is nothing to roll back.
+            if (File.Exists(old) && !RetryDelete(old, oneDrive))
+            {
+                if (nonCritical) { Logger.Info($"{UpdateService.Tag} skipped {rel}: a leftover {rel}{OldSuffix} is in use"); continue; }
+                return Abort(journal, stagingDir, $"a leftover {rel}{OldSuffix} could not be removed");
+            }
+
             var op = new SwapOp { Rel = rel, NonCritical = nonCritical };
             journal.Ops.Add(op);
             if (!SaveJournal(journal)) return Abort(journal, stagingDir, "couldn't update the journal");
 
-            if (File.Exists(old) && !RetryDelete(old, oneDrive))
-            {
-                if (nonCritical) { op.Skipped = true; SaveJournal(journal); Logger.Info($"{UpdateService.Tag} skipped {rel}: a leftover {rel}{OldSuffix} is in use"); continue; }
-                return Abort(journal, stagingDir, $"a leftover {rel}{OldSuffix} could not be removed");
-            }
             if (File.Exists(target))
             {
                 if (!RetryRename(target, old, oneDrive))
@@ -624,9 +644,16 @@ public sealed class PortableUpdater : IPortableSwapper
         try
         {
             // InProgress but the running exe IS the attempted version: the crash fell between
-            // the final flip and the Complete stamp, so the swap in fact finished.
-            if (journal.Status == SwapJournal.StatusComplete ||
-                string.Equals(runningVersion, journal.AttemptedVersion, StringComparison.Ordinal))
+            // the final flip and the Complete stamp, so the swap in fact finished. A running
+            // version NEWER than the attempt counts the same way: the guided manual flow can
+            // legitimately land a newer copy than this journal ever attempted, and restoring
+            // the .old set over it would build a mixed folder. Versions that do not parse
+            // (dev builds, hand-edited fixtures) keep the exact-match fallback.
+            var finished = Version.TryParse(runningVersion, out var running) &&
+                           Version.TryParse(journal.AttemptedVersion, out var attempted)
+                ? running >= attempted
+                : string.Equals(runningVersion, journal.AttemptedVersion, StringComparison.Ordinal);
+            if (journal.Status == SwapJournal.StatusComplete || finished)
                 return CleanupCompleted(journal, journalPath, journalDir, delays);
             return RestorePrevious(journal, journalPath, journalDir, delays);
         }
@@ -642,6 +669,11 @@ public sealed class PortableUpdater : IPortableSwapper
             if (!SwapJournal.IsSafeRel(installDir, op.Rel)) continue;   // tampered entry: touch nothing
             var old = Path.Combine(installDir, op.Rel) + OldSuffix;
             if (File.Exists(old) && !RetryDeleteWith(old, delays)) allClean = false;
+            // A .new can outlive a restore attempt that later healed into the completed
+            // branch (the running exe turned out to be the attempted version); it is residue
+            // either way, and the portable folder must not keep it.
+            var pending = Path.Combine(installDir, op.Rel) + NewSuffix;
+            if (File.Exists(pending) && !RetryDeleteWith(pending, delays)) allClean = false;
         }
         if (!TryDeleteDir(Path.Combine(installDir, StagingDirName))) allClean = false;
         if (allClean)
@@ -671,12 +703,30 @@ public sealed class PortableUpdater : IPortableSwapper
             if (op.Skipped || !SwapJournal.IsSafeRel(installDir, op.Rel)) continue;
             var target = Path.Combine(installDir, op.Rel);
             var old = target + OldSuffix;
+            var pending = target + NewSuffix;
             if (File.Exists(old))
             {
-                // The new file at the live name is reproducible from the kept zip; the .old
-                // set is not. Delete new, restore old.
-                if (File.Exists(target) && !RetryDeleteWith(target, delays)) { allRestored = false; continue; }
-                if (!RetryMoveWith(old, target, delays)) { allRestored = false; continue; }
+                // Rename-only, exactly like the in-session Abort: this process has already
+                // memory-mapped the loose natives beside the exe (they load before OnStartup),
+                // and Windows refuses to DELETE a mapped image while it happily RENAMES one.
+                // Deleting at the live name would wedge recovery on every future start.
+                // Order is chosen so the live name is never left empty: vacate only when
+                // something is there, and put the parked file back if the restore fails.
+                if (File.Exists(target))
+                {
+                    // A .new parked by an earlier interrupted pass would block the vacate.
+                    if (File.Exists(pending) && !RetryDeleteWith(pending, delays)) { allRestored = false; continue; }
+                    if (!RetryMoveWith(target, pending, delays)) { allRestored = false; continue; }
+                }
+                if (!RetryMoveWith(old, target, delays))
+                {
+                    // Disk state, not this pass's bookkeeping, decides the move-back: a crash
+                    // inside the vacate-then-restore window leaves a re-entry that STARTS with
+                    // an empty live name and a waiting .new, and it must be put back too.
+                    if (File.Exists(pending) && !File.Exists(target)) RetryMoveWith(pending, target, delays);
+                    allRestored = false;
+                    continue;
+                }
             }
             // A new-only file (no .old pair) is deleted; but existence alone cannot tell a
             // genuinely-added file from one this very method already restored on an earlier
@@ -688,6 +738,11 @@ public sealed class PortableUpdater : IPortableSwapper
             {
                 allRestored = false;
             }
+            // The parked new-version file is deletable as soon as nothing maps it, which is
+            // the NEXT start at the latest. Sweeping here (not only inside the branch above)
+            // is what lets a pass that restored but could not delete converge later: a
+            // failure keeps the journal, and the following start finishes the housekeeping.
+            if (File.Exists(pending) && !RetryDeleteWith(pending, delays)) allRestored = false;
         }
         TryDeleteDir(Path.Combine(installDir, StagingDirName));
         if (allRestored)

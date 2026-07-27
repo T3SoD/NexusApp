@@ -582,6 +582,12 @@ public sealed class SettingsPage : UserControl
                 };
                 _updateActionHost.Children.Add(install);
                 break;
+            // Stuck rollback (the CommandPage twin does the same): restoring is the next
+            // start's job, so the row says so and offers no Try again that would fail.
+            case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null && svc.LastApplyLeftRestorePending:
+                _updateActionHost.Children.Add(RightNote(UpdateNotice.RestorePendingBody, wrap: true));
+                AddOpenDownloadFolder();
+                break;
             case UpdateState.ReadyToInstall when svc.LastPortableApplyFailure != null:
                 _updateActionHost.Children.Add(RightNote(UpdateNotice.PrepareFailedBody, wrap: true));
                 var retryPortable = GhostButton("Try again");

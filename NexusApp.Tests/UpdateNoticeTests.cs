@@ -76,6 +76,7 @@ public class UpdateNoticeTests
             UpdateNotice.PostUpdateBody("6.7.0"),
             UpdateNotice.InstallConfirmBodyPortable,
             UpdateNotice.PrepareFailedBody,
+            UpdateNotice.RestorePendingBody,
             UpdateNotice.PreparingBody(new Version(6, 9, 0)),
             UpdateNotice.ReadyBodyPortableManual(new Version(6, 9, 0)),
             UpdateNotice.UnpackingBody(new Version(6, 9, 0)),
@@ -136,6 +137,8 @@ public class UpdateNoticeTests
             UpdateNotice.ManualHandoffBody(new Version(6, 9, 0)));
         Assert.Equal("Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.",
             UpdateNotice.PrepareFailedBody);
+        Assert.Equal("The update could not finish. Nexus will finish restoring the previous version the next time it starts. Close Nexus and start it again.",
+            UpdateNotice.RestorePendingBody);
         Assert.Equal("The update to Nexus 6.9.0 could not finish. Nexus restored the previous version and nothing changed. You are still on Nexus 6.8.1.",
             UpdateNotice.SwapFailedBody("6.9.0", "6.8.1"));
     }
