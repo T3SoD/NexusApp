@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.10.0  -  Jul 27, 2026",
+        [
+            "Live market prices, off by default - turn them on and Nexus shows refined sell prices from UEX community data on the RS decoder, the Mining Codex, the Refinery Tracker, and the overlay scan cards, refreshed about once an hour",
+            "Every price carries its age, and prices from an older game patch are grayed with a patch tag - Nexus never presents stale community data as current",
+            "The Mining Codex dossier leads with a value section - best sell price and refinery yields together, with the longer sections collapsed until you need them",
+            "A market chip in the top strip shows the last price refresh at a glance, and an optional sell column in the Codex list can be switched on for comparing ores",
+            "Prices are cached on your computer - Nexus works offline from the last snapshot and says how old it is",
+        ]),
         ("App  6.9.0  -  Jul 26, 2026",
         [
             "The portable version now installs updates itself - click Install update and Nexus verifies the files again, swaps them in place, and restarts as the new version",
