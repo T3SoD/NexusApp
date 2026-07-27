@@ -41,8 +41,10 @@ GETTING STARTED
 4. Open the extracted folder.
 5. Double-click "NexusApp.exe" to start NexusApp.
 
-NexusApp needs no installation. NexusApp needs no internet connection.
-NexusApp stores your settings and work orders on your PC.
+NexusApp needs no installation. NexusApp needs no internet connection
+for its features. NexusApp stores your settings and work orders on
+your PC. NexusApp can check for updates, but only when you allow it.
+See the UPDATES section below.
 
 
 WINDOWS SMARTSCREEN WARNING
@@ -70,6 +72,32 @@ WINDOWS SMARTSCREEN WARNING
   security.microsoft.com. You can also add an exclusion for the
   NexusApp folder in Windows Security > Virus & threat protection >
   Exclusions.
+
+
+UPDATES
+-------
+
+  Update checks are off until you turn them on. NexusApp asks you once
+  when it starts. You can change your choice at any time in
+  Settings > Diagnostics.
+
+  When a new version is available, NexusApp shows a notice on the
+  OPERATIONS page. Each step asks before it acts:
+
+  1. Click "Download". NexusApp downloads the new version and verifies
+     it against a signed manifest.
+  2. Click "Install update". NexusApp verifies the files again,
+     replaces its own files, and restarts as the new version.
+
+  Your settings, work orders, and blueprints are kept.
+
+  Some locations do not let NexusApp replace its own files (for
+  example, a protected folder or a network drive). NexusApp then
+  unpacks the update and opens the new folder and your current folder.
+  You copy the new files over the old ones.
+
+  If an update stops before it completes, NexusApp puts the previous
+  version back the next time it starts.
 
 
 FIRST TIME SETUP
