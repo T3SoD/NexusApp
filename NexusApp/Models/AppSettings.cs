@@ -115,6 +115,10 @@ public class AppSettings
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
     public string? LastSeenVersion { get; set; }
+
+    // Issue #26: user-observed Executive Hangar open instant, replacing the embedded calibration
+    // anchor (set from the Guides page re-anchor control; null = built-in calibration).
+    public DateTime? ExecHangarAnchorOverrideUtc { get; set; }
 }
 
 public class ScanRegion
