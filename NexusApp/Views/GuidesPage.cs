@@ -583,12 +583,28 @@ public sealed class GuidesPage : UserControl
     {
         if (!ShowReanchorConfirm(Window.GetWindow(this))) return;
         var anchor = DateTime.UtcNow;   // stored UTC, never local time
+
+        // One log line carrying everything a maintainer needs to recalibrate the built-in anchor
+        // from a user's diagnostic snapshot: the observed open instant, which anchor was active
+        // before, what that prior calibration predicted at the click (makes the drift visible),
+        // the app version, and the shard id (its numeric chunk is the game server build the
+        // community calibrations are keyed to). Captured BEFORE the override is replaced.
+        var priorOverride = App.Settings.Current.ExecHangarAnchorOverrideUtc;
+        var prior = ExecHangarCycle.At(anchor, priorOverride);
+        var priorAnchorDesc = priorOverride.HasValue
+            ? $"custom {priorOverride.Value:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}"
+            : "built-in " + ExecHangarCycle.CalibrationLabel;
+        var shard = App.Shards.Current?.ShardId
+            ?? App.Shards.All.FirstOrDefault()?.ShardId
+            ?? "unknown";
+
         App.Settings.Current.ExecHangarAnchorOverrideUtc = anchor;
         App.Settings.Save();
         RefreshHangarStatus();
-        // The exact instant matters: this line is what the diagnostic snapshot carries back so the
-        // built-in calibration can be updated for everyone after a game patch.
-        Logger.Info($"[UI] Exec hangar re-anchored by user: {anchor:yyyy-MM-dd'T'HH:mm:ss.fff'Z'} UTC");
+        Logger.Info($"[UI] Exec hangar re-anchored by user: {anchor:yyyy-MM-dd'T'HH:mm:ss.fff'Z'} UTC "
+            + $"(app {AppInfo.Version}; prior anchor: {priorAnchorDesc}; prior prediction at click: "
+            + $"{(prior.IsOpen ? "OPEN" : "CLOSED")}, {ExecHangarCycle.FormatCountdown(prior.TimeToTransition)} "
+            + $"to {(prior.IsOpen ? "close" : "open")}; shard: {shard})");
     }
 
     // Compact themed confirm dialog. Chrome (themed Background/Foreground, ResizeMode, sizing)
