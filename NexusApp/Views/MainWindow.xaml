@@ -437,6 +437,7 @@
                 <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="34"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -474,8 +475,17 @@
                     </Border>
                 </Grid>
 
+                <!-- ── Market data consent host: one amber notice strip above whichever price-capable
+                     page is active (RS Decoder, Mining Codex, Refinery Tracker). Filled and cleared by
+                     SetActivePage / RefreshMarketConsent; collapsed (zero height) whenever there is
+                     nothing to ask, so every page renders exactly as it did without it. The page-tinted
+                     wrapper keeps the strip's translucent amber fill reading the same as on Operations. ── -->
+                <Border Grid.Row="1" Background="{DynamicResource PageBgBrush}">
+                    <ContentControl x:Name="MarketConsentHost" Visibility="Collapsed" Margin="20,16,20,0"/>
+                </Border>
+
                 <!-- viewport stage: the existing page content + boot/sweep overlays -->
-                <Grid Grid.Row="1" Background="{DynamicResource PageBgBrush}">
+                <Grid Grid.Row="2" Background="{DynamicResource PageBgBrush}">
 
                 <!-- ── BLUEPRINT NETWORK PAGE (built in code - Views/NetworkPage.cs) ── -->
                 <!-- ── OPERATIONS / COMMAND DASHBOARD (built in code - Views/CommandPage.cs) ── -->

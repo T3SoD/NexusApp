@@ -293,6 +293,7 @@ public partial class MainWindow : Window
         if (page == "gridstudio") InitGridStudioPage();
         if (page == "admin") InitAdminPage();
         if (page == "settings") InitSettingsPage();
+        RefreshMarketConsent();
         UpdateNavBadges();
 
         AnimatePageIn(page switch
@@ -309,6 +310,64 @@ public partial class MainWindow : Window
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
         });
+    }
+
+    // ── Market data consent strip ────────────────────────────────────────────
+    // The three price-capable surfaces (RS Decoder, Mining Codex, Refinery Tracker) share one
+    // host above the page stage, so the one-time question is asked once no matter which of them
+    // the user opens first.
+    private bool _marketConsentLogged;   // "shown" logged once per session, not on every page switch
+
+    /// <summary>
+    /// Fills or clears the market data consent host for the current page. Called by SetActivePage
+    /// on every page switch and by the strip's own buttons, so answering collapses it immediately.
+    /// The gate itself is pure (MarketNotice.ShouldShowConsent): unanswered consent only, never in
+    /// the demo profile.
+    /// </summary>
+    private void RefreshMarketConsent()
+    {
+        if (MarketConsentHost == null) return;
+
+        var show = _activePage is "scan" or "reference" or "workorders"
+                   && MarketNotice.ShouldShowConsent(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile);
+        if (!show)
+        {
+            MarketConsentHost.Content = null;
+            MarketConsentHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (!_marketConsentLogged)
+        {
+            _marketConsentLogged = true;
+            Logger.Info("[NET] market consent strip shown");
+        }
+
+        var enable = Hud.StripButton(MarketNotice.ConsentEnable);
+        enable.Click += (_, _) =>
+        {
+            App.Settings.Current.MarketDataEnabled = true;
+            App.Settings.Save();
+            Logger.Info("[NET] market consent: enabled");
+            App.Market.MaybeAutoRefresh();
+            RefreshMarketConsent();
+        };
+        var decline = Hud.StripButton(MarketNotice.ConsentDecline);
+        decline.Click += (_, _) =>
+        {
+            App.Settings.Current.MarketDataEnabled = false;
+            App.Settings.Save();
+            Logger.Info("[NET] market consent: declined");
+            RefreshMarketConsent();
+        };
+        // Both buttons are ghost StripButtons by design (mock review ruling): the accent
+        // "Turn on" from the mock is deliberately NOT copied.
+        MarketConsentHost.Content = Hud.NoticeStrip(MarketNotice.ConsentEyebrow, MarketNotice.ConsentBody,
+                                                    new[] { enable, decline }, onDismiss: null);
+        MarketConsentHost.Visibility = Visibility.Visible;
+        // Tasks 9-11 hook the answered-consent rebuild of the active page's price surfaces here
+        // (the decoder value line, the codex column/dossier block, the refinery card sell line);
+        // today there is nothing price-shaped on the pages yet, so collapsing the host is enough.
     }
 
     // Brief holographic page-in (fade + rise) played whenever a tab becomes active, extending the
