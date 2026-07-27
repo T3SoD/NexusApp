@@ -381,6 +381,13 @@
                                                             </Style>
                                                         </TextBlock.Style>
                                                     </TextBlock>
+                                                    <!-- Live refined sell line (market data, amendment 2026-07-27
+                                                         item 5). Built in code-behind (MarketSellHost_Loaded) because
+                                                         the value comes from the runtime UEX snapshot rather than the
+                                                         item, same host idiom as CompositionHost below. Stays empty
+                                                         (zero height, card unchanged) when market data is off, no
+                                                         snapshot has landed, or the ore has no priced row. -->
+                                                    <StackPanel x:Name="MarketSellHost" Loaded="MarketSellHost_Loaded"/>
                                                 </StackPanel>
                                                 <!-- C5: cart button (+ CART / IN CART, drives ToggleCartCommand) -->
                                                 <Button Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"

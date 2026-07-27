@@ -60,8 +60,21 @@ public class MarketNoticeTests : IDisposable
 
     [Fact]
     public void DecoderLine_FormatsCorrectly() =>
-        Assert.Equal("Sell (raw, avg): 8,210/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
+        Assert.Equal("Sell (refined, avg): 8,210/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
             MarketNotice.DecoderLine(8210, "Refinery Ore Sales - ARC-L1", "12m ago"));
+
+    // The overlay card line drops the "(refined, avg)" qualifier the app-window surfaces carry
+    // (the 452px card has no room for it) but keeps the value, the terminal and the age.
+    [Fact]
+    public void OverlaySellLine_FormatsCorrectly() =>
+        Assert.Equal("Sell: 8,210/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
+            MarketNotice.OverlaySellLine(8210, "Refinery Ore Sales - ARC-L1", "12m ago"));
+
+    // Stale rows show the patch tag where a fresh row shows its age, so a price never renders bare.
+    [Fact]
+    public void OverlaySellLine_AcceptsPatchTagAsAgeText() =>
+        Assert.Equal("Sell: 1,000/SCU at Terminal (patch 4.8)",
+            MarketNotice.OverlaySellLine(1000, "Terminal", MarketNotice.PatchTag("4.8")));
 
     [Fact]
     public void StatusLine_NeverFetched() =>
@@ -92,6 +105,7 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.PatchTag("4.8"),
             MarketNotice.FormatAge(TimeSpan.FromMinutes(12)),
             MarketNotice.DecoderLine(8210, "Terminal", "12m ago"),
+            MarketNotice.OverlaySellLine(8210, "Terminal", "12m ago"),
             MarketNotice.StatusLine(DateTime.Now, null),
             MarketNotice.StatusLine(DateTime.Now, "error"),
             MarketNotice.SnapshotAgeNote(TimeSpan.FromMinutes(30)),

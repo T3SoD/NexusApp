@@ -130,9 +130,11 @@ internal static class MarketParse
         return result;
     }
 
-    // Shared shape for the two per-commodity price endpoints, /commodities_raw_prices and
-    // /commodities_prices. NOT the bulk /commodities_raw_prices_all, whose live rows are reduced
-    // (no price_sell_avg_week, no game_version, an abbreviated terminal_name) and so skip here.
+    // The row shape of the per-commodity price endpoint /commodities_prices, the only price
+    // endpoint the cycle serves: the raw leg (/commodities_raw_prices) is gone and the RawPrices
+    // dataset is retained in the schema for future use but never fetched (amendment 2026-07-27).
+    // NOT the bulk /commodities_raw_prices_all either, whose live rows are reduced (no
+    // price_sell_avg_week, no game_version, an abbreviated terminal_name) and so skip here.
     public static List<MarketPriceRow> ParsePriceRows(string body, out int skipped)
     {
         var result = new List<MarketPriceRow>();

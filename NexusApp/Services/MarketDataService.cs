@@ -89,19 +89,14 @@ public sealed class MarketDataService : IDisposable
     // Yields and terminals are reference data that changes with a game patch, not with trading.
     public static readonly TimeSpan ReferenceInterval = TimeSpan.FromHours(24);
 
-    // A cycle is roughly 65 sequential requests: four whole-list endpoints, about 35 raw ore
-    // prices (one per mapped seed resource) and about 25 refined prices (one per distinct
-    // refined parent id). Two minutes is a BACKSTOP against a wedged endpoint, not a budget the
-    // cycle is expected to fit in comfortably; when it fires, every dataset and every per-id
-    // fetch that already completed is still published.
+    // A cycle is roughly 30 sequential requests: four whole-list endpoints and about 25 refined
+    // prices (one per distinct refined parent id). Two minutes is a BACKSTOP against a wedged
+    // endpoint, not a budget the cycle is expected to fit in comfortably; when it fires, every
+    // dataset and every per-id fetch that already completed is still published.
     public static readonly TimeSpan CycleDeadline = TimeSpan.FromMinutes(2);
 
     private const string GameVersionsEndpoint = "game_versions";
     private const string CommoditiesEndpoint = "commodities";
-    // The FILTERED raw endpoint, not commodities_raw_prices_all: the bulk variant returns reduced
-    // rows live (no price_sell_avg_week, no game_version, an abbreviated terminal_name), which
-    // the price parser rejects wholesale. Same query shape as the refined endpoint.
-    private const string RawPricesEndpoint = "commodities_raw_prices";
     private const string RefinedPricesEndpoint = "commodities_prices";
     private const string YieldsEndpoint = "refineries_yields";
     private const string TerminalsEndpoint = "terminals";
@@ -155,15 +150,21 @@ public sealed class MarketDataService : IDisposable
     }
 
     // Pure gate for the automatic path: consent must be an explicit yes, the demo profile is
-    // always inert, and a snapshot fetched inside the last hour suppresses another cycle.
-    internal static bool ShouldFetch(bool? enabled, bool isDemoProfile, DateTime newestFetchUtc, DateTime nowUtc)
+    // always inert, and a cycle runs as soon as EITHER hourly dataset is an hour old. Both
+    // stamps, not the newest one across the snapshot: a partial cycle that refreshed only the
+    // reference data would otherwise read as "fresh" and suppress the auto path for an hour
+    // while every price surface sat empty (observed live, amendment 2026-07-27).
+    internal static bool ShouldFetch(bool? enabled, bool isDemoProfile, DateTime commoditiesFetchedUtc,
+                                     DateTime refinedPricesFetchedUtc, DateTime nowUtc)
     {
         if (isDemoProfile || enabled != true) return false;
-        // Self-heal a stamp in the future (a clock rollback, or data fetched while the clock was
-        // wrong): otherwise the subtraction stays negative and the auto refresh freezes forever.
-        if (newestFetchUtc > nowUtc) return true;
-        return nowUtc - newestFetchUtc >= RefreshInterval;
+        return IsStale(commoditiesFetchedUtc, nowUtc) || IsStale(refinedPricesFetchedUtc, nowUtc);
     }
+
+    // A stamp in the FUTURE (a clock rollback, or data fetched while the clock was wrong) counts
+    // as stale: otherwise the subtraction stays negative and the auto refresh freezes forever.
+    private static bool IsStale(DateTime fetchedUtc, DateTime nowUtc) =>
+        fetchedUtc > nowUtc || nowUtc - fetchedUtc >= RefreshInterval;
 
     // Called once from app startup, on the UI thread. The timer is created HERE and not in the
     // constructor so tests (and any non-UI caller) can build the service without a dispatcher.
@@ -210,8 +211,12 @@ public sealed class MarketDataService : IDisposable
     public void MaybeAutoRefresh()
     {
         if (_disposed) return;
-        var newest = _snapshot?.NewestFetchUtc ?? DateTime.MinValue;
-        if (!ShouldFetch(_settings.Current.MarketDataEnabled, _demo, newest, DateTime.UtcNow)) return;
+        // Read the snapshot once: it can be swapped by a cycle finishing on another thread.
+        var snap = _snapshot;
+        if (!ShouldFetch(_settings.Current.MarketDataEnabled, _demo,
+                         snap?.Commodities.FetchedUtc ?? DateTime.MinValue,
+                         snap?.RefinedPrices.FetchedUtc ?? DateTime.MinValue,
+                         DateTime.UtcNow)) return;
 
         _ = Task.Run(async () =>
         {
@@ -277,7 +282,7 @@ public sealed class MarketDataService : IDisposable
         {
             // Stamped whether the cycle succeeded or not, so the Settings status line can say
             // when Nexus last TRIED. It does not drive the hourly throttle: ShouldFetch reads
-            // the snapshot's own NewestFetchUtc, so a cycle where every endpoint failed is
+            // the snapshot's own per-dataset stamps, so a cycle where every endpoint failed is
             // retried on the next tick rather than being suppressed for an hour by this stamp.
             if (cycleRan)
             {
@@ -329,19 +334,16 @@ public sealed class MarketDataService : IDisposable
             }
         }
 
-        // 3. Raw ore prices, one call per mapped raw commodity. The bulk _all endpoint exists but
-        //    returns REDUCED rows live (no week average, no game version, an abbreviated terminal
-        //    name), so every row failed the parse; the filtered per-id endpoint returns the full
-        //    shape. Cost: one request per ore instead of one, which is what the deadline is for.
-        await FetchPricesByIdAsync(RawPricesEndpoint, "raw", RawIdsFor(next.Commodities.Rows),
-                                   next.RawPrices, d => next.RawPrices = d, utcNow, cycle, ct).ConfigureAwait(false);
-
-        // 4. Refined prices: no bulk endpoint exists at all, so this is the same union of one call
-        //    per refined commodity the seed data actually cares about.
+        // 3. Refined prices, one call per refined commodity the seed data cares about: no bulk
+        //    endpoint returns the full row shape, so the dataset is the union of those calls.
+        //    There is deliberately no raw-price leg any more: UEX's raw ore-sales dataset has had
+        //    no community reports since patch 4.8, so nothing in the app displays a raw price
+        //    (amendment 2026-07-27). The snapshot keeps its RawPrices dataset for schema
+        //    stability; it is carried forward untouched and never refreshed.
         await FetchPricesByIdAsync(RefinedPricesEndpoint, "refined", RefinedIdsFor(next.Commodities.Rows),
                                    next.RefinedPrices, d => next.RefinedPrices = d, utcNow, cycle, ct).ConfigureAwait(false);
 
-        // 5. Reference data, on its own much slower clock.
+        // 4. Reference data, on its own much slower clock.
         if (utcNow - next.Yields.FetchedUtc >= ReferenceInterval)
         {
             (body, ms) = await FetchAsync(YieldsEndpoint, BaseUrl + YieldsEndpoint, cycle, ct).ConfigureAwait(false);
@@ -381,12 +383,12 @@ public sealed class MarketDataService : IDisposable
         }
     }
 
-    // Both price datasets are the union of per-commodity fetches (the raw one because the bulk
-    // endpoint's rows come back reduced, the refined one because no bulk endpoint exists), so
-    // they merge instead of replacing: an id that failed keeps ONLY its own previous rows, every
-    // id that succeeded replaces its own, and ids that are no longer mapped drop out, which is
-    // how a commodity renamed or removed by a patch stops haunting the dataset. One
-    // implementation for both, because that merge discipline is the load-bearing part.
+    // A price dataset is the union of per-commodity fetches (no bulk endpoint returns the full
+    // row shape), so it merges instead of replacing: an id that failed keeps ONLY its own
+    // previous rows, every id that succeeded replaces its own, and ids that are no longer mapped
+    // drop out, which is how a commodity renamed or removed by a patch stops haunting the
+    // dataset. Kept parameterised by endpoint and dataset, because the merge discipline is the
+    // load-bearing part and it must not have to be rewritten for a second price leg.
     private async Task FetchPricesByIdAsync(string endpoint, string kind, List<int> ids,
                                             MarketDataset<MarketPriceRow> previous,
                                             Action<MarketDataset<MarketPriceRow>> apply,
@@ -424,11 +426,11 @@ public sealed class MarketDataService : IDisposable
         }
         finally
         {
-            // The merge runs on the way out no matter how the loop ends. These two legs are ~60
-            // of the cycle's requests, so the deadline (or a shutdown) lands INSIDE one of them
-            // far more often than anywhere else, and unwinding without merging would throw away
-            // every id that already came back. Pure list work, so it cannot throw over the
-            // original exception.
+            // The merge runs on the way out no matter how the loop ends. This leg is ~25 of the
+            // cycle's ~30 requests, so the deadline (or a shutdown) lands INSIDE it far more
+            // often than anywhere else, and unwinding without merging would throw away every id
+            // that already came back. Pure list work, so it cannot throw over the original
+            // exception.
             MergeById(previous, ids, fresh, replaced, utcNow, cycle, apply);
         }
     }
@@ -450,26 +452,6 @@ public sealed class MarketDataService : IDisposable
         }
         apply(new MarketDataset<MarketPriceRow> { FetchedUtc = utcNow, Rows = merged });
         cycle.Refreshed++;
-    }
-
-    // Seed resource -> the UEX RAW commodity itself (by name), for the raw price leg. IsRaw is
-    // checked so a refined row that happens to share a name can never stand in for the ore.
-    private static List<int> RawIdsFor(List<MarketCommodity> commodities)
-    {
-        var ids = new List<int>();
-        if (commodities.Count == 0) return ids;
-
-        var byName = new Dictionary<string, MarketCommodity>(StringComparer.OrdinalIgnoreCase);
-        foreach (var c in commodities) byName.TryAdd(c.Name, c);
-
-        var seen = new HashSet<int>();
-        foreach (var uexRawName in MarketNameMap.SeedToUexRaw.Values)
-        {
-            if (!byName.TryGetValue(uexRawName, out var raw)) continue;
-            if (!raw.IsRaw || raw.Id <= 0) continue;
-            if (seen.Add(raw.Id)) ids.Add(raw.Id);
-        }
-        return ids;
     }
 
     // Seed resource -> UEX raw commodity (by name) -> its refined parent. Distinct, because

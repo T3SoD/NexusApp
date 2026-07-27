@@ -12,10 +12,10 @@ internal sealed record PriceHit(string TerminalName, double WeekAvg, double Inst
     public double Display => WeekAvg > 0 ? WeekAvg : Instant;
 }
 
-// The pure query layer over a MarketSnapshot: seed resource name -> UEX raw commodity -> price
-// rows, ranked so a fresh row always beats a stale one regardless of price. No I/O, no mutation
-// of the snapshot; every method is a straight read. Internal because callers are all within
-// NexusApp (price surfaces, the work order flow).
+// The pure query layer over a MarketSnapshot: seed resource name -> UEX raw commodity -> its
+// refined counterpart -> price rows, ranked so a fresh row always beats a stale one regardless
+// of price. No I/O, no mutation of the snapshot; every method is a straight read. Internal
+// because callers are all within NexusApp (price surfaces, the work order flow).
 internal static class MarketQueries
 {
     // Session-lifetime guard: a seed resource name with no UEX mapping is logged the first time
@@ -24,32 +24,26 @@ internal static class MarketQueries
     // case-insensitively to match MarketNameMap.UexRawNameFor's own lookup.
     private static readonly HashSet<string> _loggedMisses = new(StringComparer.OrdinalIgnoreCase);
 
-    // The single best (freshest, then highest-Display) sell for a raw ore, or null when the
-    // snapshot is null, the resource name is unmapped, or there are no qualifying rows.
-    public static PriceHit? BestRawSell(MarketSnapshot? s, string seedResourceName) =>
-        TopRawSells(s, seedResourceName, 1).FirstOrDefault();
+    // The single best (freshest, then highest-Display) sell for a raw ore's REFINED counterpart,
+    // or null when the snapshot is null, the resource name is unmapped, its refined counterpart
+    // cannot be resolved, or there are no qualifying rows. Every price surface quotes refined:
+    // UEX's raw ore-sales dataset has had no community reports since patch 4.8, so a raw number
+    // would be confidently wrong (amendment 2026-07-27).
+    public static PriceHit? BestRefinedSell(MarketSnapshot? s, string seedResourceName) =>
+        TopRefinedSells(s, seedResourceName, 1).FirstOrDefault();
 
-    // The top `count` sells for a raw ore: fresh rows first (each ranked by Display desc), then
-    // stale rows (also ranked by Display desc). Rows with Display <= 0 never appear.
-    public static List<PriceHit> TopRawSells(MarketSnapshot? s, string seedResourceName, int count)
+    // The top `count` refined sells for a raw ore: fresh rows first (each ranked by Display desc),
+    // then stale rows (also ranked by Display desc). Rows with Display <= 0 never appear. The
+    // resolution chain is seed name -> UEX raw commodity -> its refined counterpart (idParent
+    // link, falling back to the " (Raw)"/" (Ore)" name-strip match) -> that id's refined rows.
+    public static List<PriceHit> TopRefinedSells(MarketSnapshot? s, string seedResourceName, int count)
     {
         if (s is null) return new List<PriceHit>();
         var raw = ResolveRawCommodity(s, seedResourceName);
         if (raw is null) return new List<PriceHit>();
-        return RankedHits(s.LiveGameVersion, s.RawPrices.Rows, raw.Id, count);
-    }
-
-    // The single best sell for a raw ore's REFINED counterpart (idParent link, falling back to
-    // the " (Raw)"/" (Ore)" name-strip match), or null when the resource, its raw commodity, or
-    // its refined counterpart cannot be resolved, or there are no qualifying refined-price rows.
-    public static PriceHit? BestRefinedSell(MarketSnapshot? s, string seedResourceName)
-    {
-        if (s is null) return null;
-        var raw = ResolveRawCommodity(s, seedResourceName);
-        if (raw is null) return null;
         var refined = MarketNameMap.RefinedFor(raw, s.Commodities.Rows);
-        if (refined is null) return null;
-        return RankedHits(s.LiveGameVersion, s.RefinedPrices.Rows, refined.Id, 1).FirstOrDefault();
+        if (refined is null) return new List<PriceHit>();
+        return RankedHits(s.LiveGameVersion, s.RefinedPrices.Rows, refined.Id, count);
     }
 
     // For a work order's free text: every seed resource name RecognizeSeedNames finds, resolved
@@ -100,8 +94,8 @@ internal static class MarketQueries
     }
 
     // Rows for one commodity id -> ranked PriceHits: fresh before stale, Display desc within
-    // each class, Display <= 0 dropped, truncated to count. Shared by the raw and refined paths;
-    // the only difference between them is which row list and commodity id they pass in.
+    // each class, Display <= 0 dropped, truncated to count. The one ranking rule every price
+    // surface inherits, kept separate from the resolution chain that feeds it.
     private static List<PriceHit> RankedHits(string liveGameVersion, List<MarketPriceRow> rows, int commodityId, int count)
     {
         var hits = new List<PriceHit>();

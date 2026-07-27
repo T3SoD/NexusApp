@@ -65,6 +65,7 @@ public partial class OverlayWindow : Window
 
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
     private readonly Action<string> _onOrderReady;
+    private readonly Action _onMarketChanged;
 
     public OverlayWindow(MainViewModel vm)
     {
@@ -138,6 +139,13 @@ public partial class OverlayWindow : Window
         // Server / Shard section (top of the STATS tab): refresh when the shard history changes,
         // but only while the STATS tab is on screen (same guard pattern as OnHaulsChanged).
         App.Shards.Changed += OnShardsChanged;
+
+        // Live market prices on the scan cards: repaint the sell lines already on screen when a
+        // fetch cycle publishes a new snapshot, instead of leaving an hour-old price up until the
+        // next decode. Changed fires off the UI thread, so marshal (the same contract MainWindow's
+        // market fan-out follows).
+        _onMarketChanged = () => Dispatcher.BeginInvoke(RefreshMarketSellLines);
+        App.Market.Changed += _onMarketChanged;
 
         // Foreground gating: when neither Nexus nor Star Citizen is in front, OCR auto-scans pause.
         // Re-sync the HUB scan LEDs so they flip to/from the yellow paused state as that happens.
@@ -672,6 +680,86 @@ public partial class OverlayWindow : Window
             InteractionLog.Click($"overlay cart toggle {m.Resource.Name}", b);
     }
 
+    // ── Live refined sell line on scan cards (market data, amendment 2026-07-27 item 5) ──────
+    // The compact overlay twin of the main window's decoder sell line: one line under "Best
+    // refinery" carrying the best REFINED sell UEX has for that ore plus its age, or the patch it
+    // was captured in when the row is stale, because a price never renders without one of the two.
+    // Refined and not raw for the reason the whole feature is: UEX's raw ore-sales dataset has had
+    // no community reports since patch 4.8. Gated exactly like every other price surface (feature
+    // on, snapshot landed, this ore has a priced row); otherwise the host stays empty and the card
+    // renders identically to today. Display only - no click target, the card's own tap still owns
+    // the composition rows.
+    //
+    // Every realized host is tracked so an hourly publish can repaint the cards already on screen;
+    // hosts drop out on Unload, which is what keeps the list bounded to the visible cards.
+    private readonly List<StackPanel> _marketSellHosts = new();
+
+    private void MarketSellHost_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not StackPanel host) return;
+        // Loaded can fire again for a host that was unloaded and reattached (re-parenting, a
+        // recycled container), so the Unloaded handler is self-detaching: exactly one is attached
+        // to a host at any time, and a Loaded / Unloaded / Loaded cycle cannot stack a second one.
+        if (!_marketSellHosts.Contains(host))
+        {
+            _marketSellHosts.Add(host);
+            RoutedEventHandler? onUnloaded = null;
+            onUnloaded = (_, _) =>
+            {
+                _marketSellHosts.Remove(host);
+                host.Unloaded -= onUnloaded;
+            };
+            host.Unloaded += onUnloaded;
+        }
+        FillMarketSell(host);
+    }
+
+    // Called on the UI thread after a fetch cycle publishes. A no-op when the SCAN tab has never
+    // produced a card. The one log line per publish (never per card) is written only when a price
+    // actually rendered, so it can never claim a refresh on a surface that showed nothing - the
+    // feature being off, a missing snapshot and unpriced ores all land as silence here too.
+    private void RefreshMarketSellLines()
+    {
+        if (_marketSellHosts.Count == 0) return;
+
+        int priced = 0;
+        for (int i = _marketSellHosts.Count - 1; i >= 0; i--)
+        {
+            if (FillMarketSell(_marketSellHosts[i])) priced++;
+        }
+
+        if (priced > 0)
+        {
+            Logger.Info($"{MarketDataService.Tag} overlay sell lines refreshed " +
+                        $"({priced} of {_marketSellHosts.Count} cards priced)");
+        }
+    }
+
+    // Returns true when a price line was rendered, which is what the refresh log counts.
+    private bool FillMarketSell(StackPanel host)
+    {
+        host.Children.Clear();
+        if (App.Settings.Current.MarketDataEnabled != true) return false;
+        if (App.Market.Snapshot is not { } snap) return false;
+        if (host.DataContext is not MatchResult m) return false;
+        if (MarketQueries.BestRefinedSell(snap, m.Resource.Name) is not { } hit) return false;
+
+        var ageText = hit.Stale
+            ? MarketNotice.PatchTag(hit.GameVersion)
+            : MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc);
+        host.Children.Add(new TextBlock
+        {
+            Text = MarketNotice.OverlaySellLine(hit.Display, hit.TerminalName, ageText),
+            // Same 10.5 as the "Best refinery" line above it; the card is 452px wide, so the line
+            // trims rather than wraps. Stale goes dim, fresh takes the app's price gold.
+            FontSize = 10.5,
+            Foreground = hit.Stale ? Hud.Br("FgDimBrush") : Hud.Br("GoldBrush"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 3, 0, 0),
+        });
+        return true;
+    }
+
     // ── Deposit composition bar + tap-to-expand (Task 7, C3/C4) ─────────────────
     // The bar/rows/chip builders + expand motion live in ScanCardComposition (shared verbatim with
     // the main-window RS Decoder). This file keeps only the per-surface expand orchestration below.
@@ -1140,6 +1228,7 @@ public partial class OverlayWindow : Window
         App.GameLog.StatusChanged -= OnGameLogStatusChanged;
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
+        App.Market.Changed -= _onMarketChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
         App.ContractScan.StageChanged -= OnContractStageChanged;

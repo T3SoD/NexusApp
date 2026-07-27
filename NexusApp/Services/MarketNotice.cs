@@ -26,8 +26,18 @@ internal static class MarketNotice
         : age.TotalDays < 1 ? $"{(int)age.TotalHours}h ago"
         : $"{(int)age.TotalDays}d ago";
 
+    // Refined, not raw: UEX's raw ore-sales dataset has had no community reports since patch 4.8,
+    // so every price surface quotes the refined counterpart (amendment 2026-07-27).
     public static string DecoderLine(double weekAvg, string terminalName, string ageText) =>
-        $"Sell (raw, avg): {weekAvg:n0}/SCU at {terminalName} ({ageText})";
+        $"Sell (refined, avg): {weekAvg:n0}/SCU at {terminalName} ({ageText})";
+
+    // The overlay scan card's compact twin of DecoderLine (amendment 2026-07-27 item 5). The card
+    // is 452px wide and already carries a "Best refinery" line, so the label sheds the
+    // "(refined, avg)" qualifier that the roomier app-window surfaces spell out. Same number and
+    // the same never-a-bare-price rule: the caller passes age, or the patch tag when the row is
+    // stale, exactly as it does for the decoder line.
+    public static string OverlaySellLine(double display, string terminalName, string ageText) =>
+        $"Sell: {display:n0}/SCU at {terminalName} ({ageText})";
 
     public static string StatusLine(DateTime? lastFetchLocal, string? lastError) =>
         lastFetchLocal is not { } t ? "Never refreshed"

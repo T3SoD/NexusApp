@@ -7,18 +7,19 @@ using Xunit;
 namespace NexusApp.Tests;
 
 // MarketQueries is the pure query layer (Task 6 of feature/uex-market-data) every price surface
-// reads through: seed resource name -> UEX raw commodity -> price rows, with the fresh-beats-
-// stale ranking that is the whole point of tracking GameVersion per row. Snapshots here are
-// built by hand in code, never from JSON: MarketQueries never touches parsing.
+// reads through: seed resource name -> UEX raw commodity -> its refined counterpart -> price
+// rows, with the fresh-beats-stale ranking that is the whole point of tracking GameVersion per
+// row. Every surface quotes REFINED prices (amendment 2026-07-27: UEX's raw ore-sales dataset has
+// had no reports since patch 4.8), so there is no raw query path left to cover. Snapshots here
+// are built by hand in code, never from JSON: MarketQueries never touches parsing.
 public class MarketQueriesTests
 {
     private static MarketSnapshot BuildSnapshot(string liveGameVersion, List<MarketCommodity> commodities,
-        List<MarketPriceRow>? rawPrices = null, List<MarketPriceRow>? refinedPrices = null) =>
+        List<MarketPriceRow>? refinedPrices = null) =>
         new()
         {
             LiveGameVersion = liveGameVersion,
             Commodities = new MarketDataset<MarketCommodity> { Rows = commodities },
-            RawPrices = new MarketDataset<MarketPriceRow> { Rows = rawPrices ?? new List<MarketPriceRow>() },
             RefinedPrices = new MarketDataset<MarketPriceRow> { Rows = refinedPrices ?? new List<MarketPriceRow>() },
         };
 
@@ -40,17 +41,21 @@ public class MarketQueriesTests
     // --- (a) fresh outranks a higher-priced stale row ------------------------------
 
     [Fact]
-    public void BestRawSell_FreshBeatsHigherPricedStale()
+    public void BestRefinedSell_FreshBeatsHigherPricedStale()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow>
+        var commodities = new List<MarketCommodity>
         {
-            Row(1, 10, 5000, 5000, "4.9", "Fresh Terminal"),
-            Row(2, 10, 9000, 9000, "4.8", "Stale Terminal"),
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
         };
-        var snapshot = BuildSnapshot("4.9", commodities, rawPrices: rawPrices);
+        var refinedPrices = new List<MarketPriceRow>
+        {
+            Row(1, 11, 5000, 5000, "4.9", "Fresh Terminal"),
+            Row(2, 11, 9000, 9000, "4.8", "Stale Terminal"),
+        };
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
-        var hit = MarketQueries.BestRawSell(snapshot, "Bexalite");
+        var hit = MarketQueries.BestRefinedSell(snapshot, "Bexalite");
 
         Assert.NotNull(hit);
         Assert.Equal("Fresh Terminal", hit!.TerminalName);
@@ -61,13 +66,17 @@ public class MarketQueriesTests
     // --- (b) week-avg fallback to instant when week is 0 ----------------------------
 
     [Fact]
-    public void BestRawSell_WeekAvgZero_FallsBackToInstant()
+    public void BestRefinedSell_WeekAvgZero_FallsBackToInstant()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow> { Row(1, 10, 4200, 0, "4.9", "Terminal A") };
-        var snapshot = BuildSnapshot("4.9", commodities, rawPrices: rawPrices);
+        var commodities = new List<MarketCommodity>
+        {
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
+        };
+        var refinedPrices = new List<MarketPriceRow> { Row(1, 11, 4200, 0, "4.9", "Terminal A") };
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
-        var hit = MarketQueries.BestRawSell(snapshot, "Bexalite");
+        var hit = MarketQueries.BestRefinedSell(snapshot, "Bexalite");
 
         Assert.NotNull(hit);
         Assert.Equal(0, hit!.WeekAvg);
@@ -75,28 +84,32 @@ public class MarketQueriesTests
         Assert.Equal(4200, hit.Display);
     }
 
-    // --- (c) TopRawSells: count + fresh-desc-then-stale-desc ordering ----------------
+    // --- (c) TopRefinedSells: count + fresh-desc-then-stale-desc ordering ------------
 
     private static MarketSnapshot GoldOrderingSnapshot()
     {
-        var commodities = new List<MarketCommodity> { new(20, "Gold (Ore)", "gold-ore", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow>
+        var commodities = new List<MarketCommodity>
         {
-            Row(1, 20, 200, 200, "4.9", "Fresh A"),
-            Row(2, 20, 500, 500, "4.9", "Fresh B"),
-            Row(3, 20, 350, 350, "4.9", "Fresh C"),
-            Row(4, 20, 900, 900, "4.8", "Stale D"),   // highest raw price of all, but stale
-            Row(5, 20, 100, 100, "4.8", "Stale E"),
+            new(20, "Gold (Ore)", "gold-ore", true, false, 21),
+            new(21, "Gold", "gold", false, true, 0),
         };
-        return BuildSnapshot("4.9", commodities, rawPrices: rawPrices);
+        var refinedPrices = new List<MarketPriceRow>
+        {
+            Row(1, 21, 200, 200, "4.9", "Fresh A"),
+            Row(2, 21, 500, 500, "4.9", "Fresh B"),
+            Row(3, 21, 350, 350, "4.9", "Fresh C"),
+            Row(4, 21, 900, 900, "4.8", "Stale D"),   // highest raw price of all, but stale
+            Row(5, 21, 100, 100, "4.8", "Stale E"),
+        };
+        return BuildSnapshot("4.9", commodities, refinedPrices);
     }
 
     [Fact]
-    public void TopRawSells_OrdersFreshDescendingThenStaleDescending()
+    public void TopRefinedSells_OrdersFreshDescendingThenStaleDescending()
     {
         var snapshot = GoldOrderingSnapshot();
 
-        var all = MarketQueries.TopRawSells(snapshot, "Gold", 10);
+        var all = MarketQueries.TopRefinedSells(snapshot, "Gold", 10);
 
         Assert.Equal(new[] { "Fresh B", "Fresh C", "Fresh A", "Stale D", "Stale E" },
             all.Select(h => h.TerminalName));
@@ -108,35 +121,50 @@ public class MarketQueriesTests
     }
 
     [Fact]
-    public void TopRawSells_CountTruncatesToFreshRowsFirst()
+    public void TopRefinedSells_CountTruncatesToFreshRowsFirst()
     {
         var snapshot = GoldOrderingSnapshot();
 
         // Top 2 must be the two highest FRESH rows, not the stale 900 despite it being the
         // single highest price in the whole dataset.
-        var top2 = MarketQueries.TopRawSells(snapshot, "Gold", 2);
+        var top2 = MarketQueries.TopRefinedSells(snapshot, "Gold", 2);
 
         Assert.Equal(new[] { "Fresh B", "Fresh C" }, top2.Select(h => h.TerminalName));
     }
 
     [Fact]
-    public void TopRawSells_RowsWithNonPositiveDisplay_AreDropped()
+    public void TopRefinedSells_RowsWithNonPositiveDisplay_AreDropped()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow>
+        var commodities = new List<MarketCommodity>
         {
-            Row(1, 10, 0, 0, "4.9", "Zero Terminal"),
-            Row(2, 10, 4000, 4000, "4.9", "Good Terminal"),
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
         };
-        var snapshot = BuildSnapshot("4.9", commodities, rawPrices: rawPrices);
+        var refinedPrices = new List<MarketPriceRow>
+        {
+            Row(1, 11, 0, 0, "4.9", "Zero Terminal"),
+            Row(2, 11, 4000, 4000, "4.9", "Good Terminal"),
+        };
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
-        var result = MarketQueries.TopRawSells(snapshot, "Bexalite", 10);
+        var result = MarketQueries.TopRefinedSells(snapshot, "Bexalite", 10);
 
         var hit = Assert.Single(result);
         Assert.Equal("Good Terminal", hit.TerminalName);
     }
 
-    // --- (d) BestRefinedSell: idParent link vs. name-strip fallback ------------------
+    // The dossier's own call shape: the top three, from a dataset that has more.
+    [Fact]
+    public void TopRefinedSells_TopThree_IsTheDossierSlice()
+    {
+        var snapshot = GoldOrderingSnapshot();
+
+        var top3 = MarketQueries.TopRefinedSells(snapshot, "Gold", 3);
+
+        Assert.Equal(new[] { "Fresh B", "Fresh C", "Fresh A" }, top3.Select(h => h.TerminalName));
+    }
+
+    // --- (d) refined resolution: idParent link vs. name-strip fallback ---------------
 
     [Fact]
     public void BestRefinedSell_ResolvesViaIdParentLink()
@@ -147,7 +175,7 @@ public class MarketQueriesTests
             new(11, "Bexalite", "bexalite", false, true, 0),
         };
         var refinedPrices = new List<MarketPriceRow> { Row(1, 11, 8000, 8000, "4.9", "Refinery A") };
-        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices: refinedPrices);
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
         var hit = MarketQueries.BestRefinedSell(snapshot, "Bexalite");
 
@@ -167,13 +195,33 @@ public class MarketQueriesTests
             new(13, "Taranite", "taranite", false, true, 0),
         };
         var refinedPrices = new List<MarketPriceRow> { Row(2, 13, 6500, 6500, "4.9", "Refinery B") };
-        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices: refinedPrices);
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
         var hit = MarketQueries.BestRefinedSell(snapshot, "Taranite");
 
         Assert.NotNull(hit);
         Assert.Equal(6500, hit!.Display);
         Assert.Equal("Refinery B", hit.TerminalName);
+    }
+
+    [Fact]
+    public void TopRefinedSells_ResolvesViaNameStripFallback()
+    {
+        var commodities = new List<MarketCommodity>
+        {
+            new(12, "Taranite (Raw)", "taranite-raw", true, false, 0),
+            new(13, "Taranite", "taranite", false, true, 0),
+        };
+        var refinedPrices = new List<MarketPriceRow>
+        {
+            Row(1, 13, 6500, 6500, "4.9", "Refinery B"),
+            Row(2, 13, 7100, 7100, "4.9", "Refinery C"),
+        };
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
+
+        var result = MarketQueries.TopRefinedSells(snapshot, "Taranite", 3);
+
+        Assert.Equal(new[] { "Refinery C", "Refinery B" }, result.Select(h => h.TerminalName));
     }
 
     // --- (e) RefinedSellsForOrder: tokenize, resolve, order by Display desc ---------
@@ -187,7 +235,7 @@ public class MarketQueriesTests
             Row(1, 11, 8000, 8000, "4.9", "Bexalite Refinery"),
             Row(2, 31, 3000, 3000, "4.9", "Gold Refinery"),
         };
-        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices: refinedPrices);
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
 
         var result = MarketQueries.RefinedSellsForOrder(snapshot, "Bexalite, Gold, Wibblefrotz");
 
@@ -209,32 +257,47 @@ public class MarketQueriesTests
     // --- (f) unmapped resource / null snapshot -> null or empty, never throw --------
 
     [Fact]
-    public void BestRawSell_UnmappedResource_ReturnsNullNoThrow()
+    public void BestRefinedSell_UnmappedResource_ReturnsNullNoThrow()
     {
         var snapshot = BuildSnapshot("4.9", new List<MarketCommodity>());
 
-        var ex = Record.Exception(() => MarketQueries.BestRawSell(snapshot, "NotARealResourceZzz"));
+        var ex = Record.Exception(() => MarketQueries.BestRefinedSell(snapshot, "NotARealResourceZzz"));
 
         Assert.Null(ex);
-        Assert.Null(MarketQueries.BestRawSell(snapshot, "NotARealResourceZzz"));
+        Assert.Null(MarketQueries.BestRefinedSell(snapshot, "NotARealResourceZzz"));
     }
 
     [Fact]
-    public void BestRawSell_NullSnapshot_ReturnsNull()
+    public void TopRefinedSells_UnmappedResource_ReturnsEmpty()
     {
-        Assert.Null(MarketQueries.BestRawSell(null!, "Bexalite"));
+        var snapshot = BuildSnapshot("4.9", new List<MarketCommodity>());
+
+        Assert.Empty(MarketQueries.TopRefinedSells(snapshot, "NotARealResourceZzz", 3));
     }
 
+    // Mapped seed name, raw commodity present, but nothing in the catalogue it can refine into:
+    // the surface shows nothing rather than falling back to a raw number.
     [Fact]
-    public void TopRawSells_NullSnapshot_ReturnsEmpty()
+    public void TopRefinedSells_NoRefinedCounterpart_ReturnsEmpty()
     {
-        Assert.Empty(MarketQueries.TopRawSells(null!, "Bexalite", 5));
+        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
+        var refinedPrices = new List<MarketPriceRow> { Row(1, 11, 8000, 8000, "4.9", "Refinery A") };
+        var snapshot = BuildSnapshot("4.9", commodities, refinedPrices);
+
+        Assert.Empty(MarketQueries.TopRefinedSells(snapshot, "Bexalite", 3));
+        Assert.Null(MarketQueries.BestRefinedSell(snapshot, "Bexalite"));
     }
 
     [Fact]
     public void BestRefinedSell_NullSnapshot_ReturnsNull()
     {
         Assert.Null(MarketQueries.BestRefinedSell(null!, "Bexalite"));
+    }
+
+    [Fact]
+    public void TopRefinedSells_NullSnapshot_ReturnsEmpty()
+    {
+        Assert.Empty(MarketQueries.TopRefinedSells(null!, "Bexalite", 5));
     }
 
     [Fact]
@@ -246,12 +309,16 @@ public class MarketQueriesTests
     // --- additional contract coverage: commodity present, no price rows -------------
 
     [Fact]
-    public void BestRawSell_CommodityWithNoPriceRows_ReturnsNull()
+    public void BestRefinedSell_CommodityWithNoPriceRows_ReturnsNull()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
+        var commodities = new List<MarketCommodity>
+        {
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
+        };
         var snapshot = BuildSnapshot("4.9", commodities);
 
-        Assert.Null(MarketQueries.BestRawSell(snapshot, "Bexalite"));
+        Assert.Null(MarketQueries.BestRefinedSell(snapshot, "Bexalite"));
     }
 
     // --- additional contract coverage: empty LiveGameVersion means nothing is stale -
@@ -259,15 +326,19 @@ public class MarketQueriesTests
     [Fact]
     public void EmptyLiveGameVersion_NothingIsStale()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow>
+        var commodities = new List<MarketCommodity>
         {
-            Row(1, 10, 100, 100, "4.7", "Old Terminal"),
-            Row(2, 10, 200, 200, "4.9", "New Terminal"),
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
         };
-        var snapshot = BuildSnapshot("", commodities, rawPrices: rawPrices);
+        var refinedPrices = new List<MarketPriceRow>
+        {
+            Row(1, 11, 100, 100, "4.7", "Old Terminal"),
+            Row(2, 11, 200, 200, "4.9", "New Terminal"),
+        };
+        var snapshot = BuildSnapshot("", commodities, refinedPrices);
 
-        var result = MarketQueries.TopRawSells(snapshot, "Bexalite", 10);
+        var result = MarketQueries.TopRefinedSells(snapshot, "Bexalite", 10);
 
         Assert.All(result, h => Assert.False(h.Stale));
         Assert.Equal(new[] { "New Terminal", "Old Terminal" }, result.Select(h => h.TerminalName));
@@ -278,11 +349,15 @@ public class MarketQueriesTests
     [Fact]
     public void GameVersionComparison_IsCaseInsensitive()
     {
-        var commodities = new List<MarketCommodity> { new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 0) };
-        var rawPrices = new List<MarketPriceRow> { Row(1, 10, 100, 100, "4.9-LIVE", "Terminal") };
-        var snapshot = BuildSnapshot("4.9-live", commodities, rawPrices: rawPrices);
+        var commodities = new List<MarketCommodity>
+        {
+            new(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11),
+            new(11, "Bexalite", "bexalite", false, true, 0),
+        };
+        var refinedPrices = new List<MarketPriceRow> { Row(1, 11, 100, 100, "4.9-LIVE", "Terminal") };
+        var snapshot = BuildSnapshot("4.9-live", commodities, refinedPrices);
 
-        var hit = MarketQueries.BestRawSell(snapshot, "Bexalite");
+        var hit = MarketQueries.BestRefinedSell(snapshot, "Bexalite");
 
         Assert.NotNull(hit);
         Assert.False(hit!.Stale);
@@ -296,9 +371,9 @@ public class MarketQueriesTests
         var name = $"ZzzUnitTestUnmapped_{Guid.NewGuid():N}";
         var snapshot = BuildSnapshot("4.9", new List<MarketCommodity>());
 
-        MarketQueries.BestRawSell(snapshot, name);
-        MarketQueries.BestRawSell(snapshot, name);
-        MarketQueries.BestRawSell(snapshot, name);
+        MarketQueries.BestRefinedSell(snapshot, name);
+        MarketQueries.BestRefinedSell(snapshot, name);
+        MarketQueries.BestRefinedSell(snapshot, name);
 
         var logPath = Environment.GetEnvironmentVariable("NEXUS_LOG_PATH");
         Assert.NotNull(logPath);
