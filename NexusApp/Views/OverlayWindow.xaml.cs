@@ -14,6 +14,9 @@ public partial class OverlayWindow : Window
     private readonly MainViewModel _vm;
     private bool _boxVisible = false;
     private string _activeTab = "scan";
+    // Guards SwitchTab's first call: the saved-tab restore at construction is not a user switch,
+    // so it places the pill without motion and without logging (see SwitchTab).
+    private bool _tabStripReady;
     private WorkOrderFlyoutWindow? _woFlyout;
     private RegionSelectorWindow? _regionSelector;   // single live draw-region overlay (issue #8)
     private RegionSelectorWindow? _contractRegionSelector;   // independent draw overlay for the contract region
@@ -70,6 +73,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow(MainViewModel vm)
     {
         InitializeComponent();
+        TabStrip.TabSelected += id => SwitchTab(id);
         _vm = vm;
         // Lets the results ItemTemplate reach VM-level commands (ToggleCartCommand) via
         // RelativeSource AncestorType=Window, same pattern MainWindow uses. Nothing else in
@@ -107,7 +111,7 @@ public partial class OverlayWindow : Window
 
         _vm.WorkOrders.CollectionChanged += (s, e) =>
         {
-            UpdateRefineryTabLabel();
+            UpdateRefineryTabBadge();
             if (_activeTab == "orders") RebuildOrdersPanel();
             if (_activeTab == "stats") RebuildStatsPanel();   // F1: READY ORDERS hero tile tracks the same count
         };
@@ -158,8 +162,8 @@ public partial class OverlayWindow : Window
         App.ContractBoxVisibilityChanged += OnContractBoxShared;
         _contractBoxVisible = App.ContractBoxVisible;   // seed from shared state so the switch isn't stale on first open
 
-        UpdateHaulingTabLabel();   // initial overlay tab count (updates as hauls stream in)
-        UpdateRefineryTabLabel();  // initial REFINERY (N) ready-to-collect badge
+        UpdateHaulingTabBadge();   // initial overlay tab count (updates as hauls stream in)
+        UpdateRefineryTabBadge();  // initial REFINERY (N) ready-to-collect badge
 
         BuildScanControls();
         BuildHaulingControls();
@@ -1049,17 +1053,11 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private void TabStats_Click(object sender, RoutedEventArgs e) => SwitchTab("stats");
-    private void TabScan_Click(object sender, RoutedEventArgs e) => SwitchTab("scan");
-    private void TabOrders_Click(object sender, RoutedEventArgs e) => SwitchTab("orders");
-    private void TabShopping_Click(object sender, RoutedEventArgs e) => SwitchTab("shopping");
-    private void TabHauling_Click(object sender, RoutedEventArgs e) => SwitchTab("hauling");
-    private void TabGuides_Click(object sender, RoutedEventArgs e) => SwitchTab("guides");
-
     // persist:false = a programmatic tab flip (the welcome tour) that must not overwrite the
     // user's saved tab preference; every user-driven switch keeps the default and persists.
     private void SwitchTab(string tab, bool persist = true)
     {
+        var prev = _activeTab;
         _activeTab = tab;
         if (persist)
         {
@@ -1073,14 +1071,13 @@ public partial class OverlayWindow : Window
         HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
         GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
 
-        var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
-        var none   = Brushes.Transparent;
-        TabStatsIndicator.Background    = tab == "stats"    ? accent : none;
-        TabScanIndicator.Background     = tab == "scan"     ? accent : none;
-        TabOrdersIndicator.Background   = tab == "orders"   ? accent : none;
-        TabShoppingIndicator.Background = tab == "shopping" ? accent : none;
-        TabHaulingIndicator.Background  = tab == "hauling"  ? accent : none;
-        TabGuidesIndicator.Background   = tab == "guides"   ? accent : none;
+        // First call is the saved-tab restore at construction: place the pill without motion and
+        // without logging. Every later call animates; only real user switches log (persist=true
+        // and the tab actually changed; tour flips pass persist=false).
+        var isSwitch = _tabStripReady && prev != tab;
+        TabStrip.SetActive(tab, animate: isSwitch);
+        if (isSwitch && persist) Logger.Info(OverlayTabs.SwitchLogLine(prev, tab));
+        _tabStripReady = true;
 
         // RECENT scans belong to the SCAN tab only - hide the strip on every other tab.
         SetHistoryStripVisible(tab == "scan");
@@ -1258,29 +1255,27 @@ public partial class OverlayWindow : Window
     // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.
     private void OnHaulsChanged()
     {
-        UpdateHaulingTabLabel();                 // keep the tab count fresh even off the HAULING tab
+        UpdateHaulingTabBadge();                 // keep the tab count fresh even off the HAULING tab
         if (_activeTab == "hauling") RebuildHaulingPanel();
         if (_activeTab == "stats") RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
     }
 
-    // Shows the active-haul count on the overlay tab button: "HAULING" or "HAULING (N)".
-    private void UpdateHaulingTabLabel()
+    // Shows the active-haul count as a chip on the overlay HAULING tab icon.
+    private void UpdateHaulingTabBadge()
     {
-        var n = App.Hauls.ActiveHauls.Count;
-        TabHaulingBtn.Content = n > 0 ? $"HAULING ({n})" : "HAULING";
+        TabStrip.SetBadge("hauling", App.Hauls.ActiveHauls.Count);
     }
 
     // E1/F1: work orders ready to collect - shared by the REFINERY tab badge and the HUB's READY
     // ORDERS hero tile so the enum walk lives in exactly one place.
     private int ReadyOrdersCount() => _vm.WorkOrders.Count(w => w.Status == WorkOrderStatus.ReadyToCollect);
 
-    // E1: shows the ready-to-collect count on the REFINERY tab button: "REFINERY" or "REFINERY (N)".
-    // Mirrors UpdateHaulingTabLabel; driven by the WorkOrders.CollectionChanged subscription (every
-    // save/collect reloads the collection) plus the initial build, so the badge stays fresh off-tab.
-    private void UpdateRefineryTabLabel()
+    // E1: shows the ready-to-collect count as a chip on the overlay REFINERY tab icon.
+    // Driven by the WorkOrders.CollectionChanged subscription plus the initial build,
+    // so the badge stays fresh off-tab.
+    private void UpdateRefineryTabBadge()
     {
-        var n = ReadyOrdersCount();
-        TabOrdersBtn.Content = n > 0 ? $"REFINERY ({n})" : "REFINERY";
+        TabStrip.SetBadge("orders", ReadyOrdersCount());
     }
 
     // F1: sums committed SCU + delivered/total dropoff legs across a set of hauls. Shared by the HUB's

@@ -12,4 +12,21 @@ public static class OverlayTabs
     // these are case-sensitive keys) fall back to the default rather than leaving the overlay blank.
     public static string NormalizeForRestore(string? saved)
         => saved is not null && Array.IndexOf(Ids, saved) >= 0 ? saved : Default;
+
+    // Display labels for the strip's pill and hover chips. "trade" is the reserved future
+    // commodity trading tab: it has a label and a glyph now, but is not in Ids until it ships.
+    public static string LabelFor(string id) => id switch
+    {
+        "stats" => "HUB",
+        "scan" => "SCAN",
+        "orders" => "REFINERY",
+        "shopping" => "SHOPPING",
+        "hauling" => "HAULING",
+        "guides" => "GUIDES",
+        "trade" => "TRADE",
+        _ => id.ToUpperInvariant(),
+    };
+
+    // One log line per user-driven tab switch (App Log Monitor + diagnostic snapshot).
+    public static string SwitchLogLine(string from, string to) => $"[WIN] Overlay tab: {from} -> {to}";
 }
