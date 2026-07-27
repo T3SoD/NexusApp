@@ -58,6 +58,12 @@ public sealed class SettingsPage : UserControl
     private StackPanel? _updateActionHost;
     private Hud.ToggleSwitch? _updateCheckToggle;
 
+    // Market data section (DIAGNOSTICS). Held so the rows can be refreshed as the fetch cycle
+    // moves between states; null in the demo profile, where the section is inert.
+    private Hud.ToggleSwitch? _marketToggle;
+    private Button? _marketRefreshBtn;
+    private TextBlock? _marketStatusText;
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
@@ -502,7 +508,88 @@ public sealed class SettingsPage : UserControl
                 App.Update.Changed += () => Dispatcher.Invoke(RefreshUpdateRows);
         }
 
+        // Market data: consent toggle, manual refresh, source note. Inert in the demo profile.
+        // The UEX badge (Task 13) replaces the source row's plain text.
+        if (AppPaths.IsDemoProfile)
+        {
+            panel.Children.Add(SectionPanel(MarketNotice.SettingsTitle, false,
+                SettingRow("Market data",
+                    "Market data is unavailable in the demo profile.",
+                    new TextBlock
+                    {
+                        Text = "Unavailable", FontFamily = Hud.Font("MonoFont"), FontSize = 13,
+                        Foreground = Hud.Br("FgDimBrush"),
+                    }, last: true)));
+        }
+        else
+        {
+            _marketToggle = new Hud.ToggleSwitch(App.Settings.Current.MarketDataEnabled == true)
+            {
+                OnToggled = on =>
+                {
+                    App.Settings.Current.MarketDataEnabled = on;
+                    App.Settings.Save();
+                    Logger.Info("[UI] Toggle: market data " + (on ? "on" : "off"));
+                    if (on) App.Market.MaybeAutoRefresh();
+                    // No cycle-start event: reflect the toggle's effect on the refresh button
+                    // (and status line) immediately rather than waiting on Changed.
+                    RefreshMarketRows();
+                },
+            };
+
+            _marketRefreshBtn = GhostButton(MarketNotice.RefreshNow);
+            _marketRefreshBtn.Click += (_, _) =>
+            {
+                // Disabled at click time: Changed only fires at the END of a cycle, so there is
+                // no cycle-start signal to react to instead.
+                _marketRefreshBtn!.IsEnabled = false;
+                _ = App.Market.RefreshAsync(manual: true);
+            };
+            _marketStatusText = new TextBlock
+            {
+                FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 260, TextAlignment = TextAlignment.Right,
+            };
+            var marketRefreshStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+            marketRefreshStack.Children.Add(_marketRefreshBtn);
+            marketRefreshStack.Children.Add(_marketStatusText);
+
+            panel.Children.Add(SectionPanel(MarketNotice.SettingsTitle, false,
+                SettingRow(MarketNotice.SettingsToggleTitle,
+                    MarketNotice.SettingsToggleDesc,
+                    _marketToggle, last: false),
+                SettingRow("Refresh now",
+                    "Fetch the latest sell prices from UEX right now, regardless of the hourly " +
+                    "schedule. Prices can go stale (and keep their visible age) when UEX stops " +
+                    "listing a commodity, rather than disappearing.",
+                    marketRefreshStack, last: false),
+                SettingRow("Source",
+                    "Where these prices come from.",
+                    RightNote(MarketNotice.SourceNote), last: true)));
+
+            RefreshMarketRows();
+            App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshMarketRows);
+        }
+
         return Pane(panel);
+    }
+
+    // Keeps the Market data rows honest as the fetch cycle moves through its states. Subscribed
+    // to App.Market.Changed (worker thread): the subscription above uses Dispatcher.BeginInvoke,
+    // not Invoke, because Market.Dispose only drains an in-flight cycle for up to 3s and a
+    // blocking handler here would eat into that budget.
+    private void RefreshMarketRows()
+    {
+        if (_marketToggle == null || _marketRefreshBtn == null || _marketStatusText == null) return;
+
+        var on = App.Settings.Current.MarketDataEnabled == true;
+        // Mirrors the setting rather than trusting its own prior state: consent can in principle
+        // change elsewhere, same reasoning as the Updates toggle re-sync above.
+        _marketToggle.SetOnSilently(on);
+        _marketRefreshBtn.IsEnabled = on && !App.Market.FetchInProgress;
+        _marketStatusText.Text = MarketNotice.StatusLine(
+            App.Settings.Current.LastMarketFetchUtc?.ToLocalTime(), App.Market.LastError);
     }
 
     // Right-aligned dim note, the pattern the Downloading/Verifying mirrors already use.

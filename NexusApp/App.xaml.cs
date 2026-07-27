@@ -32,6 +32,10 @@ public partial class App : Application
     // so the consent gate and throttle read real values; inert in the demo profile.
     public static UpdateService Update { get; private set; } = null!;
 
+    // Live UEX market data (the hourly fetch cycle + in-memory snapshot). Created right after
+    // Update so the consent gate and throttle read real values; inert in the demo profile.
+    public static MarketDataService Market { get; private set; } = null!;
+
     // The app version that ran LAST session (null on fresh installs), captured before this
     // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
     public static string? PreviousSessionVersion { get; private set; }
@@ -210,6 +214,11 @@ public partial class App : Application
             Settings.Save();
         }
 
+        // Market data service: loads any snapshot already on disk and kicks an auto refresh if
+        // the consent toggle and the hourly throttle allow it. Inert in the demo profile.
+        Market = new MarketDataService(Settings);
+        Market.Start();
+
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
         // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before
         // any window exists - MainWindow is created from StartupUri after OnStartup returns.
@@ -370,6 +379,7 @@ public partial class App : Application
         Shards?.Dispose();
         GameLog?.Dispose();
         Network?.Dispose();
+        Market?.Dispose();
         Data?.Dispose();
         // Portable self-swap handoff: spawn the NEW exe as the very LAST action, after every
         // settings and database write above has finished, so the two instances never overlap
