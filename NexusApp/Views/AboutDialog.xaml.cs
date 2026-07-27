@@ -483,6 +483,14 @@ public class AboutDialog : Window
         AddLinkLine(aboutPanel, "Report a bug", "github.com/T3SoD/NexusApp/issues",
             "https://github.com/T3SoD/NexusApp/issues");
 
+        // Task 13: UEX attribution credit, same text style as the info lines above.
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Market prices powered by UEX", FontSize = 12,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 3, 0, 3),
+        });
+
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 

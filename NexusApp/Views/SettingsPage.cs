@@ -566,7 +566,7 @@ public sealed class SettingsPage : UserControl
                     marketRefreshStack, last: false),
                 SettingRow("Source",
                     "Where these prices come from.",
-                    RightNote(MarketNotice.SourceNote), last: true)));
+                    UexBadge(), last: true)));
 
             RefreshMarketRows();
             App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshMarketRows);
@@ -600,6 +600,37 @@ public sealed class SettingsPage : UserControl
         TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
         MaxWidth = 260, TextAlignment = TextAlignment.Right,
     };
+
+    // Official "Powered by UEX" attribution badge (Task 13). Replaces the plain SourceNote
+    // text row: the black rounded mark sits directly on the panel fill, no border, and is
+    // never recolored or restyled (brand asset rule). SourceNote still carries the
+    // accessible name and tooltip so screen readers get the same information sighted users
+    // read off the badge.
+    private static Image UexBadge()
+    {
+        // Capped decode, mirroring GuidesPage.Thumbnail's pattern: the source PNG is
+        // 3840x1138 (~17.5 MB decoded RGBA) but this row only ever shows it at 26px tall.
+        // DecodePixelHeight = 52 (2x display height) keeps it crisp at high DPI without
+        // decoding the full-resolution bitmap.
+        var bmp = new System.Windows.Media.Imaging.BitmapImage();
+        bmp.BeginInit();
+        bmp.UriSource = new Uri("pack://application:,,,/Assets/uex_badge.png", UriKind.Absolute);
+        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        bmp.DecodePixelHeight = 52;
+        bmp.EndInit();
+        bmp.Freeze();
+
+        var badge = new Image
+        {
+            Source = bmp, Height = 26, Stretch = Stretch.Uniform,
+            ToolTip = MarketNotice.SourceNote,
+        };
+        // Note: SettingRow (:939) unconditionally right-aligns any FrameworkElement control it
+        // hosts, so no HorizontalAlignment is set here - it would be dead/contradictory.
+        RenderOptions.SetBitmapScalingMode(badge, BitmapScalingMode.HighQuality);
+        System.Windows.Automation.AutomationProperties.SetName(badge, MarketNotice.SourceNote);
+        return badge;
+    }
 
     // The power-user secondary action on every portable ReadyToInstall row (approved UX:
     // Settings is the surface for hand-managing the swap).
