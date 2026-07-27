@@ -20,7 +20,7 @@ public class TabGlyphSpecsTests
     [Fact]
     public void CoreParts_OnlyNoFlourishes()
     {
-        Assert.Equal(1, TabGlyphSpecs.PartsFor("stats").Count);   // operations pulse path
+        Assert.Single(TabGlyphSpecs.PartsFor("stats"));           // operations pulse path (xUnit2013)
         Assert.Equal(7, TabGlyphSpecs.PartsFor("scan").Count);    // rs brackets + signal lines
         Assert.Equal(3, TabGlyphSpecs.PartsFor("orders").Count);  // refinery layers
         Assert.Equal(5, TabGlyphSpecs.PartsFor("hauling").Count); // cargo box-check
