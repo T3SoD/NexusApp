@@ -97,6 +97,15 @@ public class AppSettings
     // 24-hour auto-check throttle and the "Last checked" row. Null until the first check ever.
     public DateTime? LastUpdateCheckUtc { get; set; }
 
+    // Live market data consent: null = the one-time strip has not been answered, true/false =
+    // the standing choice, changeable anytime in Settings. Off or unanswered means the market
+    // service never touches the network.
+    public bool? MarketDataEnabled { get; set; }
+
+    // UTC instant of the last completed market fetch cycle (success or failure). Null until
+    // the first cycle ever runs. Drives the Settings status line.
+    public DateTime? LastMarketFetchUtc { get; set; }
+
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
     public string? LastSeenVersion { get; set; }
