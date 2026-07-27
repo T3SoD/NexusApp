@@ -40,10 +40,13 @@ public sealed class ExecHangarStatusLine : StackPanel
 {
     private const double DotSize = 7;
     private const double DotGap = 4;
-    private const double ItemGap = 6;
 
     private readonly bool _compact;
     private readonly string _surfaceName;
+    // Fix round (task 4, 320px overflow): standard mode keeps the original 6px between row-1
+    // items; compact mode tightens to 4px (authorized remedy - dot spacing is untouched, still
+    // DotGap 4px in both modes).
+    private readonly double _itemGap;
 
     private readonly Ellipse[] _dots = new Ellipse[5];
     private readonly TextBlock _phaseText;
@@ -60,6 +63,7 @@ public sealed class ExecHangarStatusLine : StackPanel
     {
         _compact = compact;
         _surfaceName = surfaceName;
+        _itemGap = compact ? 4 : 6;
 
         var dotsPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         for (var i = 0; i < _dots.Length; i++)
@@ -76,7 +80,7 @@ public sealed class ExecHangarStatusLine : StackPanel
         _phaseText = new TextBlock
         {
             FontFamily = Hud.Font("TechFont"), FontSize = compact ? 10 : 11, FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
         };
 
         // Owner ruling (live run 2026-07-27): say what the number counts down TO ("closes in" /
@@ -84,19 +88,19 @@ public sealed class ExecHangarStatusLine : StackPanel
         _verbText = new TextBlock
         {
             FontSize = compact ? 9.5 : 10.5, Foreground = Hud.Br("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
         };
 
         _countdownText = new TextBlock
         {
             FontFamily = Hud.Font("MonoFont"), FontSize = compact ? 10 : 11, Foreground = Hud.Br("FgBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
         };
 
         _tailText = new TextBlock
         {
             Text = "still active", FontSize = compact ? 9 : 10, Foreground = Hud.Br("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
             Visibility = Visibility.Collapsed,
         };
 
@@ -104,7 +108,7 @@ public sealed class ExecHangarStatusLine : StackPanel
         {
             Text = "Re-anchor", FontFamily = Hud.Font("UiFont"), FontSize = compact ? 9.5 : 10.5,
             Foreground = Hud.Br("AccentBrush"), Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
         };
         reanchor.MouseEnter += (_, _) => reanchor.TextDecorations = TextDecorations.Underline;
         reanchor.MouseLeave += (_, _) => reanchor.TextDecorations = null;
@@ -114,7 +118,7 @@ public sealed class ExecHangarStatusLine : StackPanel
         {
             Text = "Reset", FontFamily = Hud.Font("UiFont"), FontSize = compact ? 9.5 : 10.5,
             Foreground = Hud.Br("FgDimBrush"), Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(ItemGap, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
             Visibility = Visibility.Collapsed,
         };
         _resetLink.MouseEnter += (_, _) => _resetLink.TextDecorations = TextDecorations.Underline;
