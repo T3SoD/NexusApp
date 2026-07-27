@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.9.0  -  Jul 26, 2026",
+        [
+            "The portable version now installs updates itself - click Install update and Nexus verifies the files again, swaps them in place, and restarts as the new version",
+            "Every update file is checked against the signed manifest before it lands, and an interrupted update is undone automatically the next time Nexus starts",
+            "Locations that do not allow the self-swap (a protected folder, a network drive) get a guided manual update - Nexus unpacks the new version and opens both folders for one quick copy",
+            "The portable README now explains the update flow",
+        ]),
         ("App  6.8.1  -  Jul 26, 2026",
         [
             "Clearer update messages - a failed update check now says why, in Settings and in the log: the release is not signed yet, the signature is missing, or the connection failed, instead of a raw error code",
