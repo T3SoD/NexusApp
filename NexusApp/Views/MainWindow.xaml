@@ -1159,9 +1159,42 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel x:Name="ReferenceList"/>
-                            </ScrollViewer>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <!-- Sticky sell-column header, shown only when live market prices are on AND a
+                                     snapshot exists (BuildReferenceTree drives it). Collapsed it costs zero
+                                     height, so with the feature off the list fills the border exactly as before.
+                                     Right inset 26 = card padding 12 + card margin 8 + the themed 6px scrollbar,
+                                     so the label sits over the price values. -->
+                                <Border x:Name="ReferenceSortHeader" Grid.Row="0" Visibility="Collapsed"
+                                        Background="Transparent" HorizontalAlignment="Right"
+                                        Margin="0,0,26,6" Padding="6,2,0,2" Cursor="Hand"
+                                        ToolTip="Sort by sell price: highest, then lowest, then back to codex order"
+                                        MouseLeftButtonDown="ReferenceSortHeader_Click">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="TextElement.Foreground" Value="{StaticResource FgDimBrush}"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="TextElement.Foreground" Value="{StaticResource FgBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Sell avg/SCU" FontFamily="{StaticResource UiFont}"
+                                                   FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ReferenceSortCaret" Text="" FontSize="10"
+                                                   VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="ReferenceList"/>
+                                </ScrollViewer>
+                            </Grid>
                         </Border>
                         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="16,0,0,0">
                             <StackPanel x:Name="ReferenceDetailPanel"/>

@@ -40,10 +40,10 @@ public partial class MainWindow : Window
         RefreshOwnerTools();
         NexusApp.Services.GatePreview.Changed += () => Dispatcher.Invoke(OnGatePreviewChanged);
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
-        // Keeps the hero decoder card's live sell line current as fetch cycles land. Fired on a
-        // worker thread; BeginInvoke (not Invoke) matches the SettingsPage market subscription,
-        // since Market.Dispose only drains an in-flight cycle for up to 3s.
-        App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshHeroMarket);
+        // Keeps the price surfaces current as fetch cycles land. Fired on a worker thread;
+        // BeginInvoke (not Invoke) matches the SettingsPage market subscription, since
+        // Market.Dispose only drains an in-flight cycle for up to 3s.
+        App.Market.Changed += () => Dispatcher.BeginInvoke(OnMarketDataChanged);
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -355,6 +355,7 @@ public partial class MainWindow : Window
             Logger.Info("[NET] market consent: enabled");
             App.Market.MaybeAutoRefresh();
             RefreshMarketConsent();
+            RefreshCodexPrices();
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>
@@ -363,15 +364,18 @@ public partial class MainWindow : Window
             App.Settings.Save();
             Logger.Info("[NET] market consent: declined");
             RefreshMarketConsent();
+            RefreshCodexPrices();
         };
         // Both buttons are ghost StripButtons by design (mock review ruling): the accent
         // "Turn on" from the mock is deliberately NOT copied.
         MarketConsentHost.Content = Hud.NoticeStrip(MarketNotice.ConsentEyebrow, MarketNotice.ConsentBody,
                                                     new[] { enable, decline }, onDismiss: null);
         MarketConsentHost.Visibility = Visibility.Visible;
-        // Tasks 9-11 hook the answered-consent rebuild of the active page's price surfaces here
-        // (the decoder value line, the codex column/dossier block, the refinery card sell line);
-        // today there is nothing price-shaped on the pages yet, so collapsing the host is enough.
+        // Both answers call RefreshCodexPrices, so answering "Turn on" while standing on the Codex
+        // grows the sell column as soon as a snapshot exists (a cached one right away, a first-ever
+        // fetch when the cycle publishes) without the user having to leave and re-enter the page.
+        // The decoder line needs no equivalent - it repaints on its next decode - and the refinery
+        // card sell line lands in Task 11.
     }
 
     // Brief holographic page-in (fade + rise) played whenever a tab becomes active, extending the
@@ -957,6 +961,22 @@ public partial class MainWindow : Window
         host.Children.Add(rows);
     }
 
+    // ── Market data fan-out ───────────────────────────────────────────────────
+    // Single UI-thread landing point for a published snapshot: every price surface this window
+    // owns refreshes from here, so the service keeps exactly one subscriber.
+    private void OnMarketDataChanged()
+    {
+        RefreshHeroMarket();
+        RefreshCodexPrices();
+    }
+
+    // Rebuilds the Codex only while it is the page on screen; from anywhere else the prices are
+    // picked up by SetActivePage's own BuildReferenceTree when the user next opens the Codex.
+    private void RefreshCodexPrices()
+    {
+        if (_activePage == "reference") BuildReferenceTree(staggerEntry: false);
+    }
+
     // ── RS Decoder live sell line (market data, Task 9) ────────────────────────
     // One line under the hero card: the best raw-ore sell UEX has for this resource, with its age
     // or (when stale) the patch it was captured in - data honesty means a price never renders
@@ -1179,6 +1199,11 @@ public partial class MainWindow : Window
     private Action? _deselectRefCard;   // resets the currently-selected resource card's chamfer visuals
     private readonly Dictionary<string, Action> _refSelectByName = new(StringComparer.OrdinalIgnoreCase);   // select a resource card by name
 
+    // Codex list sort: "default" (rarity rank then RS desc), "sellDesc", "sellAsc". Only the sell
+    // column is sortable, and only while live market prices are on with a snapshot loaded - the
+    // gate in BuildReferenceTree resets this to "default" the moment either goes away.
+    private string _refSort = "default";
+
     private Dictionary<string, string>? _oreClassByName;   // ore -> Metal/Mineral/Gem ("" when unknown)
 
     private string OreClass(string name)
@@ -1253,6 +1278,22 @@ public partial class MainWindow : Window
             .ThenByDescending(r => r.BaseRs)
             .ToList();
 
+        // Sell prices are resolved once per rebuild, here: the sort keys and the cards' price cells
+        // both read this dictionary, so a rebuild never queries the snapshot twice for one ore.
+        // Null = the column does not exist this rebuild (feature off or no snapshot yet).
+        var sellHits = BuildSellHits(filtered);
+        if (sellHits != null && _refSort != "default")
+        {
+            // Unmapped ores (no dictionary entry, or no priced row) sink to the bottom in BOTH
+            // directions. OrderBy is stable, so the rarity/RS order above survives as the tiebreak.
+            double Price(Resource r) => sellHits.TryGetValue(r.Name, out var h) && h != null ? h.Display : -1;
+            filtered = (_refSort == "sellDesc"
+                    ? filtered.OrderBy(r => Price(r) < 0 ? 1 : 0).ThenByDescending(Price)
+                    : filtered.OrderBy(r => Price(r) < 0 ? 1 : 0).ThenBy(Price))
+                .ToList();
+        }
+        UpdateReferenceSortHeader(sellHits != null && filtered.Count > 0);
+
         if (filtered.Count == 0)
         {
             _codexHologram?.Stop();   // the detail panel is going away - do not rely on Unloaded timing
@@ -1269,7 +1310,7 @@ public partial class MainWindow : Window
         Action? selectFirst = null;
         for (int i = 0; i < filtered.Count; i++)
         {
-            var card = BuildResourceCard(filtered[i], out var select);
+            var card = BuildResourceCard(filtered[i], sellHits, out var select);
             ReferenceList.Children.Add(card);
             _refSelectByName[filtered[i].Name] = select;
             if (i == 0) selectFirst = select;
@@ -1297,7 +1338,53 @@ public partial class MainWindow : Window
         }
     }
 
-    private FrameworkElement BuildResourceCard(Resource r, out Action select)
+    /// <summary>
+    /// Best raw sell per resource for one Codex rebuild, or null when the sell column must not
+    /// exist at all: live market prices off, or on with no snapshot fetched yet. Gated off, the
+    /// sort state goes back to "default" too, so the list is byte-for-byte the pre-feature codex.
+    /// </summary>
+    private Dictionary<string, PriceHit?>? BuildSellHits(List<Resource> resources)
+    {
+        if (App.Settings.Current.MarketDataEnabled != true || App.Market.Snapshot is not { } snap)
+        {
+            _refSort = "default";
+            return null;
+        }
+
+        var hits = new Dictionary<string, PriceHit?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in resources) hits[r.Name] = MarketQueries.BestRawSell(snap, r.Name);
+        return hits;
+    }
+
+    // Shows/hides the sticky sell header and paints its state: amber label plus a direction caret
+    // while a sell sort is active, the inherited dim/hover treatment otherwise.
+    private void UpdateReferenceSortHeader(bool show)
+    {
+        if (ReferenceSortHeader == null) return;
+        ReferenceSortHeader.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ReferenceSortCaret.Text = _refSort switch { "sellDesc" => "▾", "sellAsc" => "▴", _ => "" };
+        if (_refSort == "default")
+            ReferenceSortHeader.ClearValue(System.Windows.Documents.TextElement.ForegroundProperty);
+        else
+            System.Windows.Documents.TextElement.SetForeground(ReferenceSortHeader, (System.Windows.Media.Brush)FindResource("AccentBrush"));
+    }
+
+    // The Codex's one sortable column. Click cycles codex order -> highest sell -> lowest sell ->
+    // codex order. The rebuild's own 120ms settle fade is the sort animation; there is deliberately
+    // no per-row reorder choreography.
+    private void ReferenceSortHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        _refSort = _refSort switch
+        {
+            "default"  => "sellDesc",
+            "sellDesc" => "sellAsc",
+            _          => "default",
+        };
+        InteractionLog.Click("codex sort: " + _refSort, ReferenceSortHeader);
+        BuildReferenceTree(staggerEntry: false);
+    }
+
+    private FrameworkElement BuildResourceCard(Resource r, IReadOnlyDictionary<string, PriceHit?>? sellHits, out Action select)
     {
         var rb          = RarityBrush(r.Rarity);   // semantic rarity color (kept)
         var bg2         = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
@@ -1321,6 +1408,20 @@ public partial class MainWindow : Window
         var rs = new TextBlock { Text = r.BaseRs > 0 ? $"RS {r.BaseRs:N0}" : "-", FontSize = 12, FontFamily = headFont, Foreground = (System.Windows.Media.Brush)FindResource("GoldBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(rs, 3); grid.Children.Add(rs);
 
+        // Sell column: added only when live market prices are on with a snapshot (sellHits != null),
+        // so with the feature off the card keeps its original four columns exactly. An ore the
+        // snapshot has no price for keeps the column but leaves the cell empty, never a placeholder.
+        if (sellHits != null)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            sellHits.TryGetValue(r.Name, out var hit);
+            if (hit != null)
+            {
+                var cell = SellCell(hit);
+                Grid.SetColumn(cell, 4); grid.Children.Add(cell);
+            }
+        }
+
         var host = Hud.CardFrame(grid, out var frame, out _, chamfer: 8, padding: new Thickness(12, 9, 12, 9));
         host.Margin = new Thickness(0, 0, 8, 6);
         host.Cursor = System.Windows.Input.Cursors.Hand;
@@ -1339,6 +1440,63 @@ public partial class MainWindow : Window
         host.MouseLeave += (s, e) => { if (!ReferenceEquals(host, _selectedRefCard)) frame.Fill = bg2; };
         host.MouseLeftButtonDown += (s, e) => sel();
         return host;
+    }
+
+    // One Codex row's price: the week-average sell per SCU in gold. When the freshest priced row
+    // for that ore comes from an older game patch the number goes dim and carries the patch tag,
+    // so a stale price is never signalled by colour alone.
+    private static FrameworkElement SellCell(PriceHit hit)
+    {
+        var value = new TextBlock
+        {
+            Text = hit.Display.ToString("n0"),
+            FontSize = 12,
+            FontFamily = Hud.Font("HeadFont"),
+            Foreground = Hud.Br(hit.Stale ? "FgDimBrush" : "GoldBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        if (!hit.Stale)
+        {
+            value.Margin = new Thickness(12, 0, 0, 0);
+            return value;
+        }
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(12, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        row.Children.Add(value);
+        row.Children.Add(PatchTagChip(hit.GameVersion));
+        return row;
+    }
+
+    // Stale-price marker in the dock count-chip geometry: mono 9 bold on a 0x1F tint of the dim
+    // text colour, 0x66 border, radius 3.
+    private static Border PatchTagChip(string gameVersion)
+    {
+        var c = ((System.Windows.Media.SolidColorBrush)Hud.Br("FgDimBrush")).Color;
+        return new Border
+        {
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1F, c.R, c.G, c.B)),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x66, c.R, c.G, c.B)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = MarketNotice.PatchTag(gameVersion),
+                FontFamily = Hud.Font("MonoFont"),
+                FontSize = 9,
+                FontWeight = FontWeights.Bold,
+                Foreground = Hud.Br("FgDimBrush"),
+            },
+        };
     }
 
     private TextBlock RefSectionLabel(string text) => new TextBlock
