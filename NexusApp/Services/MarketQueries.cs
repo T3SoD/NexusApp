@@ -1,0 +1,128 @@
+using System.Linq;
+
+namespace NexusApp.Services;
+
+// One priced sighting of a commodity at one terminal, the shape every price surface (Cargo
+// Hauling, work order suggestions, the Mining Codex) reads. WeekAvg / Instant / GameVersion /
+// ModifiedUtc are carried straight from the MarketPriceRow the hit was built from; Stale is
+// computed once here so callers never re-derive it.
+internal sealed record PriceHit(string TerminalName, double WeekAvg, double Instant, DateTime ModifiedUtc, string GameVersion, bool Stale)
+{
+    // The number every surface displays: week average, falling back to instant when week is 0.
+    public double Display => WeekAvg > 0 ? WeekAvg : Instant;
+}
+
+// The pure query layer over a MarketSnapshot: seed resource name -> UEX raw commodity -> price
+// rows, ranked so a fresh row always beats a stale one regardless of price. No I/O, no mutation
+// of the snapshot; every method is a straight read. Internal because callers are all within
+// NexusApp (price surfaces, the work order flow).
+internal static class MarketQueries
+{
+    // Session-lifetime guard: a seed resource name with no UEX mapping is logged the first time
+    // any query touches it and never again, so a resource missing from MarketNameMap (or a typo
+    // in caller code) does not spam nexus.log on every repaint of a price surface. Keyed
+    // case-insensitively to match MarketNameMap.UexRawNameFor's own lookup.
+    private static readonly HashSet<string> _loggedMisses = new(StringComparer.OrdinalIgnoreCase);
+
+    // The single best (freshest, then highest-Display) sell for a raw ore, or null when the
+    // snapshot is null, the resource name is unmapped, or there are no qualifying rows.
+    public static PriceHit? BestRawSell(MarketSnapshot? s, string seedResourceName) =>
+        TopRawSells(s, seedResourceName, 1).FirstOrDefault();
+
+    // The top `count` sells for a raw ore: fresh rows first (each ranked by Display desc), then
+    // stale rows (also ranked by Display desc). Rows with Display <= 0 never appear.
+    public static List<PriceHit> TopRawSells(MarketSnapshot? s, string seedResourceName, int count)
+    {
+        if (s is null) return new List<PriceHit>();
+        var raw = ResolveRawCommodity(s, seedResourceName);
+        if (raw is null) return new List<PriceHit>();
+        return RankedHits(s.LiveGameVersion, s.RawPrices.Rows, raw.Id, count);
+    }
+
+    // The single best sell for a raw ore's REFINED counterpart (idParent link, falling back to
+    // the " (Raw)"/" (Ore)" name-strip match), or null when the resource, its raw commodity, or
+    // its refined counterpart cannot be resolved, or there are no qualifying refined-price rows.
+    public static PriceHit? BestRefinedSell(MarketSnapshot? s, string seedResourceName)
+    {
+        if (s is null) return null;
+        var raw = ResolveRawCommodity(s, seedResourceName);
+        if (raw is null) return null;
+        var refined = MarketNameMap.RefinedFor(raw, s.Commodities.Rows);
+        if (refined is null) return null;
+        return RankedHits(s.LiveGameVersion, s.RefinedPrices.Rows, refined.Id, 1).FirstOrDefault();
+    }
+
+    // For a work order's free text: every seed resource name RecognizeSeedNames finds, resolved
+    // to its best refined sell, ordered by Hit.Display descending. A recognized name that fails
+    // to resolve to a priced refined row (no commodity match, no rows) is silently dropped, same
+    // as everywhere else in this class - never a throw, never a placeholder entry.
+    public static List<(string SeedName, PriceHit Hit)> RefinedSellsForOrder(MarketSnapshot? s, string resourcesFreeText)
+    {
+        var result = new List<(string SeedName, PriceHit Hit)>();
+        if (s is null) return result;
+
+        foreach (var name in MarketNameMap.RecognizeSeedNames(resourcesFreeText))
+        {
+            var hit = BestRefinedSell(s, name);
+            if (hit is not null) result.Add((name, hit));
+        }
+
+        return result.OrderByDescending(x => x.Hit.Display).ToList();
+    }
+
+    // Seed resource name -> its raw MarketCommodity row, via MarketNameMap.UexRawNameFor then a
+    // case-insensitive name match against the snapshot's commodity catalogue. Null on either
+    // failure; an unmapped name is logged once per session here (RefinedFor's own resolution
+    // path also goes through this method, so the miss is never logged twice for one name).
+    private static MarketCommodity? ResolveRawCommodity(MarketSnapshot s, string seedResourceName)
+    {
+        var uexName = MarketNameMap.UexRawNameFor(seedResourceName);
+        if (uexName is null)
+        {
+            LogMissOnce(seedResourceName);
+            return null;
+        }
+
+        foreach (var c in s.Commodities.Rows)
+        {
+            if (string.Equals(c.Name, uexName, StringComparison.OrdinalIgnoreCase)) return c;
+        }
+        return null;
+    }
+
+    private static void LogMissOnce(string seedResourceName)
+    {
+        lock (_loggedMisses)
+        {
+            if (!_loggedMisses.Add(seedResourceName)) return;
+        }
+        Logger.Info($"{MarketDataService.Tag} no UEX mapping for '{seedResourceName}'");
+    }
+
+    // Rows for one commodity id -> ranked PriceHits: fresh before stale, Display desc within
+    // each class, Display <= 0 dropped, truncated to count. Shared by the raw and refined paths;
+    // the only difference between them is which row list and commodity id they pass in.
+    private static List<PriceHit> RankedHits(string liveGameVersion, List<MarketPriceRow> rows, int commodityId, int count)
+    {
+        var hits = new List<PriceHit>();
+        foreach (var row in rows)
+        {
+            if (row.CommodityId != commodityId) continue;
+
+            // Nothing is stale when the live version is unknown (empty): a snapshot that has
+            // never successfully fetched game_versions must not brand every row stale.
+            var stale = !string.IsNullOrEmpty(liveGameVersion)
+                && !string.Equals(row.GameVersion, liveGameVersion, StringComparison.OrdinalIgnoreCase);
+
+            var hit = new PriceHit(row.TerminalName, row.SellAvgWeek, row.Sell, row.ModifiedUtc, row.GameVersion, stale);
+            if (hit.Display <= 0) continue;
+            hits.Add(hit);
+        }
+
+        return hits
+            .OrderBy(h => h.Stale)             // false (fresh) sorts before true (stale)
+            .ThenByDescending(h => h.Display)
+            .Take(count)
+            .ToList();
+    }
+}
