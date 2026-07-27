@@ -41,10 +41,11 @@ GETTING STARTED
 4. Open the extracted folder.
 5. Double-click "NexusApp.exe" to start NexusApp.
 
-NexusApp needs no installation. NexusApp needs no internet connection
-for its features. NexusApp stores your settings and work orders on
-your PC. NexusApp can check for updates, but only when you allow it.
-See the UPDATES section below.
+NexusApp needs no installation. NexusApp does not need the internet to
+run. Two features use the internet. Both features are optional: update
+checks and live market prices. Both stay off until you turn them on.
+NexusApp stores your settings and work orders on your PC. See the
+UPDATES section and the LIVE MARKET PRICES section below.
 
 
 WINDOWS SMARTSCREEN WARNING
@@ -98,6 +99,29 @@ UPDATES
 
   If an update stops before it completes, NexusApp puts the previous
   version back the next time it starts.
+
+
+LIVE MARKET PRICES
+------------------
+
+  Live market prices are off until you turn them on. NexusApp asks you
+  one time, when you first open a page that shows prices (RS Signal
+  Decoder, Mining Codex, or Refinery Tracker). You can also turn this
+  on or off in SETTINGS.
+
+  When you turn this on, NexusApp gets sell prices from UEX. UEX is a
+  community-run price database. NexusApp refreshes the prices about
+  one time each hour while it is open. NexusApp sends only its app
+  name and version with each request. NexusApp sends no account, no
+  key, and nothing about you.
+
+  NexusApp shows these prices on the RS SIGNAL DECODER, the MINING
+  CODEX, and the REFINERY TRACKER.
+
+  NexusApp saves the prices on your PC. NexusApp works fully offline
+  from these saved prices between fetches. UEX prices come from the
+  community. Prices can be old. NexusApp shows the age of each price
+  next to it.
 
 
 FIRST TIME SETUP
