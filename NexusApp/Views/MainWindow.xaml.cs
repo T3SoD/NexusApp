@@ -1499,6 +1499,125 @@ public partial class MainWindow : Window
         };
     }
 
+    // Column header above the dossier price rows (Task 11 fix round, mock CSS .colhdr @
+    // nexus-design-lab/market-data/index.html:172-175): dim, bold, 9px, uppercase labels in the
+    // SAME 4-column layout as MarketPriceRow (Star/104/96/132, 10px gaps) so the header lines up
+    // with the numeric columns below it. Callers only add this alongside actual rows (see the
+    // gate in ShowResourceDetail) - it never renders alone over an empty section.
+    private FrameworkElement MarketPriceColumnHeader()
+    {
+        var dimBrush = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+
+        var g = new Grid { Margin = new Thickness(12, 0, 12, 5) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });
+
+        TextBlock Hdr(string text, Thickness margin) => new TextBlock
+        {
+            Text = text, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dimBrush,
+            HorizontalAlignment = HorizontalAlignment.Right, Margin = margin,
+        };
+
+        var term = Hdr("TERMINAL", new Thickness(0));
+        term.HorizontalAlignment = HorizontalAlignment.Left;
+        g.Children.Add(term);
+        var avg = Hdr("WEEK AVG", new Thickness(10, 0, 0, 0));
+        Grid.SetColumn(avg, 1); g.Children.Add(avg);
+        var now = Hdr("NOW", new Thickness(10, 0, 0, 0));
+        Grid.SetColumn(now, 2); g.Children.Add(now);
+        var upd = Hdr("UPDATED", new Thickness(10, 0, 0, 0));
+        Grid.SetColumn(upd, 3); g.Children.Add(upd);
+
+        return g;
+    }
+
+    // One row in the dossier's MARKET PRICES section (Task 11; restructured in the fix round to
+    // match the approved mock, nexus-design-lab/market-data/index.html:592-623 markup / :157-175
+    // CSS - see task-11-report.md for the full mapping): a single-line 4-column grid (Star/104
+    // week avg/96 now/132 updated, matching MarketPriceColumnHeader) instead of the original
+    // 3-column stacked layout. Week average falls back to instant per PriceHit.Display so a
+    // week-less row never shows a bare 0; the raw instant price still shows separately as "now".
+    // Either the row's age or - when its price is from an older game patch - the same patch-tag
+    // chip the Codex list's sell column uses (Task 10, PatchTagChip above) fills the Updated
+    // column. A stale row goes fully dim: every text element drops to FgDimBrush so staleness
+    // reads at a glance rather than depending on the small chip alone.
+    private Border MarketPriceRow(PriceHit hit)
+    {
+        var dimBrush  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var nameBrush = hit.Stale ? dimBrush : (System.Windows.Media.Brush)FindResource("FgBrush");
+        var goldBrush = hit.Stale ? dimBrush : (System.Windows.Media.Brush)FindResource("GoldBrush");
+        var cyanBrush = hit.Stale ? dimBrush : (System.Windows.Media.Brush)FindResource("CyanBrush");
+
+        var row = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 7, 12, 7),
+            CornerRadius = new CornerRadius(6),
+            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1),
+        };
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });   // terminal name
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });                    // week avg
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });                     // now
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });                    // updated / patch tag
+
+        // Terminal name keeps TextWrapping.Wrap (brief's explicit, deliberate override of the
+        // mock's single-line ellipsis - see task-11-report.md fix-round mapping).
+        var name = new TextBlock
+        {
+            Text = hit.TerminalName, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = nameBrush,
+            TextWrapping = System.Windows.TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
+        };
+        g.Children.Add(name);
+
+        var avg = new TextBlock
+        {
+            Text = hit.Display.ToString("n0"), FontSize = 13, Foreground = goldBrush,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(avg, 1);
+        g.Children.Add(avg);
+
+        // "now": value then the dim "now" label, baseline-together, right-justified as one block -
+        // mock markup order is value-first (.pnowval) then label (.pnowlbl), not "now <value>".
+        var nowRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+        };
+        nowRow.Children.Add(new TextBlock { Text = hit.Instant.ToString("n0"), FontSize = 12, Foreground = cyanBrush, VerticalAlignment = VerticalAlignment.Bottom });
+        nowRow.Children.Add(new TextBlock { Text = "now", FontSize = 10, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 0, 0) });
+        Grid.SetColumn(nowRow, 2);
+        g.Children.Add(nowRow);
+
+        FrameworkElement updated;
+        if (hit.Stale)
+        {
+            var chip = PatchTagChip(hit.GameVersion);
+            chip.HorizontalAlignment = HorizontalAlignment.Right;
+            updated = chip;
+        }
+        else
+        {
+            updated = new TextBlock
+            {
+                Text = MarketNotice.FormatAge(DateTime.UtcNow - hit.ModifiedUtc), FontSize = 10,
+                Foreground = dimBrush, HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+            };
+        }
+        Grid.SetColumn(updated, 3);
+        g.Children.Add(updated);
+
+        row.Child = g;
+        return row;
+    }
+
     private TextBlock RefSectionLabel(string text) => new TextBlock
     {
         Text = text, FontSize = 9, FontWeight = FontWeights.Bold,
@@ -1970,6 +2089,41 @@ public partial class MainWindow : Window
                 for (int i = show; i < sorted.Count; i++) more.Children.Add(YieldRow(sorted[i]));
                 ReferenceDetailPanel.Children.Add(more);
                 ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {sorted.Count}", "Show fewer", more));
+            }
+        }
+
+        // live market prices - top raw sells for this ore, UEX community data (Tasks 9-11). Gated
+        // on three things together: feature on, a snapshot has landed, and this ore actually has
+        // priced rows - a resource with no UEX mapping or no qualifying rows adds nothing here at
+        // all, matching every other price surface's silence-over-placeholder rule (no empty label).
+        if (App.Settings.Current.MarketDataEnabled == true && App.Market.Snapshot is { } marketSnap)
+        {
+            var priceHits = MarketQueries.TopRawSells(marketSnap, r.Name, 3);
+            if (priceHits.Count > 0)
+            {
+                ReferenceDetailPanel.Children.Add(RefSectionLabel(MarketNotice.DossierSection));
+                ReferenceDetailPanel.Children.Add(MarketPriceColumnHeader());
+                foreach (var hit in priceHits)
+                    ReferenceDetailPanel.Children.Add(MarketPriceRow(hit));
+
+                ReferenceDetailPanel.Children.Add(new TextBlock
+                {
+                    Text = MarketNotice.DossierFooter, FontSize = 10.5, Foreground = dim,
+                    Margin = new Thickness(0, 2, 0, 0),
+                });
+
+                // The dossier is the one surface that carries the snapshot-age note (the decoder
+                // line and Codex list rows are single-line and show age per row instead) - only
+                // when the whole snapshot, not just this ore's rows, is more than a day old.
+                var snapshotAge = DateTime.UtcNow - marketSnap.NewestFetchUtc;
+                if (snapshotAge > TimeSpan.FromHours(24))
+                {
+                    ReferenceDetailPanel.Children.Add(new TextBlock
+                    {
+                        Text = MarketNotice.SnapshotAgeNote(snapshotAge), FontSize = 10.5, FontFamily = monoFont,
+                        Foreground = dim, Margin = new Thickness(0, 2, 0, 0),
+                    });
+                }
             }
         }
 
