@@ -106,12 +106,11 @@ internal static class MarketParse
                 if (row.ValueKind == JsonValueKind.Object
                     && TryInt(row, "id", out var id)
                     && TryStr(row, "name", out var name)
-                    && TryStr(row, "slug", out var slug)
                     && TryBool01(row, "is_raw", out var isRaw)
                     && TryBool01(row, "is_refined", out var isRefined)
                     && TryInt(row, "id_parent", out var idParent))
                 {
-                    result.Add(new MarketCommodity(id, name, slug, isRaw, isRefined, idParent));
+                    result.Add(new MarketCommodity(id, name, SlugOf(row), isRaw, isRefined, idParent));
                 }
                 else
                 {
@@ -131,7 +130,9 @@ internal static class MarketParse
         return result;
     }
 
-    // Shared shape for /commodities_raw_prices_all and /commodities_prices.
+    // Shared shape for the two per-commodity price endpoints, /commodities_raw_prices and
+    // /commodities_prices. NOT the bulk /commodities_raw_prices_all, whose live rows are reduced
+    // (no price_sell_avg_week, no game_version, an abbreviated terminal_name) and so skip here.
     public static List<MarketPriceRow> ParsePriceRows(string body, out int skipped)
     {
         var result = new List<MarketPriceRow>();
@@ -246,6 +247,17 @@ internal static class MarketParse
             return new List<MarketTerminal>();
         }
         return result;
+    }
+
+    // Slug is display and debug only: nothing keys off it, so it must never cost us a row. The
+    // live /commodities rows carry "code" (for example "BEXA") and no "slug" at all, which is
+    // what silently skipped all 204 rows on the first real run. Order: slug, then code lowered,
+    // then empty.
+    private static string SlugOf(JsonElement row)
+    {
+        if (TryStr(row, "slug", out var slug) && slug.Length > 0) return slug;
+        if (TryStr(row, "code", out var code) && code.Length > 0) return code.ToLowerInvariant();
+        return "";
     }
 
     private static bool TryInt(JsonElement obj, string prop, out int value)

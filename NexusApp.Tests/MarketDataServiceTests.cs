@@ -71,6 +71,9 @@ public class MarketDataServiceTests : IDisposable
     }
 
     private static string Url(string endpoint) => MarketDataService.BaseUrl + endpoint;
+    // Both price legs are per commodity id. The raw one uses the FILTERED endpoint, because the
+    // bulk commodities_raw_prices_all returns rows the parser rejects.
+    private static string RawUrl(int id) => Url($"commodities_raw_prices?id_commodity={id}");
     private static string RefinedUrl(int id) => Url($"commodities_prices?id_commodity={id}");
 
     private const string GameVersionsBody = """{"status":"ok","data":{"live":"4.9.1","ptu":"4.10.0"}}""";
@@ -108,7 +111,8 @@ public class MarketDataServiceTests : IDisposable
     {
         t.Responses[Url("game_versions")] = GameVersionsBody;
         t.Responses[Url("commodities")] = CommoditiesBody;
-        t.Responses[Url("commodities_raw_prices_all")] = PricesBody((100, 10, 50), (101, 20, 60));
+        t.Responses[RawUrl(10)] = PricesBody((100, 10, 50));
+        t.Responses[RawUrl(20)] = PricesBody((101, 20, 60));
         t.Responses[RefinedUrl(11)] = PricesBody((200, 11, 500));
         t.Responses[RefinedUrl(21)] = PricesBody((201, 21, 600));
         t.Responses[Url("refineries_yields")] = YieldsBody;
@@ -132,8 +136,8 @@ public class MarketDataServiceTests : IDisposable
     // meaning against the 24h reference interval as the wall clock moves past it.
     private static DateTime OldStamp => DateTime.UtcNow - TimeSpan.FromHours(48);
 
-    // A previous run's snapshot: the same four commodities plus refined rows for both ids, all
-    // stamped in the past so the cycle sees them as carried-over data.
+    // A previous run's snapshot: the same four commodities plus raw and refined rows for both
+    // ids, all stamped in the past so the cycle sees them as carried-over data.
     private static MarketSnapshot PreviousSnapshot(DateTime stamp, DateTime? referenceStamp = null) => new()
     {
         Schema = 1,
@@ -147,6 +151,15 @@ public class MarketDataServiceTests : IDisposable
                 new(11, "Bexalite", "bexalite", false, true, 0),
                 new(20, "Gold (Ore)", "gold-ore", true, false, 21),
                 new(21, "Gold", "gold", false, true, 0),
+            },
+        },
+        RawPrices = new MarketDataset<MarketPriceRow>
+        {
+            FetchedUtc = stamp,
+            Rows = new List<MarketPriceRow>
+            {
+                new(800, 10, 11, 11, "4.8.0", stamp, "Old outpost 10"),
+                new(801, 20, 22, 22, "4.8.0", stamp, "Old outpost 20"),
             },
         },
         RefinedPrices = new MarketDataset<MarketPriceRow>
@@ -207,7 +220,17 @@ public class MarketDataServiceTests : IDisposable
         Assert.Single(snap.Yields.Rows);
         Assert.Single(snap.Terminals.Rows);
         Assert.NotEqual(default, snap.Commodities.FetchedUtc);
+        Assert.NotEqual(default, snap.RawPrices.FetchedUtc);
         Assert.NotEqual(default, snap.RefinedPrices.FetchedUtc);
+
+        // The raw leg asks for the two mapped ore ids, per id, and never touches the bulk
+        // endpoint (whose live rows the parser rejects).
+        Assert.Equal(1, t.CountOf(RawUrl(10)));
+        Assert.Equal(1, t.CountOf(RawUrl(20)));
+        Assert.Equal(2, t.Requested.Count(u => u.StartsWith(Url("commodities_raw_prices"), StringComparison.Ordinal)));
+        Assert.DoesNotContain(Url("commodities_raw_prices_all"), t.Requested);
+        Assert.Contains(snap.RawPrices.Rows, r => r.CommodityId == 10 && r.TerminalId == 100);
+        Assert.Contains(snap.RawPrices.Rows, r => r.CommodityId == 20 && r.TerminalId == 101);
 
         // The refined leg asks for the two resolved parent ids and nothing else.
         Assert.Equal(1, t.CountOf(RefinedUrl(11)));
@@ -263,7 +286,9 @@ public class MarketDataServiceTests : IDisposable
         Assert.Equal(2, snap.RawPrices.Rows.Count);
         Assert.True(snap.RawPrices.FetchedUtc > previousStamp);
         Assert.Single(snap.Terminals.Rows);
-        // The carried-over commodity rows still drive the refined leg.
+        // The carried-over commodity rows still drive BOTH per-id legs.
+        Assert.Equal(1, t.CountOf(RawUrl(10)));
+        Assert.Equal(1, t.CountOf(RawUrl(20)));
         Assert.Equal(1, t.CountOf(RefinedUrl(11)));
         Assert.Equal(1, t.CountOf(RefinedUrl(21)));
 
@@ -306,7 +331,32 @@ public class MarketDataServiceTests : IDisposable
         Assert.Null(svc.LastError);
     }
 
-    // ── (d) Refined partial ────────────────────────────────────────────────────
+    // ── (d) Per-id partial failures, raw and refined ───────────────────────────
+
+    [Fact]
+    public async Task Refresh_OneRawIdFails_KeepsOnlyThatIdsPreviousRows()
+    {
+        var (svc, t, _, snapshotPath) = Make();
+        var previousStamp = OldStamp;
+        MarketSnapshotFile.Save(snapshotPath, PreviousSnapshot(previousStamp));
+        svc.LoadSnapshotFromDisk();
+
+        SeedAll(t);
+        t.Throws[RawUrl(20)] = new HttpRequestException("connection reset");
+
+        await svc.RefreshAsync(manual: true);
+
+        var raw = svc.Snapshot!.RawPrices.Rows;
+        Assert.Equal(2, raw.Count);
+        // Id 10 replaced by the fresh row, id 20 kept from the previous snapshot.
+        Assert.Contains(raw, r => r.CommodityId == 10 && r.TerminalId == 100);
+        Assert.DoesNotContain(raw, r => r.CommodityId == 10 && r.TerminalId == 800);
+        Assert.Contains(raw, r => r.CommodityId == 20 && r.TerminalId == 801);
+        // The refined leg is untouched by the raw leg's failure.
+        Assert.Equal(2, svc.Snapshot.RefinedPrices.Rows.Count);
+        Assert.Contains(svc.Snapshot.RefinedPrices.Rows, r => r.CommodityId == 21 && r.TerminalId == 201);
+        Assert.NotNull(svc.LastError);
+    }
 
     [Fact]
     public async Task Refresh_OneRefinedIdFails_KeepsOnlyThatIdsPreviousRows()
@@ -474,16 +524,51 @@ public class MarketDataServiceTests : IDisposable
         await cycle;
 
         Assert.Equal("4.9.1", svc.Snapshot!.LiveGameVersion);   // step 1 landed before the cancel
-        Assert.Empty(svc.Snapshot.RawPrices.Rows);              // step 3 never ran
-        Assert.DoesNotContain(Url("commodities_raw_prices_all"), t.Requested);
+        Assert.Empty(svc.Snapshot.RawPrices.Rows);              // the raw leg never ran
+        Assert.DoesNotContain(t.Requested, u => u.StartsWith(Url("commodities_raw_prices"), StringComparison.Ordinal));
         Assert.NotNull(svc.LastError);
         Assert.Equal(1, changed);
         Assert.True(File.Exists(snapshotPath));
         Assert.NotNull(settings.Current.LastMarketFetchUtc);
     }
 
-    // The refined leg is ~30 of the cycle's requests, so it is where the deadline usually lands.
-    // Everything it already fetched must still reach the dataset.
+    // The two per-id legs are ~60 of the cycle's ~65 requests, so they are where the deadline
+    // usually lands. Everything a leg already fetched must still reach its dataset.
+    [Fact]
+    public async Task Refresh_CancelledInsideTheRawLeg_KeepsTheIdsThatCompleted()
+    {
+        var (svc, t, _, snapshotPath) = Make();
+        var previousStamp = OldStamp;
+        MarketSnapshotFile.Save(snapshotPath, PreviousSnapshot(previousStamp));
+        svc.LoadSnapshotFromDisk();
+
+        SeedAll(t);
+        // Let the first raw id through, park on the second. Which id is first depends on the name
+        // map's order, so the assertions read it from the request log rather than assuming one.
+        t.GatePrefix = Url("commodities_raw_prices?");
+        t.GateAfterMatches = 1;
+
+        var cycle = svc.RefreshAsync(manual: true);
+        svc.Dispose();     // cancels the cycle while it sits on the second raw request
+        await cycle;
+
+        var rawRequests = t.Requested.Where(u => u.StartsWith(Url("commodities_raw_prices"), StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, rawRequests.Count);
+        var completedId = rawRequests[0].EndsWith("=10", StringComparison.Ordinal) ? 10 : 20;
+        var cancelledId = completedId == 10 ? 20 : 10;
+
+        var rows = svc.Snapshot!.RawPrices.Rows;
+        Assert.Equal(2, rows.Count);
+        // The id that came back before the cancel landed fresh...
+        Assert.Contains(rows, r => r.CommodityId == completedId && r.TerminalId == (completedId == 10 ? 100 : 101));
+        // ...and the one that never returned kept its previous row instead of vanishing.
+        Assert.Contains(rows, r => r.CommodityId == cancelledId && r.TerminalId == (cancelledId == 10 ? 800 : 801));
+        Assert.True(svc.Snapshot.RawPrices.FetchedUtc > previousStamp);
+        // The refined leg never got to run, so its previous rows stand untouched.
+        Assert.Equal(previousStamp, svc.Snapshot.RefinedPrices.FetchedUtc);
+        Assert.NotNull(svc.LastError);
+    }
+
     [Fact]
     public async Task Refresh_CancelledInsideTheRefinedLeg_KeepsTheIdsThatCompleted()
     {

@@ -58,13 +58,13 @@ public class MarketSnapshotTests
     // --- ParseCommodities -----------------------------------------------
 
     [Fact]
-    public void ParseCommodities_OneRowMissingSlug_SkipsThatRowOnly()
+    public void ParseCommodities_OneRowMissingIdParent_SkipsThatRowOnly()
     {
         const string body = """
         {"status":"ok","http_code":200,"data":[
           {"id":10,"name":"Bexalite (Raw)","slug":"bexalite-raw","is_raw":1,"is_refined":0,"id_parent":11},
           {"id":11,"name":"Bexalite","slug":"bexalite","is_raw":0,"is_refined":1,"id_parent":0},
-          {"id":99,"name":"Broken Row","is_raw":1,"is_refined":0,"id_parent":0}
+          {"id":99,"name":"Broken Row","slug":"broken","is_raw":1,"is_refined":0}
         ],"message":""}
         """;
 
@@ -74,6 +74,56 @@ public class MarketSnapshotTests
         Assert.Equal(1, skipped);
         Assert.Equal(new MarketCommodity(10, "Bexalite (Raw)", "bexalite-raw", true, false, 11), rows[0]);
         Assert.Equal(new MarketCommodity(11, "Bexalite", "bexalite", false, true, 0), rows[1]);
+    }
+
+    // The live API shape: rows carry "code" and no "slug" at all. Slug is display only, so a
+    // missing one must never skip a row (it did on the first real run, and cost all 204).
+    [Fact]
+    public void ParseCommodities_LiveShapeWithCodeAndNoSlug_KeepsEveryRow()
+    {
+        const string body = """
+        {"status":"ok","http_code":200,"data":[
+          {"id":10,"name":"Bexalite (Raw)","code":"BEXA","is_raw":1,"is_refined":0,"id_parent":11},
+          {"id":11,"name":"Bexalite","code":"BEXAR","is_raw":0,"is_refined":1,"id_parent":0}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseCommodities(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        Assert.Equal(new MarketCommodity(10, "Bexalite (Raw)", "bexa", true, false, 11), rows[0]);
+        Assert.Equal(new MarketCommodity(11, "Bexalite", "bexar", false, true, 0), rows[1]);
+    }
+
+    [Fact]
+    public void ParseCommodities_NoSlugAndNoCode_KeepsRowWithEmptySlug()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id":10,"name":"Bexalite (Raw)","is_raw":1,"is_refined":0,"id_parent":11}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseCommodities(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        Assert.Equal("", rows[0].Slug);
+    }
+
+    // A slug that is present but empty falls through to code, so a blank field never wins.
+    [Fact]
+    public void ParseCommodities_EmptySlug_FallsBackToCode()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id":10,"name":"Bexalite (Raw)","slug":"","code":"BEXA","is_raw":1,"is_refined":0,"id_parent":11}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseCommodities(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        Assert.Equal("bexa", rows[0].Slug);
     }
 
     [Fact]
