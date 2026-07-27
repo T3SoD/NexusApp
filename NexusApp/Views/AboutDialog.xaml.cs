@@ -13,6 +13,13 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.10.1  -  Jul 27, 2026",
+        [
+            "The overlay tabs are redesigned - each tab is now an icon, and the active one expands into an amber pill with its name",
+            "Ready-order and haul counts now sit as small chips on the REFINERY and HAULING icons instead of widening the tab titles",
+            "Point at any overlay icon to see its name in a small chip below it",
+            "The overlay switches tabs with a short animation - Reduce animations in Settings turns it off",
+        ]),
         ("App  6.10.0  -  Jul 27, 2026",
         [
             "Live market prices, off by default - turn them on and Nexus shows refined sell prices from UEX community data on the RS decoder, the Mining Codex, the Refinery Tracker, and the overlay scan cards, refreshed about once an hour",
