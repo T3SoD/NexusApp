@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -10,7 +9,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
-using System.Windows.Threading;
 using NexusApp.Services;
 
 namespace NexusApp.Views;
@@ -50,24 +48,12 @@ public sealed class GuidesPage : UserControl
 
     private GuideEntry? _openGuide;
 
-    // Executive Hangar status line (issue #26): live PYAM contested-zone hangar cycle, slotted
-    // into the Contested Zones section head. One DispatcherTimer owned by the page, started and
-    // stopped from the IsVisibleChanged handler below (GuidesPage is a lazy singleton kept
-    // permanently in MainWindow's tree; page switches are pure Visibility toggling, which never
-    // fires Loaded/Unloaded - see HangarPageEntered/HangarPageLeft).
-    private DispatcherTimer? _hangarTimer;
-    private readonly Ellipse[] _hangarDots = new Ellipse[5];
-    private StackPanel? _hangarLine;
-    private TextBlock? _hangarPhaseText;
-    private TextBlock? _hangarVerbText;
-    private TextBlock? _hangarCountdownText;
-    private TextBlock? _hangarTailText;
-    private TextBlock? _hangarResetLink;
-    private TextBlock? _hangarNextOpensText;
-
-    private const double HangarDotSize = 7;
-    private const double HangarDotGap = 4;
-    private const double HangarItemGap = 6;
+    // Executive Hangar status line (issue #26; extracted into a shared control across GuidesPage
+    // and the overlay GUIDES tab by the live-run scope expansion): the control owns its own
+    // DispatcherTimer, started and stopped from the IsVisibleChanged handler below (GuidesPage is
+    // a lazy singleton kept permanently in MainWindow's tree; page switches are pure Visibility
+    // toggling, which never fires Loaded/Unloaded).
+    private ExecHangarStatusLine? _hangarLine;
 
     public GuidesPage()
     {
@@ -86,9 +72,9 @@ public sealed class GuidesPage : UserControl
 
         // IsVisible correctly reflects an ancestor's Visibility toggling (unlike Loaded/Unloaded,
         // which never fire for a lazy-singleton page whose host just flips Visibility - see the
-        // field comment on _hangarTimer), so it drives the hangar timer's start/stop on every
+        // field comment on _hangarLine), so it drives the hangar control's start/stop on every
         // entry and exit, not just the first one.
-        IsVisibleChanged += (_, _) => { if (IsVisible) HangarPageEntered(); else HangarPageLeft(); };
+        IsVisibleChanged += (_, _) => { if (IsVisible) _hangarLine?.Start(); else _hangarLine?.Stop(); };
     }
 
     /// <summary>Called by MainWindow every time the dock activates this page.</summary>
@@ -189,13 +175,20 @@ public sealed class GuidesPage : UserControl
         head.Children.Add(chip);
 
         // Contested Zones carries the Executive Hangar status line in place of the hairline rule
-        // (issue #26); every other category keeps the plain rule exactly as before.
+        // (issue #26); every other category keeps the plain rule exactly as before. The control
+        // contains both rows (status line + next-opens) and joins the cascade via the head below,
+        // not separately.
         var isContestedZones = category == "Contested Zones";
         if (isContestedZones)
         {
-            var status = BuildHangarStatusLine();
-            Grid.SetColumn(status, 2);
-            head.Children.Add(status);
+            _hangarLine = new ExecHangarStatusLine(compact: false, surfaceName: "guides")
+            {
+                // Owner ruling (live run 2026-07-27): inset from the scroller edge; the line was
+                // nearly touching the scrollbar.
+                Margin = new Thickness(0, 0, 12, 0),
+            };
+            Grid.SetColumn(_hangarLine, 2);
+            head.Children.Add(_hangarLine);
         }
         else
         {
@@ -210,14 +203,6 @@ public sealed class GuidesPage : UserControl
 
         section.Children.Add(head);
         _cascade.Add(head);
-
-        if (isContestedZones)
-        {
-            var nextOpens = BuildHangarNextOpensLine();
-            section.Children.Add(nextOpens);
-            _cascade.Add(nextOpens);
-            RefreshHangarStatus();   // paint the initial state; IsVisibleChanged drives it from here
-        }
 
         var grid = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
         foreach (var guide in guides)
@@ -388,293 +373,6 @@ public sealed class GuidesPage : UserControl
         line.Inlines.Add(new Run("Zand_DragonBorn") { Foreground = Hud.Br("FgBrush"), FontWeight = FontWeights.SemiBold });
         stack.Children.Add(line);
         return stack;
-    }
-
-    // -- exec hangar status (issue #26) -----------------------------------------------
-
-    // Horizontal line: 5-dot phase cluster, phase word, countdown, an optional tail note, and
-    // the Re-anchor / Reset ghost links. Built once for the Contested Zones section head's star
-    // column; RefreshHangarStatus repaints every part from here on.
-    private UIElement BuildHangarStatusLine()
-    {
-        var line = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            // Owner ruling (live run 2026-07-27): inset from the scroller edge; the line was
-            // nearly touching the scrollbar.
-            Margin = new Thickness(0, 0, 12, 0),
-        };
-
-        var dots = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        for (var i = 0; i < _hangarDots.Length; i++)
-        {
-            var dot = new Ellipse
-            {
-                Width = HangarDotSize, Height = HangarDotSize,
-                Margin = new Thickness(i == 0 ? 0 : HangarDotGap, 0, 0, 0),
-            };
-            _hangarDots[i] = dot;
-            dots.Children.Add(dot);
-        }
-        line.Children.Add(dots);
-
-        _hangarPhaseText = new TextBlock
-        {
-            FontFamily = Hud.Font("TechFont"), FontSize = 11, FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(HangarItemGap, 0, 0, 0),
-        };
-        line.Children.Add(_hangarPhaseText);
-
-        // Owner ruling (live run 2026-07-27): say what the number counts down TO ("closes in" /
-        // "opens in"); a bare countdown reads ambiguously against the 185m full-cycle mental model.
-        _hangarVerbText = new TextBlock
-        {
-            FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(HangarItemGap, 0, 0, 0),
-        };
-        line.Children.Add(_hangarVerbText);
-
-        _hangarCountdownText = new TextBlock
-        {
-            FontFamily = Hud.Font("MonoFont"), FontSize = 11, Foreground = Hud.Br("FgBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(HangarItemGap, 0, 0, 0),
-        };
-        line.Children.Add(_hangarCountdownText);
-
-        _hangarTailText = new TextBlock
-        {
-            Text = "still active", FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(HangarItemGap, 0, 0, 0),
-            Visibility = Visibility.Collapsed,
-        };
-        line.Children.Add(_hangarTailText);
-
-        var reanchor = new TextBlock
-        {
-            Text = "Re-anchor", FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("AccentBrush"),
-            Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(HangarItemGap, 0, 0, 0),
-        };
-        reanchor.MouseEnter += (_, _) => reanchor.TextDecorations = TextDecorations.Underline;
-        reanchor.MouseLeave += (_, _) => reanchor.TextDecorations = null;
-        reanchor.MouseLeftButtonDown += (_, _) => OnReanchorClicked();
-        line.Children.Add(reanchor);
-
-        var reset = new TextBlock
-        {
-            Text = "Reset", FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
-            Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(HangarItemGap, 0, 0, 0), Visibility = Visibility.Collapsed,
-        };
-        reset.MouseEnter += (_, _) => reset.TextDecorations = TextDecorations.Underline;
-        reset.MouseLeave += (_, _) => reset.TextDecorations = null;
-        reset.MouseLeftButtonDown += (_, _) => OnResetClicked();
-        line.Children.Add(reset);
-        _hangarResetLink = reset;
-
-        _hangarLine = line;
-        return line;
-    }
-
-    // Next-opens readout under the head, right-aligned to echo the status line above it (one
-    // line). Returns FrameworkElement (not just UIElement) so it can join _cascade like every
-    // other visible section element (issue #26 review, minor finding).
-    private FrameworkElement BuildHangarNextOpensLine()
-    {
-        _hangarNextOpensText = new TextBlock
-        {
-            FontFamily = Hud.Font("MonoFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
-            HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 12, 0),
-        };
-        return _hangarNextOpensText;
-    }
-
-    // Recomputes the cycle from the current clock (and any Settings override) and repaints every
-    // part of the status line in one pass. Called on initial build, every timer tick, and right
-    // after a Re-anchor confirm or Reset so the line never waits for the next tick.
-    private void RefreshHangarStatus()
-    {
-        var overrideUtc = App.Settings.Current.ExecHangarAnchorOverrideUtc;
-        var snapshot = ExecHangarCycle.At(DateTime.UtcNow, overrideUtc);
-        ApplyHangarSnapshot(snapshot, overrideUtc);
-    }
-
-    private void ApplyHangarSnapshot(ExecHangarSnapshot s, DateTime? overrideUtc)
-    {
-        var litBrush = s.IsOpen ? Hud.Br("AccentBrush") : Hud.Br("CyanBrush");
-        var unlitBrush = Hud.Br("Bg3Brush");
-        var unlitStroke = Hud.Br("NavBorderBrush");
-        for (var i = 0; i < _hangarDots.Length; i++)
-        {
-            var lit = i < s.GreensLit;
-            _hangarDots[i].Fill = lit ? litBrush : unlitBrush;
-            _hangarDots[i].Stroke = lit ? null : unlitStroke;
-            _hangarDots[i].StrokeThickness = 1;
-        }
-
-        _hangarPhaseText!.Text = s.IsOpen ? "OPEN" : "CLOSED";
-        _hangarPhaseText!.Foreground = s.IsOpen ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
-
-        _hangarVerbText!.Text = s.IsOpen ? "closes in" : "opens in";
-        _hangarCountdownText!.Text = ExecHangarCycle.FormatCountdown(s.TimeToTransition);
-        _hangarTailText!.Visibility = s.IsFinalActiveTail ? Visibility.Visible : Visibility.Collapsed;
-        _hangarResetLink!.Visibility = overrideUtc.HasValue ? Visibility.Visible : Visibility.Collapsed;
-
-        _hangarNextOpensText!.Text =
-            "Next open: " + string.Join(", ", s.UpcomingOpensUtc.Select(FormatClockTime));
-
-        var calibrationLine = overrideUtc.HasValue
-            ? $"Custom anchor set {FormatAnchorLocal(overrideUtc.Value)}"
-            : $"Cycle calibration: {ExecHangarCycle.CalibrationLabel}";
-        _hangarLine!.ToolTip =
-            calibrationLine + "\n" +
-            "Uses your PC clock. Keep Windows time set to automatic.\n" +
-            "If in-game lights look off with time remaining, trust the timer; the lights catch up at the next state change.";
-    }
-
-    // Time format follows Settings > Appearance > 24-hour clock - the same selection MainWindow's
-    // top-bar clock reads (App.Settings.Current.Clock24Hour ? "HH:mm:ss" : "h:mm:ss tt") - trimmed
-    // to minutes for this compact readout ("Next open: 19:42, 22:47, 01:52").
-    private static string FormatClockTime(DateTime utc)
-        => utc.ToLocalTime().ToString(App.Settings.Current.Clock24Hour ? "HH:mm" : "h:mm tt");
-
-    // The stored override round-trips through JSON settings and can come back Local or
-    // Unspecified (same caveat as ExecHangarCycle.At); normalize the same way before converting.
-    private static string FormatAnchorLocal(DateTime storedUtc)
-    {
-        var utc = storedUtc.Kind == DateTimeKind.Local
-            ? storedUtc.ToUniversalTime()
-            : DateTime.SpecifyKind(storedUtc, DateTimeKind.Utc);
-        return $"{utc.ToLocalTime():d MMM yyyy} {FormatClockTime(utc)}";
-    }
-
-    // Called from IsVisibleChanged every time the Guides page becomes visible (first visit and
-    // every return trip - GuidesPage is a lazy singleton that is never removed from the visual
-    // tree, so this is the only reliable "page entry" signal; Loaded fires once, ever). Recomputes
-    // immediately so a stale value never shows while the timer was stopped, logs the once-per-entry
-    // line, then starts the timer if it is not already running.
-    private void HangarPageEntered()
-    {
-        if (_hangarLine == null) return;   // defensive: only wired once BuildSection has run
-        RefreshHangarStatus();
-
-        var overrideUtc = App.Settings.Current.ExecHangarAnchorOverrideUtc;
-        var s = ExecHangarCycle.At(DateTime.UtcNow, overrideUtc);
-        Logger.Info($"[UI] Exec hangar timer: {(s.IsOpen ? "OPEN" : "CLOSED")}, " +
-            $"{ExecHangarCycle.FormatCountdown(s.TimeToTransition)} to {(s.IsOpen ? "close" : "open")} " +
-            $"(anchor: {(overrideUtc.HasValue ? "custom" : "built-in " + ExecHangarCycle.CalibrationLabel)})");
-
-        if (_hangarTimer != null) return;   // already running - never stack a second timer
-        _hangarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _hangarTimer.Tick += (_, _) => RefreshHangarStatus();
-        _hangarTimer.Start();
-    }
-
-    // Called from IsVisibleChanged every time the Guides page is hidden (dock switch away). Stops
-    // the timer so it never ticks for a page that is not on screen - this is the fix for the
-    // Critical finding: Loaded/Unloaded never fires for this lazy-singleton page, so Unloaded-based
-    // stopping never ran past the very first visit.
-    private void HangarPageLeft()
-    {
-        _hangarTimer?.Stop();
-        _hangarTimer = null;
-    }
-
-    private void OnResetClicked()
-    {
-        App.Settings.Current.ExecHangarAnchorOverrideUtc = null;
-        App.Settings.Save();
-        RefreshHangarStatus();
-        Logger.Info("[UI] Exec hangar anchor reset to built-in");
-    }
-
-    private void OnReanchorClicked()
-    {
-        if (!ShowReanchorConfirm(Window.GetWindow(this))) return;
-        var anchor = DateTime.UtcNow;   // stored UTC, never local time
-
-        // One log line carrying everything a maintainer needs to recalibrate the built-in anchor
-        // from a user's diagnostic snapshot: the observed open instant, which anchor was active
-        // before, what that prior calibration predicted at the click (makes the drift visible),
-        // the app version, and the shard id (its numeric chunk is the game server build the
-        // community calibrations are keyed to). Captured BEFORE the override is replaced.
-        var priorOverride = App.Settings.Current.ExecHangarAnchorOverrideUtc;
-        var prior = ExecHangarCycle.At(anchor, priorOverride);
-        var priorAnchorDesc = priorOverride.HasValue
-            ? $"custom {priorOverride.Value:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}"
-            : "built-in " + ExecHangarCycle.CalibrationLabel;
-        var shard = App.Shards.Current?.ShardId
-            ?? App.Shards.All.FirstOrDefault()?.ShardId
-            ?? "unknown";
-
-        App.Settings.Current.ExecHangarAnchorOverrideUtc = anchor;
-        App.Settings.Save();
-        RefreshHangarStatus();
-        Logger.Info($"[UI] Exec hangar re-anchored by user: {anchor:yyyy-MM-dd'T'HH:mm:ss.fff'Z'} UTC "
-            + $"(app {AppInfo.Version}; prior anchor: {priorAnchorDesc}; prior prediction at click: "
-            + $"{(prior.IsOpen ? "OPEN" : "CLOSED")}, {ExecHangarCycle.FormatCountdown(prior.TimeToTransition)} "
-            + $"to {(prior.IsOpen ? "close" : "open")}; shard: {shard})");
-    }
-
-    // Compact themed confirm dialog. Chrome (themed Background/Foreground, ResizeMode, sizing)
-    // is modeled on NetworkPage's small prompt/choice dialogs; DialogMotion.Attach and
-    // UiScaleService.ApplyToDialog are added below to match the app's near-universal dialog
-    // idiom (every dedicated *Dialog.cs, e.g. WorkOrderEditorDialog's identical
-    // SizeToContent.Height sizing) - mouse only, still no default/cancel key bindings.
-    private static bool ShowReanchorConfirm(Window? owner)
-    {
-        var win = new Window
-        {
-            Title = "RE-ANCHOR HANGAR CYCLE",
-            Width = 420, SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = owner != null ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
-            Owner = owner,
-            Background = Hud.Br("BgBrush"), Foreground = Hud.Br("FgBrush"),
-            ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
-        };
-
-        var panel = new StackPanel { Margin = new Thickness(18) };
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Set the cycle from this moment. Click confirm only at the instant the hangar opens.",
-            FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
-            TextWrapping = TextWrapping.Wrap,
-        });
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Your re-anchor time is written to the app log. Please send a diagnostic snapshot "
-                 + "(Settings > Diagnostics) to the project so the built-in calibration can be updated for everyone.",
-            FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
-        });
-
-        var cancel = new Button
-        {
-            Content = "Cancel", Style = (Style)Application.Current.FindResource("NexusButton"),
-            Padding = new Thickness(16, 7, 16, 7), Cursor = Cursors.Hand,
-        };
-        var confirm = new Button
-        {
-            Content = "Confirm", Style = (Style)Application.Current.FindResource("AccentButton"),
-            Padding = new Thickness(16, 7, 16, 7), Margin = new Thickness(8, 0, 0, 0), Cursor = Cursors.Hand,
-        };
-        var row = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 16, 0, 0),
-        };
-        row.Children.Add(cancel);
-        row.Children.Add(confirm);
-        panel.Children.Add(row);
-
-        win.Content = panel;
-        confirm.Click += (_, _) => win.DialogResult = true;
-        cancel.Click += (_, _) => win.DialogResult = false;
-        DialogMotion.Attach(win);
-        UiScaleService.ApplyToDialog(win, panel);   // App scale (issue #20)
-        return win.ShowDialog() == true;
     }
 
     // -- entrance --------------------------------------------------------------------

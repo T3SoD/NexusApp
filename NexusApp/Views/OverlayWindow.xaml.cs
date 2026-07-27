@@ -1088,6 +1088,13 @@ public partial class OverlayWindow : Window
         if (tab == "hauling") RebuildHaulingPanel();
         if (tab == "guides") ShowGuidesTab();
 
+        // Executive Hangar (issue #26 amendment): the compact control ticks only while GUIDES is
+        // the active overlay tab (plus OnClosed for the whole-window teardown - see there).
+        // ShowGuidesTab (just above) builds the control on first entry, so entering "guides" here
+        // always finds it non-null; the null-conditional is only a defensive guard.
+        if (tab == "guides") _guidesHangarLine?.Start();
+        else if (prev == "guides") _guidesHangarLine?.Stop();
+
         if (tab == "orders")
         {
             RebuildOrdersPanel();
@@ -1249,6 +1256,7 @@ public partial class OverlayWindow : Window
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         UiScaleService.Changed -= OnUiScaleChanged;   // overlay scale (issue #20)
+        _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
         base.OnClosed(e);
     }
 
@@ -2301,6 +2309,10 @@ public partial class OverlayWindow : Window
     private GuideViewer? _guidesViewer;
     private readonly List<FrameworkElement> _guidesCascade = new();
     private GuideEntry? _openGuide;
+    // Executive Hangar status line (issue #26 amendment): the shared compact control, hosted in a
+    // chamfered block above the catalog. Built once with the rest of the tab (EnsureGuidesTab);
+    // its lifecycle is independent of the guide list/viewer - see SwitchTab and OnClosed.
+    private ExecHangarStatusLine? _guidesHangarLine;
 
     // Entry point from SwitchTab: build once, log the show, and replay the list cascade. A guide
     // left open from a previous visit is closed so the tab always opens on the list.
@@ -2315,6 +2327,20 @@ public partial class OverlayWindow : Window
     private void EnsureGuidesTab()
     {
         if (_guidesScroller != null) return;
+
+        // Two rows: the hangar block (Auto) stays visible above the list even while a guide is
+        // open, since the viewer only takes over the row below it (issue #26 amendment).
+        GuidesTabContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        GuidesTabContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        _guidesHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay");
+        var hangarPanel = new ChamferPanel
+        {
+            Chamfer = 9, Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(10, 10, 10, 0),
+            Content = _guidesHangarLine,
+        };
+        Grid.SetRow(hangarPanel, 0);
+        GuidesTabContent.Children.Add(hangarPanel);
 
         var list = new StackPanel();
         bool firstSection = true;
@@ -2345,10 +2371,12 @@ public partial class OverlayWindow : Window
             Margin = new Thickness(12, 10, 12, 12),   // the shared overlay tab-body padding
             Content = list,
         };
+        Grid.SetRow(_guidesScroller, 1);
         GuidesTabContent.Children.Add(_guidesScroller);
 
         _guidesViewer = new GuideViewer(compact: true) { Visibility = Visibility.Collapsed };
         _guidesViewer.BackRequested += (_, _) => CloseOverlayGuide(replayCascade: true);
+        Grid.SetRow(_guidesViewer, 1);
         GuidesTabContent.Children.Add(_guidesViewer);
 
         // Leaving the tab, or hiding the whole overlay, must not park a decoded bitmap in memory.
