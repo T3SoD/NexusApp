@@ -401,6 +401,9 @@ public sealed class GuidesPage : UserControl
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
+            // Owner ruling (live run 2026-07-27): inset from the scroller edge; the line was
+            // nearly touching the scrollbar.
+            Margin = new Thickness(0, 0, 12, 0),
         };
 
         var dots = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -473,7 +476,7 @@ public sealed class GuidesPage : UserControl
         _hangarNextOpensText = new TextBlock
         {
             FontFamily = Hud.Font("MonoFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
-            HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 12, 0),
         };
         return _hangarNextOpensText;
     }
@@ -579,10 +582,13 @@ public sealed class GuidesPage : UserControl
     private void OnReanchorClicked()
     {
         if (!ShowReanchorConfirm(Window.GetWindow(this))) return;
-        App.Settings.Current.ExecHangarAnchorOverrideUtc = DateTime.UtcNow;   // stored UTC, never local time
+        var anchor = DateTime.UtcNow;   // stored UTC, never local time
+        App.Settings.Current.ExecHangarAnchorOverrideUtc = anchor;
         App.Settings.Save();
         RefreshHangarStatus();
-        Logger.Info("[UI] Exec hangar re-anchored by user");
+        // The exact instant matters: this line is what the diagnostic snapshot carries back so the
+        // built-in calibration can be updated for everyone after a game patch.
+        Logger.Info($"[UI] Exec hangar re-anchored by user: {anchor:yyyy-MM-dd'T'HH:mm:ss.fff'Z'} UTC");
     }
 
     // Compact themed confirm dialog. Chrome (themed Background/Foreground, ResizeMode, sizing)
@@ -608,6 +614,13 @@ public sealed class GuidesPage : UserControl
             Text = "Set the cycle from this moment. Click confirm only at the instant the hangar opens.",
             FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
             TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Your re-anchor time is written to the app log. Please send a diagnostic snapshot "
+                 + "(Settings > Diagnostics) to the project so the built-in calibration can be updated for everyone.",
+            FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         });
 
         var cancel = new Button
