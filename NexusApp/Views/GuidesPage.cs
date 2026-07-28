@@ -48,6 +48,13 @@ public sealed class GuidesPage : UserControl
 
     private GuideEntry? _openGuide;
 
+    // Executive Hangar status line (issue #26; extracted into a shared control across GuidesPage
+    // and the overlay GUIDES tab by the live-run scope expansion): the control owns its own
+    // DispatcherTimer, started and stopped from the IsVisibleChanged handler below (GuidesPage is
+    // a lazy singleton kept permanently in MainWindow's tree; page switches are pure Visibility
+    // toggling, which never fires Loaded/Unloaded).
+    private ExecHangarStatusLine? _hangarLine;
+
     public GuidesPage()
     {
         BuildList();
@@ -62,6 +69,12 @@ public sealed class GuidesPage : UserControl
         // Leaving the page while a guide is open must not park a full-size bitmap in memory
         // (the largest guide decodes to about 116 MB).
         IsVisibleChanged += (_, _) => { if (!IsVisible && _openGuide != null) CloseGuide(replayCascade: false); };
+
+        // IsVisible correctly reflects an ancestor's Visibility toggling (unlike Loaded/Unloaded,
+        // which never fire for a lazy-singleton page whose host just flips Visibility - see the
+        // field comment on _hangarLine), so it drives the hangar control's start/stop on every
+        // entry and exit, not just the first one.
+        IsVisibleChanged += (_, _) => { if (IsVisible) _hangarLine?.Start(); else _hangarLine?.Stop(); };
     }
 
     /// <summary>Called by MainWindow every time the dock activates this page.</summary>
@@ -161,13 +174,32 @@ public sealed class GuidesPage : UserControl
         Grid.SetColumn(chip, 1);
         head.Children.Add(chip);
 
-        var rule = new Border
+        // Contested Zones carries the Executive Hangar status line in place of the hairline rule
+        // (issue #26); every other category keeps the plain rule exactly as before. The control
+        // contains both rows (status line + next-opens) and joins the cascade via the head below,
+        // not separately.
+        var isContestedZones = category == "Contested Zones";
+        if (isContestedZones)
         {
-            Height = 1, Background = Hud.Br("NavBorderBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 0, 0),
-        };
-        Grid.SetColumn(rule, 2);
-        head.Children.Add(rule);
+            _hangarLine = new ExecHangarStatusLine(compact: false, surfaceName: "guides")
+            {
+                // Owner ruling (live run 2026-07-27): inset from the scroller edge; the line was
+                // nearly touching the scrollbar.
+                Margin = new Thickness(0, 0, 12, 0),
+            };
+            Grid.SetColumn(_hangarLine, 2);
+            head.Children.Add(_hangarLine);
+        }
+        else
+        {
+            var rule = new Border
+            {
+                Height = 1, Background = Hud.Br("NavBorderBrush"),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 0, 0),
+            };
+            Grid.SetColumn(rule, 2);
+            head.Children.Add(rule);
+        }
 
         section.Children.Add(head);
         _cascade.Add(head);

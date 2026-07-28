@@ -140,6 +140,18 @@ public class HelpDialog : Window
                 "Click Reset filters to clear the search and every pill.",
             ]),
 
+        new("dock:guides", "Mission Guides",
+            "Browse curated maps and tactical reference guides. Open one for a full zoom and pan view.",
+            [new("Click card", "open"), new("Drag", "pan"), new("Scroll", "zoom")],
+            [
+                "Open the Mission Guides module in the app dock or click the GUIDES tab in the in-game overlay.",
+                "The guide catalog is organized by category - click a category to see all its guides.",
+                "Click a guide card to open it in full view.",
+                "Drag to pan around the guide, and use your scroll wheel to zoom in and out.",
+                "Click Back to return to the guide list. Double click fits the guide to the window.",
+                "The Contested Zones section shows the Executive Hangar status: five lights, OPEN or CLOSED, and the time to the next change. Click Re-anchor at the moment the hangar opens to correct the timer after a game patch.",
+            ]),
+
         new("cart", "Shopping List",
             "A running list of the resources you're after this run, highlighted everywhere they appear.",
             [new("−", "remove item")],

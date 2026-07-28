@@ -1088,6 +1088,13 @@ public partial class OverlayWindow : Window
         if (tab == "hauling") RebuildHaulingPanel();
         if (tab == "guides") ShowGuidesTab();
 
+        // Executive Hangar (issue #26 amendment): the compact control ticks only while GUIDES is
+        // the active overlay tab (plus OnClosed for the whole-window teardown - see there).
+        // ShowGuidesTab (just above) builds the control on first entry, so entering "guides" here
+        // always finds it non-null; the null-conditional is only a defensive guard.
+        if (tab == "guides") _guidesHangarLine?.Start();
+        else if (prev == "guides") _guidesHangarLine?.Stop();
+
         if (tab == "orders")
         {
             RebuildOrdersPanel();
@@ -1249,6 +1256,7 @@ public partial class OverlayWindow : Window
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         UiScaleService.Changed -= OnUiScaleChanged;   // overlay scale (issue #20)
+        _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
         base.OnClosed(e);
     }
 
@@ -2301,6 +2309,11 @@ public partial class OverlayWindow : Window
     private GuideViewer? _guidesViewer;
     private readonly List<FrameworkElement> _guidesCascade = new();
     private GuideEntry? _openGuide;
+    // Executive Hangar status line (issue #26 amendment): the shared compact control, hosted
+    // inside the Contested Zones section of the catalog list (owner ruling: mirror the main
+    // Guides page placement). Built once with the rest of the tab (EnsureGuidesTab); its
+    // tick lifecycle is independent of the guide list/viewer - see SwitchTab and OnClosed.
+    private ExecHangarStatusLine? _guidesHangarLine;
 
     // Entry point from SwitchTab: build once, log the show, and replay the list cascade. A guide
     // left open from a previous visit is closed so the tab always opens on the list.
@@ -2329,6 +2342,20 @@ public partial class OverlayWindow : Window
             firstSection = false;
             list.Children.Add(head);
             _guidesCascade.Add(head);
+
+            // Executive Hangar status (issue #26 amendment, owner ruling live run 2026-07-27):
+            // the compact line lives INSIDE the Contested Zones section, directly under its
+            // header, mirroring the main Guides page (not a block above the whole tab). It
+            // scrolls with the list and is covered by the viewer like any other list content.
+            if (category == "Contested Zones")
+            {
+                _guidesHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay")
+                {
+                    Margin = new Thickness(2, 0, 0, 8),
+                };
+                list.Children.Add(_guidesHangarLine);
+                _guidesCascade.Add(_guidesHangarLine);
+            }
 
             foreach (var guide in GuideCatalog.ByCategory(category))
             {

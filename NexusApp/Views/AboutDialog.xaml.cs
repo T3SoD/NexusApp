@@ -506,6 +506,13 @@ public class AboutDialog : Window
             Margin = new Thickness(0, 3, 0, 3),
         });
 
+        aboutPanel.Children.Add(new TextBlock
+        {
+            Text = "Exec hangar cycle data: Xyxyll (exec.xyxyll.com) and Arkanis Corporation Exec-Hangar (MIT)", FontSize = 12,
+            Foreground = (Brush)Application.Current.FindResource("FgDimBrush"),
+            Margin = new Thickness(0, 3, 0, 3),
+        });
+
         aboutTab.Content = aboutPanel;
         tabs.Items.Add(aboutTab);
 
