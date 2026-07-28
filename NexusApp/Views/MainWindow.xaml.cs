@@ -3463,16 +3463,6 @@ public partial class MainWindow : Window
     // row without rebuilding the whole list.
     private readonly Dictionary<string, Action<bool>> _bpRowOwned = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] _bpCategories = ["Armor", "Weapons", "Ship Components", "Ammo"];
-    private static readonly string[] _armorPieces = ["Helmet", "Core", "Arms", "Legs", "Backpack", "Undersuit", "Suit"];
-    private static readonly HashSet<string> _variantWords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "black","blue","green","red","grey","gray","white","dark","aqua","crusader","edition","woodland",
-        "desert","tan","olive","sand","orange","yellow","purple","pink","brown","navy","teal","crimson",
-        "forest","storm","snow","arctic","modified","light","silver","gold","bronze","maroon","khaki",
-        "digital","urban","jungle","midnight","obsidian","frost","ember","rust","slate","charcoal","ivory",
-        "copper","azure","emerald","ruby","onyx","steel","carbon","ash","coal","mint","lime","rose","plum",
-        "cobalt","sage","clay","stone","smoke","blood","ghost","shadow","night","solar","lunar","nova",
-    };
 
     private void InitBlueprintBrowse()
     {
@@ -3656,60 +3646,6 @@ public partial class MainWindow : Window
         ShowBlueprintLanding();
     }
 
-    // subgroup = real subcategory, or armor piece, or null (no grouping level)
-    private string? Subgroup(NexusApp.Models.Blueprint b)
-    {
-        if (!string.IsNullOrEmpty(b.SubCategory)) return b.SubCategory;
-        if (b.Category == "Armor") return ArmorPiece(b.Name);
-        return null;
-    }
-
-    private static string ArmorPiece(string name)
-    {
-        foreach (var p in _armorPieces)
-            if (System.Text.RegularExpressions.Regex.IsMatch(name, $"\\b{p}\\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                return p;
-        return "Other";
-    }
-
-    // Drops quoted skins + parentheticals and collapses whitespace, leaving the bare model words.
-    private static string StripDecorations(string name)
-    {
-        var s = System.Text.RegularExpressions.Regex.Replace(name, "\"[^\"]*\"", "");
-        s = System.Text.RegularExpressions.Regex.Replace(s, "\\([^)]*\\)", "");
-        return System.Text.RegularExpressions.Regex.Replace(s, "\\s+", " ").Trim();
-    }
-
-    // family = name with quoted skins / parentheticals / trailing colour words removed (collapses variants)
-    private static string FamilyKey(string name)
-    {
-        var s = StripDecorations(name);
-        var parts = s.Split(' ').ToList();
-        while (parts.Count > 0 && _variantWords.Contains(parts[^1])) parts.RemoveAt(parts.Count - 1);
-        return parts.Count > 0 ? string.Join(" ", parts) : (s.Length > 0 ? s : name);
-    }
-
-    // Family key used for grouping variants together. Weapon/ship skins are quoted
-    // or parenthesised, so the colour-list FamilyKey handles them. Armor skins are
-    // free-text words trailing the piece ("Antium Helmet Moss Camo") that a fixed
-    // colour list can't catch - so for armor we keep everything up to and including
-    // the piece word and drop the rest, collapsing all of a model's skins into one.
-    private static string FamilyKeyOf(NexusApp.Models.Blueprint b)
-        => b.Category == "Armor" ? ArmorFamilyKey(b.Name) : FamilyKey(b.Name);
-
-    private static string ArmorFamilyKey(string name)
-    {
-        var piece = ArmorPiece(name);
-        if (piece != "Other")
-        {
-            var parts = StripDecorations(name).Split(' ');
-            for (int i = 0; i < parts.Length; i++)
-                if (string.Equals(parts[i], piece, StringComparison.OrdinalIgnoreCase))
-                    return string.Join(" ", parts.Take(i + 1));
-        }
-        return FamilyKey(name);   // piece word not found as a standalone token; fall back
-    }
-
     // Directional slide for the blueprint drill-down (frozen in
     // docs/superpowers/specs/2026-07-10-motion-pass-values.md Item 8): the freshly rebuilt
     // container slides in from +12px (descending to a deeper level) or -12px (backing out to a
@@ -3760,8 +3696,8 @@ public partial class MainWindow : Window
                 BlueprintNavPanel.Children.Add(NavHeader(_bpCat, CatCount(_bpCat), catCol));
                 var inCat = src.Where(b => b.Category == _bpCat).ToList();
                 if (inCat.Count == 0) { BlueprintNavPanel.Children.Add(NavEmptyNote()); break; }
-                var groups = inCat.Where(b => Subgroup(b) != null)
-                    .GroupBy(b => Subgroup(b)!).OrderBy(g => g.Key).ToList();
+                var groups = inCat.Where(b => BlueprintFamilyGrouping.Subgroup(b) != null)
+                    .GroupBy(b => BlueprintFamilyGrouping.Subgroup(b)!).OrderBy(g => g.Key).ToList();
                 if (groups.Count > 0)
                 {
                     foreach (var grp in groups)
@@ -3769,7 +3705,7 @@ public partial class MainWindow : Window
                         var sub = grp.Key;
                         BlueprintNavPanel.Children.Add(DrillRow(sub, grp.Count(), catCol, () => EnterSubgroup(sub)));
                     }
-                    RenderLeafGroup(inCat.Where(b => Subgroup(b) == null), catCol);
+                    RenderLeafGroup(inCat.Where(b => BlueprintFamilyGrouping.Subgroup(b) == null), catCol);
                 }
                 else
                 {
@@ -3781,7 +3717,7 @@ public partial class MainWindow : Window
             case "subgroup":
             {
                 BlueprintCrumbHost.Content = Breadcrumb(catCol, ("Browse", GoRoot), (_bpCat, () => EnterCategory(_bpCat)), (_bpSub, (Action?)null));
-                var items = src.Where(b => b.Category == _bpCat && Subgroup(b) == _bpSub).ToList();
+                var items = src.Where(b => b.Category == _bpCat && BlueprintFamilyGrouping.Subgroup(b) == _bpSub).ToList();
                 BlueprintNavPanel.Children.Add(NavHeader(_bpSub, items.Count, catCol));
                 if (items.Count == 0) BlueprintNavPanel.Children.Add(NavEmptyNote());
                 else RenderLeafGroup(items, catCol);
@@ -3795,7 +3731,7 @@ public partial class MainWindow : Window
                 famCrumbs.Add((_bpFam, (Action?)null));
                 BlueprintCrumbHost.Content = Breadcrumb(catCol, famCrumbs.ToArray());
                 var variants = src
-                    .Where(b => b.Category == _bpCat && (_bpSub.Length == 0 ? Subgroup(b) == null : Subgroup(b) == _bpSub) && FamilyKeyOf(b) == _bpFam)
+                    .Where(b => b.Category == _bpCat && (_bpSub.Length == 0 ? BlueprintFamilyGrouping.Subgroup(b) == null : BlueprintFamilyGrouping.Subgroup(b) == _bpSub) && BlueprintFamilyGrouping.FamilyKeyOf(b) == _bpFam)
                     .OrderBy(b => b.Name).ToList();
                 BlueprintNavPanel.Children.Add(NavHeader(_bpFam, variants.Count, catCol));
                 if (variants.Count == 0) BlueprintNavPanel.Children.Add(NavEmptyNote());
@@ -3860,7 +3796,7 @@ public partial class MainWindow : Window
     // within a leaf set: families with >1 variant become drill rows; singles become blueprint rows
     private void RenderLeafGroup(System.Collections.Generic.IEnumerable<NexusApp.Models.Blueprint> items, System.Windows.Media.Brush col)
     {
-        var fams = items.GroupBy(FamilyKeyOf).OrderBy(g => g.Key).ToList();
+        var fams = items.GroupBy(BlueprintFamilyGrouping.FamilyKeyOf).OrderBy(g => g.Key).ToList();
         foreach (var fam in fams)
         {
             if (fam.Count() > 1)

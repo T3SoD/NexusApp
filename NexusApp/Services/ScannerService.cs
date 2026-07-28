@@ -9,9 +9,7 @@ public class ScannerService : IDisposable
 {
     private readonly OcrService _ocr = new();
     private System.Timers.Timer? _timer;
-    private int _pending;
-    private int _pendingCount;
-    private int _lastEmitted;
+    private readonly ScanConfirm _confirm = new();
     private bool _running;
     private ScanPhase _currentPhase = ScanPhase.Watching;
     private DateTime _lastBeat;   // throttles the [SCAN] capture heartbeat (see OnTick)
@@ -68,29 +66,21 @@ public class ScannerService : IDisposable
             try
             {
                 var (val, pinFound) = await _ocr.ScanFullScreenAsync();
+                var confirmed = _confirm.Update(val, pinFound);
 
                 if (pinFound)
                 {
                     if (val.HasValue)
                     {
-                        if (val.Value == _pending)
-                            _pendingCount++;
-                        else
+                        if (confirmed.HasValue)
                         {
-                            _pending = val.Value;
-                            _pendingCount = 1;
-                        }
-
-                        if (_pendingCount >= 2 && val.Value != _lastEmitted)
-                        {
-                            _lastEmitted = val.Value;
-                            App.Current.Dispatcher.Invoke(() => ValueDetected?.Invoke(val.Value));
+                            App.Current.Dispatcher.Invoke(() => ValueDetected?.Invoke(confirmed.Value));
                             EmitPhase(ScanPhase.Decoded);
                         }
-                        else if (_pendingCount < 2)
+                        else if (_confirm.PendingCount < 2)
                         {
                             EmitPhase(ScanPhase.PinFound);
-                            App.Current.Dispatcher.Invoke(() => CandidateProgress?.Invoke(_pendingCount));
+                            App.Current.Dispatcher.Invoke(() => CandidateProgress?.Invoke(_confirm.PendingCount));
                         }
                     }
                     else
@@ -100,9 +90,6 @@ public class ScannerService : IDisposable
                 }
                 else
                 {
-                    _pending = 0;
-                    _pendingCount = 0;
-                    _lastEmitted = 0;
                     EmitPhase(_ocr.LastScanHadRegion ? ScanPhase.Watching : ScanPhase.NoRegion);
                 }
             }
