@@ -79,6 +79,10 @@ public class AppSettings
     public string OverlayActiveTab { get; set; } = "stats";
     public double OverlayHistoryHeight { get; set; } = 120;
 
+    // Ghost mode (issue #27): overlay collapses to the 44px icon rail. Panel/flyout open
+    // state is deliberately NOT persisted; ghost always wakes collapsed.
+    public bool OverlayGhostMode { get; set; }
+
     // Settings page UI state: which settings tab (game / diagnostics / interface / data) was
     // last active, so the page reopens where the user left off. The destructive "data" tab is
     // deliberately never restored; SettingsTabs.NormalizeForRestore maps it back to the default.
