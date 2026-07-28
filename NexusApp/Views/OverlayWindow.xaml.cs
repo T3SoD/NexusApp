@@ -1058,8 +1058,14 @@ public partial class OverlayWindow : Window
         railRow.Children.Add(_flyoutRailPercentLabel);
         railRow.PreviewMouseWheel += (_, e) =>
         {
-            _flyoutRailSlider!.Value += e.Delta > 0 ? 0.05 : -0.05;
+            var before = _flyoutRailSlider!.Value;
+            _flyoutRailSlider.Value += e.Delta > 0 ? 0.05 : -0.05;
             e.Handled = true;
+            // A wheel scroll never captures the mouse, so LostMouseCapture above never fires for a
+            // wheel-only interaction (review 2026-07-28): log each notch here instead. Guarded on an
+            // actual value change so a scroll held past Min or Max does not spam identical lines.
+            if (_flyoutRailSlider.Value != before)
+                Logger.Info($"[UI] Ghost rail scale: {Math.Round(UiScaleService.GhostRailScale * 100)}% (flyout)");
         };
         content.Children.Add(railRow);
 
