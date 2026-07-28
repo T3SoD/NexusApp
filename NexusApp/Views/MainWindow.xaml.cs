@@ -5571,12 +5571,17 @@ public partial class MainWindow : Window
             // Saved rect intersects no connected display at all - fall back to the shipped
             // defaults rather than opening off-screen.
             restore = DefaultWindowRect;
-            Logger.Info("[WIN] Main window position clamped onto the visible desktop");
+            Logger.Info("[WIN] Main window position reset to defaults (saved rect off every display)");
         }
         else
         {
-            double clampedWidth = Math.Min(width, virtualScreen.Width);
-            double clampedHeight = Math.Min(height, virtualScreen.Height);
+            // Clamp saved.Width/saved.Height (already Math.Max(.., 0)-guarded above), not the raw
+            // width/height locals - a negative saved size (corrupted settings.json) still passes
+            // IntersectsWith via its zero-area saved rect, and re-reading the raw negative value
+            // here fed a negative Height/Width into the new Rect below, throwing ArgumentException
+            // out of the MainWindow constructor (an unhandled startup crash) instead of clamping.
+            double clampedWidth = Math.Min(saved.Width, virtualScreen.Width);
+            double clampedHeight = Math.Min(saved.Height, virtualScreen.Height);
             double clampedLeft = Math.Clamp(left, virtualScreen.Left, virtualScreen.Left + virtualScreen.Width - clampedWidth);
             double clampedTop = Math.Clamp(top, virtualScreen.Top, virtualScreen.Top + virtualScreen.Height - clampedHeight);
             restore = new Rect(clampedLeft, clampedTop, clampedWidth, clampedHeight);
