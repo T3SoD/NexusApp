@@ -4,24 +4,31 @@ using NexusApp.Models;
 namespace NexusApp.Services;
 
 // App-lifetime tracker of the current shard + recent shard history, parsed from Game.log <Join PU>
-// lines. Mirrors HaulTracker (own GameLogWatcher, public Ingest for headless tests). Persistence is
-// injected so the rolling list survives app/SC relaunches. No PII (server ip only). History is NOT
-// cleared on a new SC session (LogReset) - the point is to remember across sessions.
+// lines. Mirrors HaulTracker (consumer of the shared GameLogFeed, public Ingest for headless tests).
+// Persistence is injected so the rolling list survives app/SC relaunches. No PII (server ip only).
+// History is NOT cleared on a new SC session (LogReset) - the point is to remember across sessions.
 public sealed class ShardTracker : IDisposable
 {
     private const int MaxKeep = 4;   // current + last 3
-    private readonly GameLogWatcher _watcher = new();
+    private readonly GameLogFeed _feed;
+    private readonly bool _ownsFeed;            // true only when nobody handed us a shared feed
+    private GameLogSubscription? _sub;
     private readonly List<ShardSession> _history = new();   // newest first; current = [0]
     private readonly Action<IReadOnlyList<ShardSession>> _save;
 
-    public ShardTracker(Func<IEnumerable<ShardSession>> loadPersisted, Action<IReadOnlyList<ShardSession>> savePersisted)
+    public ShardTracker(Func<IEnumerable<ShardSession>> loadPersisted,
+                        Action<IReadOnlyList<ShardSession>> savePersisted,
+                        GameLogFeed? feed = null)
     {
         _save = savePersisted;
         _history.AddRange(loadPersisted() ?? Enumerable.Empty<ShardSession>());
-        _watcher.LineAppended += Ingest;
+        _feed = feed ?? new GameLogFeed();
+        _ownsFeed = feed is null;
+        // Always replays the log from the top: the point is to recover this session's joins.
         // History intentionally persists across SC sessions (no history clear on LogReset), but a
         // fresh log means a live game session, so stale-replay suppression lifts.
-        _watcher.LogReset += () => _staleReplay = false;
+        _sub = _feed.Subscribe(Ingest, includeReplay: true, onLogReset: () => _staleReplay = false);
+        _feed.Started += OnFeedStarted;
     }
 
     private bool _onShard;      // true while in the PU: set by a <Join PU>, cleared by a leave marker
@@ -42,23 +49,15 @@ public sealed class ShardTracker : IDisposable
 
     public event Action? Changed;
 
-    public string PreferredPath { get; set; } = "";
-    public bool IsRunning => _watcher.IsRunning;
-    public string Path => _watcher.Path;
-
-    public string StartPath()
-    {
-        if (!string.IsNullOrEmpty(Path) && System.IO.File.Exists(Path)) return Path;
-        if (!string.IsNullOrEmpty(PreferredPath)) return PreferredPath;
-        return GameLogWatcher.FindGameLog();
-    }
-
     // A log untouched for a few minutes is a leftover from a previous game session: replay it for
     // history, but never claim to be on a shard from it (the chip showed a stale shard as live).
     private static readonly TimeSpan ColdLogAge = TimeSpan.FromMinutes(3);
 
-    public void Start(string path, bool fromBeginning = true)
+    // The shared tail was (re)pointed. Re-decide the cold-log question against the file it now
+    // reads, before its first replayed line arrives.
+    private void OnFeedStarted(string path, bool fromBeginning)
     {
+        _staleReplay = false;
         try
         {
             if (fromBeginning && System.IO.File.Exists(path)
@@ -66,17 +65,14 @@ public sealed class ShardTracker : IDisposable
                 BeginStaleReplay();
         }
         catch { _staleReplay = false; }
-        _watcher.Start(path, fromBeginning);
     }
 
-    /// <summary>Suppress on-shard claims while replaying a stale log (see Start; public for headless tests).</summary>
+    /// <summary>Suppress on-shard claims while replaying a stale log (see OnFeedStarted; public for headless tests).</summary>
     public void BeginStaleReplay()
     {
         _staleReplay = true;
         Logger.Info("[SHARD] cold Game.log replay - loading shard history without on-shard state");
     }
-
-    public void Stop() => _watcher.Stop();
 
     public void Ingest(GameLogEntry e)
     {
@@ -109,5 +105,11 @@ public sealed class ShardTracker : IDisposable
         Changed?.Invoke();
     }
 
-    public void Dispose() => _watcher.Dispose();
+    public void Dispose()
+    {
+        _feed.Started -= OnFeedStarted;
+        _sub?.Dispose();
+        _sub = null;
+        if (_ownsFeed) _feed.Dispose();   // a shared feed is the app's to dispose, not ours
+    }
 }

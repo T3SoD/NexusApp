@@ -12,16 +12,20 @@ public partial class App : Application
     public static DataService Data { get; private set; } = null!;
     public static SettingsService Settings { get; private set; } = null!;
 
+    // The app's ONE Game.log tail (one timer, one file position, one process probe). The blueprint
+    // session, the haul tracker and the shard tracker are all consumers of it.
+    public static GameLogFeed GameLogFeed { get; private set; } = null!;
+
     // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
     public static GameLogSession GameLog { get; private set; } = null!;
 
     /// <summary>Blueprint Network store (network.db) - imported members, their owned blueprints, and groups.</summary>
     public static NetworkStore Network { get; private set; } = null!;
 
-    // BETA: cargo-hauling tracker (own Game.log watcher, decoupled from blueprint session).
+    // BETA: cargo-hauling tracker (shared Game.log tail, decoupled from the blueprint session).
     public static HaulTracker Hauls { get; private set; } = null!;
 
-    // Server/shard tracker (own Game.log watcher, always on; rolling history persisted to settings).
+    // Server/shard tracker (shared Game.log tail, always on; rolling history persisted to settings).
     public static ShardTracker Shards { get; private set; } = null!;
 
     // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
@@ -251,6 +255,11 @@ public partial class App : Application
         // Blueprint Network store (separate db, survives the nexus.db reseed).
         Network = new NetworkStore();
 
+        // ONE Game.log tail for the whole app: the blueprint session, the haul tracker and the
+        // shard tracker all consume it, so the file is opened, read and parsed once per tick (and
+        // the game's process presence probed once) instead of three times over.
+        GameLogFeed = new GameLogFeed { PreferredPath = Settings.Current.GameLogPath };
+
         // BETA Game.log blueprint watch. Created after seed data loads (the importer needs
         // the blueprint name list). One instance app-wide, shared by the standalone monitor
         // window and the overlay STATS tab so they stay in sync. Auto-marks refresh the
@@ -260,7 +269,8 @@ public partial class App : Application
             () => Data.GetAllBlueprints().Select(b => b.Name),
             name => Settings.IsBlueprintOwned(name),
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
-            BuildLocalizationMap);
+            BuildLocalizationMap,
+            GameLogFeed);
         GameLog.Marked += m =>
             (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
         GameLog.BulkOwnershipChanged += () =>
@@ -269,11 +279,24 @@ public partial class App : Application
         // Cache the RSI handle auto-detected from Game.log (read-only) so export can pre-fill it.
         GameLog.HandleDetected += handle => Settings.SetDetectedRsiHandle(handle);
 
-        // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. Restore the
-        // saved Game.log path, then start the watch and auto-collect unconditionally on every launch.
-        // SetAutoMark(true) both enables auto-collect and starts the watcher (probing common installs if
-        // no path is saved yet). The path is still persisted below when the watcher resolves it.
-        GameLog.PreferredPath = Settings.Current.GameLogPath;
+        // BETA Game.log cargo-hauling tracker, and the always-on server/shard tracker. Both attach
+        // to the shared tail BEFORE it starts, and both want the current Game.log replayed from the
+        // top, so a mid-session app restart rebuilds active hauls and this session's shard joins.
+        // The shard tracker persists its rolling list to settings so RECENT survives relaunches.
+        // No toast on HaulEnded: the startup replay re-raises last session's ended hauls, which
+        // popped stale "Haul Abandoned" toasts on every launch. The Hauling tab and [HAUL] log
+        // lines carry the outcome instead.
+        Hauls = new HaulTracker(GameLogFeed);
+        Shards = new ShardTracker(
+            () => Settings.Current.RecentShards,
+            list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
+            GameLogFeed);
+
+        // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
+        // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and
+        // starts the one tail (probing common installs if no path is saved yet). The blueprint
+        // consumer joins LIVE - the replay the trackers above ask for is theirs alone, so a relaunch
+        // never re-collects the whole log. The path is still persisted below once resolved.
         GameLog.SetAutoMark(true);
         // GameLog.Path can sit under the user's profile (a free-text Settings override or an
         // auto-detected default install path) - redact it at the source, the same helper the
@@ -286,23 +309,6 @@ public partial class App : Application
             if (!string.IsNullOrEmpty(GameLog.Path)) Settings.Current.GameLogPath = GameLog.Path;
             Settings.Save();
         };
-
-        // BETA Game.log cargo-hauling tracker. Own watcher (decoupled from the blueprint
-        // session so haul tracking runs regardless of the blueprint toggle). Replays the
-        // current Game.log from the top so a mid-session restart rebuilds active hauls.
-        // No toast on HaulEnded: the startup replay re-raises last session's ended hauls,
-        // which popped stale "Haul Abandoned" toasts on every launch. The Hauling tab and
-        // [HAUL] log lines carry the outcome instead.
-        Hauls = new HaulTracker { PreferredPath = Settings.Current.GameLogPath };
-        Hauls.Start(Hauls.StartPath(), fromBeginning: true);
-
-        // Server/shard tracker. Own watcher (always on); persists the rolling list to settings so the
-        // RECENT shards survive relaunches. Replays the current Game.log for this session's joins.
-        Shards = new ShardTracker(
-            () => Settings.Current.RecentShards,
-            list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); })
-        { PreferredPath = Settings.Current.GameLogPath };
-        Shards.Start(Shards.StartPath(), fromBeginning: true);
 
         // Contract OCR: scans the in-game Contracts panel and enriches the matching haul.
         ContractOcr = new ContractOcrService();
@@ -401,6 +407,7 @@ public partial class App : Application
         Hauls?.Dispose();
         Shards?.Dispose();
         GameLog?.Dispose();
+        GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();
         Market?.Dispose();
         Data?.Dispose();

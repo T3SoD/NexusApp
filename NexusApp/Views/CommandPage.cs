@@ -90,8 +90,10 @@ public sealed class CommandPage : UserControl
         host.Children.Add(_modalHost);
         Content = host;
         // Keep the dashboard live (shard card + KPIs) when the shard changes while Operations is open.
-        if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(Refresh);
-        // Update state changes arrive on a worker thread; marshal like the shard feed does.
+        // The shard tracker is pumped by the shared Game.log feed's DispatcherTimer, so it already
+        // raises on the UI thread and needs no marshaling.
+        if (App.Shards != null) App.Shards.Changed += Refresh;
+        // Update state changes arrive on a worker thread, so those DO need marshaling.
         if (App.Update != null) App.Update.Changed += () => Dispatcher.Invoke(Refresh);
     }
 

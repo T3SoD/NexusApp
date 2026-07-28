@@ -83,7 +83,7 @@ The view model controls these services. Each service holds little or no state.
 - **ThemeService** - provides the single theme resources of NexusApp (merged
   palette, icon URIs, and logo URIs). v6.0.0 removed the luxury/classic theme
   picker.
-- **GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
+- **GameLogFeed / GameLogSession / GameLogWatcher / GameLogBlueprintImporter /
   RsiHandleParser** - the read-only `Game.log` subsystem (see below).
 - **ComponentStringReference / GlobalIniReader** - translate mod-renamed
   blueprint names back to their official names. They join the user's read-only
@@ -193,6 +193,16 @@ Session Tracking is always on. NexusApp has no user toggle for it.
 lines. It opens the file read-only. `GameLogBlueprintImporter` finds the
 "Received Blueprint" notifications. It marks those blueprints as owned.
 
+There is exactly ONE `Game.log` watcher in the app. `GameLogFeed` owns it and
+sends each line to all of its consumers: the blueprint session, the haul tracker,
+and the shard tracker. Each consumer says whether it also wants the history that
+a start from the top of the file replays. The haul and shard trackers want it,
+because they rebuild their state from the whole log. The blueprint session does
+not, because it must collect only what the game writes next. A consumer can
+detach (the Stop button of the advanced monitor) without stopping the tail for
+the others. The feed also probes once whether the game process runs. It never
+opens a handle to that process.
+
 A localization mod can rename blueprint names. NexusApp translates these names
 back to their official names. It joins the user's read-only `global.ini` to the
 bundled `components.ini`. NexusApp finds `global.ini` next to `Game.log`, or the
@@ -202,9 +212,9 @@ user sets the path.
 the per-session tally together.
 
 ### Cargo hauling (always on)
-`HaulTracker` owns its own `GameLogWatcher`. It reads `Game.log` read-only. It
-builds a haul for each cargo mission. It runs separately from the blueprint
-watcher.
+`HaulTracker` is a consumer of the shared `GameLogFeed`. It builds a haul for
+each cargo mission. It runs separately from the blueprint session: stopping that
+session does not stop haul tracking.
 
 `HaulLogParser` is a pure static parser. It turns the haul log lines into
 records. It does no file work. It reads no player identity.

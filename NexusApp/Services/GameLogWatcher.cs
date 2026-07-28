@@ -18,12 +18,23 @@ public sealed class GameLogEntry
     public DateTime ReceivedAt { get; init; } = DateTime.Now;
     public string Raw { get; init; } = "";
     public LogCategory Category { get; init; }
+    /// <summary>True for lines that were already in the file when the tail (re)started from the top -
+    /// history being replayed, not a line the game just wrote. GameLogFeed routes on this so one tail
+    /// can serve consumers that rebuild their state from the whole log AND consumers that only want
+    /// what happens from now on.</summary>
+    public bool IsReplay { get; init; }
 }
 
 // Tails Game.log live WITHOUT locking it: the game keeps the file open for writing,
 // so we open it shared (FileShare.ReadWrite) and poll for appended bytes. Handles
 // the file being recreated/truncated on a new game session. UI-thread timer, so all
 // events are raised on the dispatcher - safe to touch UI from handlers.
+//
+// For Game.log there is exactly ONE of these app-wide, owned by GameLogFeed, which fans
+// it out to the blueprint session, the haul tracker and the shard tracker. Do not add a
+// second Game.log watcher: that is three file reads, three parse passes and three process
+// probes for one file. (AppLogMonitorWindow reuses the class for Nexus's own nexus.log,
+// which is a different file.)
 public sealed class GameLogWatcher : IDisposable
 {
     public const string DefaultLivePath = @"C:\Program Files\Roberts Space Industries\StarCitizen\LIVE\Game.log";
@@ -33,6 +44,7 @@ public sealed class GameLogWatcher : IDisposable
     private readonly StringBuilder _partial = new();   // carries a trailing partial line between polls
     private string _path = "";
     private long _position;
+    private long _replayEnd;   // bytes before this offset were already in the file at start = replay
     private DateTime _creationTimeUtc;
 
     public event Action<GameLogEntry>? LineAppended;
@@ -89,19 +101,25 @@ public sealed class GameLogWatcher : IDisposable
         {
             if (File.Exists(_path))
             {
-                _position = fromBeginning ? 0 : new FileInfo(_path).Length;
+                long len = new FileInfo(_path).Length;
+                // Everything already on disk is history: from the top it is replayed (and flagged as
+                // such), otherwise it is skipped outright and only new bytes are read.
+                _position = fromBeginning ? 0 : len;
+                _replayEnd = fromBeginning ? len : 0;
                 _creationTimeUtc = File.GetCreationTimeUtc(_path);
                 StatusChanged?.Invoke($"Watching {_path}");
             }
             else
             {
                 _position = 0;
+                _replayEnd = 0;
                 _creationTimeUtc = default;
                 StatusChanged?.Invoke($"Waiting for file to appear: {_path}");
             }
         }
         catch (Exception ex)
         {
+            _replayEnd = 0;
             StatusChanged?.Invoke($"Error opening: {ex.Message}");
         }
         IsRunning = true;
@@ -160,13 +178,15 @@ public sealed class GameLogWatcher : IDisposable
             if (recreated || len < _position)   // recreated, or shrank => new session
             {
                 _position = 0;
+                _replayEnd = 0;   // a fresh session's lines are live, never replayed history
                 _partial.Clear();
                 StatusChanged?.Invoke($"Log reset (new session) - {_path}");
                 LogReset?.Invoke();
             }
-            if (len <= _position) return;
 
-            int toRead = (int)Math.Min(len - _position, MaxBytesPerTick);
+            int toRead = ReadSize(_position, len, _replayEnd, MaxBytesPerTick);
+            if (toRead <= 0) return;
+            bool replay = _position < _replayEnd;   // whole chunk, by construction of ReadSize
             byte[] buffer = new byte[toRead];
             int read;
             using (var fs = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -187,7 +207,7 @@ public sealed class GameLogWatcher : IDisposable
                 string line = text.Substring(start, nl - start).TrimEnd('\r');
                 start = nl + 1;
                 if (line.Length == 0) continue;
-                LineAppended?.Invoke(new GameLogEntry { Raw = line, Category = Categorize(line) });
+                LineAppended?.Invoke(new GameLogEntry { Raw = line, Category = Categorize(line), IsReplay = replay });
             }
             if (start < text.Length) _partial.Append(text, start, text.Length - start);   // keep partial line
         }
@@ -199,6 +219,18 @@ public sealed class GameLogWatcher : IDisposable
         {
             StatusChanged?.Invoke($"Error: {ex.Message}");
         }
+    }
+
+    /// <summary>Bytes to read on one tick: capped so a huge backlog can't freeze the UI, and never
+    /// straddling the replay boundary - so every chunk is entirely replayed history or entirely live
+    /// and each line's IsReplay flag needs no per-byte accounting. 0 when there is nothing to read.
+    /// Pure; exercised headless in GameLogFeedTests.</summary>
+    internal static int ReadSize(long position, long length, long replayEnd, int maxPerTick)
+    {
+        long available = length - position;
+        if (available <= 0) return 0;
+        if (position < replayEnd) available = Math.Min(available, replayEnd - position);
+        return (int)Math.Min(available, maxPerTick);
     }
 
     // Best-effort tagging. SC's log format shifts between patches, so unknown lines

@@ -32,13 +32,17 @@ public partial class MainWindow : Window
         AppVersionText.Text = $"App v{AppInfo.Version}";
         GameVersionText.Text = $"SC PU {GameData.Version}";
         UpdateShardChip();
-        if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(UpdateShardChip);
+        // The Game.log chain (shards, blueprint session) is pumped by the shared feed's
+        // DispatcherTimer, so it already raises on the UI thread - no marshaling, the same
+        // contract App.xaml.cs and the overlay follow. Dispatcher.Invoke/BeginInvoke here is
+        // reserved for genuinely background sources (ContractScanner, MarketDataService).
+        if (App.Shards != null) App.Shards.Changed += UpdateShardChip;
         UpdateSessionChip();
         UpdateBlueprintChip();
         if (App.GameLog != null)
         {
-            App.GameLog.StateChanged += () => Dispatcher.Invoke(() => { UpdateSessionChip(); UpdateBlueprintChip(); });
-            App.GameLog.HandleDetected += h => Dispatcher.Invoke(() => { UpdateOperatorIdentity(h); RefreshApprovedTools(); RefreshOwnerTools(); });
+            App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            App.GameLog.HandleDetected += h => { UpdateOperatorIdentity(h); RefreshApprovedTools(); RefreshOwnerTools(); };
         }
         UpdateOperatorIdentity();
         RefreshApprovedTools();

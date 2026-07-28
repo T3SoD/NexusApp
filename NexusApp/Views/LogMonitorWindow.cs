@@ -286,6 +286,9 @@ public sealed class LogMonitorWindow : Window
     private void ToggleStart()
     {
         // Button content resyncs via OnStateChanged (which also covers overlay-driven changes).
+        // Stop detaches only THIS consumer: the shared tail keeps feeding the haul and shard
+        // trackers. Start re-attaches it and points the tail at the box's path - one Game.log for
+        // the whole app, so a path typed here (or a from-the-top re-read) moves every consumer.
         if (App.GameLog.IsRunning) App.GameLog.Stop();
         else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true);
     }

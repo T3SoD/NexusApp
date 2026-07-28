@@ -2,41 +2,31 @@ using NexusApp.Models;
 
 namespace NexusApp.Services;
 
-// BETA. App-lifetime owner of a Game.log watcher dedicated to cargo-hauling missions.
-// Mirrors GameLogSession's shape (its own watcher; public Ingest for headless tests). Reads a
-// game-authored file (read-only) and never extracts player identity. A mission id becomes a
+// BETA. App-lifetime cargo-hauling consumer of the shared Game.log tail (GameLogFeed). Mirrors
+// GameLogSession's shape (public Ingest for headless tests; a private feed when none is injected).
+// Reads a game-authored file (read-only) and never extracts player identity. A mission id becomes a
 // "haul" only when a HaulCargo/CargoHauling marker or a "Deliver N SCU" objective is seen; the
 // generic ObjectiveUpserted/EndMission lines are applied only to known hauls so bounty/combat
 // missions are ignored.
 public sealed class HaulTracker : IDisposable
 {
-    private readonly GameLogWatcher _watcher = new();
+    private readonly GameLogFeed _feed;
+    private readonly bool _ownsFeed;            // true only when nobody handed us a shared feed
+    private GameLogSubscription? _sub;
     private readonly Dictionary<string, Haul> _byId = new();
     private readonly List<Haul> _order = new();   // insertion order for display
     private string _currentShardId = "";          // last shard seen, to clear hauls on a shard change
     private readonly Dictionary<string, ContractDetails> _pendingByOrg = new();   // OCR contractor org -> detail, applied when its haul appears
 
-    public HaulTracker()
+    // Attaches with the replay appetite: every start of the tail replays the current Game.log from
+    // the top, so an app restart mid-session rebuilds active hauls (parsing is idempotent: markers
+    // dedupe by objectiveId).
+    public HaulTracker(GameLogFeed? feed = null)
     {
-        _watcher.LineAppended += Ingest;
-        _watcher.LogReset += Reset;
+        _feed = feed ?? new GameLogFeed();
+        _ownsFeed = feed is null;
+        _sub = _feed.Subscribe(Ingest, includeReplay: true, onLogReset: Reset);
     }
-
-    public string PreferredPath { get; set; } = "";
-    public bool IsRunning => _watcher.IsRunning;
-    public string Path => _watcher.Path;
-
-    public string StartPath()
-    {
-        if (!string.IsNullOrEmpty(Path) && System.IO.File.Exists(Path)) return Path;
-        if (!string.IsNullOrEmpty(PreferredPath)) return PreferredPath;
-        return GameLogWatcher.FindGameLog();
-    }
-
-    // Replay the current Game.log from the top so an app restart mid-session rebuilds active
-    // hauls (parsing is idempotent: markers dedupe by objectiveId).
-    public void Start(string path, bool fromBeginning = true) => _watcher.Start(path, fromBeginning);
-    public void Stop() => _watcher.Stop();
 
     public IReadOnlyList<Haul> AllHauls => _order;
     public IReadOnlyList<Haul> ActiveHauls => _order.FindAll(h => h.IsActive);
@@ -351,5 +341,10 @@ public sealed class HaulTracker : IDisposable
         if (hit != null) { ApplyAndNotify(h, _pendingByOrg[hit]); _pendingByOrg.Remove(hit); }
     }
 
-    public void Dispose() => _watcher.Dispose();
+    public void Dispose()
+    {
+        _sub?.Dispose();
+        _sub = null;
+        if (_ownsFeed) _feed.Dispose();   // a shared feed is the app's to dispose, not ours
+    }
 }

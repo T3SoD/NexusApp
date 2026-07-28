@@ -1137,23 +1137,22 @@ public sealed class SettingsPage : UserControl
         return SettingRow(title, desc, control, last);
     }
 
-    // Persist the Game.log path and re-point every Game.log-driven watcher so it takes effect immediately.
-    // Blank means "auto-detect". The actual path is not logged (it can contain a Windows username). Instance
-    // method so it can refresh the GAME tab's needs-attention pip after the effective path changes.
+    // Persist the Game.log path and re-point the shared Game.log tail so it takes effect immediately -
+    // one retarget now serves the blueprint session, the haul tracker and the shard tracker. Blank means
+    // "auto-detect". The actual path is not logged (it can contain a Windows username). Instance method
+    // so it can refresh the GAME tab's needs-attention pip after the effective path changes.
     private void ApplyGameLogPath(string path)
     {
         if (App.Settings.Current.GameLogPath == path) return;
         App.Settings.Current.GameLogPath = path;
         App.Settings.Save();
 
-        App.GameLog.PreferredPath = path;
-        App.Hauls.PreferredPath = path;
-        App.Shards.PreferredPath = path;
-
+        App.GameLogFeed.PreferredPath = path;
         var effective = string.IsNullOrWhiteSpace(path) ? GameLogWatcher.FindGameLog() : path;
-        App.Hauls.Start(effective, fromBeginning: true);
-        App.Shards.Start(effective, fromBeginning: true);
-        if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);   // Start preserves AutoMark
+        // A running blueprint session restarts THROUGH the feed so it also replays the new log
+        // (Start preserves AutoMark); a stopped one stays detached while the tail re-points.
+        if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);
+        else App.GameLogFeed.Start(effective);
 
         Logger.Info("[UI] Game.log path updated in Settings");
         RefreshGameDot();
