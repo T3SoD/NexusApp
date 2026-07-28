@@ -89,9 +89,12 @@ public partial class OverlayWindow : Window
             // end applies to the rail).
             if (!_ghostPanelOpen && !_ghostFlyoutOpen)
             {
+                var old = _ghostDir;
                 var (dragWin, dragMon, _) = GhostContext();
                 _ghostDir = GhostGeometry.DirectionFor(dragWin, dragMon);
                 GhostRail.SetExpandDirection(_ghostDir);
+                if (old != _ghostDir)
+                    Logger.Info($"[WIN] Overlay ghost: rail dragged across screen center, expands {(_ghostDir == GhostExpandDirection.Left ? "left" : "right")}");
             }
             SaveBounds();
         };
@@ -330,6 +333,8 @@ public partial class OverlayWindow : Window
     // applied with MoveWindow, never WPF Left/Top, because under Per-Monitor-DPI V2 DIP positioning
     // lands on the wrong monitor across a DPI boundary (issue #6 lesson). Normal mode never reaches
     // any of this: every ghost path is gated on _ghostActive.
+    // ExitGhost runs synchronously and must never pump a nested message loop (no dialogs, no
+    // DragMove) because queued ApplyGhostMode calls rely on _ghostActive not being observed mid-teardown.
     private bool _ghostActive;
     private bool _ghostPanelOpen;
     private bool _ghostFlyoutOpen;
@@ -433,6 +438,10 @@ public partial class OverlayWindow : Window
             ? CurrentRailRect(win, k, dpi)
             : new PxRect(win.Left, win.Top, RailW * k * dpi, win.Height);
         GhostSnapToRailChrome();                       // orphans any in-flight slide, clears its animations
+        // The normal overlay exposes everything, so the unseen-scan count is moot on exit;
+        // clear it so a later re-entry into ghost mode does not show a stale already-seen count.
+        _ghostScanCount = 0;
+        GhostRail.SetBadge("scan", 0);
         GhostRail.Visibility = Visibility.Collapsed;
         GhostEyebrow.Visibility = Visibility.Collapsed;
         TabStrip.Visibility = Visibility.Visible;
@@ -662,9 +671,15 @@ public partial class OverlayWindow : Window
         // not echo back into OpacitySlider through ValueChanged; SetOnSilently already does the
         // toggle's equivalent by design.
         _seedingFlyoutOpacity = true;
-        _flyoutOpacitySlider!.Value = OpacitySlider.Value;
-        _flyoutOpacityPercentLabel!.Text = $"{(int)(OpacitySlider.Value * 100)}%";
-        _seedingFlyoutOpacity = false;
+        try
+        {
+            _flyoutOpacitySlider!.Value = OpacitySlider.Value;
+            _flyoutOpacityPercentLabel!.Text = $"{(int)(OpacitySlider.Value * 100)}%";
+        }
+        finally
+        {
+            _seedingFlyoutOpacity = false;
+        }
         _flyoutGhostSwitch!.SetOnSilently(App.Settings.Current.OverlayGhostMode);
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;

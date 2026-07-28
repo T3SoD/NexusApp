@@ -34,7 +34,6 @@ public sealed class OverlayGhostRail : Grid
         public Border Badge = null!;
         public TextBlock BadgeText = null!;
         public Border EdgeBar = null!;
-        public int MotionGen;          // OverlayTabStrip.cs:34-38 lesson: Completed guards
     }
 
     // Gear glyph (hand-authored, same 1.5 stroke weight as the dock/tab glyphs, from the
@@ -354,10 +353,6 @@ public sealed class OverlayGhostRail : Grid
         _active = id;
         foreach (var icon in _icons)
         {
-            // Bumped on every switch even though this state change is an instant snap (no
-            // per-icon animation today): keeps MotionGen a reliable invalidation token for
-            // whichever future per-icon effect needs the OverlayTabStrip.cs:34-38 guard.
-            icon.MotionGen++;
             bool on = icon.Id == id;
             icon.EdgeBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
             icon.Root.Background = on ? ActiveFill : Brushes.Transparent;
@@ -432,15 +427,16 @@ public sealed class OverlayGhostRail : Grid
         var duration = TimeSpan.FromMilliseconds(900);
         var repeat = new RepeatBehavior(3);
         var opacityAnim = new DoubleAnimation(0.9, 0, duration) { RepeatBehavior = repeat };
-        var scaleAnim = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
-        scaleAnim.Completed += (_, _) =>
+        var scaleAnimX = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
+        var scaleAnimY = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
+        scaleAnimX.Completed += (_, _) =>
         {
             if (gen != _pulseGen) return;   // superseded by a later pulse; this clock is orphaned
             host.Children.Remove(ring);
             if (_pulseRing == ring) _pulseRing = null;
         };
         ring.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
     }
 }
