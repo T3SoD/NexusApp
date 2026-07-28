@@ -1,5 +1,4 @@
 using System.Text.Json;
-using NexusApp.Services;
 using Xunit;
 
 namespace NexusApp.Tests;
@@ -23,16 +22,6 @@ public class SeedHygieneTests
         "Antium Arms Maroon",
     };
 
-    private static JsonDocument LoadSeed()
-    {
-        using var stream = typeof(DataService).Assembly
-            .GetManifestResourceStream("NexusApp.Data.seed_data.json");
-        Assert.NotNull(stream);
-        using var ms = new MemoryStream();
-        stream!.CopyTo(ms);
-        return JsonDocument.Parse(ms.ToArray());
-    }
-
     private static IEnumerable<JsonElement> Blueprints(JsonDocument doc) =>
         doc.RootElement.GetProperty("blueprints").EnumerateArray();
 
@@ -42,7 +31,7 @@ public class SeedHygieneTests
     [Fact]
     public void NoUnlockUsesPlaceholderFaction()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         foreach (var u in BlueprintUnlocks(doc))
         {
             var faction = u.TryGetProperty("faction", out var f) ? f.GetString() : null;
@@ -53,7 +42,7 @@ public class SeedHygieneTests
     [Fact]
     public void BlueprintNamesAreUnique()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var b in Blueprints(doc))
         {
@@ -66,7 +55,7 @@ public class SeedHygieneTests
     [Fact]
     public void DeletedBlueprintsAreAbsent()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var b in Blueprints(doc))
         {
@@ -94,7 +83,7 @@ public class SeedHygieneTests
     [Fact]
     public void NoUnlockReferencesARemovedMission()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         var deleted = new HashSet<string>(DeletedMissionTitles, StringComparer.Ordinal);
         foreach (var u in BlueprintUnlocks(doc))
         {
@@ -107,7 +96,7 @@ public class SeedHygieneTests
     [Fact]
     public void MiningDataVersionIsAtLeast_1_3_1()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         var raw = doc.RootElement.GetProperty("miningDataVersion").GetString();
         Assert.False(string.IsNullOrWhiteSpace(raw));
         Assert.True(Version.TryParse(raw, out var version), $"not a version: {raw}");

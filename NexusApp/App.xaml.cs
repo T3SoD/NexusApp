@@ -12,16 +12,20 @@ public partial class App : Application
     public static DataService Data { get; private set; } = null!;
     public static SettingsService Settings { get; private set; } = null!;
 
+    // The app's ONE Game.log tail (one timer, one file position, one process probe). The blueprint
+    // session, the haul tracker and the shard tracker are all consumers of it.
+    public static GameLogFeed GameLogFeed { get; private set; } = null!;
+
     // BETA: shared Game.log blueprint-watch session (standalone window + overlay STATS tab).
     public static GameLogSession GameLog { get; private set; } = null!;
 
     /// <summary>Blueprint Network store (network.db) - imported members, their owned blueprints, and groups.</summary>
     public static NetworkStore Network { get; private set; } = null!;
 
-    // BETA: cargo-hauling tracker (own Game.log watcher, decoupled from blueprint session).
+    // BETA: cargo-hauling tracker (shared Game.log tail, decoupled from the blueprint session).
     public static HaulTracker Hauls { get; private set; } = null!;
 
-    // Server/shard tracker (own Game.log watcher, always on; rolling history persisted to settings).
+    // Server/shard tracker (shared Game.log tail, always on; rolling history persisted to settings).
     public static ShardTracker Shards { get; private set; } = null!;
 
     // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
@@ -79,6 +83,18 @@ public partial class App : Application
         Settings.Save();
         Logger.Info($"[WIN] Overlay ghost mode: {(on ? "on" : "off")} ({source})");
         OverlayGhostModeChanged?.Invoke(on, source);
+    }
+
+    // Click-through (issue #7 setting): single write path so the Settings page row and the
+    // overlay's quick-settings flyout can never disagree.
+    public static event System.Action<bool>? OverlayPassThroughChanged;
+    public static void SetOverlayPassThrough(bool on, string source)
+    {
+        if (Settings.Current.OverlayPassThroughWhenCursorHidden == on) return;
+        Settings.Current.OverlayPassThroughWhenCursorHidden = on;
+        Settings.Save();
+        Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")} ({source})");
+        OverlayPassThroughChanged?.Invoke(on);
     }
 
     // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
@@ -165,8 +181,8 @@ public partial class App : Application
             }
         };
 
-        Logger.Info($"Nexus {AppInfo.Version} starting");
-        Logger.Info($"Distribution: {AppInfo.Distribution}");
+        Logger.Info($"[WIN] Nexus {AppInfo.Version} starting");
+        Logger.Info($"[WIN] Distribution: {AppInfo.Distribution}");
         if (AppPaths.IsDemoProfile)
         {
             Logger.Info("[WIN] Nexus starting in demo profile mode");
@@ -251,6 +267,11 @@ public partial class App : Application
         // Blueprint Network store (separate db, survives the nexus.db reseed).
         Network = new NetworkStore();
 
+        // ONE Game.log tail for the whole app: the blueprint session, the haul tracker and the
+        // shard tracker all consume it, so the file is opened, read and parsed once per tick (and
+        // the game's process presence probed once) instead of three times over.
+        GameLogFeed = new GameLogFeed { PreferredPath = Settings.Current.GameLogPath };
+
         // BETA Game.log blueprint watch. Created after seed data loads (the importer needs
         // the blueprint name list). One instance app-wide, shared by the standalone monitor
         // window and the overlay STATS tab so they stay in sync. Auto-marks refresh the
@@ -260,22 +281,38 @@ public partial class App : Application
             () => Data.GetAllBlueprints().Select(b => b.Name),
             name => Settings.IsBlueprintOwned(name),
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
-            BuildLocalizationMap);
-        GameLog.Marked += m =>
-            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
-        GameLog.BulkOwnershipChanged += () =>
-            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
+            BuildLocalizationMap,
+            GameLogFeed);
+        // Marked/BulkOwnershipChanged: MainWindow's own ctor subscribes to these (it already owns
+        // the RefreshBlueprintOwnership target), so this composition root only wires services here,
+        // not the concrete view (app review, Task 9).
 
         // Cache the RSI handle auto-detected from Game.log (read-only) so export can pre-fill it.
         GameLog.HandleDetected += handle => Settings.SetDetectedRsiHandle(handle);
 
-        // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. Restore the
-        // saved Game.log path, then start the watch and auto-collect unconditionally on every launch.
-        // SetAutoMark(true) both enables auto-collect and starts the watcher (probing common installs if
-        // no path is saved yet). The path is still persisted below when the watcher resolves it.
-        GameLog.PreferredPath = Settings.Current.GameLogPath;
+        // BETA Game.log cargo-hauling tracker, and the always-on server/shard tracker. Both attach
+        // to the shared tail BEFORE it starts, and both want the current Game.log replayed from the
+        // top, so a mid-session app restart rebuilds active hauls and this session's shard joins.
+        // The shard tracker persists its rolling list to settings so RECENT survives relaunches.
+        // No toast on HaulEnded: the startup replay re-raises last session's ended hauls, which
+        // popped stale "Haul Abandoned" toasts on every launch. The Hauling tab and [HAUL] log
+        // lines carry the outcome instead.
+        Hauls = new HaulTracker(GameLogFeed);
+        Shards = new ShardTracker(
+            () => Settings.Current.RecentShards,
+            list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
+            GameLogFeed);
+
+        // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
+        // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and
+        // starts the one tail (probing common installs if no path is saved yet). The blueprint
+        // consumer joins LIVE - the replay the trackers above ask for is theirs alone, so a relaunch
+        // never re-collects the whole log. The path is still persisted below once resolved.
         GameLog.SetAutoMark(true);
-        Logger.Info($"[GameLog] session tracking + auto-track always on; watching: {(string.IsNullOrEmpty(GameLog.Path) ? "<no log found yet>" : GameLog.Path)}");
+        // GameLog.Path can sit under the user's profile (a free-text Settings override or an
+        // auto-detected default install path) - redact it at the source, the same helper the
+        // diagnostic snapshot uses, so it never lands unredacted in nexus.log in the first place.
+        Logger.Info($"[GameLog] session tracking + auto-track always on; watching: {(string.IsNullOrEmpty(GameLog.Path) ? "<no log found yet>" : DiagnosticSnapshot.RedactUserProfile(GameLog.Path, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))}");
         GameLog.StateChanged += () =>
         {
             Settings.Current.GameLogTrackSession = GameLog.IsRunning;
@@ -284,23 +321,6 @@ public partial class App : Application
             Settings.Save();
         };
 
-        // BETA Game.log cargo-hauling tracker. Own watcher (decoupled from the blueprint
-        // session so haul tracking runs regardless of the blueprint toggle). Replays the
-        // current Game.log from the top so a mid-session restart rebuilds active hauls.
-        // No toast on HaulEnded: the startup replay re-raises last session's ended hauls,
-        // which popped stale "Haul Abandoned" toasts on every launch. The Hauling tab and
-        // [HAUL] log lines carry the outcome instead.
-        Hauls = new HaulTracker { PreferredPath = Settings.Current.GameLogPath };
-        Hauls.Start(Hauls.StartPath(), fromBeginning: true);
-
-        // Server/shard tracker. Own watcher (always on); persists the rolling list to settings so the
-        // RECENT shards survive relaunches. Replays the current Game.log for this session's joins.
-        Shards = new ShardTracker(
-            () => Settings.Current.RecentShards,
-            list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); })
-        { PreferredPath = Settings.Current.GameLogPath };
-        Shards.Start(Shards.StartPath(), fromBeginning: true);
-
         // Contract OCR: scans the in-game Contracts panel and enriches the matching haul.
         ContractOcr = new ContractOcrService();
         if (Settings.Current.ContractRegion is { } cr) ContractOcr.SetRegion(cr.X, cr.Y, cr.Width, cr.Height);
@@ -308,11 +328,9 @@ public partial class App : Application
         // ContractScanner runs on a System.Timers.Timer thread; ApplyContractDetails raises Changed which
         // the overlay handles by touching WPF, so marshal onto the UI thread.
         ContractScan.ContractScanned += d => Current.Dispatcher.Invoke(() => Hauls.ApplyContractDetails(d));
-        // When an OCR scan first pairs with a log-detected haul, confirm it with a green flash of
-        // the yellow contract box (mirrors the RS scan-success flash). No popup - toasts are
-        // removed app-wide by design.
-        Hauls.ContractPaired += h => Current.Dispatcher.Invoke(() =>
-            (Current.MainWindow as Views.MainWindow)?.FlashContractIndicator());
+        // ContractPaired (the green flash confirming an OCR pair): MainWindow's own ctor subscribes
+        // to it directly (app review, Task 9) - this composition root stops reaching into the
+        // concrete view.
         if (Settings.Current.AutoScanContracts) ContractScan.Start();
     }
 
@@ -348,8 +366,15 @@ public partial class App : Application
         EventManager.RegisterClassHandler(typeof(Button), ButtonBase.ClickEvent,
             new RoutedEventHandler((s, _) =>
             {
-                if (s is Button b)
-                    InteractionLog.Click(!string.IsNullOrEmpty(b.Name) ? b.Name : b.Content?.ToString(), b);
+                if (s is not Button b) return;
+                // Hud.ToggleSwitch (a Button subclass) sets Content to a layout Grid, not text, so
+                // Content?.ToString() would only ever yield the type name ("System.Windows.Controls.
+                // Grid") - a meaningless duplicate line, since every ToggleSwitch call site already
+                // logs its own specific line from OnToggled. Skip logging here whenever the effective
+                // label isn't a real string (no Name, and Content isn't itself a string).
+                var label = !string.IsNullOrEmpty(b.Name) ? b.Name : b.Content as string;
+                if (string.IsNullOrEmpty(label)) return;
+                InteractionLog.Click(label, b);
             }));
 
         EventManager.RegisterClassHandler(typeof(RadioButton), ToggleButton.CheckedEvent,
@@ -366,7 +391,9 @@ public partial class App : Application
     {
         Logger.Info($"[FG] auto-scans {(relevant ? "resumed" : "paused")} (Nexus/Star Citizen {(relevant ? "in front" : "in background")})");
 
-        (Current.MainWindow as Views.MainWindow)?.SetScanForegroundActive(relevant);   // RS scanner
+        // RS scanner pause/resume: MainWindow's own ctor subscribes to the ForegroundRelevanceChanged
+        // event raised below for this (app review, Task 9) - this composition root stops reaching
+        // into the concrete view.
 
         // Contract scanner: the persisted toggle is the user's intent; the gate only suspends/restores it.
         if (ContractScan is not null)
@@ -391,6 +418,7 @@ public partial class App : Application
         Hauls?.Dispose();
         Shards?.Dispose();
         GameLog?.Dispose();
+        GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();
         Market?.Dispose();
         Data?.Dispose();

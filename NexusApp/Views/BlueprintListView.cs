@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
+using NexusApp.Services;
 
 namespace NexusApp.Views;
 
@@ -105,7 +106,14 @@ public sealed class BlueprintListView : UserControl
                 Cursor = Cursors.Hand, Child = tb,
             };
             var match = f.Match;
-            chip.MouseLeftButtonUp += (_, _) => { _activeFilter = match; BuildFilters(); Render(); };
+            var label = f.Label;
+            chip.MouseLeftButtonUp += (_, _) =>
+            {
+                _activeFilter = match;
+                InteractionLog.Nav($"Blueprint Network: filter {label}");
+                BuildFilters();
+                Render();
+            };
             _filterBar.Children.Add(chip);
         }
     }
@@ -220,11 +228,13 @@ public sealed class BlueprintListView : UserControl
                     }
                     panel.Visibility = Visibility.Visible;
                     shown = true;
+                    InteractionLog.Nav($"Blueprint Network: row expand {b.Name}");
                 }
                 else
                 {
                     if (panel != null) panel.Visibility = Visibility.Collapsed;
                     shown = false;
+                    InteractionLog.Nav($"Blueprint Network: row collapse {b.Name}");
                 }
             };
         }

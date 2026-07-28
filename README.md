@@ -147,7 +147,7 @@ Run Nexus directly. You do not need to install it.
 
 ### Updating
 
-Nexus can check for new versions itself. The first time you run a version that supports it, Nexus asks once whether to enable update checks (Settings > Diagnostics has the toggle and a manual Check now button; nothing is contacted until you say yes or click Check now yourself).
+Nexus can check for new versions itself. The first time you run a version that supports it, Nexus asks once whether to enable update checks (Settings > Updates has the toggle and a manual Check now button; nothing is contacted until you say yes or click Check now yourself).
 
 - **Installer:** when an update is available, Nexus offers to download it, verifies the download, and runs the installer for you. Your settings, work orders, and blueprints are kept.
 - **Portable:** Nexus installs the update itself. It downloads and verifies the new portable zip, unpacks it, verifies each file, replaces its own files, and restarts as the new version. Your settings, work orders, and blueprints are kept. If Nexus cannot replace its own files where it is installed, it offers a manual update instead. Nexus then unpacks the update and opens both folders, and you finish with one copy.

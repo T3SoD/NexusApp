@@ -15,11 +15,11 @@ namespace NexusApp.Views;
 // not a pop-out dialog. Single theme (MOBIGLAS), so there is no appearance/theme picker: just
 // the Game.log paths, Blueprint Network identity, diagnostics, and the destructive clear-data action.
 //
-// The page is a HUD tab strip: GAME / DIAGNOSTICS / INTERFACE cluster to the left, the destructive
-// DATA tab docked to the right, and one category pane visible at a time. A traveling underline slides
-// between tabs (crossfading amber to danger red over DATA), the incoming pane fades and slides in the
-// direction of travel, and the GAME tab's needs-attention pip breathes while no Game.log is set. All
-// motion collapses to instant state changes under Reduce animations.
+// The page is a HUD tab strip: GAME / DIAGNOSTICS / UPDATES / INTERFACE cluster to the left, the
+// destructive DATA tab docked to the right, and one category pane visible at a time. A traveling
+// underline slides between tabs (crossfading amber to danger red over DATA), the incoming pane fades
+// and slides in the direction of travel, and the GAME tab's needs-attention pip breathes while no
+// Game.log is set. All motion collapses to instant state changes under Reduce animations.
 public sealed class SettingsPage : UserControl
 {
     private readonly Action _openLogMonitor;
@@ -28,11 +28,11 @@ public sealed class SettingsPage : UserControl
     // The destructive DATA tab's red, matching the literal SettingsPage already uses elsewhere.
     private static readonly Color DangerColor = Color.FromRgb(0xE5, 0x53, 0x53);
 
-    // Tab strip state. These back the four-tab HUD strip so the switch logic (and the later motion
+    // Tab strip state. These back the five-tab HUD strip so the switch logic (and the later motion
     // pass) has one place to read the tabs, labels, panes, and the traveling underline from.
-    private readonly Border[] _tabButtons = new Border[4];
-    private readonly TextBlock[] _tabLabels = new TextBlock[4];
-    private readonly ScrollViewer[] _panes = new ScrollViewer[4];
+    private readonly Border[] _tabButtons = new Border[5];
+    private readonly TextBlock[] _tabLabels = new TextBlock[5];
+    private readonly ScrollViewer[] _panes = new ScrollViewer[5];
     private readonly TranslateTransform _underlineT = new();
     private readonly SolidColorBrush _underlineBrush;               // local + unfrozen so it can be color-crossfaded on switch
     private readonly SolidColorBrush _dangerFull = new(DangerColor);
@@ -52,17 +52,25 @@ public sealed class SettingsPage : UserControl
     private readonly TranslateTransform _modalPanelT = new(0, 12);   // panel rise on entrance
     private readonly ScaleTransform _modalPanelScale = new(0.98, 0.98);
 
-    // Updates section (DIAGNOSTICS). Held so the rows can be refreshed as the update service
+    // Updates section (UPDATES tab). Held so the rows can be refreshed as the update service
     // moves between states; null in the demo profile, where the section is inert.
     private TextBlock? _updateStatusText;
     private StackPanel? _updateActionHost;
     private Hud.ToggleSwitch? _updateCheckToggle;
 
-    // Market data section (DIAGNOSTICS). Held so the rows can be refreshed as the fetch cycle
+    // Market data section (UPDATES tab). Held so the rows can be refreshed as the fetch cycle
     // moves between states; null in the demo profile, where the section is inert.
     private Hud.ToggleSwitch? _marketToggle;
     private Button? _marketRefreshBtn;
     private TextBlock? _marketStatusText;
+
+    // Overlay ghost mode toggle (INTERFACE). Held so it can be re-synced when ghost mode is
+    // changed elsewhere (the ghost rail's own flyout switch) instead of only seeding once here.
+    private Hud.ToggleSwitch? _ghostToggle;
+
+    // Overlay click-through toggle (INTERFACE). Held so it can be re-synced when the overlay's
+    // quick-settings flyout flips it elsewhere, the same precedent as _ghostToggle above.
+    private Hud.ToggleSwitch? _passThroughToggle;
 
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
@@ -88,8 +96,9 @@ public sealed class SettingsPage : UserControl
         var paneHost = new Grid { Margin = new Thickness(0, 16, 0, 0) };
         _panes[0] = BuildGamePane();
         _panes[1] = BuildDiagnosticsPane();
-        _panes[2] = BuildInterfacePane();
-        _panes[3] = BuildDataPane();
+        _panes[2] = BuildUpdatesPane();
+        _panes[3] = BuildInterfacePane();
+        _panes[4] = BuildDataPane();
         foreach (var pane in _panes) { pane.Visibility = Visibility.Collapsed; paneHost.Children.Add(pane); }
         Grid.SetRow(paneHost, 2);
         root.Children.Add(paneHost);
@@ -118,8 +127,8 @@ public sealed class SettingsPage : UserControl
     }
 
     // ── Tab strip ───────────────────────────────────────────────────────────────
-    // The strip: left cluster (GAME / DIAGNOSTICS / INTERFACE), a star spacer, and the DATA tab docked
-    // right, over a full-width hairline with the traveling underline drawn on top of it.
+    // The strip: left cluster (GAME / DIAGNOSTICS / UPDATES / INTERFACE), a star spacer, and the DATA
+    // tab docked right, over a full-width hairline with the traveling underline drawn on top of it.
     private void BuildStrip()
     {
         // No top margin here: Hud.Header already carries an 18px bottom margin, and stacking a
@@ -139,11 +148,12 @@ public sealed class SettingsPage : UserControl
         var cluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         cluster.Children.Add(MakeTab(0, "Game", danger: false));
         cluster.Children.Add(MakeTab(1, "Diagnostics", danger: false));
-        cluster.Children.Add(MakeTab(2, "Interface", danger: false));
+        cluster.Children.Add(MakeTab(2, "Updates", danger: false));
+        cluster.Children.Add(MakeTab(3, "Interface", danger: false));
         Grid.SetColumn(cluster, 0);
         _stripHost.Children.Add(cluster);
 
-        var dataTab = MakeTab(3, "Data", danger: true);
+        var dataTab = MakeTab(4, "Data", danger: true);
         Grid.SetColumn(dataTab, 2);
         _stripHost.Children.Add(dataTab);
 
@@ -213,7 +223,7 @@ public sealed class SettingsPage : UserControl
     // dim red for DATA).
     private Brush TabColor(int index)
     {
-        bool danger = index == 3;
+        bool danger = index == 4;
         bool active = index == _activeIndex;
         if (danger) return active ? _dangerFull : _dangerDim;
         return active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
@@ -262,7 +272,7 @@ public sealed class SettingsPage : UserControl
     {
         if (_stripHost.ActualWidth < 1) return;   // layout has not run yet; the Loaded handler will place it
         var (x, w) = MeasureTab(index);
-        bool danger = index == 3;
+        bool danger = index == 4;
         var color = danger ? DangerColor : Hud.Col("AccentColor");
 
         // The glow is retinted to the target color at the start; the brush crossfade carries the visual.
@@ -359,6 +369,12 @@ public sealed class SettingsPage : UserControl
         }
     }
 
+    /// <summary>Jumps straight to the GAME tab. Public so MainWindow's SESSION chip can drive the
+    /// page to the Game.log path controls when it clicks through from its own "no log" state (app
+    /// review, Task 10) - a real user-driven switch, so it persists and logs exactly like a manual
+    /// tab click.</summary>
+    public void SwitchToGameTab() => SwitchTab(Array.IndexOf(SettingsTabs.Ids, "game"));
+
     // ── Category panes ──────────────────────────────────────────────────────────
     // GAME: Game.log paths + Blueprint Network identity.
     private ScrollViewer BuildGamePane()
@@ -449,6 +465,17 @@ public sealed class SettingsPage : UserControl
                 "Shows the most recent time Nexus closed and reopened itself automatically after " +
                 "Windows reported a display error, usually while the game was crashing or quitting.",
                 RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
+
+        return Pane(panel);
+    }
+
+    // UPDATES: app auto-update checks + live market data. Both moved out of DIAGNOSTICS (app
+    // review, Task 10): they are opt-in feature/data-source toggles, not diagnostic tooling, and
+    // grew that pane into a mixed bag as each shipped (Updates in v6.7, Market in v6.10). Section
+    // names are unchanged (help breadcrumbs rule) - only the pane they live under moved.
+    private ScrollViewer BuildUpdatesPane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
 
         // Updates: consent toggle, manual check, contextual action. Inert in the demo profile.
         if (AppPaths.IsDemoProfile)
@@ -809,31 +836,35 @@ public sealed class SettingsPage : UserControl
     {
         var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
 
-        var overlayPassToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
+        _passThroughToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
         {
-            OnToggled = on =>
-            {
-                App.Settings.Current.OverlayPassThroughWhenCursorHidden = on;
-                App.Settings.Save();
-                Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")}");
-            },
+            OnToggled = on => App.SetOverlayPassThrough(on, "settings"),
         };
-        var ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
+        // The overlay's own quick-settings flyout can flip click-through without touching this
+        // page, the same precedent as the ghost-mode subscription below.
+        App.OverlayPassThroughChanged +=
+            on => Dispatcher.BeginInvoke(() => _passThroughToggle!.SetOnSilently(on));
+        _ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
         {
             OnToggled = on => App.SetOverlayGhostMode(on, "settings"),
         };
+        // The ghost rail's own flyout switch can flip ghost mode without touching this page, so a
+        // one-time seed goes stale (review 2026-07-28). Re-sync silently whenever the shared state
+        // changes, the same precedent as the Market toggle above; SettingsPage is an app-lifetime
+        // singleton, so this subscription is never detached.
+        App.OverlayGhostModeChanged += (on, _) =>
+            Dispatcher.BeginInvoke(() => _ghostToggle!.SetOnSilently(on));
         panel.Children.Add(SectionPanel("Overlay", false,
             SettingRow("Click-through in FPS and flight",
                 "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
                 "but lets the mouse pass straight through, so a stray click can't land on it or pull focus " +
                 "from the game. It becomes clickable again the moment the game shows the cursor.",
-                overlayPassToggle, last: false),
+                _passThroughToggle, last: false),
             SettingRow("Ghost mode",
                 "Collapses the overlay to a slim icon rail with a minimal in-game footprint. " +
                 "Click a rail glyph to slide that tab out beside it; click it again to collapse. " +
-                "The rail's gear opens quick settings, and scans that land while collapsed pulse " +
-                "the SCAN glyph with a count instead of opening anything.",
-                ghostToggle, last: false),
+                "The rail's gear opens quick settings.",
+                _ghostToggle, last: false),
             ScaleRow("Overlay scale",
                 "Make the in-game overlay and its work order flyout larger. The overlay grows " +
                 "from its top-left corner; drag it back into place if it no longer sits where " +
@@ -841,7 +872,15 @@ public sealed class SettingsPage : UserControl
                 App.Settings.Current.OverlayUiScale,
                 onTick: v => UiScaleService.SetOverlayScale(v),
                 onCommit: v => Logger.Info($"[UI] Overlay scale: {Math.Round(UiScaleService.ClampScale(v) * 100)}%"),
-                last: true)));
+                last: false),
+            ScaleRow("Ghost rail scale",
+                "Size ghost mode's icon rail and its quick-settings flyout independently of the " +
+                "overlay panels. Below 100% the rail shrinks past its default for a minimal " +
+                "in-game footprint.",
+                App.Settings.Current.OverlayGhostRailScale,
+                onTick: v => UiScaleService.SetGhostRailScale(v),
+                onCommit: v => Logger.Info($"[UI] Ghost rail scale: {Math.Round(UiScaleService.ClampRailScale(v) * 100)}%"),
+                last: true, min: UiScaleService.RailMin, max: UiScaleService.Max)));
 
         var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
         {
@@ -1102,14 +1141,15 @@ public sealed class SettingsPage : UserControl
     // and break the gesture (the value jumps, and the window can jolt as its MinWidth grows).
     // Committing on mouse release keeps the drag stable and still applies the final value.
     private static FrameworkElement ScaleRow(
-        string title, string desc, double initial, Action<double>? onTick, Action<double> onCommit, bool last = false)
+        string title, string desc, double initial, Action<double>? onTick, Action<double> onCommit,
+        bool last = false, double min = UiScaleService.Min, double max = UiScaleService.Max)
     {
         var label = new TextBlock
         {
             // Clamp the readout the same way the slider thumb (below) and the applied window
             // scale do, so an out-of-range persisted value shows a label that agrees with the
             // actual scale from construction instead of only after the first drag.
-            Text = $"{Math.Round(UiScaleService.ClampScale(initial) * 100)}%",
+            Text = $"{Math.Round(Math.Clamp(double.IsNaN(initial) || initial <= 0 ? 1.0 : initial, min, max) * 100)}%",
             FontFamily = Hud.Font("MonoFont"), FontSize = 13,
             Foreground = Hud.Br("FgBrush"),
             VerticalAlignment = VerticalAlignment.Center,
@@ -1117,13 +1157,13 @@ public sealed class SettingsPage : UserControl
         };
         var slider = new Slider
         {
-            Minimum = UiScaleService.Min, Maximum = UiScaleService.Max,
+            Minimum = min, Maximum = max,
             IsSnapToTickEnabled = true, TickFrequency = UiScaleService.Step,
             SmallChange = UiScaleService.Step, LargeChange = UiScaleService.Step,
             Width = 160, VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.FindResource("HudSlider"),
         };
-        slider.Value = UiScaleService.ClampScale(initial);
+        slider.Value = Math.Clamp(double.IsNaN(initial) || initial <= 0 ? 1.0 : initial, min, max);
         slider.ValueChanged += (_, e) =>
         {
             label.Text = $"{Math.Round(e.NewValue * 100)}%";
@@ -1137,23 +1177,22 @@ public sealed class SettingsPage : UserControl
         return SettingRow(title, desc, control, last);
     }
 
-    // Persist the Game.log path and re-point every Game.log-driven watcher so it takes effect immediately.
-    // Blank means "auto-detect". The actual path is not logged (it can contain a Windows username). Instance
-    // method so it can refresh the GAME tab's needs-attention pip after the effective path changes.
+    // Persist the Game.log path and re-point the shared Game.log tail so it takes effect immediately -
+    // one retarget now serves the blueprint session, the haul tracker and the shard tracker. Blank means
+    // "auto-detect". The actual path is not logged (it can contain a Windows username). Instance method
+    // so it can refresh the GAME tab's needs-attention pip after the effective path changes.
     private void ApplyGameLogPath(string path)
     {
         if (App.Settings.Current.GameLogPath == path) return;
         App.Settings.Current.GameLogPath = path;
         App.Settings.Save();
 
-        App.GameLog.PreferredPath = path;
-        App.Hauls.PreferredPath = path;
-        App.Shards.PreferredPath = path;
-
+        App.GameLogFeed.PreferredPath = path;
         var effective = string.IsNullOrWhiteSpace(path) ? GameLogWatcher.FindGameLog() : path;
-        App.Hauls.Start(effective, fromBeginning: true);
-        App.Shards.Start(effective, fromBeginning: true);
-        if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);   // Start preserves AutoMark
+        // A running blueprint session restarts THROUGH the feed so it also replays the new log
+        // (Start preserves AutoMark); a stopped one stays detached while the tail re-points.
+        if (App.GameLog.IsRunning) App.GameLog.Start(effective, fromBeginning: true);
+        else App.GameLogFeed.Start(effective);
 
         Logger.Info("[UI] Game.log path updated in Settings");
         RefreshGameDot();

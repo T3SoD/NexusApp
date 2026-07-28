@@ -269,7 +269,7 @@ public sealed class CargoPlannerPage : UserControl
             };
             Grid.SetColumn(capChip, 1);
 
-            var del = new Button { Content = "x", Width = 18, Height = 18, Padding = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand };
+            var del = new Button { Content = "x", Width = 18, Height = 18, Padding = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Remove this line" };
             StyleGhost(del);
             var captured = item;
             del.Click += (_, _) => { _vm.RemoveLine(captured); RefreshManifest(); Render(); };

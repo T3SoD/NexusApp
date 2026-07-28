@@ -25,16 +25,19 @@ public sealed class GridExportDialog : Window
     {
         Title = $"Export grid layout - {shipName}";
         Width = 460; Height = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x0B, 0x10, 0x17));
+        Background = (Brush)Application.Current.FindResource("BgBrush");
+        Foreground = (Brush)Application.Current.FindResource("FgBrush");
         ResizeMode = ResizeMode.NoResize;
         FontFamily = (FontFamily)Application.Current.FindResource("UiFont");
 
         var stack = new StackPanel { Margin = new Thickness(18) };
-        var fg = new SolidColorBrush(Color.FromRgb(0xEA, 0xF1, 0xF6));
+        var fg = (Brush)Application.Current.FindResource("FgBrush");
+        var fgDim = (Brush)Application.Current.FindResource("FgDimBrush");
+        var textBoxStyle = (Style)Application.Current.FindResource("NexusTextBox");
 
         void Lbl(string t) => stack.Children.Add(new TextBlock
         {
-            Text = t, Foreground = fg, Margin = new Thickness(0, 10, 0, 4), FontSize = 12,
+            Text = t, Foreground = fgDim, Margin = new Thickness(0, 10, 0, 4), FontSize = 12,
         });
 
         _handle.Text = handle;
@@ -61,19 +64,22 @@ public sealed class GridExportDialog : Window
         stack.Children.Add(_flagNote);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-        var ok = new Button { Content = "Export", Padding = new Thickness(14, 5, 14, 5), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
-        var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 5, 14, 5), IsCancel = true };
+        var ok = new Button
+        {
+            Content = "Export", Style = (Style)Application.Current.FindResource("AccentButton"),
+            Padding = new Thickness(14, 5, 14, 5), Margin = new Thickness(0, 0, 8, 0), IsDefault = true,
+        };
+        var cancel = new Button
+        {
+            Content = "Cancel", Style = (Style)Application.Current.FindResource("NexusButton"),
+            Padding = new Thickness(14, 5, 14, 5), IsCancel = true,
+        };
         ok.Click += (_, _) => { DialogResult = true; };
         row.Children.Add(ok); row.Children.Add(cancel);
         stack.Children.Add(row);
 
         foreach (var tb in new[] { _handle, _summary, _notes, _flagNote })
-        {
-            tb.Background = new SolidColorBrush(Color.FromRgb(0x0E, 0x14, 0x1C));
-            tb.Foreground = fg;
-            tb.BorderBrush = new SolidColorBrush(Color.FromRgb(0x1C, 0x28, 0x36));
-            tb.Padding = new Thickness(6, 4, 6, 4);
-        }
+            tb.Style = textBoxStyle;
 
         var rootScroll = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Content = rootScroll;

@@ -137,6 +137,11 @@ public sealed class NetworkPage : UserControl
             BorderBrush = active ? Br("AccentBrush") : Br("NavBorderBrush"),
             BorderThickness = new Thickness(1),
         };
+        if (!active)
+        {
+            border.MouseEnter += (_, _) => border.Background = Br("HighlightBrush");
+            border.MouseLeave += (_, _) => border.Background = Br("Bg2NavBrush");
+        }
         border.MouseLeftButtonUp += (_, _) =>
         {
             if (_tab == key) return;
@@ -189,6 +194,11 @@ public sealed class NetworkPage : UserControl
             Background = active ? Br("AccentBrush") : Br("Bg2NavBrush"),
             BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = tb,
         };
+        if (!active)
+        {
+            border.MouseEnter += (_, _) => border.Background = Br("HighlightBrush");
+            border.MouseLeave += (_, _) => border.Background = Br("Bg2NavBrush");
+        }
         if (isNew) border.ToolTip = "Create a group like Friends or your org";
         else if (groupId == "__manage__") border.ToolTip = "Delete groups";
         border.MouseLeftButtonUp += (_, _) =>
@@ -229,6 +239,8 @@ public sealed class NetworkPage : UserControl
             Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand, Child = tb,
         };
+        btn.MouseEnter += (_, _) => btn.Background = Br("HighlightBrush");
+        btn.MouseLeave += (_, _) => btn.Background = Br("Bg2NavBrush");
         btn.ToolTip = "Show one person's blueprints (you are excluded)";
         btn.MouseLeftButtonUp += (_, _) => ShowPersonMenu(btn);
         _personPickerHost.Child = btn;
@@ -695,7 +707,7 @@ public sealed class NetworkPage : UserControl
                 if (o == 1) single++;
             }
         }
-        var pct = total > 0 ? (int)Math.Round(100.0 * covered / total) : 0;
+        var pct = UiHelpers.PctOf(covered, total);
 
         // ── LEFT: donut coverage gauge (hero card with reticle) ─────────────────
         var gaugeInner = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
@@ -874,7 +886,7 @@ public sealed class NetworkPage : UserControl
     // A per-member coverage card: name + owned count (cyan) + a cyan StateBar coverage bar.
     private UIElement MemberCoverageRow(string name, int count, int total, bool self)
     {
-        var p = total > 0 ? (int)Math.Round(100.0 * count / total) : 0;
+        var p = UiHelpers.PctOf(count, total);
         var sp = new StackPanel { Margin = new Thickness(0, 0, 0, 13) };
 
         var top = new Grid();
@@ -1150,12 +1162,14 @@ public sealed class NetworkPage : UserControl
         return string.IsNullOrWhiteSpace(s) ? "library" : s;
     }
 
+    // Styled via the shared NexusButton template (was a bare Button falling back to stock WPF
+    // chrome with no hover feedback - the same fix applied to HaulingPage.ActionButton, which
+    // mirrors this recipe).
     private Button ActionButton(string text) => new()
     {
-        Content = text, Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(6, 0, 0, 0),
-        Background = Br("Bg2NavBrush"), Foreground = Br("AccentBrush"),
-        BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-        Cursor = Cursors.Hand, FontWeight = FontWeights.SemiBold, FontSize = 12,
+        Content = text, Style = (Style)Application.Current.FindResource("NexusButton"),
+        Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(6, 0, 0, 0),
+        FontWeight = FontWeights.SemiBold, FontSize = 12,
     };
 
     private string PersonName(string id) => _store.GetMember(id)?.DisplayName ?? "this member";

@@ -3,7 +3,7 @@ using System.Globalization;
 namespace NexusApp.Services;
 
 // Pure, WPF-free presentation seam for every update surface (RelaunchNotice pattern): the
-// Operations strips, the Settings > Diagnostics Updates rows and the install confirmation all
+// Operations strips, the Settings > Updates rows and the install confirmation all
 // read their copy and show/hide decisions here, so voice and logic are pinned by unit tests.
 public static class UpdateNotice
 {
@@ -11,7 +11,7 @@ public static class UpdateNotice
     public const string ConsentBody =
         "Nexus can check for new versions when it starts, at most once a day. It contacts " +
         "GitHub only and sends nothing about you. You can change this anytime in " +
-        "Settings > Diagnostics.";
+        "Settings > Updates.";
     public const string ConsentEnable = "Enable";
     public const string ConsentDecline = "No thanks";
 
@@ -44,7 +44,7 @@ public static class UpdateNotice
     // Post-confirm staging failure: the app is still open, nothing was touched, and both
     // recovery paths are named (house pattern: what happened, what the app did, what to do).
     public const string PrepareFailedBody =
-        "Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.";
+        "Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Updates.";
 
     // The stuck-rollback state: the swap failed AND the rollback could not put every file
     // back, so the previous version lives in .old files that only startup recovery can

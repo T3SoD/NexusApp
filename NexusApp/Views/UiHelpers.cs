@@ -43,7 +43,7 @@ public static class UiHelpers
     };
 
     public static Brush ModifierBrush(int mod) =>
-        mod > 0 ? BrushFromHex("#22C55E") : mod < 0 ? BrushFromHex("#EF4444") : BrushFromHex("#8B949E");
+        mod > 0 ? BrushFromHex("#22C55E") : mod < 0 ? (Brush)System.Windows.Application.Current.FindResource("DangerBrush") : BrushFromHex("#8B949E");
 
     // MOBIGLAS HUD accent tones (same blue/cyan/green/gold the dashboards' Hud.StateBar + status chips
     // use) so the category counts/bars read as on-theme HUD readouts instead of saturated candy colors.
@@ -57,6 +57,9 @@ public static class UiHelpers
     };
 
     public static Brush AccentBrush() => (Brush)System.Windows.Application.Current.FindResource("AccentBrush");
+
+    /// <summary>Zero-guarded ratio-to-percent: part/whole as a rounded whole-number percentage, or 0 when whole is not positive.</summary>
+    public static int PctOf(double part, double whole) => whole > 0 ? (int)Math.Round(100.0 * part / whole) : 0;
 
     public static SolidColorBrush BrushFromHex(string hex)
     {

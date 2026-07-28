@@ -279,7 +279,7 @@ public sealed class GridStudioPage : UserControl
         try
         {
             GridShareService.Export(pkg, save.FileName);
-            Logger.Info($"[UI] cargo grid export saved ship={ship.Id} handle={dlg.Handle} grids={grids.Count}");
+            Logger.Info($"[CARGO] cargo grid export saved ship={ship.Id} handle={dlg.Handle} grids={grids.Count}");
             SetStatus($"Exported {ship.DisplayName} layout ({grids.Count} grids).", Cyan);
         }
         catch (Exception ex)
@@ -305,7 +305,7 @@ public sealed class GridStudioPage : UserControl
         try
         {
             System.IO.File.WriteAllText(save.FileName, CatalogPatchExport.ToPatchJson(ship));
-            Logger.Info($"[UI] cargo grid catalog patch exported ship={ship.Id}");
+            Logger.Info($"[CARGO] cargo grid catalog patch exported ship={ship.Id}");
             SetStatus($"Exported catalog patch for {ship.DisplayName}.", Cyan);
         }
         catch (Exception ex)
@@ -334,7 +334,7 @@ public sealed class GridStudioPage : UserControl
         foreach (var f in open.FileNames) _importQueue.Enqueue(f);
         _batchTotal = _importQueue.Count;
         _batchApplied = _batchDiscarded = _batchSkipped = 0;
-        if (_batchTotal > 1) Logger.Info($"[UI] cargo grid batch import: {_batchTotal} files queued");
+        if (_batchTotal > 1) Logger.Info($"[CARGO] cargo grid batch import: {_batchTotal} files queued");
         PumpImportQueue();
     }
 
@@ -360,18 +360,18 @@ public sealed class GridStudioPage : UserControl
         var file = System.IO.Path.GetFileName(path);
         GridSharePackage pkg;
         try { pkg = GridShareService.Import(path); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[CARGO] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
         ShipCargoDef? preview;
         try { preview = _catalog.BuildPreview(pkg.ShipId, pkg.Grids); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
-        if (preview == null) { Logger.Info($"[UI] cargo grid import rejected ({file}): ship '{TextSanitizer.ForLog(pkg.ShipId)}' not in catalog"); SetStatus($"Skipped {file}: ship '{pkg.ShipId}' is not in the catalog.", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[CARGO] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        if (preview == null) { Logger.Info($"[CARGO] cargo grid import rejected ({file}): ship '{TextSanitizer.ForLog(pkg.ShipId)}' not in catalog"); SetStatus($"Skipped {file}: ship '{pkg.ShipId}' is not in the catalog.", Warn); return false; }
 
         var targetShip = _catalog.ById(pkg.ShipId)!;
         var current = CurrentFor(pkg.ShipId);
         GridDiffResult diff;
         try { diff = GridDiff.Compute(current, pkg.Grids); }
-        catch (Exception ex) { Logger.Info($"[UI] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
+        catch (Exception ex) { Logger.Info($"[CARGO] cargo grid import rejected ({file}): {TextSanitizer.ForLog(ex.Message)}"); SetStatus($"Skipped {file}: {ex.Message}", Warn); return false; }
 
         _selected = targetShip;
         RefreshShips();
@@ -380,7 +380,7 @@ public sealed class GridStudioPage : UserControl
         SetStatus($"Reviewing submission for {targetShip.DisplayName}. Pick aspects, then Apply selected.{more}", Cyan);
         // ShipId is the only untrusted field here (RsiHandle/ShipName/etc. are sanitized by
         // GridShareService.Import); route it through the shared log sanitizer as defense-in-depth.
-        Logger.Info($"[UI] cargo grid import loaded ship={TextSanitizer.ForLog(pkg.ShipId)} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges} flagged={pkg.Flagged}");
+        Logger.Info($"[CARGO] cargo grid import loaded ship={TextSanitizer.ForLog(pkg.ShipId)} handle={pkg.RsiHandle} grids={pkg.Grids.Count} changes={diff.HasChanges} flagged={pkg.Flagged}");
         return true;
     }
 
@@ -407,7 +407,7 @@ public sealed class GridStudioPage : UserControl
         _viewport.BumpEditRev();
         RefreshShips();
         Render();
-        Logger.Info($"[UI] cargo grid import applied ship={shipId} aspects={aspects} grids={merged.Count}");
+        Logger.Info($"[CARGO] cargo grid import applied ship={shipId} aspects={aspects} grids={merged.Count}");
         SetStatus($"Applied submission aspects ({aspects}) to {shipName}.", Cyan);
         _batchApplied++;
         PumpImportQueue();
@@ -416,7 +416,7 @@ public sealed class GridStudioPage : UserControl
     private void OnImportDiscarded(string shipName)
     {
         Render();
-        Logger.Info($"[UI] cargo grid import discarded ship={shipName}");
+        Logger.Info($"[CARGO] cargo grid import discarded ship={shipName}");
         SetStatus(string.IsNullOrEmpty(shipName) ? "" : $"Discarded submission for {shipName}.", Dim);
         _batchDiscarded++;
         PumpImportQueue();
@@ -468,7 +468,7 @@ public sealed class GridStudioPage : UserControl
         RefreshShips();
         Render();
         if (wasSchematic) SetStatus($"Saved {name}. Positions are now set for this ship.", Cyan);
-        Logger.Info($"[UI] grid studio layout saved for {name} grids={grids.Count}");
+        Logger.Info($"[CARGO] grid studio layout saved for {name} grids={grids.Count}");
     }
 
     private void OnGridsReverted(string shipId)
@@ -500,6 +500,8 @@ public sealed class GridStudioPage : UserControl
     private void OnShipSelected(object sender, SelectionChangedEventArgs e)
     {
         if (_shipSelect.SelectedItem is not ShipRow r) return;
+        // Parity with Cargo Planner's CargoPlannerViewModel.SelectShip, which logs every ship pick.
+        Logger.Info($"[CARGO] grid studio ship-select {r.Ship.Id} grids={r.Ship.GridCount} scu={r.Ship.TotalScu}");
         // Changing ships abandons any open import review (the preview was for the other ship). If a batch
         // was queued behind it, drop the rest and say so, rather than silently stranding the queue.
         if (_importPanel.IsActive && _importPanel.ActiveShipId != r.Ship.Id)
@@ -715,7 +717,7 @@ public sealed class GridStudioPage : UserControl
         else
             SetResult($"OK: {qty} x {scu} SCU fit in Grid {gi + 1} ({placed * scu}/{grid.Capacity} SCU).", Cyan);
 
-        Logger.Info($"[UI] grid studio test-fill ship={ship.Id} grid={gi} scu={scu} qty={qty} placed={placed}");
+        Logger.Info($"[CARGO] grid studio test-fill ship={ship.Id} grid={gi} scu={scu} qty={qty} placed={placed}");
     }
 
     private void SetResult(string text, Color color)

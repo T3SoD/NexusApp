@@ -24,6 +24,11 @@ public sealed class AppLogMonitorWindow : Window
     private readonly CheckBox _autoScroll;
     private readonly TextBlock _status;
 
+    // Filter debounce (perf): RebuildView() walks up to MaxEntries rows and allocates a TextBlock per
+    // surviving line, so rebuilding on every keystroke is costly. Mirrors MainWindow's reference-catalog
+    // filter debounce (_refFilterDebounce) - restart a short timer on each keystroke, rebuild once at rest.
+    private System.Windows.Threading.DispatcherTimer? _filterDebounce;
+
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
 
@@ -51,7 +56,7 @@ public sealed class AppLogMonitorWindow : Window
         var ctl = new StackPanel { Orientation = Orientation.Horizontal };
         ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
         _filterBox = new TextBox { Width = 220, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
-        _filterBox.TextChanged += (_, _) => RebuildView();
+        _filterBox.TextChanged += (_, _) => DebounceFilter();
         ctl.Children.Add(_filterBox);
         _errorsOnly = MakeCheck("Errors only", false);
         _errorsOnly.Checked += (_, _) => RebuildView();
@@ -91,7 +96,12 @@ public sealed class AppLogMonitorWindow : Window
         _watcher.LineAppended  += OnLine;
         _watcher.StatusChanged += s => _status.Text = s;
         _watcher.LogReset      += () => { _all.Clear(); _list.Items.Clear(); };   // log rotation truncates the file
-        Closed += (_, _) => _watcher.Dispose();
+        Closed += (_, _) =>
+        {
+            _filterDebounce?.Stop();   // this window can be reopened (ShowAppLogMonitor builds a fresh
+                                        // instance) - stop so a pending tick never fires against a closed window
+            _watcher.Dispose();
+        };
 
         _watcher.Start(Logger.LogPath, fromBeginning: false);   // backlog already shown; tail appends only
 
@@ -164,22 +174,44 @@ public sealed class AppLogMonitorWindow : Window
             _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
     }
 
+    // Restart-on-keystroke debounce (220ms, same idiom as MainWindow's _refFilterDebounce): rebuilding
+    // the up-to-MaxEntries list on every character typed is wasted work while the user is still typing.
+    private void DebounceFilter()
+    {
+        if (_filterDebounce == null)
+        {
+            _filterDebounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+            _filterDebounce.Tick += (_, __) => { _filterDebounce!.Stop(); RebuildView(); };
+        }
+        _filterDebounce.Stop();
+        _filterDebounce.Start();
+    }
+
     private string BuildSnapshot()
     {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
         // Shared-mode reads: an exclusive read here would make a concurrent diagnostics append
         // throw and silently drop its line (the writer never throws by design).
         string log;
         try { log = ReadShared(Logger.LogPath) ?? "(no log file)"; }
         catch (Exception ex) { log = $"(could not read log: {ex.Message})"; }
+        // The raw log can carry a full profile-relative path verbatim (e.g. the "[GameLog] ...
+        // watching: <path>" line, or a file-import exception message) if the user's Game.log path
+        // override lives under their own profile - redact the WHOLE blob, not just the curated
+        // settings rows below, before it becomes part of a snapshot users are told to share.
+        log = DiagnosticSnapshot.RedactUserProfile(log, home);
 
         string? unmatched = null;
         try { unmatched = ReadShared(UnmatchedBlueprintLog.LogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
+        if (unmatched != null) unmatched = DiagnosticSnapshot.RedactUserProfile(unmatched, home);
 
         // The kept pre-rotation generation: carries crash evidence older than the 72h window.
         string? previous = null;
         try { previous = ReadShared(Logger.PreviousLogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
+        if (previous != null) previous = DiagnosticSnapshot.RedactUserProfile(previous, home);
 
         var settings = new List<(string, string)>
         {
@@ -187,12 +219,20 @@ public sealed class AppLogMonitorWindow : Window
             ("Scan region set", App.Settings.Current.ScanRegion != null ? "yes" : "no"),
             ("Game.log path", string.IsNullOrEmpty(App.Settings.Current.GameLogPath)
                 ? "(default / auto-detect)"
-                : DiagnosticSnapshot.RedactUserProfile(App.Settings.Current.GameLogPath,
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))),
+                : DiagnosticSnapshot.RedactUserProfile(App.Settings.Current.GameLogPath, home)),
             ("Session Tracking", App.Settings.Current.GameLogTrackSession ? "on" : "off"),
             ("Auto-Track Blueprints", App.Settings.Current.GameLogAutoTrack ? "on" : "off"),
             ("Update checks", App.Settings.Current.UpdateCheckEnabled switch { null => "Not asked", true => "On", false => "Off" }),
             ("Last update check", RelaunchNotice.FormatTimestamp(App.Settings.Current.LastUpdateCheckUtc)),
+            ("Auto-scan contracts", App.Settings.Current.AutoScanContracts ? "on" : "off"),
+            ("Reduce animations", App.Settings.Current.ReduceAnimations ? "on" : "off"),
+            ("24-hour clock", App.Settings.Current.Clock24Hour ? "on" : "off"),
+            ("CPU rendering (compatibility)", App.Settings.Current.SoftwareRendering ? "on" : "off"),
+            ("Overlay click-through", App.Settings.Current.OverlayPassThroughWhenCursorHidden ? "on" : "off"),
+            ("Overlay ghost mode", App.Settings.Current.OverlayGhostMode ? "on" : "off"),
+            ("Ghost rail scale", $"{Math.Round(UiScaleService.ClampRailScale(App.Settings.Current.OverlayGhostRailScale) * 100)}%"),
+            ("Market data", App.Settings.Current.MarketDataEnabled switch { null => "Not asked", true => "On", false => "Off" }),
+            ("Codex sell column", App.Settings.Current.CodexSellColumn ? "on" : "off"),
         };
 
         return DiagnosticSnapshot.Build(

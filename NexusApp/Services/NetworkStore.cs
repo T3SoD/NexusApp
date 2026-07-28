@@ -69,38 +69,58 @@ public sealed class NetworkStore : IDisposable
     {
         get
         {
-            using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM members;";
-            return Convert.ToInt32(cmd.ExecuteScalar());
+            try
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*) FROM members;";
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"NetworkStore.{nameof(MemberCount)} failed", ex);
+                return 0;
+            }
         }
     }
 
     /// <summary>Insert a member, or update it in place if its GUID already exists.</summary>
     public void UpsertMember(NetworkMember m)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO members (id, display_name, identity_kind, rsi_handle, last_updated, is_self)
-            VALUES ($id, $name, $kind, $handle, $updated, $self)
-            ON CONFLICT(id) DO UPDATE SET
-                display_name = $name, identity_kind = $kind, rsi_handle = $handle,
-                last_updated = $updated, is_self = $self;";
-        cmd.Parameters.AddWithValue("$id", m.Id);
-        cmd.Parameters.AddWithValue("$name", m.DisplayName);
-        cmd.Parameters.AddWithValue("$kind", m.IdentityKind);
-        cmd.Parameters.AddWithValue("$handle", (object?)m.RsiHandle ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$updated", m.LastUpdatedUtc.ToString("o", CultureInfo.InvariantCulture));
-        cmd.Parameters.AddWithValue("$self", m.IsSelf ? 1 : 0);
-        cmd.ExecuteNonQuery();
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO members (id, display_name, identity_kind, rsi_handle, last_updated, is_self)
+                VALUES ($id, $name, $kind, $handle, $updated, $self)
+                ON CONFLICT(id) DO UPDATE SET
+                    display_name = $name, identity_kind = $kind, rsi_handle = $handle,
+                    last_updated = $updated, is_self = $self;";
+            cmd.Parameters.AddWithValue("$id", m.Id);
+            cmd.Parameters.AddWithValue("$name", m.DisplayName);
+            cmd.Parameters.AddWithValue("$kind", m.IdentityKind);
+            cmd.Parameters.AddWithValue("$handle", (object?)m.RsiHandle ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$updated", m.LastUpdatedUtc.ToString("o", CultureInfo.InvariantCulture));
+            cmd.Parameters.AddWithValue("$self", m.IsSelf ? 1 : 0);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(UpsertMember)} failed", ex); }
     }
 
     public NetworkMember? GetMember(string id)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members WHERE id = $id;";
-        cmd.Parameters.AddWithValue("$id", id);
-        using var r = cmd.ExecuteReader();
-        return r.Read() ? ReadMember(r) : null;
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            using var r = cmd.ExecuteReader();
+            return r.Read() ? ReadMember(r) : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(GetMember)} failed", ex);
+            return null;
+        }
     }
 
     /// <summary>Find a member by their RSI handle (case-insensitive). Used as the import fallback
@@ -108,41 +128,61 @@ public sealed class NetworkStore : IDisposable
     public NetworkMember? FindByHandle(string handle)
     {
         if (string.IsNullOrWhiteSpace(handle)) return null;
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members WHERE rsi_handle = $h COLLATE NOCASE LIMIT 1;";
-        cmd.Parameters.AddWithValue("$h", handle);
-        using var r = cmd.ExecuteReader();
-        return r.Read() ? ReadMember(r) : null;
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members WHERE rsi_handle = $h COLLATE NOCASE LIMIT 1;";
+            cmd.Parameters.AddWithValue("$h", handle);
+            using var r = cmd.ExecuteReader();
+            return r.Read() ? ReadMember(r) : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(FindByHandle)} failed", ex);
+            return null;
+        }
     }
 
     public IReadOnlyList<NetworkMember> GetMembers()
     {
-        var list = new List<NetworkMember>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members ORDER BY display_name COLLATE NOCASE;";
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) list.Add(ReadMember(r));
-        return list;
+        try
+        {
+            var list = new List<NetworkMember>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT id, display_name, identity_kind, rsi_handle, last_updated, is_self FROM members ORDER BY display_name COLLATE NOCASE;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(ReadMember(r));
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(GetMembers)} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>Remove a member and everything attached to them (ownership + group links).</summary>
     public void DeleteMember(string id)
     {
-        using var tx = _conn.BeginTransaction();
-        foreach (var sql in new[]
+        try
         {
-            "DELETE FROM member_blueprints WHERE member_id = $id;",
-            "DELETE FROM group_members WHERE member_id = $id;",
-            "DELETE FROM members WHERE id = $id;",
-        })
-        {
-            using var cmd = _conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = sql;
-            cmd.Parameters.AddWithValue("$id", id);
-            cmd.ExecuteNonQuery();
+            using var tx = _conn.BeginTransaction();
+            foreach (var sql in new[]
+            {
+                "DELETE FROM member_blueprints WHERE member_id = $id;",
+                "DELETE FROM group_members WHERE member_id = $id;",
+                "DELETE FROM members WHERE id = $id;",
+            })
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = sql;
+                cmd.Parameters.AddWithValue("$id", id);
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
         }
-        tx.Commit();
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(DeleteMember)} failed", ex); }
     }
 
     private static NetworkMember ReadMember(SqliteDataReader r) => new()
@@ -161,61 +201,89 @@ public sealed class NetworkStore : IDisposable
     /// transaction - newer-wins import just hands us the new set.</summary>
     public void ReplaceOwnership(string memberId, IEnumerable<string> blueprintNames)
     {
-        using var tx = _conn.BeginTransaction();
-        using (var del = _conn.CreateCommand())
+        try
         {
-            del.Transaction = tx;
-            del.CommandText = "DELETE FROM member_blueprints WHERE member_id = $m;";
-            del.Parameters.AddWithValue("$m", memberId);
-            del.ExecuteNonQuery();
-        }
-        using (var ins = _conn.CreateCommand())
-        {
-            ins.Transaction = tx;
-            ins.CommandText = "INSERT OR IGNORE INTO member_blueprints (member_id, blueprint_name) VALUES ($m, $b);";
-            var pm = ins.Parameters.Add("$m", SqliteType.Text);
-            var pb = ins.Parameters.Add("$b", SqliteType.Text);
-            pm.Value = memberId;
-            foreach (var name in blueprintNames)
+            using var tx = _conn.BeginTransaction();
+            using (var del = _conn.CreateCommand())
             {
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                pb.Value = name;
-                ins.ExecuteNonQuery();
+                del.Transaction = tx;
+                del.CommandText = "DELETE FROM member_blueprints WHERE member_id = $m;";
+                del.Parameters.AddWithValue("$m", memberId);
+                del.ExecuteNonQuery();
             }
+            using (var ins = _conn.CreateCommand())
+            {
+                ins.Transaction = tx;
+                ins.CommandText = "INSERT OR IGNORE INTO member_blueprints (member_id, blueprint_name) VALUES ($m, $b);";
+                var pm = ins.Parameters.Add("$m", SqliteType.Text);
+                var pb = ins.Parameters.Add("$b", SqliteType.Text);
+                pm.Value = memberId;
+                foreach (var name in blueprintNames)
+                {
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    pb.Value = name;
+                    ins.ExecuteNonQuery();
+                }
+            }
+            tx.Commit();
         }
-        tx.Commit();
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(ReplaceOwnership)} failed", ex); }
     }
 
     public IReadOnlyList<string> GetOwnedNames(string memberId)
     {
-        var list = new List<string>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT blueprint_name FROM member_blueprints WHERE member_id = $m ORDER BY blueprint_name COLLATE NOCASE;";
-        cmd.Parameters.AddWithValue("$m", memberId);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) list.Add(r.GetString(0));
-        return list;
+        try
+        {
+            var list = new List<string>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT blueprint_name FROM member_blueprints WHERE member_id = $m ORDER BY blueprint_name COLLATE NOCASE;";
+            cmd.Parameters.AddWithValue("$m", memberId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(GetOwnedNames)} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>How many stored members own this blueprint (case-insensitive). Excludes self.</summary>
     public int OwnerCount(string blueprintName)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(DISTINCT member_id) FROM member_blueprints WHERE blueprint_name = $b COLLATE NOCASE;";
-        cmd.Parameters.AddWithValue("$b", blueprintName);
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(DISTINCT member_id) FROM member_blueprints WHERE blueprint_name = $b COLLATE NOCASE;";
+            cmd.Parameters.AddWithValue("$b", blueprintName);
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(OwnerCount)} failed", ex);
+            return 0;
+        }
     }
 
     /// <summary>The ids of stored members who own this blueprint (case-insensitive). Excludes self.</summary>
     public IReadOnlyList<string> OwnerIdsOf(string blueprintName)
     {
-        var list = new List<string>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT member_id FROM member_blueprints WHERE blueprint_name = $b COLLATE NOCASE;";
-        cmd.Parameters.AddWithValue("$b", blueprintName);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) list.Add(r.GetString(0));
-        return list;
+        try
+        {
+            var list = new List<string>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT member_id FROM member_blueprints WHERE blueprint_name = $b COLLATE NOCASE;";
+            cmd.Parameters.AddWithValue("$b", blueprintName);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(OwnerIdsOf)} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>blueprint name → number of stored members who own it. Pass a member-id set to scope
@@ -223,41 +291,57 @@ public sealed class NetworkStore : IDisposable
     public IReadOnlyDictionary<string, int> OwnerCounts(IReadOnlyCollection<string>? memberIds = null)
     {
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        using var cmd = _conn.CreateCommand();
-        if (memberIds == null)
+        try
         {
-            cmd.CommandText = "SELECT blueprint_name, COUNT(DISTINCT member_id) FROM member_blueprints GROUP BY blueprint_name COLLATE NOCASE;";
-        }
-        else
-        {
-            if (memberIds.Count == 0) return result;
-            var placeholders = new List<string>();
-            var i = 0;
-            foreach (var id in memberIds)
+            using var cmd = _conn.CreateCommand();
+            if (memberIds == null)
             {
-                var p = "$m" + i++;
-                placeholders.Add(p);
-                cmd.Parameters.AddWithValue(p, id);
+                cmd.CommandText = "SELECT blueprint_name, COUNT(DISTINCT member_id) FROM member_blueprints GROUP BY blueprint_name COLLATE NOCASE;";
             }
-            cmd.CommandText =
-                "SELECT blueprint_name, COUNT(DISTINCT member_id) FROM member_blueprints " +
-                "WHERE member_id IN (" + string.Join(",", placeholders) + ") " +
-                "GROUP BY blueprint_name COLLATE NOCASE;";
+            else
+            {
+                if (memberIds.Count == 0) return result;
+                var placeholders = new List<string>();
+                var i = 0;
+                foreach (var id in memberIds)
+                {
+                    var p = "$m" + i++;
+                    placeholders.Add(p);
+                    cmd.Parameters.AddWithValue(p, id);
+                }
+                cmd.CommandText =
+                    "SELECT blueprint_name, COUNT(DISTINCT member_id) FROM member_blueprints " +
+                    "WHERE member_id IN (" + string.Join(",", placeholders) + ") " +
+                    "GROUP BY blueprint_name COLLATE NOCASE;";
+            }
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) result[r.GetString(0)] = Convert.ToInt32(r.GetInt64(1));
+            return result;
         }
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) result[r.GetString(0)] = Convert.ToInt32(r.GetInt64(1));
-        return result;
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(OwnerCounts)} failed", ex);
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     /// <summary>member id → how many blueprints they own, for all members in one query.</summary>
     public IReadOnlyDictionary<string, int> MemberOwnedCounts()
     {
-        var d = new Dictionary<string, int>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT member_id, COUNT(*) FROM member_blueprints GROUP BY member_id;";
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) d[r.GetString(0)] = Convert.ToInt32(r.GetInt64(1));
-        return d;
+        try
+        {
+            var d = new Dictionary<string, int>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT member_id, COUNT(*) FROM member_blueprints GROUP BY member_id;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) d[r.GetString(0)] = Convert.ToInt32(r.GetInt64(1));
+            return d;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(MemberOwnedCounts)} failed", ex);
+            return new Dictionary<string, int>();
+        }
     }
 
     // ── Groups ──────────────────────────────────────────────────────────────────
@@ -265,105 +349,151 @@ public sealed class NetworkStore : IDisposable
     public NetworkGroup CreateGroup(string name)
     {
         var g = new NetworkGroup { Id = Guid.NewGuid().ToString(), Name = name, CreatedUtc = DateTime.UtcNow };
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO network_groups (id, name, created_utc) VALUES ($id, $name, $created);";
-        cmd.Parameters.AddWithValue("$id", g.Id);
-        cmd.Parameters.AddWithValue("$name", g.Name);
-        cmd.Parameters.AddWithValue("$created", g.CreatedUtc.ToString("o", CultureInfo.InvariantCulture));
-        cmd.ExecuteNonQuery();
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO network_groups (id, name, created_utc) VALUES ($id, $name, $created);";
+            cmd.Parameters.AddWithValue("$id", g.Id);
+            cmd.Parameters.AddWithValue("$name", g.Name);
+            cmd.Parameters.AddWithValue("$created", g.CreatedUtc.ToString("o", CultureInfo.InvariantCulture));
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            // The in-memory NetworkGroup is still returned (non-nullable return type, and the
+            // caller's UI flow expects one back) even though it failed to persist - degrading
+            // gracefully here means the group just won't survive a restart, not that the app crashes.
+            Logger.Error($"NetworkStore.{nameof(CreateGroup)} failed", ex);
+        }
         return g;
     }
 
     public IReadOnlyList<NetworkGroup> GetGroups()
     {
-        var list = new List<NetworkGroup>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, created_utc FROM network_groups ORDER BY name COLLATE NOCASE;";
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new NetworkGroup
-            {
-                Id = r.GetString(0),
-                Name = r.GetString(1),
-                CreatedUtc = DateTime.Parse(r.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            });
-        return list;
+        try
+        {
+            var list = new List<NetworkGroup>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT id, name, created_utc FROM network_groups ORDER BY name COLLATE NOCASE;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new NetworkGroup
+                {
+                    Id = r.GetString(0),
+                    Name = r.GetString(1),
+                    CreatedUtc = DateTime.Parse(r.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                });
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{nameof(GetGroups)} failed", ex);
+            return [];
+        }
     }
 
     public void RenameGroup(string groupId, string name)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "UPDATE network_groups SET name = $name WHERE id = $id;";
-        cmd.Parameters.AddWithValue("$name", name);
-        cmd.Parameters.AddWithValue("$id", groupId);
-        cmd.ExecuteNonQuery();
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "UPDATE network_groups SET name = $name WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$name", name);
+            cmd.Parameters.AddWithValue("$id", groupId);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(RenameGroup)} failed", ex); }
     }
 
     public void DeleteGroup(string groupId)
     {
-        using var tx = _conn.BeginTransaction();
-        foreach (var sql in new[]
+        try
         {
-            "DELETE FROM group_members WHERE group_id = $id;",
-            "DELETE FROM network_groups WHERE id = $id;",
-        })
-        {
-            using var cmd = _conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = sql;
-            cmd.Parameters.AddWithValue("$id", groupId);
-            cmd.ExecuteNonQuery();
+            using var tx = _conn.BeginTransaction();
+            foreach (var sql in new[]
+            {
+                "DELETE FROM group_members WHERE group_id = $id;",
+                "DELETE FROM network_groups WHERE id = $id;",
+            })
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = sql;
+                cmd.Parameters.AddWithValue("$id", groupId);
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
         }
-        tx.Commit();
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(DeleteGroup)} failed", ex); }
     }
 
     public void AddToGroup(string groupId, string memberId)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO group_members (group_id, member_id) VALUES ($g, $m);";
-        cmd.Parameters.AddWithValue("$g", groupId);
-        cmd.Parameters.AddWithValue("$m", memberId);
-        cmd.ExecuteNonQuery();
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "INSERT OR IGNORE INTO group_members (group_id, member_id) VALUES ($g, $m);";
+            cmd.Parameters.AddWithValue("$g", groupId);
+            cmd.Parameters.AddWithValue("$m", memberId);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(AddToGroup)} failed", ex); }
     }
 
     public void RemoveFromGroup(string groupId, string memberId)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM group_members WHERE group_id = $g AND member_id = $m;";
-        cmd.Parameters.AddWithValue("$g", groupId);
-        cmd.Parameters.AddWithValue("$m", memberId);
-        cmd.ExecuteNonQuery();
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM group_members WHERE group_id = $g AND member_id = $m;";
+            cmd.Parameters.AddWithValue("$g", groupId);
+            cmd.Parameters.AddWithValue("$m", memberId);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(RemoveFromGroup)} failed", ex); }
     }
 
     public IReadOnlyList<string> GetGroupMemberIds(string groupId) =>
-        QueryIds("SELECT member_id FROM group_members WHERE group_id = $p;", groupId);
+        QueryIds("SELECT member_id FROM group_members WHERE group_id = $p;", groupId, nameof(GetGroupMemberIds));
 
     public IReadOnlyList<string> GetMemberGroupIds(string memberId) =>
-        QueryIds("SELECT group_id FROM group_members WHERE member_id = $p;", memberId);
+        QueryIds("SELECT group_id FROM group_members WHERE member_id = $p;", memberId, nameof(GetMemberGroupIds));
 
-    private IReadOnlyList<string> QueryIds(string sql, string param)
+    private IReadOnlyList<string> QueryIds(string sql, string param, string opName)
     {
-        var list = new List<string>();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.Parameters.AddWithValue("$p", param);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) list.Add(r.GetString(0));
-        return list;
+        try
+        {
+            var list = new List<string>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$p", param);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"NetworkStore.{opName} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>Wipe the entire network store - all members, their ownership, and all groups.</summary>
     public void ClearAll()
     {
-        using var tx = _conn.BeginTransaction();
-        foreach (var sql in new[] { "DELETE FROM member_blueprints;", "DELETE FROM group_members;", "DELETE FROM members;", "DELETE FROM network_groups;" })
+        try
         {
-            using var cmd = _conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = sql;
-            cmd.ExecuteNonQuery();
+            using var tx = _conn.BeginTransaction();
+            foreach (var sql in new[] { "DELETE FROM member_blueprints;", "DELETE FROM group_members;", "DELETE FROM members;", "DELETE FROM network_groups;" })
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = sql;
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
         }
-        tx.Commit();
+        catch (Exception ex) { Logger.Error($"NetworkStore.{nameof(ClearAll)} failed", ex); }
     }
 
     private void Exec(string sql)

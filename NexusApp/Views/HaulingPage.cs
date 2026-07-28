@@ -481,23 +481,27 @@ public sealed class HaulingPage : UserControl
     // Prefer OCR-sourced ContractedBy over the generator-derived company name when present.
     private static string Contractor(Haul h) => string.IsNullOrWhiteSpace(h.ContractedBy) ? CompanyOf(h) : h.ContractedBy;
 
-    // Small bordered action button, mirroring NetworkPage.ActionButton.
+    // Small bordered action button, mirroring NetworkPage.ActionButton (both now styled via the
+    // shared NexusButton template - were bare Buttons falling back to stock WPF chrome with no
+    // hover feedback).
     private Button ActionButton(string text) => new()
     {
-        Content = text, Padding = new Thickness(12, 6, 12, 6),
-        Background = Br("Bg2NavBrush"), Foreground = Br("AccentBrush"),
-        BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-        Cursor = Cursors.Hand, FontWeight = FontWeights.SemiBold, FontSize = 12,
+        Content = text, Style = (Style)Application.Current.FindResource("NexusButton"),
+        Padding = new Thickness(12, 6, 12, 6), FontWeight = FontWeights.SemiBold, FontSize = 12,
     };
 
-    // Flat "x" affordance that deletes a single haul. A plain character, not an icon/emoji.
+    // Flat "x" affordance that deletes a single haul. A plain character, not an icon/emoji. Styled
+    // via NexusButton (transparent at rest, matching the prior look) so it gets the app's real hover
+    // feedback instead of stock WPF chrome; ToolTip added since it's icon-only.
     private Button DeleteButton(string missionId)
     {
         var btn = new Button
         {
             Content = "x", FontFamily = Mono, FontSize = 14, FontWeight = FontWeights.Bold,
-            Foreground = Br("FgDimBrush"), Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+            Style = (Style)Application.Current.FindResource("NexusButton"),
+            Background = Brushes.Transparent, BorderThickness = new Thickness(0),
             Padding = new Thickness(8, 2, 8, 2), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Top,
+            ToolTip = "Delete this haul",
         };
         btn.Click += (_, _) => App.Hauls.Remove(missionId);   // Changed -> Refresh() rebuilds the list
         return btn;

@@ -135,7 +135,7 @@ public class WorkOrderEditorPanel : UserControl
             });
             row.Children.Add(sp);
         }
-        Cell("Status", _order.StatusLabel, BrushFromHex(_order.StatusColorHex));
+        Cell("Status", _order.StatusLabel, UiHelpers.BrushFromHex(_order.StatusColorHex));
         Cell("Time", _order.HasActiveTimer ? _order.TimerRemainingShort : "-");
         Cell("Refinery", _order.Refinery);
         Cell("Location", _order.Location);
@@ -438,7 +438,7 @@ public class WorkOrderEditorPanel : UserControl
         if (remaining <= TimeSpan.Zero)
         {
             _timerCountdown.Text = "Ready to Collect";
-            _timerCountdown.Foreground = BrushFromHex("#66E6A6");
+            _timerCountdown.Foreground = UiHelpers.BrushFromHex("#66E6A6");
             _progressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _progressScale.ScaleX = 1;
 
@@ -458,7 +458,7 @@ public class WorkOrderEditorPanel : UserControl
         _timerCountdown.Text = h > 0 ? $"{h}h {m:D2}m {s:D2}s remaining"
                                       : m > 0 ? $"{m}m {s:D2}s remaining"
                                               : $"{s}s remaining";
-        _timerCountdown.Foreground = BrushFromHex("#FF9D4D");
+        _timerCountdown.Foreground = UiHelpers.BrushFromHex("#FF9D4D");
     }
 
     // ── Save / Delete ────────────────────────────────────────────────────────
@@ -565,11 +565,5 @@ public class WorkOrderEditorPanel : UserControl
             MaxHeight = 200,
             ItemContainerStyle = style,
         };
-    }
-
-    private static SolidColorBrush BrushFromHex(string hex)
-    {
-        var c = (Color)ColorConverter.ConvertFromString(hex);
-        return new SolidColorBrush(c);
     }
 }

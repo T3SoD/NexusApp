@@ -28,16 +28,6 @@ public class MarketNameMapTests
         "Tungsten (Ore)", "Wuotan Seed",
     };
 
-    private static JsonDocument LoadSeed()
-    {
-        using var stream = typeof(DataService).Assembly
-            .GetManifestResourceStream("NexusApp.Data.seed_data.json");
-        Assert.NotNull(stream);
-        using var ms = new MemoryStream();
-        stream!.CopyTo(ms);
-        return JsonDocument.Parse(ms.ToArray());
-    }
-
     private static IEnumerable<string> SeedResourceNames(JsonDocument doc) =>
         doc.RootElement.GetProperty("resources").EnumerateArray()
             .Select(r => r.GetProperty("name").GetString()!);
@@ -47,7 +37,7 @@ public class MarketNameMapTests
     [Fact]
     public void EverySeedResource_IsMappedOrKnownUnmapped()
     {
-        using var doc = LoadSeed();
+        using var doc = SeedTestFixture.LoadSeed();
         foreach (var name in SeedResourceNames(doc))
         {
             Assert.True(

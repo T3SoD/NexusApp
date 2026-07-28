@@ -35,7 +35,13 @@ public sealed class LogMonitorWindow : Window
     private readonly CheckBox _autoMark;
     private readonly TextBlock _markCountLabel;
     private bool _blueprintsOnly;
-    private bool _syncing;   // guards programmatic control updates from re-entering the session
+    private bool _syncing;      // guards programmatic control updates from re-entering the session
+    private bool _pathEdited;   // the box holds a path the user set but hasn't started yet
+
+    // Filter debounce (perf): RebuildView() walks up to MaxEntries rows and allocates a TextBlock per
+    // surviving line, so rebuilding on every keystroke is costly. Mirrors MainWindow's reference-catalog
+    // filter debounce (_refFilterDebounce) - restart a short timer on each keystroke, rebuild once at rest.
+    private System.Windows.Threading.DispatcherTimer? _filterDebounce;
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
@@ -71,13 +77,15 @@ public sealed class LogMonitorWindow : Window
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _pathBox = new TextBox
         {
-            Text = !string.IsNullOrEmpty(App.GameLog.Path) ? App.GameLog.Path
-                 : !string.IsNullOrEmpty(App.GameLog.PreferredPath) ? App.GameLog.PreferredPath
-                 : GameLogSession.DefaultPath,
+            Text = CurrentPathText(),
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
             ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
         };
+        // Wired AFTER the seed above so the initial value never counts as a user edit. Any later
+        // change the app didn't make itself (typing, or Browse setting Text) marks the box dirty,
+        // which is what keeps an unsubmitted path from being reverted by a state resync.
+        _pathBox.TextChanged += (_, _) => { if (!_syncing) _pathEdited = true; };
         Grid.SetColumn(_pathBox, 0); pathRow.Children.Add(_pathBox);
         var browse = MakeButton("Browse…"); browse.Click += (_, _) => Browse();
         Grid.SetColumn(browse, 1); pathRow.Children.Add(browse);
@@ -118,7 +126,7 @@ public sealed class LogMonitorWindow : Window
         var ctl = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
         _filterBox = new TextBox { Width = 240, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
-        _filterBox.TextChanged += (_, _) => RebuildView();
+        _filterBox.TextChanged += (_, _) => DebounceFilter();
         ctl.Children.Add(_filterBox);
         _bpBtn = MakeButton("Blueprints only"); _bpBtn.Margin = new Thickness(8, 0, 0, 0);
         _bpBtn.Click += (_, _) => { _blueprintsOnly = !_blueprintsOnly; _bpBtn.Background = _blueprintsOnly ? Res("AccentBrush") : Res("Bg2NavBrush"); RebuildView(); };
@@ -192,6 +200,8 @@ public sealed class LogMonitorWindow : Window
         App.GameLog.SessionReset += OnSessionReset;
         Closed += (_, _) =>
         {
+            _filterDebounce?.Stop();   // this window can be reopened (ShowLogMonitor builds a fresh instance) -
+                                        // stop so a pending tick never fires against a closed window
             PersistGlobalIniPath();   // catch a path typed but never imported
             App.GameLog.LineAppended -= OnLine;
             App.GameLog.StatusChanged -= OnStatus;
@@ -227,12 +237,24 @@ public sealed class LogMonitorWindow : Window
     // to match its empty initial state (Count is 0 again).
     private void OnSessionReset() => _markCountLabel.Text = "";
 
+    // The path the shared tail is on right now (or the one it would start on).
+    private static string CurrentPathText() =>
+        !string.IsNullOrEmpty(App.GameLog.Path) ? App.GameLog.Path
+        : !string.IsNullOrEmpty(App.GameLog.PreferredPath) ? App.GameLog.PreferredPath
+        : GameLogSession.DefaultPath;
+
     // Keep Start/Stop + Auto-mark in step when the overlay (or anything) changes them.
     private void OnStateChanged()
     {
         _syncing = true;
         _startBtn.Content = App.GameLog.IsRunning ? "Stop" : "Start";
         _autoMark.IsChecked = App.GameLog.AutoMark;
+        // Resync the path too: the tail can be re-pointed from Settings while this window is open,
+        // and a stale box would silently re-point the shared tail (and persist the old path) on the
+        // next Start. Never over a path the user set but hasn't started yet - StateChanged also
+        // fires on every SC open/close probe and on the auto-track toggle, which would otherwise
+        // revert a typed path the moment focus left the box.
+        if (!_pathEdited && !_pathBox.IsKeyboardFocusWithin) _pathBox.Text = CurrentPathText();
         _syncing = false;
     }
 
@@ -269,6 +291,19 @@ public sealed class LogMonitorWindow : Window
             _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
     }
 
+    // Restart-on-keystroke debounce (220ms, same idiom as MainWindow's _refFilterDebounce): rebuilding
+    // the up-to-MaxEntries list on every character typed is wasted work while the user is still typing.
+    private void DebounceFilter()
+    {
+        if (_filterDebounce == null)
+        {
+            _filterDebounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+            _filterDebounce.Tick += (_, __) => { _filterDebounce!.Stop(); RebuildView(); };
+        }
+        _filterDebounce.Stop();
+        _filterDebounce.Start();
+    }
+
     private static Brush ColorFor(LogCategory c) => c switch
     {
         LogCategory.Blueprint => Brushes.MediumSpringGreen,
@@ -286,8 +321,18 @@ public sealed class LogMonitorWindow : Window
     private void ToggleStart()
     {
         // Button content resyncs via OnStateChanged (which also covers overlay-driven changes).
+        // Stop detaches only THIS consumer: the shared tail keeps feeding the haul and shard
+        // trackers. Start re-attaches it and points the tail at the box's path - one Game.log for
+        // the whole app, so a path typed here moves every consumer - but a "From start of file"
+        // re-read is routed to this session ALONE, so the trackers are not made to re-process a
+        // log they have already read (they stay on the live stream throughout).
         if (App.GameLog.IsRunning) App.GameLog.Stop();
-        else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true);
+        else
+        {
+            App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true,
+                              replayToThisSessionOnly: true);
+            _pathEdited = false;   // submitted: the box may follow the tail again
+        }
     }
 
     private void Browse()

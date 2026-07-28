@@ -33,12 +33,16 @@
     <Color x:Key="AccentHoverColor">#FFFFC766</Color>
     <Color x:Key="AccentPressColor">#FFE0922A</Color>
     <Color x:Key="OnAccentColor">#FF05070A</Color>     <!-- void text on amber -->
+    <Color x:Key="AccentActiveFillColor">#24FFB23E</Color> <!-- active tab/rail fill .14 (mock) -->
+    <Color x:Key="AccentHairlineColor">#2EFFB23E</Color>   <!-- rail cap hairline .18 -->
 
     <!-- ice-cyan secondary (live readouts, lock-on, data ticks) -->
     <Color x:Key="CyanColor">#FF7FE9E0</Color>
     <Color x:Key="CyanDimColor">#247FE9E0</Color>
     <Color x:Key="CyanLineColor">#1A7FE9E0</Color>
     <Color x:Key="CyanGlowColor">#447FE9E0</Color>
+    <Color x:Key="CyanStrongColor">#667FE9E0</Color>   <!-- cart border .40 -->
+    <Color x:Key="OnCyanColor">#FF062422</Color>       <!-- text on filled cyan -->
 
     <!-- semantic (status, used by pages) -->
     <Color x:Key="DangerColor">#FFFF6B6B</Color>

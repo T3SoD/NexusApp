@@ -90,8 +90,10 @@ public sealed class CommandPage : UserControl
         host.Children.Add(_modalHost);
         Content = host;
         // Keep the dashboard live (shard card + KPIs) when the shard changes while Operations is open.
-        if (App.Shards != null) App.Shards.Changed += () => Dispatcher.Invoke(Refresh);
-        // Update state changes arrive on a worker thread; marshal like the shard feed does.
+        // The shard tracker is pumped by the shared Game.log feed's DispatcherTimer, so it already
+        // raises on the UI thread and needs no marshaling.
+        if (App.Shards != null) App.Shards.Changed += Refresh;
+        // Update state changes arrive on a worker thread, so those DO need marshaling.
         if (App.Update != null) App.Update.Changed += () => Dispatcher.Invoke(Refresh);
     }
 
@@ -383,7 +385,7 @@ public sealed class CommandPage : UserControl
     }
 
     // The live update strip: body and actions follow the service state. Dismiss is
-    // session-scoped; the Settings > Diagnostics rows remain the persistent surface.
+    // session-scoped; the Settings > Updates rows remain the persistent surface.
     private FrameworkElement? UpdateStrip()
     {
         var svc = App.Update;
@@ -622,7 +624,7 @@ public sealed class CommandPage : UserControl
         int bpTotal = catalog.Count;
         var ownerCounts = App.Network.OwnerCounts();
         int covered = catalog.Count(b => (ownerCounts.TryGetValue(b.Name, out var c) && c > 0) || App.Settings.IsBlueprintOwned(b.Name));
-        int covPct = bpTotal > 0 ? (int)System.Math.Round(100.0 * covered / bpTotal) : 0;
+        int covPct = UiHelpers.PctOf(covered, bpTotal);
 
         // Rebuilt fresh every Refresh() (tab-open AND live data ticks) - reset the count-up
         // targets so PlayEntrance only ever sees the current visit's fresh elements.
@@ -634,8 +636,8 @@ public sealed class CommandPage : UserControl
         var cards = new UIElement[]
         {
             LastScanCard(),
-            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders),
-            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu),
+            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders, nav: "workorders"),
+            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu, nav: "hauling"),
             Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString("N0"), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
             Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush", covPct, "%"),
         };
@@ -701,7 +703,7 @@ public sealed class CommandPage : UserControl
         return poly;
     }
 
-    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "")
+    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "", string? nav = null)
     {
         var sp = new StackPanel();
         sp.Children.Add(KpiLabel(icon, key));
@@ -731,8 +733,27 @@ public sealed class CommandPage : UserControl
         else footEl.Text = foot;
         sp.Children.Add(footEl);
 
-        return Hud.Panel(sp, chamfer: 12, brackets: false, border: accent ? Br("AccentStrongBrush") : Br("NavBorderBrush"),
+        var panel = Hud.Panel(sp, chamfer: 12, brackets: false, border: accent ? Br("AccentStrongBrush") : Br("NavBorderBrush"),
                          padding: new Thickness(16, 14, 16, 14));
+
+        // Refinery Queue and Cargo In Transit are the only KPI cards with a single obvious drill-in
+        // destination (Network Coverage/Session Blueprints stay static, per review recommendation).
+        // They're panels, not Buttons, so wire the hover/click/log trio by hand instead of getting it
+        // from a Style; the hover tint matches NetworkPage's chip hover (background toward HighlightBrush).
+        if (nav != null)
+        {
+            var frame = (System.Windows.Shapes.Path)panel.Children[0];
+            var restFill = frame.Fill;
+            panel.Cursor = System.Windows.Input.Cursors.Hand;
+            panel.MouseEnter += (_, _) => frame.Fill = Br("HighlightBrush");
+            panel.MouseLeave += (_, _) => frame.Fill = restFill;
+            panel.MouseLeftButtonUp += (_, _) =>
+            {
+                InteractionLog.Nav($"Command dashboard: {key} card", panel);
+                _navigate(nav);
+            };
+        }
+        return panel;
     }
 
     private UIElement KpiLabel(UIElement icon, string text)
@@ -795,7 +816,7 @@ public sealed class CommandPage : UserControl
             var station = new TextBlock { Text = !string.IsNullOrWhiteSpace(o.Refinery) ? o.Refinery : o.Location, FontFamily = Ui, FontSize = 12, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
             var chipHolder = new ContentControl { Content = Hud.StatusChip(o.Status), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
             var remTxt = !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort : (o.Status == WorkOrderStatus.ReadyToCollect ? "ready" : "-");
-            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? Br("GoldBrush") : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             sp.Children.Add(TableRow(order, station, chipHolder, rem));
         }
         return sp;
@@ -872,6 +893,8 @@ public sealed class CommandPage : UserControl
 
         sp.Children.Add(new TextBlock { Text = single == 0 ? "No single-owner blueprints." : $"{single} blueprint(s) have only one owner.", FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
         var review = new TextBlock { Text = "Review  →", FontFamily = Ui, FontSize = 11.5, Foreground = Br("CyanBrush"), Cursor = System.Windows.Input.Cursors.Hand };
+        review.MouseEnter += (_, _) => review.TextDecorations = TextDecorations.Underline;
+        review.MouseLeave += (_, _) => review.TextDecorations = null;
         review.MouseLeftButtonUp += (_, _) => _navigate("network");
         sp.Children.Add(review);
 
@@ -912,15 +935,7 @@ public sealed class CommandPage : UserControl
     }
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
-    private static string Ago(DateTime utcWhen)
-    {
-        var span = DateTime.UtcNow - utcWhen;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-        if (span.TotalMinutes < 1) return "just now";
-        if (span.TotalHours   < 1) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays    < 1) return $"{(int)span.TotalHours}h ago";
-        return $"{(int)span.TotalDays}d ago";
-    }
+    private static string Ago(DateTime utcWhen) => MarketNotice.FormatAge(DateTime.UtcNow - utcWhen);
 
     // ── small helpers ──
     private UIElement PanelHead(string title, string link, string nav)
@@ -928,6 +943,8 @@ public sealed class CommandPage : UserControl
         var g = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         g.Children.Add(new TextBlock { Text = title, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush") });
         var a = new TextBlock { Text = link + "  →", FontFamily = Ui, FontSize = 11, Foreground = Br("AccentBrush"), HorizontalAlignment = HorizontalAlignment.Right, Cursor = System.Windows.Input.Cursors.Hand };
+        a.MouseEnter += (_, _) => a.TextDecorations = TextDecorations.Underline;
+        a.MouseLeave += (_, _) => a.TextDecorations = null;
         a.MouseLeftButtonUp += (_, _) => _navigate(nav);
         g.Children.Add(a);
         return g;

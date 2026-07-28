@@ -132,7 +132,7 @@ public class OcrService : IDisposable
     // covers 2,000–9,999 where OCR reads the thousands comma as a space.
     private static readonly Regex _splitThousands = new(@"(?<!\d)(\d) (\d{3})(?!\d)", RegexOptions.Compiled);
 
-    private static int? ExtractRsValue(string text)
+    internal static int? ExtractRsValue(string text)
     {
         // Strip commas/periods sitting between two digit characters ("17,200" → "17200")
         var sb = new System.Text.StringBuilder(text.Length);

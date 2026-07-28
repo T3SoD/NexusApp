@@ -39,8 +39,8 @@ public class HelpDialog : Window
                 "REFINERY - your work orders at a glance, plus ▤ Open Refinery Tracker for the flyout panel.",
                 "SHOPPING - an inline view of your current shopping list.",
                 "HAULING - the contract scan switches, your active hauls, and the consolidated STOPS plan (see Cargo Hauling).",
-                "The opacity slider sits in the overlay header, so it's available from every tab.",
-                "Ghost mode (Settings, Interface, Overlay) collapses the overlay to a slim icon rail. Click a rail glyph to slide that tab out beside it; click the same glyph to collapse back to the rail. The gear near the bottom opens quick settings for the rail (ghost mode and opacity), and the X below it closes the overlay. A scan that lands while the rail is collapsed pulses the SCAN glyph and adds a count instead of opening anything. Drag the rail by the beam mark at its top.",
+                "The opacity slider and the quick-settings gear sit in the overlay header, so both are available from every tab.",
+                "Ghost mode (Settings, Interface, Overlay) collapses the overlay to a slim icon rail. Click a rail glyph to slide that tab out beside it; click the same glyph to collapse back to the rail. The gear near the bottom opens quick settings for the rail (ghost mode, click-through, opacity, and rail size), and the X below it closes the overlay. Drag the rail by the beam mark at its top.",
             ]),
 
         new("◎", "Auto-scan",
@@ -185,6 +185,21 @@ public class HelpDialog : Window
                 "Scope any tab to a single member with the person switcher - see exactly what one friend owns or is missing.",
                 "Settings › Blueprint Network can detect your RSI handle (read-only, from Game.log) so exports come pre-filled - or just use a nickname at export.",
                 "No server, no account - Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
+            ]),
+
+        new("◈", "Market Data",
+            "Live sell prices from UEX, a community price database, shown wherever Nexus already tells you what an ore is worth. Off by default, and only ever on with your say-so.",
+            [new("MARKET", "header pill"), new("Refresh now", "Settings › Updates")],
+            [
+                "Live market data is off until you turn it on - Nexus asks once, in a consent strip on the RS Decoder, Mining Codex, or Refinery Tracker page (whichever you open first), or turn it on directly in Settings › Updates.",
+                "Turning it on fetches refined sell prices from UEX community reports about once an hour while Nexus is open; turning it off stops all network activity for the feature.",
+                "Prices appear on the RS Decoder's best-match hero (\"Sell (refined, avg):\"), the Mining Codex dossier's VALUE section (\"Best sell:\"), Refinery Tracker work order cards (\"SELL\", with a + more / Show less for orders with several priced resources), and the overlay's SCAN tab result cards (\"Sell:\").",
+                "Every price shows its age (like \"2h ago\"); a price still quoted from an older game patch is grayed with a patch tag instead - Nexus never presents stale community data as current.",
+                "The MARKET pill in the header status strip is hidden entirely while the feature is off, and otherwise shows the last refresh time at a glance (or syncing / no data / offline while a first cycle runs or fails). Click it to jump to Settings.",
+                "The Mining Codex list has its own opt-in Show sell prices column, off by default, for comparing ores at a glance without opening every dossier.",
+                "Refresh now in Settings › Updates fetches the latest prices immediately, regardless of the hourly schedule.",
+                "Settings › Updates also shows the last-refresh status line, how often Nexus checks, and credits the source: Data: UEX community reports.",
+                "Nexus keeps the last snapshot on your computer, so prices (with their age) still show if UEX is unreachable or Nexus is offline.",
             ]),
 
         new("dock:settings", "Settings",

@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace NexusApp.Services;
 
 // One blueprint that was auto-marked owned during the current app session.
@@ -9,18 +7,23 @@ public sealed class BlueprintMark
     public string Name { get; init; } = "";
 }
 
-// BETA / EXPERIMENTAL. App-lifetime owner of the Game.log watcher, the blueprint
-// auto-mark, and the running "this session" tally. Both the standalone Game.log
-// monitor window and the overlay's STATS tab bind to this single instance, so there
-// is exactly one watcher and the count / feed / Start-Stop / Auto-mark state stay in
-// sync across both surfaces. Reads a game-authored file - see [[nexus-gamelog-ownership]]
-// and rework the EAC-safety wording before this ever ships in a release.
+// BETA / EXPERIMENTAL. App-lifetime owner of the blueprint auto-mark and the running
+// "this session" tally, fed by the app's shared Game.log tail (GameLogFeed). Both the
+// standalone Game.log monitor window and the overlay's STATS tab bind to this single
+// instance, so the count / feed / Start-Stop / Auto-mark state stay in sync across both
+// surfaces. Reads a game-authored file - see [[nexus-gamelog-ownership]] and rework the
+// EAC-safety wording before this ever ships in a release.
 //
-// Ownership and the blueprint name list are injected (not read from App directly) so
-// the session logic is unit-testable headless - see GameLogSessionTests.
+// Start/Stop attach and detach THIS consumer: stopping the blueprint session leaves the
+// shared tail running for the haul and shard trackers. The feed itself is injected (a
+// private one is created when none is supplied) so ownership, the blueprint name list and
+// the tail all stay injectable and the session logic is unit-testable headless - see
+// GameLogSessionTests.
 public sealed class GameLogSession : IDisposable
 {
-    private readonly GameLogWatcher _watcher = new();
+    private readonly GameLogFeed _feed;
+    private readonly bool _ownsFeed;          // true only when nobody handed us a shared feed
+    private GameLogSubscription? _sub;        // non-null while this consumer is attached
     private readonly Func<IEnumerable<string>> _seedNames;
     private readonly Func<string, bool> _isOwned;
     private readonly Action<string, bool> _setOwned;
@@ -40,30 +43,33 @@ public sealed class GameLogSession : IDisposable
         Func<IEnumerable<string>> seedNames,
         Func<string, bool> isOwned,
         Action<string, bool> setOwned,
-        Func<string, IReadOnlyDictionary<string, string>?>? localizationMapFor = null)
+        Func<string, IReadOnlyDictionary<string, string>?>? localizationMapFor = null,
+        GameLogFeed? feed = null)
     {
         _seedNames = seedNames;
         _isOwned   = isOwned;
         _setOwned  = setOwned;
         _localizationMapFor = localizationMapFor;
-        _watcher.LineAppended  += Ingest;
-        _watcher.StatusChanged += s => StatusChanged?.Invoke(s);
-        _watcher.LogReset      += Reset;   // a new SC session starts a fresh tally
-        _watcher.SessionLiveChanged += OnSessionLiveChanged;
+        _feed = feed ?? new GameLogFeed();
+        _ownsFeed = feed is null;
+        // Feed-level (not per-subscription): re-pointing the tail moves the DERIVED global.ini path
+        // with it, whoever triggered it, so the cached live map must go even while detached.
+        _feed.Started += OnFeedStarted;
+        _feed.SessionLiveChanged += OnFeedSessionLiveChanged;
     }
 
     /// <summary>The user's saved Game.log path (injected from settings); honored over the install
-    /// probe so a custom location survives restarts, even if the file isn't present yet. "" = none.</summary>
-    public string PreferredPath { get; set; } = "";
+    /// probe so a custom location survives restarts, even if the file isn't present yet. "" = none.
+    /// Shared with every other consumer of the tail.</summary>
+    public string PreferredPath
+    {
+        get => _feed.PreferredPath;
+        set => _feed.PreferredPath = value;
+    }
 
     /// <summary>Path to start watching: the active one if it exists, then the user's saved path,
     /// else a best-effort probe of common installs.</summary>
-    public string StartPath()
-    {
-        if (!string.IsNullOrEmpty(Path) && File.Exists(Path)) return Path;
-        if (!string.IsNullOrEmpty(PreferredPath)) return PreferredPath;
-        return GameLogWatcher.FindGameLog();
-    }
+    public string StartPath() => _feed.StartPath();
 
     /// <summary>Clears the session tally (blueprints collected). Fires on a new SC session or on demand.</summary>
     public void Reset()
@@ -104,11 +110,14 @@ public sealed class GameLogSession : IDisposable
     public IReadOnlyList<BlueprintMark> Marks => _marks;
     public int Count => _marks.Count;
 
-    public bool IsRunning => _watcher.IsRunning;
-    /// <summary>Star Citizen is running (its process is alive), independent of window focus. False once it exits.</summary>
-    public bool IsSessionLive => _watcher.IsSessionLive;
+    /// <summary>True while this consumer is attached to a running tail (the monitor window's
+    /// Start/Stop). The tail itself keeps running for hauls and shards when this is false.</summary>
+    public bool IsRunning => _sub is not null && _feed.IsRunning;
+    /// <summary>Star Citizen is running (its process is alive), independent of window focus. False once it
+    /// exits - and false while this session is stopped, exactly as when it owned its own watcher.</summary>
+    public bool IsSessionLive => _sub is not null && _feed.IsSessionLive;
     public bool AutoMark { get; private set; }
-    public string Path => _watcher.Path;
+    public string Path => _feed.Path;
     public static string DefaultPath => GameLogWatcher.DefaultLivePath;
 
     /// <summary>A blueprint was just auto-marked owned (raised once per distinct new blueprint).</summary>
@@ -127,19 +136,29 @@ public sealed class GameLogSession : IDisposable
     /// <summary>The local player's RSI handle was detected in Game.log (read-only). Fires once per distinct handle.</summary>
     public event Action<string>? HandleDetected;
 
-    public void Start(string path, bool fromBeginning = false)
+    /// <summary>Attach this consumer and point the shared tail at <paramref name="path"/>.
+    /// <paramref name="fromBeginning"/> is THIS session's appetite for the history the restart
+    /// replays: false joins live (startup), true re-reads the file into the tally and auto-mark
+    /// (the Settings path change, the monitor's "From start of file").
+    /// <paramref name="replayToThisSessionOnly"/> keeps that replayed history off the other
+    /// consumers - what the advanced monitor wants, since the haul and shard trackers have already
+    /// read this log. A Game.log path change leaves it false: the new file is news to everyone.</summary>
+    public void Start(string path, bool fromBeginning = false, bool replayToThisSessionOnly = false)
     {
-        // Re-pointing the watcher moves the DERIVED global.ini path with it - drop the cached
-        // live map so the next line rebuilds it against the new location (covers the Settings
-        // Game.log path change and the monitor's path box in one place).
-        InvalidateLocalizationMap();
-        _watcher.Start(path, fromBeginning);
+        Attach(fromBeginning);   // before Start: the feed rewinds only for consumers that want it
+        // Re-point the shared tail only when something actually needs it: a different file, a
+        // from-the-top re-read this consumer just asked for, or a tail that isn't running at all.
+        // A plain re-Start on the same file must never rewind the log under the haul/shard trackers.
+        if (fromBeginning || !_feed.IsRunning
+            || !string.Equals(path, _feed.Path, StringComparison.OrdinalIgnoreCase))
+            _feed.Start(path, fromBeginning && replayToThisSessionOnly ? _sub : null);
         StateChanged?.Invoke();
     }
 
     public void Stop()
     {
-        _watcher.Stop();
+        Detach();           // the tail keeps running for the haul and shard trackers
+        if (_ownsFeed) _feed.Stop();
         AutoMark = false;   // stopping the watch turns off auto-tracking - nothing to mark from
         StateChanged?.Invoke();
     }
@@ -149,9 +168,41 @@ public sealed class GameLogSession : IDisposable
         if (AutoMark == on) return;
         AutoMark = on;
         // "Auto-Track Blueprints" implies watching - you can't mark from a log you're not reading.
-        if (on && !_watcher.IsRunning)
-            _watcher.Start(StartPath(), false);
+        if (on && !IsRunning) { Attach(includeReplay: false); _feed.Start(StartPath()); }
         StateChanged?.Invoke();
+    }
+
+    // Attaching mid-life (the monitor's Start) reports the game's current running state right away
+    // instead of waiting for the next probe tick.
+    private void Attach(bool includeReplay)
+    {
+        if (_sub is not null) { _sub.IncludeReplay = includeReplay; return; }
+        _sub = _feed.Subscribe(Ingest, includeReplay,
+            onLogReset: Reset,                            // a new SC session starts a fresh tally
+            onStatus: s => StatusChanged?.Invoke(s));
+        if (_feed.IsSessionLive) OnSessionLiveChanged(true);
+    }
+
+    private void Detach()
+    {
+        if (_sub is null) return;
+        bool wasLive = IsSessionLive;
+        _sub.Dispose();
+        _sub = null;
+        StatusChanged?.Invoke("Stopped");
+        if (wasLive) OnSessionLiveChanged(false);
+    }
+
+    // The tail was re-pointed: the DERIVED global.ini path moves with it, so drop the cached live
+    // map and let the next line rebuild it against the new location (covers the Settings Game.log
+    // path change and the monitor's path box in one place). Feed-level, so it still fires while
+    // this session is detached - otherwise a re-attach could resolve names against the old install.
+    private void OnFeedStarted(string path) => InvalidateLocalizationMap();
+
+    // Only while attached: a stopped session reports "not live" and stays quiet.
+    private void OnFeedSessionLiveChanged(bool live)
+    {
+        if (_sub is not null) OnSessionLiveChanged(live);
     }
 
     /// <summary>Resolve a raw line to a canonical blueprint name without marking it (raw-log aid).</summary>
@@ -237,5 +288,12 @@ public sealed class GameLogSession : IDisposable
         StateChanged?.Invoke();
     }
 
-    public void Dispose() => _watcher.Dispose();
+    public void Dispose()
+    {
+        _feed.Started -= OnFeedStarted;
+        _feed.SessionLiveChanged -= OnFeedSessionLiveChanged;
+        _sub?.Dispose();
+        _sub = null;
+        if (_ownsFeed) _feed.Dispose();   // a shared feed is the app's to dispose, not ours
+    }
 }

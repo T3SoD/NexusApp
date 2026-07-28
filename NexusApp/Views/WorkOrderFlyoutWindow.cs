@@ -322,7 +322,7 @@ public class WorkOrderFlyoutWindow : Window
         var chipBg   = Res("Bg3Brush");
         var trackBg  = Res("BorderBrush");
         var headFont = (FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
-        var statusBrush = BrushFromHex(wo.StatusColorHex);
+        var statusBrush = UiHelpers.BrushFromHex(wo.StatusColorHex);
 
         var outer = new Border { Background = cardBg, BorderBrush = navB, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 8, 0, 0) };
         var grid = new Grid();
@@ -374,7 +374,7 @@ public class WorkOrderFlyoutWindow : Window
             subtitleTb = new TextBlock
             {
                 Text = wo.SubtitleText, FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = BrushFromHex(wo.SubtitleForeground),
+                Foreground = UiHelpers.BrushFromHex(wo.SubtitleForeground),
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
             };
             timerRow.Children.Add(subtitleTb);
@@ -424,7 +424,4 @@ public class WorkOrderFlyoutWindow : Window
         }
         if (!anyActive) { _ticker?.Stop(); _ticker = null; }
     }
-
-    private static SolidColorBrush BrushFromHex(string hex)
-        => new((Color)ColorConverter.ConvertFromString(hex));
 }

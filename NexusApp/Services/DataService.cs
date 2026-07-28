@@ -16,16 +16,43 @@ public class DataService : IDisposable
     private SqliteConnection? _conn;
     private string _seedVersion = "0.0.0";
 
+    // Logs the meta-read failure at most once per process, even though MiningDataVersion is
+    // UI-reachable from several surfaces (AboutDialog, AdminPage, AppLogMonitorWindow,
+    // BlueprintImportFlow) that may each poll/rebuild repeatedly - a persistently broken
+    // connection must not flood nexus.log with the same failure over and over.
+    private bool _miningVersionReadFailed;
+
     /// <summary>The mining-data version currently applied to the database. This is the
     /// seed-content version (auto-updatable) - distinct from <see cref="GameData.Version"/>,
-    /// which tracks the Star Citizen patch and is bumped manually.</summary>
-    public string MiningDataVersion => GetMeta("data_version") ?? _seedVersion;
+    /// which tracks the Star Citizen patch and is bumped manually. Degrades to the embedded
+    /// seed's own version on a DB read failure instead of throwing into UI code - this getter
+    /// is a plain informational read, not part of the seed/migration path (which stays loud).</summary>
+    public string MiningDataVersion
+    {
+        get
+        {
+            try { return GetMeta("data_version") ?? _seedVersion; }
+            catch (Exception ex)
+            {
+                if (!_miningVersionReadFailed)
+                {
+                    _miningVersionReadFailed = true;
+                    Logger.Error($"DataService.{nameof(MiningDataVersion)} failed; degrading to the embedded seed version for the rest of this run", ex);
+                }
+                return _seedVersion;
+            }
+        }
+    }
 
     public void Initialize()
     {
         Directory.CreateDirectory(_dataDir);
         _conn = new SqliteConnection($"Data Source={_dbPath}");
         _conn.Open();
+        // No WAL here (unlike NetworkStore) - keeps the nexus.db file set to a single file for
+        // portable-build cleanliness. busy_timeout alone still absorbs the brief lock windows a
+        // concurrent scan lookup/pin toggle/blueprint browse can hit.
+        Exec("PRAGMA busy_timeout=3000;");
         CreateSchema();
         MigrateColumns();
         ApplySeed();
@@ -419,42 +446,50 @@ public class DataService : IDisposable
 
     public List<Resource> GetAllResources()
     {
-        var resources = new Dictionary<string, Resource>();
-
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT name,base_rs,tier,rarity,method,is_pinned FROM resources ORDER BY base_rs";
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
+        try
         {
-            resources[rdr.GetString(0)] = new Resource
+            var resources = new Dictionary<string, Resource>();
+
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT name,base_rs,tier,rarity,method,is_pinned FROM resources ORDER BY base_rs";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
             {
-                Name = rdr.GetString(0), BaseRs = rdr.GetInt32(1),
-                Tier = rdr.GetString(2), Rarity = rdr.GetString(3),
-                Method = rdr.GetString(4), IsPinned = rdr.GetInt32(5) == 1
-            };
-        }
+                resources[rdr.GetString(0)] = new Resource
+                {
+                    Name = rdr.GetString(0), BaseRs = rdr.GetInt32(1),
+                    Tier = rdr.GetString(2), Rarity = rdr.GetString(3),
+                    Method = rdr.GetString(4), IsPinned = rdr.GetInt32(5) == 1
+                };
+            }
 
-        using var locCmd = _conn.CreateCommand();
-        locCmd.CommandText = "SELECT resource_name, location FROM resource_locations ORDER BY location";
-        using var locRdr = locCmd.ExecuteReader();
-        while (locRdr.Read())
+            using var locCmd = _conn.CreateCommand();
+            locCmd.CommandText = "SELECT resource_name, location FROM resource_locations ORDER BY location";
+            using var locRdr = locCmd.ExecuteReader();
+            while (locRdr.Read())
+            {
+                var name = locRdr.GetString(0);
+                if (resources.TryGetValue(name, out var r))
+                    r.Locations.Add(locRdr.GetString(1));
+            }
+
+            using var refCmd = _conn.CreateCommand();
+            refCmd.CommandText = "SELECT resource_name,station,system,modifier_pct FROM resource_refineries ORDER BY modifier_pct DESC";
+            using var refRdr = refCmd.ExecuteReader();
+            while (refRdr.Read())
+            {
+                var name = refRdr.GetString(0);
+                if (resources.TryGetValue(name, out var r))
+                    r.Refineries.Add(new RefineryYield(refRdr.GetString(1), refRdr.GetString(2), refRdr.GetInt32(3)));
+            }
+
+            return [.. resources.Values];
+        }
+        catch (Exception ex)
         {
-            var name = locRdr.GetString(0);
-            if (resources.TryGetValue(name, out var r))
-                r.Locations.Add(locRdr.GetString(1));
+            Logger.Error($"DataService.{nameof(GetAllResources)} failed", ex);
+            return [];
         }
-
-        using var refCmd = _conn.CreateCommand();
-        refCmd.CommandText = "SELECT resource_name,station,system,modifier_pct FROM resource_refineries ORDER BY modifier_pct DESC";
-        using var refRdr = refCmd.ExecuteReader();
-        while (refRdr.Read())
-        {
-            var name = refRdr.GetString(0);
-            if (resources.TryGetValue(name, out var r))
-                r.Refineries.Add(new RefineryYield(refRdr.GetString(1), refRdr.GetString(2), refRdr.GetInt32(3)));
-        }
-
-        return [.. resources.Values];
     }
 
     public List<RsMatch> FindByRs(int rs)
@@ -475,38 +510,46 @@ public class DataService : IDisposable
 
     public List<Blueprint> GetBlueprintsForResource(string resourceName)
     {
-        var result = new List<Blueprint>();
-
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = @"
-            SELECT b.id, b.name, b.category, b.sub_category
-            FROM blueprints b
-            JOIN blueprint_ingredients i ON b.id = i.blueprint_id
-            WHERE i.resource_name = @r
-            ORDER BY b.category, b.sub_category, b.name";
-        cmd.Parameters.AddWithValue("@r", resourceName);
-
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
+        try
         {
-            var bp = new Blueprint
+            var result = new List<Blueprint>();
+
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = @"
+                SELECT b.id, b.name, b.category, b.sub_category
+                FROM blueprints b
+                JOIN blueprint_ingredients i ON b.id = i.blueprint_id
+                WHERE i.resource_name = @r
+                ORDER BY b.category, b.sub_category, b.name";
+            cmd.Parameters.AddWithValue("@r", resourceName);
+
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
             {
-                Name = rdr.GetString(1), Category = rdr.GetString(2),
-                SubCategory = rdr.IsDBNull(3) ? null : rdr.GetString(3),
-            };
-            var bpId = rdr.GetInt64(0);
+                var bp = new Blueprint
+                {
+                    Name = rdr.GetString(1), Category = rdr.GetString(2),
+                    SubCategory = rdr.IsDBNull(3) ? null : rdr.GetString(3),
+                };
+                var bpId = rdr.GetInt64(0);
 
-            using var ingCmd = _conn.CreateCommand();
-            ingCmd.CommandText = "SELECT resource_name,quantity,unit FROM blueprint_ingredients WHERE blueprint_id=@id";
-            ingCmd.Parameters.AddWithValue("@id", bpId);
-            using var ingRdr = ingCmd.ExecuteReader();
-            while (ingRdr.Read())
-                bp.Ingredients.Add(new BlueprintIngredient(ingRdr.GetString(0), ingRdr.GetDouble(1), ingRdr.GetString(2)));
+                using var ingCmd = _conn.CreateCommand();
+                ingCmd.CommandText = "SELECT resource_name,quantity,unit FROM blueprint_ingredients WHERE blueprint_id=@id";
+                ingCmd.Parameters.AddWithValue("@id", bpId);
+                using var ingRdr = ingCmd.ExecuteReader();
+                while (ingRdr.Read())
+                    bp.Ingredients.Add(new BlueprintIngredient(ingRdr.GetString(0), ingRdr.GetDouble(1), ingRdr.GetString(2)));
 
-            result.Add(bp);
+                result.Add(bp);
+            }
+
+            return result;
         }
-
-        return result;
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetBlueprintsForResource)} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>Other ores' deposits that also yield <paramref name="resourceName"/> as a
@@ -514,167 +557,232 @@ public class DataService : IDisposable
     /// only ever a headline ore or have no datamined composition.</summary>
     public List<FoundInSource> GetFoundInForResource(string resourceName)
     {
-        var result = new List<FoundInSource>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = @"
-            SELECT host_ore, min_pct, max_pct, probability, variants
-            FROM resource_found_in
-            WHERE resource_name = @r
-            ORDER BY probability DESC, max_pct DESC, host_ore";
-        cmd.Parameters.AddWithValue("@r", resourceName);
+        try
+        {
+            var result = new List<FoundInSource>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = @"
+                SELECT host_ore, min_pct, max_pct, probability, variants
+                FROM resource_found_in
+                WHERE resource_name = @r
+                ORDER BY probability DESC, max_pct DESC, host_ore";
+            cmd.Parameters.AddWithValue("@r", resourceName);
 
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-            result.Add(new FoundInSource(
-                rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetInt32(4)));
-        return result;
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+                result.Add(new FoundInSource(
+                    rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetInt32(4)));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetFoundInForResource)} failed", ex);
+            return [];
+        }
     }
 
     /// <summary>Ship-mining minigame profile for a resource, or null if none is datamined
     /// (e.g. hand/vehicle gems or refined products). Reference data.</summary>
     public MiningProfile? GetMiningProfile(string resourceName)
     {
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = @"
-            SELECT class, instability, resistance, window_mid, window_thin, explosion, cluster
-            FROM resource_mining WHERE resource_name = @r";
-        cmd.Parameters.AddWithValue("@r", resourceName);
-        using var rdr = cmd.ExecuteReader();
-        if (!rdr.Read()) return null;
-        return new MiningProfile(
-            rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2),
-            rdr.GetDouble(3), rdr.GetDouble(4), rdr.GetDouble(5), rdr.GetDouble(6));
+        try
+        {
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = @"
+                SELECT class, instability, resistance, window_mid, window_thin, explosion, cluster
+                FROM resource_mining WHERE resource_name = @r";
+            cmd.Parameters.AddWithValue("@r", resourceName);
+            using var rdr = cmd.ExecuteReader();
+            if (!rdr.Read()) return null;
+            return new MiningProfile(
+                rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2),
+                rdr.GetDouble(3), rdr.GetDouble(4), rdr.GetDouble(5), rdr.GetDouble(6));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetMiningProfile)} failed", ex);
+            return null;
+        }
     }
 
     /// <summary>What a resource's own dedicated rock yields: the resource itself (IsPrimary)
     /// plus its byproducts, primary first. Empty when there is no datamined deposit. Reference.</summary>
     public List<CompositionPart> GetCompositionForResource(string resourceName)
     {
-        var result = new List<CompositionPart>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = @"
-            SELECT ore, min_pct, max_pct, is_primary
-            FROM resource_composition WHERE resource_name = @r
-            ORDER BY is_primary DESC, max_pct DESC, ore";
-        cmd.Parameters.AddWithValue("@r", resourceName);
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-            result.Add(new CompositionPart(rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetInt32(3) == 1));
-        return result;
+        try
+        {
+            var result = new List<CompositionPart>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = @"
+                SELECT ore, min_pct, max_pct, is_primary
+                FROM resource_composition WHERE resource_name = @r
+                ORDER BY is_primary DESC, max_pct DESC, ore";
+            cmd.Parameters.AddWithValue("@r", resourceName);
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+                result.Add(new CompositionPart(rdr.GetString(0), rdr.GetDouble(1), rdr.GetDouble(2), rdr.GetInt32(3) == 1));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetCompositionForResource)} failed", ex);
+            return [];
+        }
     }
 
     public List<Blueprint> SearchBlueprints(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
-        var result = new List<Blueprint>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT DISTINCT id,name,category FROM blueprints WHERE LOWER(name) LIKE @q ORDER BY name LIMIT 50";
-        cmd.Parameters.AddWithValue("@q", $"%{query.ToLower()}%");
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-            result.Add(new Blueprint { Name = rdr.GetString(1), Category = rdr.GetString(2) });
-        return result;
+        try
+        {
+            var result = new List<Blueprint>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT id,name,category FROM blueprints WHERE LOWER(name) LIKE @q ORDER BY name LIMIT 50";
+            cmd.Parameters.AddWithValue("@q", $"%{query.ToLower()}%");
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+                result.Add(new Blueprint { Name = rdr.GetString(1), Category = rdr.GetString(2) });
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(SearchBlueprints)} failed", ex);
+            return [];
+        }
     }
 
     public List<Blueprint> GetAllBlueprints()
     {
-        var result = new List<Blueprint>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT DISTINCT name,category,sub_category FROM blueprints ORDER BY category, name";
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-            result.Add(new Blueprint
-            {
-                Name = rdr.GetString(0), Category = rdr.GetString(1),
-                SubCategory = rdr.IsDBNull(2) ? null : rdr.GetString(2),
-            });
-        return result;
+        try
+        {
+            var result = new List<Blueprint>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT name,category,sub_category FROM blueprints ORDER BY category, name";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+                result.Add(new Blueprint
+                {
+                    Name = rdr.GetString(0), Category = rdr.GetString(1),
+                    SubCategory = rdr.IsDBNull(2) ? null : rdr.GetString(2),
+                });
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetAllBlueprints)} failed", ex);
+            return [];
+        }
     }
 
     public HashSet<string> GetResourceNamesForBlueprintSearch(string query)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(query)) return result;
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = @"
-            SELECT DISTINCT bi.resource_name
-            FROM blueprint_ingredients bi
-            JOIN blueprints b ON b.id = bi.blueprint_id
-            WHERE LOWER(b.name) LIKE @q";
-        cmd.Parameters.AddWithValue("@q", $"%{query.ToLower()}%");
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read()) result.Add(rdr.GetString(0));
-        return result;
+        try
+        {
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = @"
+                SELECT DISTINCT bi.resource_name
+                FROM blueprint_ingredients bi
+                JOIN blueprints b ON b.id = bi.blueprint_id
+                WHERE LOWER(b.name) LIKE @q";
+            cmd.Parameters.AddWithValue("@q", $"%{query.ToLower()}%");
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read()) result.Add(rdr.GetString(0));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetResourceNamesForBlueprintSearch)} failed", ex);
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     public Blueprint? GetBlueprintFull(string name)
     {
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT id,name,category,sub_category FROM blueprints WHERE name=@n LIMIT 1";
-        cmd.Parameters.AddWithValue("@n", name);
-        using var rdr = cmd.ExecuteReader();
-        if (!rdr.Read()) return null;
-        var bp = new Blueprint
+        try
         {
-            Name = rdr.GetString(1), Category = rdr.GetString(2),
-            SubCategory = rdr.IsDBNull(3) ? null : rdr.GetString(3),
-        };
-        long bpId = rdr.GetInt64(0);
-        rdr.Close();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT id,name,category,sub_category FROM blueprints WHERE name=@n LIMIT 1";
+            cmd.Parameters.AddWithValue("@n", name);
+            using var rdr = cmd.ExecuteReader();
+            if (!rdr.Read()) return null;
+            var bp = new Blueprint
+            {
+                Name = rdr.GetString(1), Category = rdr.GetString(2),
+                SubCategory = rdr.IsDBNull(3) ? null : rdr.GetString(3),
+            };
+            long bpId = rdr.GetInt64(0);
+            rdr.Close();
 
-        using var ingCmd = _conn.CreateCommand();
-        ingCmd.CommandText = "SELECT resource_name,quantity,unit FROM blueprint_ingredients WHERE blueprint_id=@id ORDER BY resource_name";
-        ingCmd.Parameters.AddWithValue("@id", bpId);
-        using var ingRdr = ingCmd.ExecuteReader();
-        while (ingRdr.Read())
-            bp.Ingredients.Add(new BlueprintIngredient(ingRdr.GetString(0), ingRdr.GetDouble(1), ingRdr.GetString(2)));
-        ingRdr.Close();
+            using var ingCmd = _conn.CreateCommand();
+            ingCmd.CommandText = "SELECT resource_name,quantity,unit FROM blueprint_ingredients WHERE blueprint_id=@id ORDER BY resource_name";
+            ingCmd.Parameters.AddWithValue("@id", bpId);
+            using var ingRdr = ingCmd.ExecuteReader();
+            while (ingRdr.Read())
+                bp.Ingredients.Add(new BlueprintIngredient(ingRdr.GetString(0), ingRdr.GetDouble(1), ingRdr.GetString(2)));
+            ingRdr.Close();
 
-        using var unlockCmd = _conn.CreateCommand();
-        unlockCmd.CommandText = "SELECT faction,mission_type,mission_title,rank,systems FROM blueprint_unlocks WHERE blueprint_name=@n ORDER BY faction,id";
-        unlockCmd.Parameters.AddWithValue("@n", name);
-        using var unlockRdr = unlockCmd.ExecuteReader();
-        while (unlockRdr.Read())
-        {
-            var systems = unlockRdr.IsDBNull(4) ? null
-                : unlockRdr.GetString(4).Split(',', StringSplitOptions.RemoveEmptyEntries);
-            bp.UnlockEntries.Add(new BlueprintUnlockEntry(
-                Faction:     unlockRdr.GetString(0),
-                MissionType: unlockRdr.IsDBNull(1) ? null : unlockRdr.GetString(1),
-                MissionTitle: unlockRdr.GetString(2),
-                Rank:        unlockRdr.IsDBNull(3) ? null : unlockRdr.GetString(3),
-                Systems:     systems
-            ));
+            using var unlockCmd = _conn.CreateCommand();
+            unlockCmd.CommandText = "SELECT faction,mission_type,mission_title,rank,systems FROM blueprint_unlocks WHERE blueprint_name=@n ORDER BY faction,id";
+            unlockCmd.Parameters.AddWithValue("@n", name);
+            using var unlockRdr = unlockCmd.ExecuteReader();
+            while (unlockRdr.Read())
+            {
+                var systems = unlockRdr.IsDBNull(4) ? null
+                    : unlockRdr.GetString(4).Split(',', StringSplitOptions.RemoveEmptyEntries);
+                bp.UnlockEntries.Add(new BlueprintUnlockEntry(
+                    Faction:     unlockRdr.GetString(0),
+                    MissionType: unlockRdr.IsDBNull(1) ? null : unlockRdr.GetString(1),
+                    MissionTitle: unlockRdr.GetString(2),
+                    Rank:        unlockRdr.IsDBNull(3) ? null : unlockRdr.GetString(3),
+                    Systems:     systems
+                ));
+            }
+            return bp;
         }
-        return bp;
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetBlueprintFull)} failed", ex);
+            return null;
+        }
     }
 
     // ── Work Orders ──────────────────────────────────────────────────────────
 
     public List<WorkOrder> GetWorkOrders()
     {
-        var result = new List<WorkOrder>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT id,label,resources,location,refinery,status,notes,created_at,timer_start,timer_end FROM work_orders ORDER BY created_at DESC";
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
+        try
         {
-            result.Add(new WorkOrder
+            var result = new List<WorkOrder>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT id,label,resources,location,refinery,status,notes,created_at,timer_start,timer_end FROM work_orders ORDER BY created_at DESC";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
             {
-                Id = rdr.GetString(0), Label = rdr.GetString(1), Resources = rdr.GetString(2),
-                Location = rdr.GetString(3), Refinery = rdr.GetString(4),
-                Status = (WorkOrderStatus)rdr.GetInt32(5), Notes = rdr.GetString(6),
-                CreatedAt  = DateTime.Parse(rdr.GetString(7), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                TimerStart = rdr.IsDBNull(8) ? null : DateTime.Parse(rdr.GetString(8), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                TimerEnd   = rdr.IsDBNull(9) ? null : DateTime.Parse(rdr.GetString(9), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            });
+                result.Add(new WorkOrder
+                {
+                    Id = rdr.GetString(0), Label = rdr.GetString(1), Resources = rdr.GetString(2),
+                    Location = rdr.GetString(3), Refinery = rdr.GetString(4),
+                    Status = (WorkOrderStatus)rdr.GetInt32(5), Notes = rdr.GetString(6),
+                    CreatedAt  = DateTime.Parse(rdr.GetString(7), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                    TimerStart = rdr.IsDBNull(8) ? null : DateTime.Parse(rdr.GetString(8), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                    TimerEnd   = rdr.IsDBNull(9) ? null : DateTime.Parse(rdr.GetString(9), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                });
+            }
+            return result;
         }
-        return result;
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetWorkOrders)} failed", ex);
+            return [];
+        }
     }
 
     public void SaveWorkOrder(WorkOrder wo)
     {
-        Exec(@"INSERT OR REPLACE INTO work_orders(id,label,resources,location,refinery,status,notes,created_at,timer_start,timer_end) VALUES (@id,@l,@r,@loc,@ref,@s,@n,@ca,@ts,@te)",
+        ExecSafe(nameof(SaveWorkOrder),
+            @"INSERT OR REPLACE INTO work_orders(id,label,resources,location,refinery,status,notes,created_at,timer_start,timer_end) VALUES (@id,@l,@r,@loc,@ref,@s,@n,@ca,@ts,@te)",
             ("@id", wo.Id), ("@l", wo.Label), ("@r", wo.Resources),
             ("@loc", wo.Location), ("@ref", wo.Refinery), ("@s", (int)wo.Status),
             ("@n", wo.Notes), ("@ca", wo.CreatedAt.ToString("O")),
@@ -683,40 +791,49 @@ public class DataService : IDisposable
     }
 
     public void DeleteWorkOrder(string id) =>
-        Exec("DELETE FROM work_orders WHERE id=@id", ("@id", id));
+        ExecSafe(nameof(DeleteWorkOrder), "DELETE FROM work_orders WHERE id=@id", ("@id", id));
 
     // ── Shopping List ────────────────────────────────────────────────────────
 
     public List<ShoppingItem> GetShoppingList()
     {
-        var result = new List<ShoppingItem>();
-        using var cmd = _conn!.CreateCommand();
-        cmd.CommandText = "SELECT resource_name,quantity,unit FROM shopping_list ORDER BY resource_name";
-        using var rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-            result.Add(new ShoppingItem { ResourceName = rdr.GetString(0), Quantity = rdr.GetDouble(1), Unit = rdr.GetString(2) });
-        return result;
+        try
+        {
+            var result = new List<ShoppingItem>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT resource_name,quantity,unit FROM shopping_list ORDER BY resource_name";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+                result.Add(new ShoppingItem { ResourceName = rdr.GetString(0), Quantity = rdr.GetDouble(1), Unit = rdr.GetString(2) });
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetShoppingList)} failed", ex);
+            return [];
+        }
     }
 
     public void AddToShoppingList(string resourceName, double qty, string unit)
     {
-        Exec("INSERT INTO shopping_list VALUES (@r,@q,@u) ON CONFLICT(resource_name) DO UPDATE SET quantity=quantity+@q",
+        ExecSafe(nameof(AddToShoppingList),
+            "INSERT INTO shopping_list VALUES (@r,@q,@u) ON CONFLICT(resource_name) DO UPDATE SET quantity=quantity+@q",
             ("@r", resourceName), ("@q", qty), ("@u", unit));
     }
 
     public void RemoveFromShoppingList(string resourceName) =>
-        Exec("DELETE FROM shopping_list WHERE resource_name=@r", ("@r", resourceName));
+        ExecSafe(nameof(RemoveFromShoppingList), "DELETE FROM shopping_list WHERE resource_name=@r", ("@r", resourceName));
 
-    public void ClearShoppingList() => Exec("DELETE FROM shopping_list");
+    public void ClearShoppingList() => ExecSafe(nameof(ClearShoppingList), "DELETE FROM shopping_list");
 
-    public void ClearWorkOrders() => Exec("DELETE FROM work_orders");
+    public void ClearWorkOrders() => ExecSafe(nameof(ClearWorkOrders), "DELETE FROM work_orders");
 
     // ── Pinning ──────────────────────────────────────────────────────────────
 
     public void SetPinned(string resourceName, bool pinned) =>
-        Exec("UPDATE resources SET is_pinned=@p WHERE name=@n", ("@p", pinned ? 1 : 0), ("@n", resourceName));
+        ExecSafe(nameof(SetPinned), "UPDATE resources SET is_pinned=@p WHERE name=@n", ("@p", pinned ? 1 : 0), ("@n", resourceName));
 
-    public void ClearAllPins() => Exec("UPDATE resources SET is_pinned=0");
+    public void ClearAllPins() => ExecSafe(nameof(ClearAllPins), "UPDATE resources SET is_pinned=0");
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -734,6 +851,17 @@ public class DataService : IDisposable
         cmd.CommandText = sql;
         foreach (var (k, v) in parms) cmd.Parameters.AddWithValue(k, v);
         return (T)cmd.ExecuteScalar()!;
+    }
+
+    // Log-and-degrade wrapper for the public CRUD write methods below: a transient DB failure
+    // (locked file, disk full, corrupt page) logs and no-ops instead of throwing into WPF's
+    // command dispatch, where it would only be caught by App.xaml.cs's unhandled-exception
+    // handlers and treated as an unrecoverable crash. Deliberately NOT used by ApplySeed/SeedAll/
+    // the schema/migration path above - a failed seed must still surface loudly, not degrade silently.
+    private void ExecSafe(string opName, string sql, params (string, object)[] parms)
+    {
+        try { Exec(sql, parms); }
+        catch (Exception ex) { Logger.Error($"DataService.{opName} failed", ex); }
     }
 
     public void Dispose() => _conn?.Dispose();

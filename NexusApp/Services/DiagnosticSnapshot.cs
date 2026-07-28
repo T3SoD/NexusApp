@@ -54,12 +54,20 @@ public static class DiagnosticSnapshot
 
     // Diagnostic snapshots get shared with the maintainer; Star Citizen log paths live under the
     // Windows user-profile folder, so replace that prefix with %USERPROFILE% to avoid leaking the
-    // OS username (which can be a real name). Paths outside the profile are returned unchanged.
-    public static string RedactUserProfile(string? path, string? home)
+    // OS username (which can be a real name). Scans the WHOLE input for the profile path rather than
+    // requiring it to be a prefix, so this also redacts a path embedded mid-line (e.g. the
+    // "[GameLog] ... watching: C:\Users\<user>\..." line) inside a full log blob, not just a single
+    // curated settings value. Both backslash and forward-slash forms of the profile path are
+    // scrubbed, since a user-typed Game.log path override (a free-text Settings field) can use
+    // either separator and then surface verbatim in a log line or exception message. Text with no
+    // profile path in it is returned unchanged.
+    public static string RedactUserProfile(string? text, string? home)
     {
-        if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(home)) return path ?? "";
-        return path.StartsWith(home, StringComparison.OrdinalIgnoreCase)
-            ? "%USERPROFILE%" + path.Substring(home.Length)
-            : path;
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(home)) return text ?? "";
+        var redacted = text.Replace(home, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+        var homeForwardSlash = home.Replace('\\', '/');
+        if (!string.Equals(homeForwardSlash, home, StringComparison.Ordinal))
+            redacted = redacted.Replace(homeForwardSlash, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+        return redacted;
     }
 }
