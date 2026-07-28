@@ -98,7 +98,7 @@ public sealed class CargoSignoffStore
         // Record the fingerprint of the grids being reviewed so later geometry changes surface as drift.
         var fp = string.IsNullOrEmpty(fingerprint) ? e.Fingerprint : fingerprint;
         bool ok = Store(shipId, shipName, e with { Checks = checks, Fingerprint = fp });
-        if (ok) Logger.Info($"[UI] cargo review: {shipName} {item} -> {value}");
+        if (ok) Logger.Info($"[CARGO] cargo review: {shipName} {item} -> {value}");
         return ok;
     }
 
@@ -107,7 +107,7 @@ public sealed class CargoSignoffStore
     {
         var e = _entries.TryGetValue(shipId, out var cur) ? cur : new Entry();
         bool ok = Store(shipId, shipName, e with { Flagged = value });
-        if (ok) Logger.Info($"[UI] cargo review: {shipName} flagged -> {value}");
+        if (ok) Logger.Info($"[CARGO] cargo review: {shipName} flagged -> {value}");
         return ok;
     }
 
@@ -118,7 +118,7 @@ public sealed class CargoSignoffStore
         var checks = new Dictionary<string, bool>(e.Checks);
         foreach (var i in items) checks[i.ToString()] = false;
         bool ok = Store(shipId, shipName, e with { Checks = checks });
-        if (ok) Logger.Info($"[UI] cargo review: {shipName} cleared {string.Join(",", items)}");
+        if (ok) Logger.Info($"[CARGO] cargo review: {shipName} cleared {string.Join(",", items)}");
         return ok;
     }
 

@@ -119,7 +119,7 @@ public sealed class CargoWebView : UserControl
             core.SetVirtualHostNameToFolderMapping("nexus.hulls", HullsDir, CoreWebView2HostResourceAccessKind.Allow);
             int localHulls = Directory.GetFiles(HullsDir, "*.bin").Length;
             int shippedHulls = Directory.Exists(ShippedHullsDir) ? Directory.GetFiles(ShippedHullsDir, "*.bin").Length : 0;
-            Logger.Info($"[UI] cargo hologram: hulls mapped, {localHulls} local override(s) + {shippedHulls} shipped outline file(s)");
+            Logger.Info($"[CARGO] cargo hologram: hulls mapped, {localHulls} local override(s) + {shippedHulls} shipped outline file(s)");
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = _studio;   // dev tooling only; the shippable planner gets none
@@ -140,7 +140,7 @@ public sealed class CargoWebView : UserControl
         {
             // WebView2 runtime missing, or the shared user-data folder is locked/corrupt. Do not let an
             // async-void Loaded handler take the whole app down; show a fallback and let a later view retry.
-            Logger.Error("[UI] cargo 3D view failed to start; WebView2 could not initialize", ex);
+            Logger.Error("[CARGO] cargo 3D view failed to start; WebView2 could not initialize", ex);
             _sharedEnv = null;
             Content = new System.Windows.Controls.TextBlock
             {
@@ -161,7 +161,7 @@ public sealed class CargoWebView : UserControl
     internal void ShutdownForUpdate()
     {
         try { _web.Dispose(); }
-        catch (Exception ex) { Logger.Error("[UI] WebView2 dispose before update failed", ex); }
+        catch (Exception ex) { Logger.Error("[CARGO] WebView2 dispose before update failed", ex); }
         _sharedEnv = null;
         _ready = false;
     }
@@ -249,7 +249,7 @@ public sealed class CargoWebView : UserControl
                     break;
                 case "log":     // surface a page-side error/warning into nexus.log (App Log Monitor)
                     if (root.TryGetProperty("msg", out var lm) && lm.ValueKind == JsonValueKind.String)
-                        Logger.Info($"[UI] cargo view: {lm.GetString()}");
+                        Logger.Info($"[CARGO] cargo view: {lm.GetString()}");
                     break;
                 case "testGridSelected":
                     if (root.TryGetProperty("index", out var gi) && gi.ValueKind == JsonValueKind.Number)
@@ -461,7 +461,7 @@ public sealed class CargoWebView : UserControl
             if (hull != null && _lastHullLog != hull + hullSrc)
             {
                 _lastHullLog = hull + hullSrc;
-                Logger.Info($"[UI] cargo hologram: {hullSrc} hull outline active for {ship.DisplayName}");
+                Logger.Info($"[CARGO] cargo hologram: {hullSrc} hull outline active for {ship.DisplayName}");
             }
         }
 

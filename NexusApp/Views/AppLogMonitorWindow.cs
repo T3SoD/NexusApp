@@ -166,20 +166,29 @@ public sealed class AppLogMonitorWindow : Window
 
     private string BuildSnapshot()
     {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
         // Shared-mode reads: an exclusive read here would make a concurrent diagnostics append
         // throw and silently drop its line (the writer never throws by design).
         string log;
         try { log = ReadShared(Logger.LogPath) ?? "(no log file)"; }
         catch (Exception ex) { log = $"(could not read log: {ex.Message})"; }
+        // The raw log can carry a full profile-relative path verbatim (e.g. the "[GameLog] ...
+        // watching: <path>" line, or a file-import exception message) if the user's Game.log path
+        // override lives under their own profile - redact the WHOLE blob, not just the curated
+        // settings rows below, before it becomes part of a snapshot users are told to share.
+        log = DiagnosticSnapshot.RedactUserProfile(log, home);
 
         string? unmatched = null;
         try { unmatched = ReadShared(UnmatchedBlueprintLog.LogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
+        if (unmatched != null) unmatched = DiagnosticSnapshot.RedactUserProfile(unmatched, home);
 
         // The kept pre-rotation generation: carries crash evidence older than the 72h window.
         string? previous = null;
         try { previous = ReadShared(Logger.PreviousLogPath); }
         catch { /* best-effort - the snapshot still works without it */ }
+        if (previous != null) previous = DiagnosticSnapshot.RedactUserProfile(previous, home);
 
         var settings = new List<(string, string)>
         {
@@ -187,12 +196,19 @@ public sealed class AppLogMonitorWindow : Window
             ("Scan region set", App.Settings.Current.ScanRegion != null ? "yes" : "no"),
             ("Game.log path", string.IsNullOrEmpty(App.Settings.Current.GameLogPath)
                 ? "(default / auto-detect)"
-                : DiagnosticSnapshot.RedactUserProfile(App.Settings.Current.GameLogPath,
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))),
+                : DiagnosticSnapshot.RedactUserProfile(App.Settings.Current.GameLogPath, home)),
             ("Session Tracking", App.Settings.Current.GameLogTrackSession ? "on" : "off"),
             ("Auto-Track Blueprints", App.Settings.Current.GameLogAutoTrack ? "on" : "off"),
             ("Update checks", App.Settings.Current.UpdateCheckEnabled switch { null => "Not asked", true => "On", false => "Off" }),
             ("Last update check", RelaunchNotice.FormatTimestamp(App.Settings.Current.LastUpdateCheckUtc)),
+            ("Auto-scan contracts", App.Settings.Current.AutoScanContracts ? "on" : "off"),
+            ("Reduce animations", App.Settings.Current.ReduceAnimations ? "on" : "off"),
+            ("24-hour clock", App.Settings.Current.Clock24Hour ? "on" : "off"),
+            ("CPU rendering (compatibility)", App.Settings.Current.SoftwareRendering ? "on" : "off"),
+            ("Overlay click-through", App.Settings.Current.OverlayPassThroughWhenCursorHidden ? "on" : "off"),
+            ("Overlay ghost mode", App.Settings.Current.OverlayGhostMode ? "on" : "off"),
+            ("Market data", App.Settings.Current.MarketDataEnabled switch { null => "Not asked", true => "On", false => "Off" }),
+            ("Codex sell column", App.Settings.Current.CodexSellColumn ? "on" : "off"),
         };
 
         return DiagnosticSnapshot.Build(

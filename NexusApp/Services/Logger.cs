@@ -5,6 +5,19 @@ namespace NexusApp.Services;
 /// <summary>
 /// Minimal append-only file logger at %AppData%\NexusApp\logs\nexus.log. Local only -
 /// nothing is ever sent anywhere. Logging must never throw, so every path is guarded.
+///
+/// Every Info/Error call site should lead its message with a bracketed domain tag (e.g.
+/// "[UI] click: ..."), so the App Log Monitor's filter box and a diagnostic snapshot both read
+/// as a breadcrumb trail. Sanctioned tags: [UI] (general interaction, incl. InteractionLog's own
+/// Click/Toggle/Nav writes), [WIN] (app lifecycle: startup/shutdown/crash-class/DPI/relaunch),
+/// [SCAN] (the RS decoder's background poll loop), [FG] (foreground-relevance pause/resume), and
+/// [NET] (Blueprint Network). Ad-hoc tags already in production use, one per feature domain:
+/// [CARGO] (Cargo Planner, Grid Studio, cargo review sign-off - the sanctioned tag for every
+/// cargo/grid-studio surface, replacing any stray [UI] on that domain), [HAUL] (cargo hauling
+/// tracker), [CONTRACT] (contract OCR scanner), [SHARD] (server/shard tracker), [UPDATE]
+/// (auto-update service), [GameLog] (Game.log session tracking/blueprint import), and [LOC]
+/// (global.ini localization mapping). A new feature should reuse an existing tag for its domain
+/// rather than inventing another one-off.
 /// </summary>
 public static class Logger
 {

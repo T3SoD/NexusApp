@@ -165,8 +165,8 @@ public partial class App : Application
             }
         };
 
-        Logger.Info($"Nexus {AppInfo.Version} starting");
-        Logger.Info($"Distribution: {AppInfo.Distribution}");
+        Logger.Info($"[WIN] Nexus {AppInfo.Version} starting");
+        Logger.Info($"[WIN] Distribution: {AppInfo.Distribution}");
         if (AppPaths.IsDemoProfile)
         {
             Logger.Info("[WIN] Nexus starting in demo profile mode");
@@ -275,7 +275,10 @@ public partial class App : Application
         // no path is saved yet). The path is still persisted below when the watcher resolves it.
         GameLog.PreferredPath = Settings.Current.GameLogPath;
         GameLog.SetAutoMark(true);
-        Logger.Info($"[GameLog] session tracking + auto-track always on; watching: {(string.IsNullOrEmpty(GameLog.Path) ? "<no log found yet>" : GameLog.Path)}");
+        // GameLog.Path can sit under the user's profile (a free-text Settings override or an
+        // auto-detected default install path) - redact it at the source, the same helper the
+        // diagnostic snapshot uses, so it never lands unredacted in nexus.log in the first place.
+        Logger.Info($"[GameLog] session tracking + auto-track always on; watching: {(string.IsNullOrEmpty(GameLog.Path) ? "<no log found yet>" : DiagnosticSnapshot.RedactUserProfile(GameLog.Path, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))}");
         GameLog.StateChanged += () =>
         {
             Settings.Current.GameLogTrackSession = GameLog.IsRunning;
@@ -348,8 +351,15 @@ public partial class App : Application
         EventManager.RegisterClassHandler(typeof(Button), ButtonBase.ClickEvent,
             new RoutedEventHandler((s, _) =>
             {
-                if (s is Button b)
-                    InteractionLog.Click(!string.IsNullOrEmpty(b.Name) ? b.Name : b.Content?.ToString(), b);
+                if (s is not Button b) return;
+                // Hud.ToggleSwitch (a Button subclass) sets Content to a layout Grid, not text, so
+                // Content?.ToString() would only ever yield the type name ("System.Windows.Controls.
+                // Grid") - a meaningless duplicate line, since every ToggleSwitch call site already
+                // logs its own specific line from OnToggled. Skip logging here whenever the effective
+                // label isn't a real string (no Name, and Content isn't itself a string).
+                var label = !string.IsNullOrEmpty(b.Name) ? b.Name : b.Content as string;
+                if (string.IsNullOrEmpty(label)) return;
+                InteractionLog.Click(label, b);
             }));
 
         EventManager.RegisterClassHandler(typeof(RadioButton), ToggleButton.CheckedEvent,
