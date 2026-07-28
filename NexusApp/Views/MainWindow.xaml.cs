@@ -755,6 +755,12 @@ public partial class MainWindow : Window
         {
             RefreshApprovedTools();
             RefreshOwnerTools();
+            // Dispose the embedded WebView2 controls before dropping the pages (same call
+            // ShutdownWebViewsForUpdate makes for the swap path) - otherwise Children.Clear() drops
+            // the only references to CargoPlannerPage/GridStudioPage while their native WebView2
+            // control/process is still alive, leaking it until the whole app exits.
+            _plannerPage?.ShutdownWebViewForUpdate();
+            _gridStudioPage?.ShutdownWebViewForUpdate();
             _plannerPage = null; PagePlanner.Children.Clear();
             _gridStudioPage = null; PageGridStudio.Children.Clear();
             // The two cached pages were just cleared; if one of them is what the user is looking
@@ -3123,6 +3129,25 @@ public partial class MainWindow : Window
         return g;
     }
 
+    // Per-element animation generation for ExpandRows/CollapseRows, mirroring
+    // OverlayTabStrip.TabHost.MotionGen / OverlayWindow._ghostMotionGen: BeginAnimation(prop, null)
+    // detaches an animation from its property but its clock keeps running and still raises
+    // Completed at the ORIGINAL end time, so a Completed handler must compare its captured
+    // generation against the element's current one and no-op if superseded, or an orphaned clock
+    // from a rapidly-re-toggled row can stomp state a later call already set. Attached (rather than
+    // a plain field) because these are static helpers shared by three independent expander
+    // instances with no common host object (the work order sell block's "extra", and the Codex
+    // dossier's VALUE + long-tail "target"/"body" expanders) that can be open at the same time.
+    private static readonly DependencyProperty RowsMotionGenProperty = DependencyProperty.RegisterAttached(
+        "RowsMotionGen", typeof(int), typeof(MainWindow), new PropertyMetadata(0));
+
+    private static int BumpRowsMotionGen(FrameworkElement rows)
+    {
+        int gen = (int)rows.GetValue(RowsMotionGenProperty) + 1;
+        rows.SetValue(RowsMotionGenProperty, gen);
+        return gen;
+    }
+
     // Expand/collapse a revealed block: height (0 <-> measured) + opacity over Motion.DrillMs on
     // Motion.Reveal - the app's drill-down reveal vocabulary (Motion.cs:27,31), same pairing the mock's
     // AnimatePresence uses for this exact affordance. Motion.Reduced snaps straight to the final state
@@ -3131,6 +3156,7 @@ public partial class MainWindow : Window
     private static void ExpandRows(FrameworkElement rows, bool animate)
     {
         rows.Visibility = Visibility.Visible;
+        int gen = BumpRowsMotionGen(rows);
         if (!animate)
         {
             rows.BeginAnimation(FrameworkElement.HeightProperty, null);
@@ -3157,7 +3183,11 @@ public partial class MainWindow : Window
 
         var dur = TimeSpan.FromMilliseconds(Motion.DrillMs);
         var heightAnim = new System.Windows.Media.Animation.DoubleAnimation(0, target, dur) { EasingFunction = Motion.Reveal };
-        heightAnim.Completed += (_, _) => { rows.BeginAnimation(FrameworkElement.HeightProperty, null); rows.Height = double.NaN; };
+        heightAnim.Completed += (_, _) =>
+        {
+            if (gen != (int)rows.GetValue(RowsMotionGenProperty)) return;   // superseded; this clock is orphaned
+            rows.BeginAnimation(FrameworkElement.HeightProperty, null); rows.Height = double.NaN;
+        };
         var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Reveal };
         rows.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
         rows.BeginAnimation(UIElement.OpacityProperty, fade);
@@ -3165,6 +3195,7 @@ public partial class MainWindow : Window
 
     private static void CollapseRows(FrameworkElement rows, bool animate)
     {
+        int gen = BumpRowsMotionGen(rows);
         if (!animate)
         {
             rows.BeginAnimation(FrameworkElement.HeightProperty, null);
@@ -3181,6 +3212,7 @@ public partial class MainWindow : Window
         var heightAnim = new System.Windows.Media.Animation.DoubleAnimation(current, 0, dur) { EasingFunction = Motion.Reveal };
         heightAnim.Completed += (_, _) =>
         {
+            if (gen != (int)rows.GetValue(RowsMotionGenProperty)) return;   // superseded; this clock is orphaned
             rows.Visibility = Visibility.Collapsed;
             rows.BeginAnimation(FrameworkElement.HeightProperty, null);
             rows.Height = 0;
@@ -4925,7 +4957,13 @@ public partial class MainWindow : Window
         {
             MessageBox.Show($"Overlay error:\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
                             "Overlay Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            try { _overlay?.Close(); } catch { /* discarding a broken overlay - its OnClosed detaches handlers */ }
+            // Cheap hardening only (low-priority finding, needs a double fault to matter): log a
+            // Close() failure distinctly instead of letting it vanish into this catch block. If
+            // Close() itself throws, OverlayWindow.OnClosed may not run to completion, leaving the
+            // broken instance's App-level static-event subscriptions (Market/GameLog/Hauls/Shards/
+            // OverlayGhostMode) alive even though _overlay is set to null right below.
+            try { _overlay?.Close(); }
+            catch (Exception closeEx) { Logger.Error("[WIN] overlay Close() failed while discarding a broken instance", closeEx); }
             _overlay = null;
         }
     }
@@ -5507,11 +5545,47 @@ public partial class MainWindow : Window
     private static System.Windows.Media.Animation.DiscreteDoubleKeyFrame EggStepKey(double value, double ms)
         => new(value, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(ms)));
 
+    // Mirrors AppSettings.cs's own default property values (WindowLeft/Top/Width/Height) - the
+    // rectangle a fresh install (or a saved rect that lands on no connected display) restores to.
+    private static readonly Rect DefaultWindowRect = new(100, 100, 1280, 820);
+
+    // Clamps the persisted rect onto the currently connected desktop before applying it: a window
+    // last positioned on a second monitor that has since been disconnected, undocked, or resized
+    // would otherwise restore fully or mostly off-screen with no in-app recovery path (mouse-only,
+    // no menu bar). DIP-level clamping via SystemParameters is sufficient here - unlike the overlay,
+    // MainWindow is a normal taskbar window with no Win32 physical-px positioning of its own.
     private void RestoreWindowPosition()
     {
         var s = App.Settings.Current;
-        Left = s.WindowLeft; Top = s.WindowTop;
-        Width = s.WindowWidth; Height = s.WindowHeight;
+        double left = s.WindowLeft, top = s.WindowTop, width = s.WindowWidth, height = s.WindowHeight;
+
+        var virtualScreen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                      SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        // Math.Max guards a corrupted/negative saved width or height, which Rect's constructor
+        // would otherwise throw on.
+        var saved = new Rect(left, top, Math.Max(width, 0), Math.Max(height, 0));
+
+        Rect restore;
+        if (!virtualScreen.IntersectsWith(saved))
+        {
+            // Saved rect intersects no connected display at all - fall back to the shipped
+            // defaults rather than opening off-screen.
+            restore = DefaultWindowRect;
+            Logger.Info("[WIN] Main window position clamped onto the visible desktop");
+        }
+        else
+        {
+            double clampedWidth = Math.Min(width, virtualScreen.Width);
+            double clampedHeight = Math.Min(height, virtualScreen.Height);
+            double clampedLeft = Math.Clamp(left, virtualScreen.Left, virtualScreen.Left + virtualScreen.Width - clampedWidth);
+            double clampedTop = Math.Clamp(top, virtualScreen.Top, virtualScreen.Top + virtualScreen.Height - clampedHeight);
+            restore = new Rect(clampedLeft, clampedTop, clampedWidth, clampedHeight);
+            if (clampedLeft != left || clampedTop != top || clampedWidth != width || clampedHeight != height)
+                Logger.Info("[WIN] Main window position clamped onto the visible desktop");
+        }
+
+        Left = restore.Left; Top = restore.Top;
+        Width = restore.Width; Height = restore.Height;
     }
 
     private void SaveWindowPosition()
