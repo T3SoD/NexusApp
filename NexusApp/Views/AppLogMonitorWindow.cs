@@ -230,6 +230,7 @@ public sealed class AppLogMonitorWindow : Window
             ("CPU rendering (compatibility)", App.Settings.Current.SoftwareRendering ? "on" : "off"),
             ("Overlay click-through", App.Settings.Current.OverlayPassThroughWhenCursorHidden ? "on" : "off"),
             ("Overlay ghost mode", App.Settings.Current.OverlayGhostMode ? "on" : "off"),
+            ("Ghost rail scale", $"{Math.Round(UiScaleService.ClampRailScale(App.Settings.Current.OverlayGhostRailScale) * 100)}%"),
             ("Market data", App.Settings.Current.MarketDataEnabled switch { null => "Not asked", true => "On", false => "Off" }),
             ("Codex sell column", App.Settings.Current.CodexSellColumn ? "on" : "off"),
         };
