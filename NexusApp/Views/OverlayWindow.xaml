@@ -46,7 +46,7 @@
                 <RowDefinition Height="34"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition x:Name="HistorySplitterRow" Height="4" MinHeight="4"/>
+                <RowDefinition x:Name="HistorySplitterRow" Height="8" MinHeight="8"/>
                 <RowDefinition x:Name="HistoryStripRow" Height="120" MinHeight="50"/>
             </Grid.RowDefinitions>
 
@@ -92,8 +92,8 @@
                 <Button x:Name="QuickSettingsBtn" Grid.Column="2" Style="{StaticResource NexusButton}"
                         Width="26" Height="26" Padding="0" VerticalAlignment="Center"
                         Margin="0,0,4,0" Click="QuickSettings_Click"/>
-                <Button Grid.Column="3" Content="✕" Style="{StaticResource NexusButton}"
-                        Width="26" Height="26" Padding="0" VerticalAlignment="Center"
+                <Button x:Name="CloseBtn" Grid.Column="3" Content="✕" Style="{StaticResource NexusButton}"
+                        Width="26" Height="26" Padding="0" FontSize="11" VerticalAlignment="Center"
                         Margin="0,0,8,0" Click="Close_Click"/>
                 <!-- accent hairline under header -->
                 <Border Grid.ColumnSpan="4" VerticalAlignment="Bottom" Height="1" Margin="12,0,12,0">
@@ -255,6 +255,9 @@
                                                 <Setter Property="Background"    Value="{DynamicResource Bg3Brush}"/>
                                                 <Setter Property="BorderBrush"   Value="{DynamicResource BorderBrush}"/>
                                                 <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource HighlightBrush}"/>
+                                                    </Trigger>
                                                     <DataTrigger Binding="{Binding IsInCart}" Value="True">
                                                         <Setter Property="Background"  Value="{DynamicResource AccentTintBrush}"/>
                                                         <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
@@ -491,10 +494,18 @@
                 <Grid x:Name="GuidesTabContent" Visibility="Collapsed"/>
             </Grid>
 
-            <!-- Drag handle to resize history strip -->
+            <!-- Drag handle to resize history strip: 8px hit target with a centered 1px hairline
+                 (issue #27 review - the old 4px Background-only splitter was hard to grab). -->
             <GridSplitter x:Name="HistorySplitter" Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Background="{DynamicResource NavBorderBrush}" Cursor="SizeNS"
-                          ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+                          Cursor="SizeNS" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Background="Transparent">
+                <GridSplitter.Template>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="Transparent">
+                            <Border Height="1" VerticalAlignment="Center" Background="{DynamicResource NavBorderBrush}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </GridSplitter.Template>
+            </GridSplitter>
 
             <!-- History strip (RECENT scans - hidden on the STATS tab; it's scan-only) -->
             <Border x:Name="HistoryStrip_Container" Grid.Row="4" Background="{DynamicResource NavBgBrush}">

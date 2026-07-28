@@ -46,6 +46,7 @@ public sealed class OverlayGhostRail : Grid
     private List<Path> _gearPaths = [];
     private Border _gearEdgeBar = null!;
     private Border _closeRoot = null!;
+    private Grid _capRoot = null!;
     private string? _active;
     private bool _gearOn;
 
@@ -110,16 +111,19 @@ public sealed class OverlayGhostRail : Grid
             VerticalAlignment = VerticalAlignment.Bottom,
         };
         hairline.SetResourceReference(Border.BackgroundProperty, "AccentHairlineBrush");
-        var cap = new Grid
+        _capRoot = new Grid
         {
             Height = 34,
             Background = Brushes.Transparent,   // hit-testable across the whole drag zone
             Cursor = Cursors.SizeAll,
+            ToolTip = BuildHoverChip("DRAG TO MOVE"),
         };
-        cap.Children.Add(beam);
-        cap.Children.Add(hairline);
-        cap.MouseLeftButtonDown += (_, e) => DragRequested?.Invoke(e);
-        return cap;
+        ToolTipService.SetInitialShowDelay(_capRoot, 150);
+        ToolTipService.SetPlacement(_capRoot, System.Windows.Controls.Primitives.PlacementMode.Right);
+        _capRoot.Children.Add(beam);
+        _capRoot.Children.Add(hairline);
+        _capRoot.MouseLeftButtonDown += (_, e) => DragRequested?.Invoke(e);
+        return _capRoot;
     }
 
     // Bottom-pinned close glyph: the same "X" character the overlay header's close button uses.
@@ -139,6 +143,9 @@ public sealed class OverlayGhostRail : Grid
             Width = 26,
             Height = 26,
             HorizontalAlignment = HorizontalAlignment.Center,
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Brushes.Transparent,
             Background = Brushes.Transparent,
             Cursor = Cursors.Hand,
             Child = text,
@@ -146,8 +153,17 @@ public sealed class OverlayGhostRail : Grid
         };
         ToolTipService.SetInitialShowDelay(_closeRoot, 150);
         ToolTipService.SetPlacement(_closeRoot, System.Windows.Controls.Primitives.PlacementMode.Right);
-        _closeRoot.MouseEnter += (_, _) => text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
-        _closeRoot.MouseLeave += (_, _) => text.SetResourceReference(TextBlock.ForegroundProperty, "FgDimBrush");
+        _closeRoot.MouseEnter += (_, _) =>
+        {
+            text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
+            _closeRoot.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        };
+        _closeRoot.MouseLeave += (_, _) =>
+        {
+            text.SetResourceReference(TextBlock.ForegroundProperty, "FgDimBrush");
+            _closeRoot.ClearValue(Border.BorderBrushProperty);
+            _closeRoot.BorderBrush = Brushes.Transparent;
+        };
         _closeRoot.MouseLeftButtonUp += (_, _) => CloseSelected?.Invoke();
         return _closeRoot;
     }
@@ -393,5 +409,6 @@ public sealed class OverlayGhostRail : Grid
         foreach (var icon in _icons) ToolTipService.SetPlacement(icon.Root, side);
         ToolTipService.SetPlacement(_gearRoot, side);
         ToolTipService.SetPlacement(_closeRoot, side);
+        ToolTipService.SetPlacement(_capRoot, side);
     }
 }

@@ -78,6 +78,25 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         QuickSettingsBtn.Content = BuildHeaderGearGlyph();
+
+        // Header close/quick-settings hover chips (issue #27 review: close-control parity with
+        // the ghost rail's own hover chips, which already use this zeroed-chrome ToolTip pattern).
+        CloseBtn.ToolTip = BuildHeaderHoverChip("CLOSE OVERLAY");
+        ToolTipService.SetInitialShowDelay(CloseBtn, 150);
+        ToolTipService.SetPlacement(CloseBtn, System.Windows.Controls.Primitives.PlacementMode.Bottom);
+        QuickSettingsBtn.ToolTip = BuildHeaderHoverChip("QUICK SETTINGS");
+        ToolTipService.SetInitialShowDelay(QuickSettingsBtn, 150);
+        ToolTipService.SetPlacement(QuickSettingsBtn, System.Windows.Controls.Primitives.PlacementMode.Bottom);
+
+        // Region-link underline-on-hover affordance (SCAN + HAULING "Set ... detection region" links).
+        static void WireLinkHover(TextBlock link)
+        {
+            link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
+            link.MouseLeave += (_, _) => link.TextDecorations = null;
+        }
+        WireLinkHover(SetRegionBtn);
+        WireLinkHover(SetContractRegionBtn);
+
         TabStrip.TabSelected += id => SwitchTab(id);
 
         // ── Ghost mode rail (issue #27). Wired unconditionally; the rail is collapsed and
@@ -1103,6 +1122,23 @@ public partial class OverlayWindow : Window
         return new Viewbox { Width = 14, Height = 14, Child = canvas };
     }
 
+    // Explicit ToolTip with its chrome zeroed out (OverlayGhostRail.BuildHoverChip's pattern,
+    // duplicated here per that file's documented precedent - a bare string ToolTip renders
+    // default light chrome, which would halo this dark HUD header).
+    private static ToolTip BuildHeaderHoverChip(string label)
+    {
+        var text = new TextBlock { Text = label, FontSize = 8.5 };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
+        var chip = new Border { Padding = new Thickness(7, 2, 7, 2), BorderThickness = new Thickness(1), Child = text };
+        chip.SetResourceReference(Border.BackgroundProperty, "Bg3Brush");
+        chip.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        return new ToolTip
+        {
+            Content = chip, Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0), Padding = new Thickness(0), HasDropShadow = false,
+        };
+    }
+
     // OverlayBgTopColor/OverlayBgBotColor are raw Colors, not brushes, so the gradient is
     // assembled here too (same recipe as OverlayGhostRail.BuildShellBrush, which is private to
     // that file - the duplication mirrors that file's own documented precedent).
@@ -2079,8 +2115,8 @@ public partial class OverlayWindow : Window
         {
             HistoryStripRow.Height = _savedHistoryHeight;
             HistoryStripRow.MinHeight = _savedHistoryMinHeight;
-            HistorySplitterRow.Height = new GridLength(4);
-            HistorySplitterRow.MinHeight = 4;
+            HistorySplitterRow.Height = new GridLength(8);
+            HistorySplitterRow.MinHeight = 8;
             HistoryStrip_Container.Visibility = Visibility.Visible;
             HistorySplitter.Visibility = Visibility.Visible;
             _historyHidden = false;
