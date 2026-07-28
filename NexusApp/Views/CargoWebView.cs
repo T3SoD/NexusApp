@@ -445,7 +445,7 @@ public sealed class CargoWebView : UserControl
         int cap = ship?.TotalScu ?? 0;
         int scu = trip?.PlacedScu ?? 0;
         int count = trip?.Placed.Count ?? 0;
-        int pct = cap > 0 ? (int)Math.Round(scu / (double)cap * 100) : 0;
+        int pct = UiHelpers.PctOf(scu, cap);
 
         // Hull hologram: only for real layouts, and only when an outline buffer exists. Resolve
         // local-first: a file under the user's %APPDATA% hulls folder is a local override and wins;

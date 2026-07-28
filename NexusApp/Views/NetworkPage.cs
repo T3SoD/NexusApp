@@ -695,7 +695,7 @@ public sealed class NetworkPage : UserControl
                 if (o == 1) single++;
             }
         }
-        var pct = total > 0 ? (int)Math.Round(100.0 * covered / total) : 0;
+        var pct = UiHelpers.PctOf(covered, total);
 
         // ── LEFT: donut coverage gauge (hero card with reticle) ─────────────────
         var gaugeInner = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
@@ -874,7 +874,7 @@ public sealed class NetworkPage : UserControl
     // A per-member coverage card: name + owned count (cyan) + a cyan StateBar coverage bar.
     private UIElement MemberCoverageRow(string name, int count, int total, bool self)
     {
-        var p = total > 0 ? (int)Math.Round(100.0 * count / total) : 0;
+        var p = UiHelpers.PctOf(count, total);
         var sp = new StackPanel { Margin = new Thickness(0, 0, 0, 13) };
 
         var top = new Grid();

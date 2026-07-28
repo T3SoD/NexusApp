@@ -55,7 +55,7 @@ public class WorkOrder
     {
         WorkOrderStatus.Mining         => "#3B82F6",
         WorkOrderStatus.Refining       => "#E67E22",
-        WorkOrderStatus.ReadyToCollect => "#2ECC71",
+        WorkOrderStatus.ReadyToCollect => "#66E6A6",
         WorkOrderStatus.Complete       => "#7F8C8D",
         _                              => "#7F8C8D",
     };

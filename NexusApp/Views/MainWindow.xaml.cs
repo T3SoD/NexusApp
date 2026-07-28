@@ -21,6 +21,11 @@ public partial class MainWindow : Window
 
     private NetworkPage? _networkPage;   // Blueprint Network page, built lazily on first visit
 
+    // Named chamfer for the "hero" detail panels (Codex/reference dossier + Blueprint detail): both
+    // call sites are commented as matching each other, so they share one constant instead of two
+    // independently hand-picked literals.
+    private const double HeroChamfer = 14;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -524,6 +529,15 @@ public partial class MainWindow : Window
         _commandPage.Refresh();
     }
 
+    // Semantic status brushes for the header telemetry chips, looked up once from the palette
+    // theme (OkBrush/DangerBrush/WarnBrush) instead of each chip painter allocating its own
+    // Color.FromRgb literal (which had silently drifted from the palette's OkColor/DangerColor
+    // tokens - review finding: status-chip green/red duplicated the theme tokens with mismatching
+    // hex values). Single-theme app, no runtime palette swap, so one lookup per brush is enough.
+    private readonly System.Windows.Media.Brush _chipOkBrush     = (System.Windows.Media.Brush)Application.Current.FindResource("OkBrush");
+    private readonly System.Windows.Media.Brush _chipDangerBrush = (System.Windows.Media.Brush)Application.Current.FindResource("DangerBrush");
+    private readonly System.Windows.Media.Brush _chipWarnBrush   = (System.Windows.Media.Brush)Application.Current.FindResource("WarnBrush");
+
     // Live SHARD telemetry chip in the header status strip (updates on shard join/leave).
     private void UpdateShardChip()
     {
@@ -531,7 +545,7 @@ public partial class MainWindow : Window
         if (s != null)
         {
             ShardChipText.Text = string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}";
-            ShardDot.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(62, 214, 139));
+            ShardDot.Fill = _chipOkBrush;
         }
         else
         {
@@ -548,18 +562,16 @@ public partial class MainWindow : Window
         if (App.GameLog == null || SessionChipText == null) return;
         bool live = App.GameLog.IsSessionLive;
         SessionChipText.Text = live ? "monitoring" : "offline";
-        var c = live
-            ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
-            : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
-        SessionDot.Fill = new System.Windows.Media.SolidColorBrush(c);
-        SessionChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+        var brush = live ? _chipOkBrush : _chipDangerBrush;
+        SessionDot.Fill = brush;
+        SessionChipText.Foreground = brush;
         Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
 
         // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
         // green ONLINE while Star Citizen is running, red OFFLINE when it's closed.
         if (LinkDot != null)
         {
-            LinkDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+            LinkDot.Fill = brush;
             Hud.PulseDot(LinkDot, live);
         }
         if (LinkStatusText != null)
@@ -569,13 +581,13 @@ public partial class MainWindow : Window
         // OFFLINE once it's closed.
         if (OpsLiveDot != null)
         {
-            OpsLiveDot.Fill = new System.Windows.Media.SolidColorBrush(c);
+            OpsLiveDot.Fill = brush;
             Hud.PulseDot(OpsLiveDot, live);
         }
         if (OpsLiveText != null)
         {
             OpsLiveText.Text = live ? "LIVE" : "OFFLINE";
-            OpsLiveText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+            OpsLiveText.Foreground = brush;
         }
     }
 
@@ -586,11 +598,9 @@ public partial class MainWindow : Window
         if (App.GameLog == null || BlueprintChipText == null) return;
         bool tracking = App.GameLog.IsSessionLive && App.GameLog.AutoMark;
         BlueprintChipText.Text = tracking ? "tracking" : "off";
-        var c = tracking
-            ? System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B)
-            : System.Windows.Media.Color.FromRgb(0xE5, 0x48, 0x4D);
-        BlueprintDot.Fill = new System.Windows.Media.SolidColorBrush(c);
-        BlueprintChipText.Foreground = new System.Windows.Media.SolidColorBrush(c);
+        var brush = tracking ? _chipOkBrush : _chipDangerBrush;
+        BlueprintDot.Fill = brush;
+        BlueprintChipText.Foreground = brush;
         Hud.PulseDot(BlueprintDot, tracking);   // the green LED gently flashes while tracking
     }
 
@@ -611,11 +621,11 @@ public partial class MainWindow : Window
         {
             case ScanIndicator.On:
                 ScanChipText.Text = "Auto · on";
-                ScanChipText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3E, 0xD6, 0x8B));
+                ScanChipText.Foreground = _chipOkBrush;
                 break;
             case ScanIndicator.Paused:
                 ScanChipText.Text = "paused";
-                ScanChipText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEA, 0xB3, 0x08));
+                ScanChipText.Foreground = _chipWarnBrush;
                 break;
             default:
                 ScanChipText.Text = "off";
@@ -1906,7 +1916,7 @@ public partial class MainWindow : Window
     // Severity colour for the mining gauges: lo = green (easy/good), md = amber, hi = red (hard/risky).
     private System.Windows.Media.Brush LevelBrush(string level) => level switch
     {
-        "hi" => BrushFromHex("#EF4444"),
+        "hi" => (System.Windows.Media.Brush)FindResource("DangerBrush"),
         "md" => (System.Windows.Media.Brush)FindResource("AccentBrush"),
         _    => BrushFromHex("#66E6A6"),
     };
@@ -2345,7 +2355,7 @@ public partial class MainWindow : Window
         }
 
         // Chamfered HUD hero panel with corner brackets (matches the Blueprint detail hero).
-        var hero = Hud.Panel(heroContent, chamfer: 13, brackets: true,
+        var hero = Hud.Panel(heroContent, chamfer: HeroChamfer, brackets: true,
             bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
             border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
             padding: new Thickness(20, 14, 18, 14));
@@ -2869,7 +2879,7 @@ public partial class MainWindow : Window
         rightTop.Children.Add(chipHost);
         var deleteTb = new TextBlock { Text = "x", FontFamily = monoFont, FontSize = 13, FontWeight = FontWeights.Bold, Foreground = dimBrush, VerticalAlignment = VerticalAlignment.Center };
         var deleteBtn = new Border { Child = deleteTb, Padding = new Thickness(10, 0, 2, 0), Cursor = System.Windows.Input.Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Delete" };
-        deleteBtn.MouseEnter += (s, _) => deleteTb.Foreground = BrushFromHex("#EF4444");
+        deleteBtn.MouseEnter += (s, _) => deleteTb.Foreground = _chipDangerBrush;
         deleteBtn.MouseLeave += (s, _) => deleteTb.Foreground = dimBrush;
         rightTop.Children.Add(deleteBtn);
         Grid.SetColumn(rightTop, 1); top.Children.Add(rightTop);
@@ -2885,7 +2895,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(bar, 0); footer.Children.Add(bar);
 
         string timerText; System.Windows.Media.Brush timerBrush;
-        if (wo.Status == WorkOrderStatus.ReadyToCollect) { timerText = "ready"; timerBrush = BrushFromHex("#66E6A6"); }
+        if (wo.Status == WorkOrderStatus.ReadyToCollect) { timerText = "ready"; timerBrush = BrushFromHex(wo.StatusColorHex); }
         else if (wo.Status == WorkOrderStatus.Complete)  { timerText = "done";  timerBrush = dimBrush; }
         else if (wo.HasActiveTimer && !string.IsNullOrEmpty(wo.TimerRemainingShort)) { timerText = wo.TimerRemainingShort; timerBrush = accent; }
         else { timerText = "-"; timerBrush = dimBrush; }
@@ -4103,7 +4113,7 @@ public partial class MainWindow : Window
         var all   = _allBlueprints ?? new List<NexusApp.Models.Blueprint>();
         int total = all.Count;
         int owned = all.Count(b => App.Settings.IsBlueprintOwned(b.Name));
-        int pct   = total > 0 ? (int)System.Math.Round(owned * 100.0 / total) : 0;
+        int pct   = UiHelpers.PctOf(owned, total);
 
         BlueprintDetailPanel.Children.Add(new TextBlock { Text = "BLUEPRINT MANIFEST", FontFamily = monoFont, FontSize = 11, Foreground = accent, Margin = new Thickness(2, 4, 0, 8) });
 
@@ -4325,7 +4335,7 @@ public partial class MainWindow : Window
         heroRoot.Children.Add(heroContent);
 
         // Chamfered HUD hero panel with amber corner brackets (replaces the rounded drafting card).
-        var heroCard = Hud.Panel(heroRoot, chamfer: 14, brackets: true,
+        var heroCard = Hud.Panel(heroRoot, chamfer: HeroChamfer, brackets: true,
             bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
             border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
             padding: new Thickness(20, 16, 18, 16));

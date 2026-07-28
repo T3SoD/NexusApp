@@ -622,7 +622,7 @@ public sealed class CommandPage : UserControl
         int bpTotal = catalog.Count;
         var ownerCounts = App.Network.OwnerCounts();
         int covered = catalog.Count(b => (ownerCounts.TryGetValue(b.Name, out var c) && c > 0) || App.Settings.IsBlueprintOwned(b.Name));
-        int covPct = bpTotal > 0 ? (int)System.Math.Round(100.0 * covered / bpTotal) : 0;
+        int covPct = UiHelpers.PctOf(covered, bpTotal);
 
         // Rebuilt fresh every Refresh() (tab-open AND live data ticks) - reset the count-up
         // targets so PlayEntrance only ever sees the current visit's fresh elements.
@@ -795,7 +795,7 @@ public sealed class CommandPage : UserControl
             var station = new TextBlock { Text = !string.IsNullOrWhiteSpace(o.Refinery) ? o.Refinery : o.Location, FontFamily = Ui, FontSize = 12, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
             var chipHolder = new ContentControl { Content = Hud.StatusChip(o.Status), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
             var remTxt = !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort : (o.Status == WorkOrderStatus.ReadyToCollect ? "ready" : "-");
-            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? Br("GoldBrush") : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             sp.Children.Add(TableRow(order, station, chipHolder, rem));
         }
         return sp;
@@ -912,15 +912,7 @@ public sealed class CommandPage : UserControl
     }
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
-    private static string Ago(DateTime utcWhen)
-    {
-        var span = DateTime.UtcNow - utcWhen;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-        if (span.TotalMinutes < 1) return "just now";
-        if (span.TotalHours   < 1) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays    < 1) return $"{(int)span.TotalHours}h ago";
-        return $"{(int)span.TotalDays}d ago";
-    }
+    private static string Ago(DateTime utcWhen) => MarketNotice.FormatAge(DateTime.UtcNow - utcWhen);
 
     // ── small helpers ──
     private UIElement PanelHead(string title, string link, string nav)
