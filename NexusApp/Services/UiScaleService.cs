@@ -15,17 +15,30 @@ public static class UiScaleService
     public const double Max = 1.5;
     public const double Step = 0.05;
 
+    // Ghost mode's icon rail sizes independently of the overlay panel and may go SMALLER than
+    // 1.0: the whole point of the rail is a minimal footprint, so it gets its own floor.
+    public const double RailMin = 0.75;
+
     // Raised after a scale setting has been persisted. Long-lived windows (main, overlay)
     // subscribe to re-apply live; transient dialogs just read the value at construction.
     public static event Action? Changed;
+
+    // Raised after the ghost rail scale has been persisted. Separate from Changed because only
+    // the overlay's ghost chrome reacts to it; nothing else in the app is rail-sized.
+    public static event Action? RailChanged;
 
     // Defends against hand-edited settings.json: NaN and non-positive values fall back to 1.0
     // (Math.Clamp would propagate NaN), everything else clamps into [Min, Max].
     public static double ClampScale(double value)
         => double.IsNaN(value) || value <= 0 ? 1.0 : Math.Clamp(value, Min, Max);
 
+    // Same defence as ClampScale, over the rail's own [RailMin, Max] range.
+    public static double ClampRailScale(double value)
+        => double.IsNaN(value) || value <= 0 ? 1.0 : Math.Clamp(value, RailMin, Max);
+
     public static double AppScale => ClampScale(App.Settings.Current.AppUiScale);
     public static double OverlayScale => ClampScale(App.Settings.Current.OverlayUiScale);
+    public static double GhostRailScale => ClampRailScale(App.Settings.Current.OverlayGhostRailScale);
 
     public static void SetAppScale(double value)
     {
@@ -43,6 +56,15 @@ public static class UiScaleService
         App.Settings.Current.OverlayUiScale = v;
         App.Settings.Save();
         Changed?.Invoke();
+    }
+
+    public static void SetGhostRailScale(double value)
+    {
+        var v = ClampRailScale(value);
+        if (v == ClampRailScale(App.Settings.Current.OverlayGhostRailScale)) return;
+        App.Settings.Current.OverlayGhostRailScale = v;
+        App.Settings.Save();
+        RailChanged?.Invoke();
     }
 
     // Sets or clears the scale transform on a window's root content element. Identity scale

@@ -24,6 +24,10 @@ public partial class OverlayWindow : Window
     // Overlay UI scale currently applied to RootScale (issue #20). Tracked so SaveBounds can divide
     // the on-screen size back to the persisted BASE size, and OnUiScaleChanged can resize live.
     private double _uiScale = 1.0;
+    // Ghost rail scale, independent of _uiScale: the rail and its flyout render at THIS factor
+    // while the panel renders at _uiScale. Base (unscaled) metrics live in GhostFootprints; every
+    // physical-pixel footprint multiplies rail furniture by _railScale and the panel by _uiScale.
+    private double _railScale = 1.0;
 
     // ── Deposit composition (Task 7, C3/C4) ────────────────────────────────────
     // One window-level cache: each resource's composition is loaded once, lazily, on
@@ -118,11 +122,13 @@ public partial class OverlayWindow : Window
         // size; the on-screen window is base * scale so the layout keeps its designed logical
         // size and simply renders larger. SaveBounds divides by the same factor on the way out.
         _uiScale = UiScaleService.OverlayScale;
+        _railScale = UiScaleService.GhostRailScale;
         Left = s.OverlayLeft;
         Top = s.OverlayTop;
         Width = s.OverlayWidth * _uiScale;
         Height = s.OverlayHeight * _uiScale;
         UiScaleService.ApplyTransform(RootScale, _uiScale);
+        ApplyGhostScaleTransforms();
         HistoryStripRow.Height = new GridLength(s.OverlayHistoryHeight);
 
         // Restore the saved opacity, THEN attach the save-on-change handler (it is deliberately
@@ -213,6 +219,7 @@ public partial class OverlayWindow : Window
 
         // Overlay scale (issue #20): re-apply live when the Settings slider moves. Detached in OnClosed.
         UiScaleService.Changed += OnUiScaleChanged;
+        UiScaleService.RailChanged += OnRailScaleChanged;   // detached in OnClosed
     }
 
     // ── Issue #7: click-through the overlay while the game hides the cursor (FPS / flight) ──────────
@@ -353,10 +360,6 @@ public partial class OverlayWindow : Window
     private bool _ghostFlyoutOpen;
     private GhostExpandDirection _ghostDir = GhostExpandDirection.Left;
     private int _ghostMotionGen;
-    // Base (unscaled) rail metrics from the mock's implementation-values table. Every use multiplies
-    // by the overlay UI scale; the PANEL's size is always the user's persisted OverlayWidth/Height
-    // (the overlay is resizable), never a hardcoded 320x480.
-    private const double RailW = 44, RailHCollapsed = 332, Seam = 2, FlyoutW = 230;
     // The gear flyout's own slide transform, created once in EnsureGhostFlyoutBuilt and reused for
     // every open/close (mirrors PanelSlide, which is XAML-declared because PanelHost always exists;
     // GhostFlyoutHost's content is built lazily, so its transform is created in code alongside it).
@@ -431,11 +434,19 @@ public partial class OverlayWindow : Window
     // nothing rebuilds (or re-arms the ORDERS ticker) behind a collapsed rail.
     private bool IsTabPresented(string tab) => _activeTab == tab && (!_ghostActive || _ghostPanelOpen);
 
+    // The rail (and its flyout) render at _railScale while RootScale carries _uiScale, so both
+    // carry an extra ratio transform. Re-applied whenever either scale changes.
+    private void ApplyGhostScaleTransforms()
+    {
+        var r = _railScale / _uiScale;
+        UiScaleService.ApplyTransform(GhostRail, r);
+        UiScaleService.ApplyTransform(GhostFlyoutHost, r);
+    }
+
     private void EnterGhost(bool restore)
     {
         HideRefineryTrackerForGhost();
         var (win, mon, dpi) = GhostContext();
-        var k = _uiScale;
         LeaveActiveTabForGhost();                      // stop per-tab timers; the panel is going away
         GhostSnapToRailChrome();                       // collapsed rail chrome, nothing mid-flight
         TabStrip.Visibility = Visibility.Collapsed;    // the rail is the nav in ghost mode
@@ -444,7 +455,7 @@ public partial class OverlayWindow : Window
         // The grip must not resize the rail: in ghost mode the footprint is mode-derived, and a
         // dragged size would be thrown away on the next expand or collapse anyway.
         ResizeMode = ResizeMode.NoResize;
-        double railWpx = RailW * k * dpi, railHpx = RailHCollapsed * k * dpi;
+        var (railWpx, railHpx) = GhostFootprints.CollapsedSize(_railScale, dpi);
         // A live toggle hugs the screen-nearest edge of the panel footprint the user is looking at.
         // A restore must not: the saved position ALREADY is the rail's own last spot (SaveBounds
         // keeps OverlayLeft/Top on the rail while ghost is on), and hugging from the panel-sized
@@ -465,8 +476,8 @@ public partial class OverlayWindow : Window
         // If a panel or the flyout is open (the Settings page toggle can fire any time), the rail
         // sits on the _ghostDir side of the expanded window, NOT at win.Left.
         var railOnly = _ghostPanelOpen || _ghostFlyoutOpen
-            ? CurrentRailRect(win, k, dpi)
-            : new PxRect(win.Left, win.Top, RailW * k * dpi, win.Height);
+            ? CurrentRailRect(win, dpi)
+            : new PxRect(win.Left, win.Top, GhostFootprints.RailW * _railScale * dpi, win.Height);
         GhostSnapToRailChrome();                       // orphans any in-flight slide, clears its animations
         GhostRail.Visibility = Visibility.Collapsed;
         GhostEyebrow.Visibility = Visibility.Collapsed;
@@ -567,7 +578,6 @@ public partial class OverlayWindow : Window
         var wasOpen = _ghostPanelOpen;
         _ghostPanelOpen = true;
         var (win, mon, dpi) = GhostContext();
-        var k = _uiScale;
         var s = App.Settings.Current;
         // Where the rail is has to come from the WINDOW's actual footprint, not from _ghostPanelOpen.
         // CollapseGhostPanel clears that flag immediately but the window stays expanded for the whole
@@ -575,20 +585,22 @@ public partial class OverlayWindow : Window
         // recompute _ghostDir from its centre. The window would not move, but the layout would flip
         // sides and the rail would jump a panel width, which the next collapse then persists. Measuring
         // the footprint is correct on every entry path (collapsed, open, mid-collapse, flyout open).
-        bool windowIsRailOnly = win.Width <= (RailW + Seam) * k * dpi + 1;
+        bool windowIsRailOnly = win.Width <= GhostFootprints.RailOnlyThreshold(_railScale, dpi);
         var railRect = windowIsRailOnly
             ? win                                       // collapsed: the window IS the rail
-            : CurrentRailRect(win, k, dpi);             // expanded: rail keeps its on-screen spot
+            : CurrentRailRect(win, dpi);                // expanded: rail keeps its on-screen spot
         _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
         GhostRail.SetExpandDirection(_ghostDir);
-        double totalW = (RailW + Seam + s.OverlayWidth) * k * dpi;
-        double totalH = Math.Max(RailHCollapsed, s.OverlayHeight) * k * dpi;
+        var (totalW, totalH) = GhostFootprints.ExpandedSize(_railScale, _uiScale, s.OverlayWidth, s.OverlayHeight, dpi);
         GhostApplyRect(GhostGeometry.ExpandedRect(railRect, mon, _ghostDir, totalW, totalH));
-        // Layout: rail on the screen-edge side, panel on the center side, 2px seam.
+        // Layout: rail on the screen-edge side, panel on the center side, 2px seam. The rail's
+        // LOCAL width stays the base 44 - its own ratio transform supplies the size difference -
+        // so the panel's reservation is the ratio-scaled rail plus seam in RootScale-local units.
         bool railRightSide = _ghostDir == GhostExpandDirection.Left;
         GhostRail.HorizontalAlignment = railRightSide ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-        GhostRail.Width = RailW;
-        PanelHost.Margin = railRightSide ? new Thickness(0, 0, RailW + Seam, 0) : new Thickness(RailW + Seam, 0, 0, 0);
+        GhostRail.Width = GhostFootprints.RailW;
+        double railPad = (GhostFootprints.RailW + GhostFootprints.Seam) * (_railScale / _uiScale);
+        PanelHost.Margin = railRightSide ? new Thickness(0, 0, railPad, 0) : new Thickness(railPad, 0, 0, 0);
         PanelHost.Visibility = Visibility.Visible;
         GhostEyebrow.Text = OverlayTabs.LabelFor(tab);
         SwitchTab(tab);                                 // real switch: persists, logs, starts timers
@@ -619,19 +631,22 @@ public partial class OverlayWindow : Window
         PanelHost.Visibility = Visibility.Collapsed;
         GhostFlyoutHost.Visibility = Visibility.Collapsed;
         var (win, mon, dpi) = GhostContext();
-        var k = _uiScale;
-        var collapsed = GhostGeometry.CollapsedRect(
-            CurrentRailRect(win, k, dpi), mon, RailW * k * dpi, RailHCollapsed * k * dpi);
+        var (cw, ch) = GhostFootprints.CollapsedSize(_railScale, dpi);
+        var collapsed = GhostGeometry.CollapsedRect(CurrentRailRect(win, dpi), mon, cw, ch);
         GhostApplyRect(collapsed);
         GhostRail.HorizontalAlignment = HorizontalAlignment.Stretch;
         PanelHost.Margin = new Thickness(0);
         SaveBounds(collapsed);
     }
 
-    // The rail's physical rect inside the current expanded window.
-    private PxRect CurrentRailRect(PxRect win, double k, double dpi)
+    // The rail's physical rect inside the current expanded window, at the CURRENT rail scale.
+    private PxRect CurrentRailRect(PxRect win, double dpi) => CurrentRailRectAt(win, _railScale, dpi);
+
+    // Same, at an explicit rail scale: a rail-scale change has to measure where the rail sits at
+    // the OLD factor before adopting the new one, which the current-scale wrapper cannot express.
+    private PxRect CurrentRailRectAt(PxRect win, double railK, double dpi)
     {
-        double railWpx = RailW * k * dpi;
+        double railWpx = GhostFootprints.RailW * railK * dpi;
         double left = _ghostDir == GhostExpandDirection.Left ? win.Right - railWpx : win.Left;
         return new PxRect(left, win.Top, railWpx, win.Height);
     }
@@ -716,26 +731,37 @@ public partial class OverlayWindow : Window
             _seedingFlyoutOpacity = false;
         }
         _flyoutGhostSwitch!.SetOnSilently(App.Settings.Current.OverlayGhostMode);
-        var (win, mon, dpi) = GhostContext();
-        var k = _uiScale;
-        // Same windowIsRailOnly test ExpandGhostPanel uses: CollapseGhostPanel above only resizes
-        // the window on its own (now-orphaned) completion, so the window here can still be the
-        // wider panel-expanded footprint - read the rail's true position from it rather than
-        // assuming the window is already collapsed.
-        bool windowIsRailOnly = win.Width <= (RailW + Seam) * k * dpi + 1;
-        var railRect = windowIsRailOnly ? win : CurrentRailRect(win, k, dpi);
-        _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
-        GhostRail.SetExpandDirection(_ghostDir);
-        double totalW = (RailW + Seam + FlyoutW) * k * dpi;
-        GhostApplyRect(GhostGeometry.ExpandedRect(railRect, mon, _ghostDir, totalW, RailHCollapsed * k * dpi));
+        ApplyFlyoutFootprint();
         bool railRightSide = _ghostDir == GhostExpandDirection.Left;
-        GhostRail.HorizontalAlignment = railRightSide ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-        GhostRail.Width = RailW;
-        GhostFlyoutHost.HorizontalAlignment = railRightSide ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         GhostFlyoutHost.Visibility = Visibility.Visible;
         GhostRail.SetGearActive(true);
         Logger.Info("[WIN] Overlay ghost: settings flyout open");
         AnimateGhostFlyout(gen, opening: true, railRightSide);
+    }
+
+    // Sizes and places the rail+flyout window for the CURRENT scales and rail position, and
+    // returns the window rect it applied. Reused by ToggleGhostFlyout (open) and by a rail-scale
+    // change while the flyout is open, so the flyout can resize live under the user's cursor
+    // without closing. Visibility, the gear state and the slide stay the caller's own concern.
+    private PxRect ApplyFlyoutFootprint()
+    {
+        var (win, mon, dpi) = GhostContext();
+        // Same windowIsRailOnly test ExpandGhostPanel uses: on the open path CollapseGhostPanel
+        // only resizes the window on its own (now-orphaned) completion, so the window here can
+        // still be the wider panel-expanded footprint - read the rail's true position from it
+        // rather than assuming the window is already collapsed.
+        bool windowIsRailOnly = win.Width <= GhostFootprints.RailOnlyThreshold(_railScale, dpi);
+        var railRect = windowIsRailOnly ? win : CurrentRailRect(win, dpi);
+        _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
+        GhostRail.SetExpandDirection(_ghostDir);
+        var (fw, fh) = GhostFootprints.FlyoutSize(_railScale, dpi);
+        var applied = GhostGeometry.ExpandedRect(railRect, mon, _ghostDir, fw, fh);
+        GhostApplyRect(applied);
+        bool railRightSide = _ghostDir == GhostExpandDirection.Left;
+        GhostRail.HorizontalAlignment = railRightSide ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        GhostRail.Width = GhostFootprints.RailW;
+        GhostFlyoutHost.HorizontalAlignment = railRightSide ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        return applied;
     }
 
     private void CloseGhostFlyout(bool animate)
@@ -773,7 +799,7 @@ public partial class OverlayWindow : Window
         double curOp = GhostFlyoutHost.Opacity;
         _flyoutSlide!.BeginAnimation(TranslateTransform.XProperty, null);
         GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
-        double under = (railRightSide ? 1 : -1) * FlyoutW;
+        double under = (railRightSide ? 1 : -1) * GhostFootprints.FlyoutW;
         if (Motion.Reduced)
         {
             _flyoutSlide.X = 0; GhostFlyoutHost.Opacity = opening ? 1 : 0;
@@ -893,7 +919,7 @@ public partial class OverlayWindow : Window
         host.Children.Add(shell);
         host.Children.Add(content);
         GhostFlyoutHost.SizeChanged += (_, _) =>
-            shell.Data = Hud.ChamferGeometry(230, GhostFlyoutHost.ActualHeight, 10);
+            shell.Data = Hud.ChamferGeometry(GhostFootprints.FlyoutW, GhostFlyoutHost.ActualHeight, 10);
 
         GhostFlyoutHost.Child = host;
         _flyoutSlide = new TranslateTransform();
@@ -949,16 +975,19 @@ public partial class OverlayWindow : Window
 
         // Ghost mode (issue #27): the window footprint is mode-derived (rail, or rail plus panel
         // or flyout), so scaling it by the old Width/Height ratio would size the rail like a panel.
-        // Read where the rail sits at the OLD scale, then rebuild the collapsed footprint at the
-        // new one - a half-open panel does not survive a scale change.
+        // Read where the rail sits, then rebuild the collapsed footprint - a half-open panel does
+        // not survive a scale change. The rail's own size rides _railScale, which this change does
+        // not touch, so the rail rect measures the same before and after.
         if (_ghostActive)
         {
             var (win, mon, dpi) = GhostContext();
-            var railRect = _ghostPanelOpen || _ghostFlyoutOpen ? CurrentRailRect(win, old, dpi) : win;
+            var railRect = _ghostPanelOpen || _ghostFlyoutOpen ? CurrentRailRect(win, dpi) : win;
             _uiScale = k;
             UiScaleService.ApplyTransform(RootScale, k);
+            ApplyGhostScaleTransforms();
             GhostSnapToRailChrome();
-            var collapsed = GhostGeometry.CollapsedRect(railRect, mon, RailW * k * dpi, RailHCollapsed * k * dpi);
+            var (cw, ch) = GhostFootprints.CollapsedSize(_railScale, dpi);
+            var collapsed = GhostGeometry.CollapsedRect(railRect, mon, cw, ch);
             GhostApplyRect(collapsed);
             SaveBounds(collapsed);
             _woFlyout?.ApplyUiScale(k);
@@ -968,10 +997,47 @@ public partial class OverlayWindow : Window
 
         _uiScale = k;
         UiScaleService.ApplyTransform(RootScale, k);
+        ApplyGhostScaleTransforms();
         Width = Width / old * k;
         Height = Height / old * k;
         UpdateChamfer();
         _woFlyout?.ApplyUiScale(k);
+    }
+
+    // Re-applies the rail scale live. Collapsed: rebuild the collapsed footprint where the rail
+    // sits. Panel open: a half-open panel does not survive a scale change (same rule as the
+    // overlay scale), snap to the rail. Flyout open: the change is probably being driven from
+    // the flyout's own slider, so re-apply the footprint live instead of closing it.
+    private void OnRailScaleChanged()
+    {
+        var k = UiScaleService.GhostRailScale;
+        if (k == _railScale) return;
+        var old = _railScale;
+        if (!_ghostActive)
+        {
+            _railScale = k;
+            ApplyGhostScaleTransforms();
+            return;
+        }
+        var (win, mon, dpi) = GhostContext();
+        // Measure where the rail is at the OLD scale before adopting the new one.
+        bool wasRailOnly = win.Width <= GhostFootprints.RailOnlyThreshold(old, dpi);
+        var railRect = wasRailOnly ? win : CurrentRailRectAt(win, old, dpi);
+        _railScale = k;
+        ApplyGhostScaleTransforms();
+        if (_ghostFlyoutOpen)
+        {
+            var applied = ApplyFlyoutFootprint();
+            SaveBounds(CurrentRailRectAt(applied, k, dpi));
+            Logger.Info($"[WIN] Overlay ghost rail scale: {old:0.##} -> {k:0.##} (flyout live)");
+            return;
+        }
+        if (_ghostPanelOpen) GhostSnapToRailChrome();
+        var (cw, ch) = GhostFootprints.CollapsedSize(k, dpi);
+        var collapsed = GhostGeometry.CollapsedRect(railRect, mon, cw, ch);
+        GhostApplyRect(collapsed);
+        SaveBounds(collapsed);
+        Logger.Info($"[WIN] Overlay ghost rail scale: {old:0.##} -> {k:0.##}");
     }
 
     public void ReceiveOcrValue(int value)
@@ -1311,7 +1377,7 @@ public partial class OverlayWindow : Window
         else
         {
             left = _ghostActive && (_ghostPanelOpen || _ghostFlyoutOpen) && _ghostDir == GhostExpandDirection.Left
-                ? Left + Width - RailW * _uiScale
+                ? Left + Width - GhostFootprints.RailW * _railScale
                 : Left;
             top = Top;
         }
@@ -1961,6 +2027,7 @@ public partial class OverlayWindow : Window
         App.ContractBoxVisibilityChanged -= OnContractBoxShared;
         WorkOrderEditorPanel.OrderReadyToCollect -= _onOrderReady;
         UiScaleService.Changed -= OnUiScaleChanged;   // overlay scale (issue #20)
+        UiScaleService.RailChanged -= OnRailScaleChanged;   // ghost rail scale
         App.OverlayGhostModeChanged -= OnGhostModeChanged;   // ghost mode (issue #27)
         _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
         base.OnClosed(e);
