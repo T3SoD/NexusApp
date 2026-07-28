@@ -2,7 +2,7 @@
 """Post the latest Nexus changelog entry to a Discord channel via webhook.
 
 Runs in GitHub Actions when a release is published. It parses the top entry of
-the `Changelog` array in AboutDialog.xaml.cs and posts it. If PREVIOUS_FILE is
+the `Changelog` array in AboutDialog.cs and posts it. If PREVIOUS_FILE is
 provided it only posts when the version differs from that copy; on release
 events PREVIOUS_FILE is empty, so it always posts the current top entry (the
 release event is itself the signal that this is a new version).
@@ -11,7 +11,7 @@ No third-party dependencies - uses only the Python standard library so it
 runs on a bare ubuntu-latest runner with no pip install.
 
 Environment variables:
-  CURRENT_FILE     path to the current AboutDialog.xaml.cs
+  CURRENT_FILE     path to the current AboutDialog.cs
   PREVIOUS_FILE    path to the previous commit's copy (may be empty/missing)
   DISCORD_WEBHOOK  Discord channel webhook URL
 """
