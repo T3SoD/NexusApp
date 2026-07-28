@@ -108,6 +108,7 @@ public class HelpDialog : Window
                 "Mark a blueprint as Owned with its toggle - a manifest (You own X of Y blueprints) and per-category progress appear at the top of the library.",
                 "Filter the library by All, Owned, or Not owned; the owned count updates live as you mark blueprints.",
                 "Click Import owned from logs… to scan your Game.log and its backups and mark everything you've already received as Owned - or let Session Tracking collect them live as you play.",
+                "Click Import from SCMDB… to import ownership from a scmdb.net export file (.json) - matched, completed blueprints are marked Owned, and the summary shows any names that weren't recognized.",
             ]),
 
         new("✓", "Session Tracking",

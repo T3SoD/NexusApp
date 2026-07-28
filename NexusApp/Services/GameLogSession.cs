@@ -208,6 +208,13 @@ public sealed class GameLogSession : IDisposable
     /// <summary>Resolve a raw line to a canonical blueprint name without marking it (raw-log aid).</summary>
     public string? Resolve(string rawLine) => Importer.ResolveLine(rawLine, LiveLocalizationMap());
 
+    /// <summary>Resolve a single raw blueprint NAME (not a full Game.log line) to its canonical Nexus
+    /// name, through the exact same official-name + localization/custom-name resolution the live
+    /// tail and history scan use (same Importer instance, same live-tail localization map). Used by
+    /// the SCMDB import flow (issue #3), whose export already carries display names rather than raw
+    /// "Received Blueprint:" log lines.</summary>
+    public string? ResolveName(string rawName) => Importer.Resolve(rawName, LiveLocalizationMap());
+
     public GameLogBlueprintImporter.HistoryScan ScanHistory(string liveLogPath, Action<int>? progress = null)
     {
         var scan = Importer.ScanHistory(liveLogPath, progress, _localizationMapFor?.Invoke(liveLogPath));

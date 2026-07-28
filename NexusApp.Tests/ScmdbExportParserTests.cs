@@ -140,4 +140,25 @@ public class ScmdbExportParserTests
         Assert.False(result.Success);
         Assert.NotNull(result.Error);
     }
+
+    [Fact]
+    public void Parse_NonObjectEntriesInBlueprintsArray_CountedMalformedValidEntriesSurvive()
+    {
+        // A hand-edited or corrupted export could put anything into the array besides objects
+        // (a bare number, a string, null); these must be skipped as malformed, never throw on the
+        // shape mismatch, and must not stop the valid entries around them from parsing.
+        var json = "{ \"version\": 3, \"exportedAt\": \"2026-01-01T00:00:00.000Z\", \"missions\": [], " +
+                   "\"blueprints\": [ " +
+                   "42, " +
+                   "\"just a string\", " +
+                   "null, " +
+                   "{ \"tag\": \"BP_X\", \"name\": \"Arclight Pistol\", \"url\": \"x\", \"completed\": true, \"favorite\": false } " +
+                   "] }";
+
+        var result = ScmdbExportParser.Parse(json);
+
+        Assert.True(result.Success);
+        Assert.Equal(3, result.MalformedEntries);
+        Assert.Equal(new[] { "Arclight Pistol" }, result.CompletedNames);
+    }
 }
