@@ -51,6 +51,13 @@ public class GhostFootprintsTests
     }
 
     [Fact]
+    public void FlyoutSize_ScalesEveryTermByRailFactorAndDpi()
+    {
+        var (w, h) = GhostFootprints.FlyoutSize(railK: 0.75, dpi: 2.0);
+        Assert.Equal((44 + 2 + 230) * 0.75 * 2.0, w, 5); Assert.Equal(332 * 0.75 * 2.0, h, 5);
+    }
+
+    [Fact]
     public void RailOnlyThreshold_TracksRailScale()
     {
         Assert.Equal((44 + 2) * 1.0 * 1.0 + 1, GhostFootprints.RailOnlyThreshold(1.0, 1.0), 5);

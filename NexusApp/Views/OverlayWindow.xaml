@@ -497,7 +497,7 @@
             <!-- Drag handle to resize history strip: 8px hit target with a centered 1px hairline
                  (issue #27 review - the old 4px Background-only splitter was hard to grab). -->
             <GridSplitter x:Name="HistorySplitter" Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Cursor="SizeNS" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Background="Transparent">
+                          Cursor="SizeNS" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext">
                 <GridSplitter.Template>
                     <ControlTemplate TargetType="GridSplitter">
                         <Grid Background="Transparent">

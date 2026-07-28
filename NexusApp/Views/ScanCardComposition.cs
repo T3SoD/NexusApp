@@ -149,7 +149,7 @@ internal static class ScanCardComposition
         rows.Visibility = Visibility.Collapsed;
     }
 
-    // Entrance: 200ms fade 0->1 + 12px rise, Motion.Settle, one-shot (frozen "expand motion").
+    // Entrance: Motion.QuickRevealMs fade 0->1 + 12px rise, Motion.Settle, one-shot (frozen "expand motion").
     public static void AnimateRowsIn(FrameworkElement rows)
     {
         var shift = new TranslateTransform(0, 12);

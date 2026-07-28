@@ -844,15 +844,26 @@ public partial class OverlayWindow : Window
     // returns the window rect it applied. Reused by ToggleGhostFlyout (open) and by a rail-scale
     // change while the flyout is open, so the flyout can resize live under the user's cursor
     // without closing. Visibility, the gear state and the slide stay the caller's own concern.
-    private PxRect ApplyFlyoutFootprint()
+    // knownRail: an optional rail rect the caller already measured (e.g. at the OLD rail scale
+    // before a live rescale) - the caller measured the rail at the old scale, and deriving from
+    // the un-resized window with the NEW threshold could misjudge near the monitor midline.
+    private PxRect ApplyFlyoutFootprint(PxRect? knownRail = null)
     {
         var (win, mon, dpi) = GhostContext();
-        // Same windowIsRailOnly test ExpandGhostPanel uses: on the open path CollapseGhostPanel
-        // only resizes the window on its own (now-orphaned) completion, so the window here can
-        // still be the wider panel-expanded footprint - read the rail's true position from it
-        // rather than assuming the window is already collapsed.
-        bool windowIsRailOnly = win.Width <= GhostFootprints.RailOnlyThreshold(_railScale, dpi);
-        var railRect = windowIsRailOnly ? win : CurrentRailRect(win, dpi);
+        PxRect railRect;
+        if (knownRail is { } known)
+        {
+            railRect = known;
+        }
+        else
+        {
+            // Same windowIsRailOnly test ExpandGhostPanel uses: on the open path CollapseGhostPanel
+            // only resizes the window on its own (now-orphaned) completion, so the window here can
+            // still be the wider panel-expanded footprint - read the rail's true position from it
+            // rather than assuming the window is already collapsed.
+            bool windowIsRailOnly = win.Width <= GhostFootprints.RailOnlyThreshold(_railScale, dpi);
+            railRect = windowIsRailOnly ? win : CurrentRailRect(win, dpi);
+        }
         _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
         GhostRail.SetExpandDirection(_ghostDir);
         var (fw, fh) = GhostFootprints.FlyoutSize(_railScale, dpi);
@@ -1036,7 +1047,7 @@ public partial class OverlayWindow : Window
         // notch = one SmallChange step, applied through the slider's own ValueChanged.
         opacityRow.PreviewMouseWheel += (_, e) =>
         {
-            _flyoutOpacitySlider!.Value += e.Delta > 0 ? 0.05 : -0.05;
+            _flyoutOpacitySlider!.Value += e.Delta > 0 ? _flyoutOpacitySlider.SmallChange : -_flyoutOpacitySlider.SmallChange;
             e.Handled = true;
         };
         content.Children.Add(opacityRow);
@@ -1078,7 +1089,7 @@ public partial class OverlayWindow : Window
         railRow.PreviewMouseWheel += (_, e) =>
         {
             var before = _flyoutRailSlider!.Value;
-            _flyoutRailSlider.Value += e.Delta > 0 ? 0.05 : -0.05;
+            _flyoutRailSlider.Value += e.Delta > 0 ? UiScaleService.Step : -UiScaleService.Step;
             e.Handled = true;
             // A wheel scroll never captures the mouse, so LostMouseCapture above never fires for a
             // wheel-only interaction (review 2026-07-28): log each notch here instead. Guarded on an
@@ -1116,6 +1127,8 @@ public partial class OverlayWindow : Window
         {
             Data = new EllipseGeometry(new Point(12, 12), 3, 3),
             StrokeThickness = 1.5,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
         };
         dot.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "FgDimBrush");
         canvas.Children.Add(dot);
@@ -1240,12 +1253,15 @@ public partial class OverlayWindow : Window
         ApplyGhostScaleTransforms();
         if (_ghostFlyoutOpen)
         {
-            var applied = ApplyFlyoutFootprint();
+            var applied = ApplyFlyoutFootprint(railRect);
             SaveBounds(CurrentRailRectAt(applied, k, dpi));
             Logger.Info($"[WIN] Overlay ghost rail scale: {old:0.##} -> {k:0.##} (flyout live)");
             return;
         }
-        if (_ghostPanelOpen) GhostSnapToRailChrome();
+        // wasRailOnly (not _ghostPanelOpen) also covers a scale change landing during an in-flight
+        // panel collapse or flyout close, where the open flags are already false but the window is
+        // still the wider panel/flyout footprint.
+        if (!wasRailOnly) GhostSnapToRailChrome();
         var (cw, ch) = GhostFootprints.CollapsedSize(k, dpi);
         var collapsed = GhostGeometry.CollapsedRect(railRect, mon, cw, ch);
         GhostApplyRect(collapsed);
@@ -1563,7 +1579,7 @@ public partial class OverlayWindow : Window
     // slider's own ValueChanged (the single write path).
     private void OpacityRow_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        OpacitySlider.Value += e.Delta > 0 ? 0.05 : -0.05;
+        OpacitySlider.Value += e.Delta > 0 ? OpacitySlider.SmallChange : -OpacitySlider.SmallChange;
         e.Handled = true;
     }
 
@@ -2877,7 +2893,7 @@ public partial class OverlayWindow : Window
         _quickResourceBox.CaretIndex = _quickResourceBox.Text.Length;
     }
 
-    // Frozen: unfold 200ms fade 0->1 + 12px rise, Motion.Settle, one-shot; Reduced snaps.
+    // Frozen: unfold Motion.QuickRevealMs fade 0->1 + 12px rise, Motion.Settle, one-shot; Reduced snaps.
     private void UnfoldQuickForm()
     {
         _quickAddForm.Visibility = Visibility.Visible;
