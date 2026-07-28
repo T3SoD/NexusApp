@@ -140,10 +140,10 @@ public partial class OverlayWindow : Window
         _vm.WorkOrders.CollectionChanged += (s, e) =>
         {
             UpdateRefineryTabBadge();
-            if (_activeTab == "orders") RebuildOrdersPanel();
-            if (_activeTab == "stats") RebuildStatsPanel();   // F1: READY ORDERS hero tile tracks the same count
+            if (IsTabPresented("orders")) RebuildOrdersPanel();
+            if (IsTabPresented("stats")) RebuildStatsPanel();   // F1: READY ORDERS hero tile tracks the same count
         };
-        _vm.ShoppingList.CollectionChanged += (s, e) => { if (_activeTab == "shopping") RebuildShoppingPanel(); };
+        _vm.ShoppingList.CollectionChanged += (s, e) => { if (IsTabPresented("shopping")) RebuildShoppingPanel(); };
 
         BuildOverlayHistoryFilterPills();
         _vm.PropertyChanged += (s, e) =>
@@ -200,7 +200,7 @@ public partial class OverlayWindow : Window
 
         // When an order turns ready, rebuild the orders panel if it is showing: the ready card flashes itself in
         // BuildOverlayOrderCard (pill fade + one-shot border flash). The old 4x opacity pulse on the dock button is gone.
-        _onOrderReady = _ => { if (_activeTab == "orders") RebuildOrdersPanel(); };
+        _onOrderReady = _ => { if (IsTabPresented("orders")) RebuildOrdersPanel(); };
         WorkOrderEditorPanel.OrderReadyToCollect += _onOrderReady;
 
         IsVisibleChanged += (_, e) =>
@@ -401,8 +401,26 @@ public partial class OverlayWindow : Window
         else ExitGhost();
     }
 
+    // Ghost transitions shrink the overlay to (or toward) the rail; a Refinery Tracker flyout
+    // anchored to it must not survive them, or a full work-order list floats beside the
+    // minimal rail (review 2026-07-28). Reopening is one click on the ORDERS panel.
+    private void HideRefineryTrackerForGhost()
+    {
+        if (_woFlyout is { IsVisible: true })
+        {
+            _woFlyout.Hide();
+            Logger.Info("[WIN] Refinery tracker hidden (ghost transition)");
+        }
+    }
+
+    // True when this tab's content is actually on screen: normal mode shows the active tab
+    // always; ghost mode only while its panel is open. Data-change handlers gate on this so
+    // nothing rebuilds (or re-arms the ORDERS ticker) behind a collapsed rail.
+    private bool IsTabPresented(string tab) => _activeTab == tab && (!_ghostActive || _ghostPanelOpen);
+
     private void EnterGhost(bool restore)
     {
+        HideRefineryTrackerForGhost();
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;
         LeaveActiveTabForGhost();                      // stop per-tab timers; the panel is going away
@@ -505,6 +523,7 @@ public partial class OverlayWindow : Window
     // Placement stays with the caller, which is what lets mode exit and a scale change reuse it.
     private void GhostSnapToRailChrome()
     {
+        HideRefineryTrackerForGhost();
         _ghostMotionGen++;                             // orphan any in-flight slide
         if (_ghostPanelOpen) LeaveActiveTabForGhost();
         _ghostPanelOpen = false;
@@ -569,6 +588,7 @@ public partial class OverlayWindow : Window
 
     private void CollapseGhostPanel()
     {
+        HideRefineryTrackerForGhost();
         var gen = ++_ghostMotionGen;
         _ghostPanelOpen = false;
         var tab = _activeTab;
@@ -1096,7 +1116,7 @@ public partial class OverlayWindow : Window
     // status line while the HAULING tab is on screen (mirrors OnHaulsChanged's tab guard; a rebuild on
     // tab entry catches up anything missed off-tab).
     private void OnContractStageChanged()
-        => Dispatcher.Invoke(() => { if (_activeTab == "hauling") RefreshHaulScanStatus(); });
+        => Dispatcher.Invoke(() => { if (IsTabPresented("hauling")) RefreshHaulScanStatus(); });
 
     // Auto-scan contracts is opt-in; flipping it starts/stops the contract scanner, then persists the choice.
     private void ToggleContractScanSwitch()
@@ -1628,9 +1648,31 @@ public partial class OverlayWindow : Window
         }
     }
 
+    private TwoTapConfirm? _clearHistoryConfirm;
+
+    // Two-tap guarded like HAULING's Clear all: first click arms ("SURE?", solid red), a second
+    // click inside the 3s window clears; an unconfirmed arm reverts via PollArmedConfirms.
     private void ClearHistory_Click(object sender, RoutedEventArgs e)
     {
-        _vm.ScanHistory.Clear();
+        var b = (Button)sender;
+        _clearHistoryConfirm ??= new TwoTapConfirm(TimeSpan.FromSeconds(3), () =>
+        {
+            int n = _vm.ScanHistory.Count;
+            _vm.ScanHistory.Clear();
+            Logger.Info($"[UI] Scan history cleared ({n} entries)");
+        });
+        void Rest()
+        {
+            b.Content = "CLEAR";
+            b.ClearValue(Button.BackgroundProperty);
+            b.ClearValue(Button.ForegroundProperty);
+        }
+        if (_clearHistoryConfirm.Tap(DateTime.UtcNow))
+        {
+            b.Content = "SURE?"; b.Background = ArmedConfirmBrush; b.Foreground = Brushes.White;
+            _armedConfirms.Add((_clearHistoryConfirm, Rest));
+        }
+        else Rest();
     }
 
 
@@ -1835,14 +1877,14 @@ public partial class OverlayWindow : Window
 
     private void OnGameLogMarked(BlueprintMark m)
     {
-        if (_activeTab == "stats") RebuildStatsPanel();
+        if (IsTabPresented("stats")) RebuildStatsPanel();
     }
 
     // Session tally was cleared (new SC session, or a manual reset from the advanced monitor) - refresh
     // the visible count + feed while the HUB is on screen.
     private void OnSessionReset()
     {
-        if (_activeTab == "stats") RebuildStatsPanel();
+        if (IsTabPresented("stats")) RebuildStatsPanel();
     }
 
     // The overlay is app-lifetime (hidden/shown, not closed) in normal use; this only runs if
@@ -1887,8 +1929,8 @@ public partial class OverlayWindow : Window
     private void OnHaulsChanged()
     {
         UpdateHaulingTabBadge();                 // keep the tab count fresh even off the HAULING tab
-        if (_activeTab == "hauling") RebuildHaulingPanel();
-        if (_activeTab == "stats") RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
+        if (IsTabPresented("hauling")) RebuildHaulingPanel();
+        if (IsTabPresented("stats")) RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
     }
 
     // Shows the active-haul count as a chip on the overlay HAULING tab icon.
@@ -1933,7 +1975,7 @@ public partial class OverlayWindow : Window
     // tab is on screen (mirrors OnHaulsChanged's tab guard).
     private void OnShardsChanged()
     {
-        if (_activeTab == "stats") RebuildShardPanel();
+        if (IsTabPresented("stats")) RebuildShardPanel();
     }
 
     // Foreground relevance flipped (Nexus/SC moved to or from the front): re-sync the HUB scan LEDs so

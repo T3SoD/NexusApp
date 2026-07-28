@@ -64,6 +64,10 @@ public sealed class SettingsPage : UserControl
     private Button? _marketRefreshBtn;
     private TextBlock? _marketStatusText;
 
+    // Overlay ghost mode toggle (INTERFACE). Held so it can be re-synced when ghost mode is
+    // changed elsewhere (the ghost rail's own flyout switch) instead of only seeding once here.
+    private Hud.ToggleSwitch? _ghostToggle;
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
@@ -818,10 +822,16 @@ public sealed class SettingsPage : UserControl
                 Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")}");
             },
         };
-        var ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
+        _ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
         {
             OnToggled = on => App.SetOverlayGhostMode(on, "settings"),
         };
+        // The ghost rail's own flyout switch can flip ghost mode without touching this page, so a
+        // one-time seed goes stale (review 2026-07-28). Re-sync silently whenever the shared state
+        // changes, the same precedent as the Market toggle above; SettingsPage is an app-lifetime
+        // singleton, so this subscription is never detached.
+        App.OverlayGhostModeChanged += (on, _) =>
+            Dispatcher.BeginInvoke(() => _ghostToggle!.SetOnSilently(on));
         panel.Children.Add(SectionPanel("Overlay", false,
             SettingRow("Click-through in FPS and flight",
                 "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
@@ -832,7 +842,7 @@ public sealed class SettingsPage : UserControl
                 "Collapses the overlay to a slim icon rail with a minimal in-game footprint. " +
                 "Click a rail glyph to slide that tab out beside it; click it again to collapse. " +
                 "The rail's gear opens quick settings.",
-                ghostToggle, last: false),
+                _ghostToggle, last: false),
             ScaleRow("Overlay scale",
                 "Make the in-game overlay and its work order flyout larger. The overlay grows " +
                 "from its top-left corner; drag it back into place if it no longer sits where " +
