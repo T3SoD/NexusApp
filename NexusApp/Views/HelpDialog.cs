@@ -39,8 +39,8 @@ public class HelpDialog : Window
                 "REFINERY - your work orders at a glance, plus ▤ Open Refinery Tracker for the flyout panel.",
                 "SHOPPING - an inline view of your current shopping list.",
                 "HAULING - the contract scan switches, your active hauls, and the consolidated STOPS plan (see Cargo Hauling).",
-                "The opacity slider sits in the overlay header, so it's available from every tab.",
-                "Ghost mode (Settings, Interface, Overlay) collapses the overlay to a slim icon rail. Click a rail glyph to slide that tab out beside it; click the same glyph to collapse back to the rail. The gear near the bottom opens quick settings for the rail (ghost mode and opacity), and the X below it closes the overlay. A scan that lands while the rail is collapsed pulses the SCAN glyph and adds a count instead of opening anything. Drag the rail by the beam mark at its top.",
+                "The opacity slider and the quick-settings gear sit in the overlay header, so both are available from every tab.",
+                "Ghost mode (Settings, Interface, Overlay) collapses the overlay to a slim icon rail. Click a rail glyph to slide that tab out beside it; click the same glyph to collapse back to the rail. The gear near the bottom opens quick settings for the rail (ghost mode, click-through, opacity, and rail size), and the X below it closes the overlay. Drag the rail by the beam mark at its top.",
             ]),
 
         new("◎", "Auto-scan",

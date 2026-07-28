@@ -83,6 +83,10 @@ public class AppSettings
     // state is deliberately NOT persisted; ghost always wakes collapsed.
     public bool OverlayGhostMode { get; set; }
 
+    // Ghost rail size, independent of OverlayUiScale so the rail can shrink below 1.0 while the
+    // panel stays readable. Clamped to [UiScaleService.RailMin, UiScaleService.Max] on read.
+    public double OverlayGhostRailScale { get; set; } = 1.0;
+
     // Settings page UI state: which settings tab (game / diagnostics / updates / interface / data)
     // was last active, so the page reopens where the user left off. The destructive "data" tab is
     // deliberately never restored; SettingsTabs.NormalizeForRestore maps it back to the default.

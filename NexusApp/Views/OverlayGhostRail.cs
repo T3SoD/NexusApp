@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using NexusApp.Services;
 
@@ -38,17 +37,8 @@ public sealed class OverlayGhostRail : Grid
 
     // Gear glyph (hand-authored, same 1.5 stroke weight as the dock/tab glyphs, from the
     // mock's ICONS map). Viewbox 0 0 24 24; paired with an EllipseGeometry center (12,12) r3.
-    private const string GearPathData =
+    internal const string GearPathData =
         "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z";
-
-    private static readonly SolidColorBrush ActiveFill = CreateActiveFill();
-
-    private static SolidColorBrush CreateActiveFill()
-    {
-        var brush = new SolidColorBrush(Color.FromArgb(36, 255, 178, 62));
-        brush.Freeze();
-        return brush;
-    }
 
     private readonly Path _shell = new();
     private readonly List<RailIcon> _icons = [];
@@ -56,10 +46,9 @@ public sealed class OverlayGhostRail : Grid
     private List<Path> _gearPaths = [];
     private Border _gearEdgeBar = null!;
     private Border _closeRoot = null!;
+    private Grid _capRoot = null!;
     private string? _active;
     private bool _gearOn;
-    private Border? _pulseRing;        // scan pulse overlay, one at a time
-    private int _pulseGen;
 
     public OverlayGhostRail()
     {
@@ -120,18 +109,21 @@ public sealed class OverlayGhostRail : Grid
         {
             Height = 1,
             VerticalAlignment = VerticalAlignment.Bottom,
-            Background = new SolidColorBrush(Color.FromArgb(46, 255, 178, 62)),
         };
-        var cap = new Grid
+        hairline.SetResourceReference(Border.BackgroundProperty, "AccentHairlineBrush");
+        _capRoot = new Grid
         {
             Height = 34,
             Background = Brushes.Transparent,   // hit-testable across the whole drag zone
             Cursor = Cursors.SizeAll,
+            ToolTip = BuildHoverChip("DRAG TO MOVE"),
         };
-        cap.Children.Add(beam);
-        cap.Children.Add(hairline);
-        cap.MouseLeftButtonDown += (_, e) => DragRequested?.Invoke(e);
-        return cap;
+        ToolTipService.SetInitialShowDelay(_capRoot, 150);
+        ToolTipService.SetPlacement(_capRoot, System.Windows.Controls.Primitives.PlacementMode.Right);
+        _capRoot.Children.Add(beam);
+        _capRoot.Children.Add(hairline);
+        _capRoot.MouseLeftButtonDown += (_, e) => DragRequested?.Invoke(e);
+        return _capRoot;
     }
 
     // Bottom-pinned close glyph: the same "X" character the overlay header's close button uses.
@@ -151,6 +143,9 @@ public sealed class OverlayGhostRail : Grid
             Width = 26,
             Height = 26,
             HorizontalAlignment = HorizontalAlignment.Center,
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Brushes.Transparent,
             Background = Brushes.Transparent,
             Cursor = Cursors.Hand,
             Child = text,
@@ -158,8 +153,17 @@ public sealed class OverlayGhostRail : Grid
         };
         ToolTipService.SetInitialShowDelay(_closeRoot, 150);
         ToolTipService.SetPlacement(_closeRoot, System.Windows.Controls.Primitives.PlacementMode.Right);
-        _closeRoot.MouseEnter += (_, _) => text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
-        _closeRoot.MouseLeave += (_, _) => text.SetResourceReference(TextBlock.ForegroundProperty, "FgDimBrush");
+        _closeRoot.MouseEnter += (_, _) =>
+        {
+            text.SetResourceReference(TextBlock.ForegroundProperty, "FgBrush");
+            _closeRoot.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        };
+        _closeRoot.MouseLeave += (_, _) =>
+        {
+            text.SetResourceReference(TextBlock.ForegroundProperty, "FgDimBrush");
+            _closeRoot.ClearValue(Border.BorderBrushProperty);
+            _closeRoot.BorderBrush = Brushes.Transparent;
+        };
         _closeRoot.MouseLeftButtonUp += (_, _) => CloseSelected?.Invoke();
         return _closeRoot;
     }
@@ -355,7 +359,15 @@ public sealed class OverlayGhostRail : Grid
         {
             bool on = icon.Id == id;
             icon.EdgeBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            icon.Root.Background = on ? ActiveFill : Brushes.Transparent;
+            if (on)
+            {
+                icon.Root.SetResourceReference(Border.BackgroundProperty, "AccentActiveFillBrush");
+            }
+            else
+            {
+                icon.Root.ClearValue(Border.BackgroundProperty);
+                icon.Root.Background = Brushes.Transparent;
+            }
             foreach (var p in icon.Paths)
                 p.SetResourceReference(Shape.StrokeProperty, on ? "AccentBrush" : "FgDimBrush");
             ToolTipService.SetIsEnabled(icon.Root, !on);
@@ -366,7 +378,15 @@ public sealed class OverlayGhostRail : Grid
     {
         _gearOn = on;
         _gearEdgeBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        _gearRoot.Background = on ? ActiveFill : Brushes.Transparent;
+        if (on)
+        {
+            _gearRoot.SetResourceReference(Border.BackgroundProperty, "AccentActiveFillBrush");
+        }
+        else
+        {
+            _gearRoot.ClearValue(Border.BackgroundProperty);
+            _gearRoot.Background = Brushes.Transparent;
+        }
         foreach (var p in _gearPaths)
             p.SetResourceReference(Shape.StrokeProperty, on ? "AccentBrush" : "FgDimBrush");
         ToolTipService.SetIsEnabled(_gearRoot, !on);
@@ -389,54 +409,6 @@ public sealed class OverlayGhostRail : Grid
         foreach (var icon in _icons) ToolTipService.SetPlacement(icon.Root, side);
         ToolTipService.SetPlacement(_gearRoot, side);
         ToolTipService.SetPlacement(_closeRoot, side);
-    }
-
-    /// <summary>Amber ring pulse on the SCAN glyph: 900ms, 3 repeats, scale 0.6 to 2,
-    /// opacity 0.9 to 0 (mock values). No-op under Motion.Reduced.</summary>
-    public void PulseScan()
-    {
-        if (Motion.Reduced) return;
-        var scan = _icons.Find(i => i.Id == "scan");
-        if (scan is null) return;
-
-        // Only one ring at a time: drop any prior ring immediately rather than letting a
-        // superseded clock's Completed handler (gen-guarded below) try to clean it up later.
-        if (_pulseRing is { } stale && stale.Parent is Panel staleHost)
-            staleHost.Children.Remove(stale);
-        _pulseRing = null;
-
-        var gen = ++_pulseGen;
-        var host = (Grid)scan.Root.Child!;
-
-        var scale = new ScaleTransform(0.6, 0.6);
-        var ring = new Border
-        {
-            Width = 32,
-            Height = 32,
-            CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(1.5),
-            IsHitTestVisible = false,
-            RenderTransformOrigin = new Point(0.5, 0.5),
-            RenderTransform = scale,
-            Opacity = 0.9,
-        };
-        ring.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-        _pulseRing = ring;
-        host.Children.Add(ring);
-
-        var duration = TimeSpan.FromMilliseconds(900);
-        var repeat = new RepeatBehavior(3);
-        var opacityAnim = new DoubleAnimation(0.9, 0, duration) { RepeatBehavior = repeat };
-        var scaleAnimX = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
-        var scaleAnimY = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
-        scaleAnimX.Completed += (_, _) =>
-        {
-            if (gen != _pulseGen) return;   // superseded by a later pulse; this clock is orphaned
-            host.Children.Remove(ring);
-            if (_pulseRing == ring) _pulseRing = null;
-        };
-        ring.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
+        ToolTipService.SetPlacement(_capRoot, side);
     }
 }

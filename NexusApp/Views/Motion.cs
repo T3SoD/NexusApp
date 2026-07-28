@@ -11,6 +11,8 @@ namespace NexusApp.Views;
 /// Motion principles (from the mocks): entrances decelerate hard and "settle",
 /// page reveals use the reveal bezier, ambient loops and status dots breathe on
 /// easeInOut, and UI slides decelerate (cubic ease-out).
+/// Convention: entrances ease on Settle, exits on SlideOut - deliberate, and it
+/// supersedes the mock tables' single-curve slide rows (owner ruling 2026-07-28).
 /// </summary>
 public static class Motion
 {
@@ -29,6 +31,8 @@ public static class Motion
     public const double PillOutMs = 150;   // overlay tab pill collapse (~70% of expand)
     public const double GhostInMs  = 220;   // ghost panel/flyout slide out (mock 0.22s settle)
     public const double GhostOutMs = 150;   // ghost panel/flyout collapse (~70% of expand)
+    public const double QuickRevealMs = 200;  // small inline reveals (quick-add unfold, composition rows)
+    public const double ChipFadeMs    = 150;  // one-shot chip/pill fade-in (order READY pill)
 
     // Shared easing curves. Frozen so a single instance is reused across animations.
     public static readonly IEasingFunction Settle   = Frozen(new CubicBezierEase(0.16, 0.8, 0.3, 1.0));
