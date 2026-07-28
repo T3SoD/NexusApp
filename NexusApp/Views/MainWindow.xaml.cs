@@ -60,17 +60,23 @@ public partial class MainWindow : Window
             App.GameLog.BulkOwnershipChanged += () => RefreshBlueprintOwnership();
         }
         // SESSION chip click-through (app review, Task 10): only its "no log" state is clickable, so
-        // both the hover tint and the navigation are gated on the flag UpdateSessionChip maintains -
+        // the hover tint's entry and the navigation are gated on the flag UpdateSessionChip maintains -
         // the normal monitoring/offline states keep no click affordance. Hover mirrors the app's
         // existing chip-hover idiom (NetworkPage's SubTab/GroupChip: HighlightBrush on enter, back to
         // Bg2NavBrush on leave); the chip's own Background is that same Bg2NavBrush at rest.
+        // MouseLeave resets UNCONDITIONALLY (review fix): if _sessionChipNoLog flips to false while the
+        // chip is hovered (Star Citizen's log path resolves mid-hover), a leave gated on the CURRENT flag
+        // would skip the reset and strand the chip tinted/looking-clickable indefinitely - Bg2NavBrush is
+        // the correct rest background in every non-hover case regardless of state, so resetting it
+        // unconditionally is always safe. UpdateSessionChip's non-no-log branch also resets Background
+        // unconditionally, so the same flip is covered even if it happens while the mouse never leaves.
         SessionChip.MouseEnter += (_, _) =>
         {
             if (_sessionChipNoLog) SessionChip.Background = (System.Windows.Media.Brush)FindResource("HighlightBrush");
         };
         SessionChip.MouseLeave += (_, _) =>
         {
-            if (_sessionChipNoLog) SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+            SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
         };
         SessionChip.MouseLeftButtonUp += (_, _) =>
         {
@@ -658,6 +664,11 @@ public partial class MainWindow : Window
             Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
             SessionChip.ToolTip = SessionChipDefaultTooltip;
             SessionChip.Cursor = Cursors.Arrow;
+            // Unconditional reset (review fix): if _sessionChipNoLog just flipped false while the chip
+            // was hovered and mid-hover-tint, this resync keeps Background from staying stuck on
+            // HighlightBrush - MouseLeave's own unconditional reset (above) covers the mirror case
+            // (flip happens while the mouse is never over the chip at all).
+            SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
         }
 
         // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
