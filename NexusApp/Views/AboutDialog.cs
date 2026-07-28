@@ -13,6 +13,17 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.11.0  -  Jul 28, 2026",
+        [
+            "Import owned blueprints from SCMDB - the Blueprint Library's new Import from SCMDB reads an SCMDB export file, previews exactly which blueprints will be marked owned, and applies only when you confirm",
+            "Overlay quick settings everywhere - a gear in the overlay header opens the same quick settings the ghost rail has (ghost mode, click-through, opacity, rail size), and the opacity and rail sliders nudge with the mouse wheel",
+            "Ghost mode's rail can now be sized on its own, 75 to 150 percent, separate from the panels; the collapsed rail no longer pulses or counts scans",
+            "Settings has a new UPDATES tab holding app updates and market data, leaving Diagnostics to the troubleshooting tools",
+            "The SESSION chip warns in amber when no Game.log can be found and clicks through straight to the Game settings",
+            "Ready-to-collect work orders now show the same green everywhere - the dashboard used to show amber",
+            "Faster and steadier under the hood - one shared Game.log reader instead of three, settings keep a backup and recover from corruption, diagnostic snapshots scrub your Windows user folder, and database hiccups no longer crash the app",
+            "Small polish throughout - clickable dashboard tiles, hover feedback on chips and links, brighter placeholder text, a wider grab area for the scan history divider, and a two-tap confirm on clearing scan history",
+        ]),
         ("App  6.10.2  -  Jul 27, 2026",
         [
             "Ghost mode - a new Settings toggle collapses the overlay to a slim icon rail; click a glyph to slide that tab out beside it, click it again to collapse back",
