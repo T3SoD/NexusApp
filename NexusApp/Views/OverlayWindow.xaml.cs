@@ -340,6 +340,10 @@ public partial class OverlayWindow : Window
     // by the overlay UI scale; the PANEL's size is always the user's persisted OverlayWidth/Height
     // (the overlay is resizable), never a hardcoded 320x480.
     private const double RailW = 44, RailHCollapsed = 332, Seam = 2, FlyoutW = 230;
+    // The gear flyout's own slide transform, created once in EnsureGhostFlyoutBuilt and reused for
+    // every open/close (mirrors PanelSlide, which is XAML-declared because PanelHost always exists;
+    // GhostFlyoutHost's content is built lazily, so its transform is created in code alongside it).
+    private TranslateTransform? _flyoutSlide;
 
     // Window + monitor rects in physical px. The window rect comes straight from the OS so it is
     // exact at any monitor DPI; the DIP-derived value is only the fallback for the moment before a
@@ -603,22 +607,199 @@ public partial class OverlayWindow : Window
     }
 
     // ── Ghost settings flyout ──────────────────────────────────────────────────────────────
-    // Hook points only: the gear's flyout content, its slide, and the Ghost mode / opacity rows
-    // land here in the follow-up task. The state they drive (_ghostFlyoutOpen, GhostFlyoutHost)
-    // already exists so the expand/collapse and mode-exit paths are written against the final
-    // shape rather than being retrofitted.
+    // The gear's flyout: a small chamfered shell (same gradient/border recipe as the rail's own
+    // shell) holding a Ghost mode toggle and the opacity slider, built once lazily into
+    // GhostFlyoutHost the first time the gear is used. Mutually exclusive with the tab panel, and
+    // shares the panel's own "return to collapsed rail" completion (GhostReturnToCollapsed).
     private void ToggleGhostFlyout()
     {
-        Logger.Info("[WIN] Overlay ghost: settings flyout not yet available");
+        if (_ghostFlyoutOpen) { CloseGhostFlyout(animate: true); return; }
+        if (_ghostPanelOpen) CollapseGhostPanel();     // mutually exclusive, spec rule
+        // Bumped AFTER CollapseGhostPanel (which bumped its own generation to start its slide-out
+        // above): this orphans that now-superseded completion so it can never fire
+        // GhostReturnToCollapsed and undo the resize below, and gives the flyout's own opening
+        // slide a fresh token of its own.
+        var gen = ++_ghostMotionGen;
+        _ghostFlyoutOpen = true;
+        EnsureGhostFlyoutBuilt();
+        var (win, mon, dpi) = GhostContext();
+        var k = _uiScale;
+        // Same windowIsRailOnly test ExpandGhostPanel uses: CollapseGhostPanel above only resizes
+        // the window on its own (now-orphaned) completion, so the window here can still be the
+        // wider panel-expanded footprint - read the rail's true position from it rather than
+        // assuming the window is already collapsed.
+        bool windowIsRailOnly = win.Width <= (RailW + Seam) * k * dpi + 1;
+        var railRect = windowIsRailOnly ? win : CurrentRailRect(win, k, dpi);
+        _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
+        GhostRail.SetExpandDirection(_ghostDir);
+        double totalW = (RailW + Seam + FlyoutW) * k * dpi;
+        GhostApplyRect(GhostGeometry.ExpandedRect(railRect, mon, _ghostDir, totalW, RailHCollapsed * k * dpi));
+        bool railRightSide = _ghostDir == GhostExpandDirection.Left;
+        GhostRail.HorizontalAlignment = railRightSide ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        GhostRail.Width = RailW;
+        GhostFlyoutHost.HorizontalAlignment = railRightSide ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        GhostFlyoutHost.Visibility = Visibility.Visible;
+        GhostRail.SetGearActive(true);
+        Logger.Info("[WIN] Overlay ghost: settings flyout open");
+        AnimateGhostFlyout(gen, opening: true, railRightSide);
     }
 
     private void CloseGhostFlyout(bool animate)
     {
         if (!_ghostFlyoutOpen) return;
+        var gen = ++_ghostMotionGen;
         _ghostFlyoutOpen = false;
-        GhostFlyoutHost.Visibility = Visibility.Collapsed;
         GhostRail.SetGearActive(false);
         Logger.Info("[WIN] Overlay ghost: settings flyout closed");
+        bool railRightSide = _ghostDir == GhostExpandDirection.Left;
+        if (animate)
+        {
+            AnimateGhostFlyout(gen, opening: false, railRightSide, onDone: GhostReturnToCollapsed);
+            return;
+        }
+        // Snap (no animation): drop any in-flight clock and its held end values, then go straight
+        // to the shared return-to-rail completion - used when a rail tab click closes an open
+        // flyout to make way for a panel (OnGhostTabSelected).
+        _flyoutSlide?.BeginAnimation(TranslateTransform.XProperty, null);
+        GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
+        if (_flyoutSlide != null) _flyoutSlide.X = 0;
+        GhostFlyoutHost.Opacity = 1;
+        GhostReturnToCollapsed();
+    }
+
+    // Mirrors AnimateGhostPanel for the flyout: slide + fade on GhostFlyoutHost's own
+    // TranslateTransform. FlyoutW (not the persisted panel width) is the offscreen offset, since
+    // the flyout shell is a fixed 230px and never resizes.
+    private void AnimateGhostFlyout(int gen, bool opening, bool railRightSide, Action? onDone = null)
+    {
+        _flyoutSlide!.BeginAnimation(TranslateTransform.XProperty, null);
+        GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
+        double under = (railRightSide ? 1 : -1) * FlyoutW;
+        if (Motion.Reduced)
+        {
+            _flyoutSlide.X = 0; GhostFlyoutHost.Opacity = opening ? 1 : 0;
+            onDone?.Invoke();
+            return;
+        }
+        double fromX = opening ? under : 0, toX = opening ? 0 : under;
+        double ms = opening ? Motion.GhostInMs : Motion.GhostOutMs;
+        var ease = opening ? Motion.Settle : Motion.SlideOut;
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(
+            fromX, toX, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(
+            opening ? 0.5 : 1, opening ? 1 : 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
+        slide.Completed += (_, _) =>
+        {
+            if (gen != _ghostMotionGen) return;    // superseded; this clock is orphaned
+            _flyoutSlide.BeginAnimation(TranslateTransform.XProperty, null);
+            GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
+            _flyoutSlide.X = 0; GhostFlyoutHost.Opacity = 1;
+            onDone?.Invoke();
+        };
+        _flyoutSlide.BeginAnimation(TranslateTransform.XProperty, slide);
+        GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    // Builds the flyout's content once, lazily, the first time the gear is used: a chamfered
+    // shell (same gradient/border recipe as OverlayGhostRail's own shell) behind an eyebrow, a
+    // Ghost mode toggle, and the opacity slider.
+    private void EnsureGhostFlyoutBuilt()
+    {
+        if (GhostFlyoutHost.Child != null) return;
+
+        var shell = new System.Windows.Shapes.Path
+        {
+            StrokeThickness = 1,
+            SnapsToDevicePixels = true,
+            Fill = BuildGhostFlyoutShellBrush(),
+        };
+        shell.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "BorderBrush");
+
+        var content = new StackPanel { Margin = new Thickness(12, 10, 12, 10) };
+
+        content.Children.Add(new TextBlock
+        {
+            Text = "OVERLAY SETTINGS", FontSize = 8.5, Opacity = 0.85,
+            Foreground = Hud.Br("AccentBrush"),
+        });
+
+        var ghostRow = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        ghostRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        ghostRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var ghostLabel = new TextBlock
+        {
+            Text = "Ghost mode", FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Hud.Br("FgBrush"),
+        };
+        var ghostSwitch = new Hud.ToggleSwitch(true)
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            // Reachable only while ghost mode is already on, so the sole real transition here is
+            // off. App.SetOverlayGhostMode is the single write path (it already saves + logs);
+            // the ExitGhost it triggers safely tears the open flyout down itself.
+            OnToggled = on => { if (!on) App.SetOverlayGhostMode(false, "flyout"); },
+        };
+        Grid.SetColumn(ghostLabel, 0);
+        Grid.SetColumn(ghostSwitch, 1);
+        ghostRow.Children.Add(ghostLabel);
+        ghostRow.Children.Add(ghostSwitch);
+        content.Children.Add(ghostRow);
+
+        var opacityRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+        opacityRow.Children.Add(new TextBlock
+        {
+            Text = "OPACITY", FontSize = 8.5, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Hud.Br("FgDimBrush"),
+        });
+        var flyoutSlider = new Slider
+        {
+            Style = (Style)FindResource("HudSlider"),
+            Minimum = 0.2, Maximum = 1.0, SmallChange = 0.05, Width = 120,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 6, 0),
+        };
+        var percentLabel = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        // Seed BEFORE attaching ValueChanged - the same construction-order lesson as the header
+        // opacity slider (:100-107): wiring the handler first would let construction-time coercion
+        // fire and stomp the seeded value.
+        flyoutSlider.Value = OpacitySlider.Value;
+        percentLabel.Text = $"{(int)(OpacitySlider.Value * 100)}%";
+        flyoutSlider.ValueChanged += (_, e) =>
+        {
+            // Single write path: the header's own OpacitySlider_ValueChanged owns apply + persist
+            // + its own label. This only mirrors the percent readout onto the flyout.
+            OpacitySlider.Value = e.NewValue;
+            percentLabel.Text = $"{(int)(e.NewValue * 100)}%";
+        };
+        opacityRow.Children.Add(flyoutSlider);
+        opacityRow.Children.Add(percentLabel);
+        content.Children.Add(opacityRow);
+
+        var host = new Grid();
+        host.Children.Add(shell);
+        host.Children.Add(content);
+        GhostFlyoutHost.SizeChanged += (_, _) =>
+            shell.Data = Hud.ChamferGeometry(230, GhostFlyoutHost.ActualHeight, 10);
+
+        GhostFlyoutHost.Child = host;
+        _flyoutSlide = new TranslateTransform();
+        GhostFlyoutHost.RenderTransform = _flyoutSlide;
+    }
+
+    // OverlayBgTopColor/OverlayBgBotColor are raw Colors, not brushes, so the gradient is
+    // assembled here too (same recipe as OverlayGhostRail.BuildShellBrush, which is private to
+    // that file - the duplication mirrors that file's own documented precedent).
+    private static LinearGradientBrush BuildGhostFlyoutShellBrush()
+    {
+        Color Col(string key) => Application.Current.TryFindResource(key) is Color c ? c : Colors.Transparent;
+        return new LinearGradientBrush(Col("OverlayBgTopColor"), Col("OverlayBgBotColor"), new Point(0, 0), new Point(0, 1));
     }
 
     // Ghost placement interop, the same MonitorFromWindow / GetMonitorInfo / MoveWindow trio the

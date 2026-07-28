@@ -818,12 +818,22 @@ public sealed class SettingsPage : UserControl
                 Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")}");
             },
         };
+        var ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
+        {
+            OnToggled = on => App.SetOverlayGhostMode(on, "settings"),
+        };
         panel.Children.Add(SectionPanel("Overlay", false,
             SettingRow("Click-through in FPS and flight",
                 "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
                 "but lets the mouse pass straight through, so a stray click can't land on it or pull focus " +
                 "from the game. It becomes clickable again the moment the game shows the cursor.",
                 overlayPassToggle, last: false),
+            SettingRow("Ghost mode",
+                "Collapses the overlay to a slim icon rail with a minimal in-game footprint. " +
+                "Click a rail glyph to slide that tab out beside it; click it again to collapse. " +
+                "The rail's gear opens quick settings, and scans that land while collapsed pulse " +
+                "the SCAN glyph with a count instead of opening anything.",
+                ghostToggle, last: false),
             ScaleRow("Overlay scale",
                 "Make the in-game overlay and its work order flyout larger. The overlay grows " +
                 "from its top-left corner; drag it back into place if it no longer sits where " +
