@@ -265,6 +265,19 @@ public partial class OverlayWindow : Window
             Logger.Info("[WIN] Overlay ghost mode: restored on");
             ApplyGhostMode(true, "restore");
         }
+        else
+        {
+            // A saved position from a monitor layout that no longer exists would strand the
+            // overlay off every screen (custom chrome, no taskbar entry, no OS recovery).
+            // Ghost mode already clamps through GhostGeometry; give normal mode the same guard.
+            var (win, mon, _) = GhostContext();
+            var clamped = GhostGeometry.Clamp(win, mon);
+            if (Math.Abs(clamped.Left - win.Left) > 0.5 || Math.Abs(clamped.Top - win.Top) > 0.5)
+            {
+                GhostApplyRect(clamped);
+                Logger.Info("[WIN] Overlay position clamped onto the nearest monitor");
+            }
+        }
     }
 
     private void UpdateCursorPassThrough()
@@ -442,7 +455,7 @@ public partial class OverlayWindow : Window
         GhostRail.SetExpandDirection(_ghostDir);
         GhostApplyRect(rail);
         GhostModeSwapFade();
-        SaveBounds();
+        SaveBounds(rail);
     }
 
     private void ExitGhost()
@@ -607,11 +620,12 @@ public partial class OverlayWindow : Window
         GhostFlyoutHost.Visibility = Visibility.Collapsed;
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;
-        GhostApplyRect(GhostGeometry.CollapsedRect(
-            CurrentRailRect(win, k, dpi), mon, RailW * k * dpi, RailHCollapsed * k * dpi));
+        var collapsed = GhostGeometry.CollapsedRect(
+            CurrentRailRect(win, k, dpi), mon, RailW * k * dpi, RailHCollapsed * k * dpi);
+        GhostApplyRect(collapsed);
         GhostRail.HorizontalAlignment = HorizontalAlignment.Stretch;
         PanelHost.Margin = new Thickness(0);
-        SaveBounds();
+        SaveBounds(collapsed);
     }
 
     // The rail's physical rect inside the current expanded window.
@@ -624,6 +638,11 @@ public partial class OverlayWindow : Window
 
     private void AnimateGhostPanel(int gen, bool opening, bool railRightSide, Action? onDone = null)
     {
+        // Captured BEFORE the clocks are cleared: while a clock is live these properties read the
+        // animated current value (0 at rest), so a re-click mid-slide can continue from where the
+        // panel actually is instead of snapping to the full off/on extreme.
+        double curX  = PanelSlide.X;
+        double curOp = PanelHost.Opacity;
         PanelSlide.BeginAnimation(TranslateTransform.XProperty, null);
         PanelHost.BeginAnimation(UIElement.OpacityProperty, null);
         // Local (pre-scale) units: PanelSlide is a RenderTransform inside the LayoutTransform-scaled
@@ -636,13 +655,15 @@ public partial class OverlayWindow : Window
             onDone?.Invoke();
             return;
         }
-        double fromX = opening ? under : 0, toX = opening ? 0 : under;
+        double fromX  = opening ? (curX != 0 ? curX : under) : curX;
+        double toX    = opening ? 0 : under;
+        double fromOp = opening ? (curX != 0 ? curOp : 0.5) : curOp;
         double ms = opening ? Motion.GhostInMs : Motion.GhostOutMs;
         var ease = opening ? Motion.Settle : Motion.SlideOut;
         var slide = new System.Windows.Media.Animation.DoubleAnimation(
             fromX, toX, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
         var fade = new System.Windows.Media.Animation.DoubleAnimation(
-            opening ? 0.5 : 1, opening ? 1 : 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
+            fromOp, opening ? 1 : 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
         slide.Completed += (_, _) =>
         {
             if (gen != _ghostMotionGen) return;    // superseded; this clock is orphaned
@@ -745,6 +766,11 @@ public partial class OverlayWindow : Window
     // the flyout shell is a fixed 230px and never resizes.
     private void AnimateGhostFlyout(int gen, bool opening, bool railRightSide, Action? onDone = null)
     {
+        // Captured BEFORE the clocks are cleared: while a clock is live these properties read the
+        // animated current value (0 at rest), so a re-click mid-slide can continue from where the
+        // flyout actually is instead of snapping to the full off/on extreme.
+        double curX  = _flyoutSlide!.X;
+        double curOp = GhostFlyoutHost.Opacity;
         _flyoutSlide!.BeginAnimation(TranslateTransform.XProperty, null);
         GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
         double under = (railRightSide ? 1 : -1) * FlyoutW;
@@ -754,13 +780,15 @@ public partial class OverlayWindow : Window
             onDone?.Invoke();
             return;
         }
-        double fromX = opening ? under : 0, toX = opening ? 0 : under;
+        double fromX  = opening ? (curX != 0 ? curX : under) : curX;
+        double toX    = opening ? 0 : under;
+        double fromOp = opening ? (curX != 0 ? curOp : 0.5) : curOp;
         double ms = opening ? Motion.GhostInMs : Motion.GhostOutMs;
         var ease = opening ? Motion.Settle : Motion.SlideOut;
         var slide = new System.Windows.Media.Animation.DoubleAnimation(
             fromX, toX, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
         var fade = new System.Windows.Media.Animation.DoubleAnimation(
-            opening ? 0.5 : 1, opening ? 1 : 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
+            fromOp, opening ? 1 : 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
         slide.Completed += (_, _) =>
         {
             if (gen != _ghostMotionGen) return;    // superseded; this clock is orphaned
@@ -930,8 +958,9 @@ public partial class OverlayWindow : Window
             _uiScale = k;
             UiScaleService.ApplyTransform(RootScale, k);
             GhostSnapToRailChrome();
-            GhostApplyRect(GhostGeometry.CollapsedRect(railRect, mon, RailW * k * dpi, RailHCollapsed * k * dpi));
-            SaveBounds();
+            var collapsed = GhostGeometry.CollapsedRect(railRect, mon, RailW * k * dpi, RailHCollapsed * k * dpi);
+            GhostApplyRect(collapsed);
+            SaveBounds(collapsed);
             _woFlyout?.ApplyUiScale(k);
             Logger.Info($"[WIN] Overlay ghost: scale {old:0.##} -> {k:0.##}, collapsed to the rail");
             return;
@@ -1266,15 +1295,27 @@ public partial class OverlayWindow : Window
     // may currently be collapsed - _historyHidden picks the right source). Called on Close_Click and on
     // the IsVisibleChanged hidden path (:119-125 above), so bounds survive both the close button and the
     // main-window toggle hiding the overlay.
-    private void SaveBounds()
+    private void SaveBounds(PxRect? appliedRail = null)
     {
         // Ghost mode (issue #27): OverlayLeft/Top must always mean "where the RAIL is", because that
         // is the spot the next session's ghost restore places. While a panel or the flyout is open
         // the window extends past the rail on the expand side, so record the rail's own edge.
-        double left = _ghostActive && (_ghostPanelOpen || _ghostFlyoutOpen) && _ghostDir == GhostExpandDirection.Left
-            ? Left + Width - RailW * _uiScale
-            : Left;
-        App.Settings.Current.OverlayLeft = left; App.Settings.Current.OverlayTop = Top;
+        double left, top;
+        if (appliedRail is { } r)
+        {
+            // The caller just MoveWindow'd this exact rect; deriving from it avoids trusting
+            // WPF Left/Top to have caught up (the same reasoning as the Width/Height guard below).
+            var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            left = r.Left / dpi; top = r.Top / dpi;
+        }
+        else
+        {
+            left = _ghostActive && (_ghostPanelOpen || _ghostFlyoutOpen) && _ghostDir == GhostExpandDirection.Left
+                ? Left + Width - RailW * _uiScale
+                : Left;
+            top = Top;
+        }
+        App.Settings.Current.OverlayLeft = left; App.Settings.Current.OverlayTop = top;
         // Store the BASE (unscaled) size so the overlay does not compound larger every launch (issue #20):
         // the on-screen Width/Height are base * _uiScale, and the ctor multiplies by the scale again on restore.
         // Ghost mode (issue #27) is the exception: there the window size is mode-derived (the rail, or the
@@ -2425,6 +2466,8 @@ public partial class OverlayWindow : Window
     // The countdown text per active order; the fill bar animates itself over the remaining
     // time (smooth ScaleX), so the ticker only refreshes the text each second.
     private readonly Dictionary<string, TextBlock> _orderTimerRefs = new();
+    // Reduced-motion fill bars: no animation clock, so the existing 1s ticker steps them.
+    private readonly Dictionary<string, (System.Windows.Media.ScaleTransform Scale, WorkOrder Order)> _orderFillRefs = new();
 
     // ── E2 quick-add form (built once into QuickAddHost, survives orders-panel rebuilds) ─────────
     private bool _quickAddBuilt;
@@ -2622,6 +2665,7 @@ public partial class OverlayWindow : Window
         OrdersPanelItems.Children.Clear();
         OrdersSummaryPanel.Children.Clear();
         _orderTimerRefs.Clear();
+        _orderFillRefs.Clear();
         _orderCardParts.Clear();
 
         var orders = _vm.WorkOrders;
@@ -2804,9 +2848,19 @@ public partial class OverlayWindow : Window
 
             var remaining = wo.TimerEnd.HasValue ? wo.TimerEnd.Value - DateTime.UtcNow : TimeSpan.Zero;
             if (remaining > TimeSpan.Zero)
-                scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
-                    new System.Windows.Media.Animation.DoubleAnimation(frac, 1.0, remaining)
-                    { FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd });
+            {
+                if (Motion.Reduced)
+                {
+                    scale.ScaleX = frac;                    // static; the 1s ticker advances it below
+                    _orderFillRefs[wo.Id] = (scale, wo);
+                }
+                else
+                {
+                    scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty,
+                        new System.Windows.Media.Animation.DoubleAnimation(frac, 1.0, remaining)
+                        { FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd });
+                }
+            }
 
             _orderTimerRefs[wo.Id] = tTxt;
         }
@@ -2916,6 +2970,10 @@ public partial class OverlayWindow : Window
             txt.Text = wo.TimerRemainingShort;
         }
         if (!anyActive) { _ordersTicker?.Stop(); _ordersTicker = null; }
+
+        if (Motion.Reduced)
+            foreach (var (s, order) in _orderFillRefs.Values)
+                s.ScaleX = Math.Clamp(order.TimerFraction, 0, 1);
     }
 
     private void RebuildShoppingPanel()
