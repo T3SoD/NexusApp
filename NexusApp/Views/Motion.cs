@@ -27,6 +27,8 @@ public static class Motion
     public const double DrillMs       = 240;  // drill-down directional slide
     public const double PillInMs  = 220;   // overlay tab pill expand (mock 0.22s settle)
     public const double PillOutMs = 150;   // overlay tab pill collapse (~70% of expand)
+    public const double GhostInMs  = 220;   // ghost panel/flyout slide out (mock 0.22s settle)
+    public const double GhostOutMs = 150;   // ghost panel/flyout collapse (~70% of expand)
 
     // Shared easing curves. Frozen so a single instance is reused across animations.
     public static readonly IEasingFunction Settle   = Frozen(new CubicBezierEase(0.16, 0.8, 0.3, 1.0));

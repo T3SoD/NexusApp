@@ -68,6 +68,19 @@ public partial class App : Application
         ContractBoxVisibilityChanged?.Invoke(on);
     }
 
+    // Ghost mode (issue #27): single write path so the Settings page toggle, the rail's
+    // gear flyout, and the overlay window itself can never disagree. Writers call
+    // SetOverlayGhostMode; the overlay subscribes and applies the chrome swap.
+    public static event System.Action<bool, string>? OverlayGhostModeChanged;
+    public static void SetOverlayGhostMode(bool on, string source)
+    {
+        if (Settings.Current.OverlayGhostMode == on) return;
+        Settings.Current.OverlayGhostMode = on;
+        Settings.Save();
+        Logger.Info($"[WIN] Overlay ghost mode: {(on ? "on" : "off")} ({source})");
+        OverlayGhostModeChanged?.Invoke(on, source);
+    }
+
     // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
     // never inside the 24-hour throttle, never in the demo profile. Fire-and-forget is safe:
     // CheckAsync owns all its failure paths and reports through State/Changed.

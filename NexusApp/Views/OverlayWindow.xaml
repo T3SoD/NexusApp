@@ -24,6 +24,14 @@
          silhouette so inner content can't poke past the bevel. Both geometries recompute on resize
          in code-behind (UpdateChamfer). ── -->
     <Grid x:Name="RootScale">
+      <!-- ── PanelHost: the normal-mode overlay panel (frame + content). In ghost mode
+           (issue #27) it is the sliding panel that opens beside the rail, so it carries the
+           TranslateTransform the slide animates and a Margin the window sets to leave room
+           for the rail. Normal mode never touches either. ── -->
+      <Grid x:Name="PanelHost" Opacity="1">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="PanelSlide"/>
+        </Grid.RenderTransform>
         <Path x:Name="FramePath" StrokeThickness="1" SnapsToDevicePixels="True"
               Stroke="{DynamicResource BorderBrush}">
             <Path.Fill>
@@ -96,6 +104,13 @@
                  Icons are the app's dock glyphs via TabGlyphSpecs; active tab expands into a
                  chamfered amber icon+label pill; counts ride the icon corner as chips. ── -->
             <views:OverlayTabStrip x:Name="TabStrip" Grid.Row="1" Margin="0,2,0,0"/>
+
+            <!-- Ghost mode (issue #27) section eyebrow: takes the tab strip's row when the rail
+                 is the nav, so the open panel still names the section it is showing. Set in code
+                 from OverlayTabs.LabelFor; collapsed (and the strip visible) in normal mode. -->
+            <TextBlock x:Name="GhostEyebrow" Grid.Row="1" Visibility="Collapsed" FontSize="8.5"
+                       Foreground="{DynamicResource AccentBrush}" Opacity="0.85"
+                       Margin="12,8,0,4" VerticalAlignment="Bottom"/>
 
             <!-- ── Tab content ── -->
             <Grid Grid.Row="2">
@@ -496,5 +511,15 @@
                 </DockPanel>
             </Border>
         </Grid>
+      </Grid>
+
+        <!-- ── Ghost mode (issue #27) chrome. Both are collapsed in normal mode and cost
+             nothing there; the window sizes itself to rail-only, rail + panel, or rail +
+             flyout and aligns these to the side the panel expands from. GhostFlyoutHost's
+             content is built lazily in code the first time the gear is used. ── -->
+        <views:OverlayGhostRail x:Name="GhostRail" Visibility="Collapsed"
+                                HorizontalAlignment="Left" VerticalAlignment="Stretch"/>
+        <Border x:Name="GhostFlyoutHost" Visibility="Collapsed" Width="230"
+                VerticalAlignment="Bottom" HorizontalAlignment="Left"/>
     </Grid>
 </Window>
