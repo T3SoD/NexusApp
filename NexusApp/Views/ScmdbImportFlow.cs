@@ -78,7 +78,7 @@ public static class ScmdbImportFlow
         // Preview/confirm gate, computed from the plan BEFORE any ownership write - mirrors
         // BlueprintImportFlow's ImportResultDialog. Cancel (or the zero-toImport "Close") returns
         // false/null here, same as ImportResultDialog's own cancel path, and skips apply + log below.
-        var dlg = new ScmdbImportResultDialog(plan.ToImport.Count, plan.AlreadyOwned.Count, plan.Unrecognized,
+        var dlg = new ScmdbImportResultDialog(plan.ToImport, plan.AlreadyOwned.Count, plan.Unrecognized,
             parsed.SkippedNotCompleted, parsed.MalformedEntries, parsed.MissionCount, parsed.NewerVersion)
         { Owner = owner };
         if (dlg.ShowDialog() != true) return;   // cancelled: apply nothing, log nothing
