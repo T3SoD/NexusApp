@@ -135,7 +135,7 @@ public class UpdateNoticeTests
             UpdateNotice.UnpackingBody(new Version(6, 9, 0)));
         Assert.Equal("Two folders are open: the new Nexus 6.9.0 and your current Nexus. Close Nexus, then copy everything from the new folder into the current one, replacing files when asked.",
             UpdateNotice.ManualHandoffBody(new Version(6, 9, 0)));
-        Assert.Equal("Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Diagnostics.",
+        Assert.Equal("Couldn't prepare the update. Nothing was changed. Try again, or update manually from Settings > Updates.",
             UpdateNotice.PrepareFailedBody);
         Assert.Equal("The update could not finish. Nexus will finish restoring the previous version the next time it starts. Close Nexus and start it again.",
             UpdateNotice.RestorePendingBody);

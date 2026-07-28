@@ -15,11 +15,11 @@ namespace NexusApp.Views;
 // not a pop-out dialog. Single theme (MOBIGLAS), so there is no appearance/theme picker: just
 // the Game.log paths, Blueprint Network identity, diagnostics, and the destructive clear-data action.
 //
-// The page is a HUD tab strip: GAME / DIAGNOSTICS / INTERFACE cluster to the left, the destructive
-// DATA tab docked to the right, and one category pane visible at a time. A traveling underline slides
-// between tabs (crossfading amber to danger red over DATA), the incoming pane fades and slides in the
-// direction of travel, and the GAME tab's needs-attention pip breathes while no Game.log is set. All
-// motion collapses to instant state changes under Reduce animations.
+// The page is a HUD tab strip: GAME / DIAGNOSTICS / UPDATES / INTERFACE cluster to the left, the
+// destructive DATA tab docked to the right, and one category pane visible at a time. A traveling
+// underline slides between tabs (crossfading amber to danger red over DATA), the incoming pane fades
+// and slides in the direction of travel, and the GAME tab's needs-attention pip breathes while no
+// Game.log is set. All motion collapses to instant state changes under Reduce animations.
 public sealed class SettingsPage : UserControl
 {
     private readonly Action _openLogMonitor;
@@ -28,11 +28,11 @@ public sealed class SettingsPage : UserControl
     // The destructive DATA tab's red, matching the literal SettingsPage already uses elsewhere.
     private static readonly Color DangerColor = Color.FromRgb(0xE5, 0x53, 0x53);
 
-    // Tab strip state. These back the four-tab HUD strip so the switch logic (and the later motion
+    // Tab strip state. These back the five-tab HUD strip so the switch logic (and the later motion
     // pass) has one place to read the tabs, labels, panes, and the traveling underline from.
-    private readonly Border[] _tabButtons = new Border[4];
-    private readonly TextBlock[] _tabLabels = new TextBlock[4];
-    private readonly ScrollViewer[] _panes = new ScrollViewer[4];
+    private readonly Border[] _tabButtons = new Border[5];
+    private readonly TextBlock[] _tabLabels = new TextBlock[5];
+    private readonly ScrollViewer[] _panes = new ScrollViewer[5];
     private readonly TranslateTransform _underlineT = new();
     private readonly SolidColorBrush _underlineBrush;               // local + unfrozen so it can be color-crossfaded on switch
     private readonly SolidColorBrush _dangerFull = new(DangerColor);
@@ -52,13 +52,13 @@ public sealed class SettingsPage : UserControl
     private readonly TranslateTransform _modalPanelT = new(0, 12);   // panel rise on entrance
     private readonly ScaleTransform _modalPanelScale = new(0.98, 0.98);
 
-    // Updates section (DIAGNOSTICS). Held so the rows can be refreshed as the update service
+    // Updates section (UPDATES tab). Held so the rows can be refreshed as the update service
     // moves between states; null in the demo profile, where the section is inert.
     private TextBlock? _updateStatusText;
     private StackPanel? _updateActionHost;
     private Hud.ToggleSwitch? _updateCheckToggle;
 
-    // Market data section (DIAGNOSTICS). Held so the rows can be refreshed as the fetch cycle
+    // Market data section (UPDATES tab). Held so the rows can be refreshed as the fetch cycle
     // moves between states; null in the demo profile, where the section is inert.
     private Hud.ToggleSwitch? _marketToggle;
     private Button? _marketRefreshBtn;
@@ -88,8 +88,9 @@ public sealed class SettingsPage : UserControl
         var paneHost = new Grid { Margin = new Thickness(0, 16, 0, 0) };
         _panes[0] = BuildGamePane();
         _panes[1] = BuildDiagnosticsPane();
-        _panes[2] = BuildInterfacePane();
-        _panes[3] = BuildDataPane();
+        _panes[2] = BuildUpdatesPane();
+        _panes[3] = BuildInterfacePane();
+        _panes[4] = BuildDataPane();
         foreach (var pane in _panes) { pane.Visibility = Visibility.Collapsed; paneHost.Children.Add(pane); }
         Grid.SetRow(paneHost, 2);
         root.Children.Add(paneHost);
@@ -118,8 +119,8 @@ public sealed class SettingsPage : UserControl
     }
 
     // ── Tab strip ───────────────────────────────────────────────────────────────
-    // The strip: left cluster (GAME / DIAGNOSTICS / INTERFACE), a star spacer, and the DATA tab docked
-    // right, over a full-width hairline with the traveling underline drawn on top of it.
+    // The strip: left cluster (GAME / DIAGNOSTICS / UPDATES / INTERFACE), a star spacer, and the DATA
+    // tab docked right, over a full-width hairline with the traveling underline drawn on top of it.
     private void BuildStrip()
     {
         // No top margin here: Hud.Header already carries an 18px bottom margin, and stacking a
@@ -139,11 +140,12 @@ public sealed class SettingsPage : UserControl
         var cluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         cluster.Children.Add(MakeTab(0, "Game", danger: false));
         cluster.Children.Add(MakeTab(1, "Diagnostics", danger: false));
-        cluster.Children.Add(MakeTab(2, "Interface", danger: false));
+        cluster.Children.Add(MakeTab(2, "Updates", danger: false));
+        cluster.Children.Add(MakeTab(3, "Interface", danger: false));
         Grid.SetColumn(cluster, 0);
         _stripHost.Children.Add(cluster);
 
-        var dataTab = MakeTab(3, "Data", danger: true);
+        var dataTab = MakeTab(4, "Data", danger: true);
         Grid.SetColumn(dataTab, 2);
         _stripHost.Children.Add(dataTab);
 
@@ -213,7 +215,7 @@ public sealed class SettingsPage : UserControl
     // dim red for DATA).
     private Brush TabColor(int index)
     {
-        bool danger = index == 3;
+        bool danger = index == 4;
         bool active = index == _activeIndex;
         if (danger) return active ? _dangerFull : _dangerDim;
         return active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
@@ -262,7 +264,7 @@ public sealed class SettingsPage : UserControl
     {
         if (_stripHost.ActualWidth < 1) return;   // layout has not run yet; the Loaded handler will place it
         var (x, w) = MeasureTab(index);
-        bool danger = index == 3;
+        bool danger = index == 4;
         var color = danger ? DangerColor : Hud.Col("AccentColor");
 
         // The glow is retinted to the target color at the start; the brush crossfade carries the visual.
@@ -359,6 +361,12 @@ public sealed class SettingsPage : UserControl
         }
     }
 
+    /// <summary>Jumps straight to the GAME tab. Public so MainWindow's SESSION chip can drive the
+    /// page to the Game.log path controls when it clicks through from its own "no log" state (app
+    /// review, Task 10) - a real user-driven switch, so it persists and logs exactly like a manual
+    /// tab click.</summary>
+    public void SwitchToGameTab() => SwitchTab(Array.IndexOf(SettingsTabs.Ids, "game"));
+
     // ── Category panes ──────────────────────────────────────────────────────────
     // GAME: Game.log paths + Blueprint Network identity.
     private ScrollViewer BuildGamePane()
@@ -449,6 +457,17 @@ public sealed class SettingsPage : UserControl
                 "Shows the most recent time Nexus closed and reopened itself automatically after " +
                 "Windows reported a display error, usually while the game was crashing or quitting.",
                 RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
+
+        return Pane(panel);
+    }
+
+    // UPDATES: app auto-update checks + live market data. Both moved out of DIAGNOSTICS (app
+    // review, Task 10): they are opt-in feature/data-source toggles, not diagnostic tooling, and
+    // grew that pane into a mixed bag as each shipped (Updates in v6.7, Market in v6.10). Section
+    // names are unchanged (help breadcrumbs rule) - only the pane they live under moved.
+    private ScrollViewer BuildUpdatesPane()
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
 
         // Updates: consent toggle, manual check, contextual action. Inert in the demo profile.
         if (AppPaths.IsDemoProfile)

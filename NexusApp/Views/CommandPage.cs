@@ -385,7 +385,7 @@ public sealed class CommandPage : UserControl
     }
 
     // The live update strip: body and actions follow the service state. Dismiss is
-    // session-scoped; the Settings > Diagnostics rows remain the persistent surface.
+    // session-scoped; the Settings > Updates rows remain the persistent surface.
     private FrameworkElement? UpdateStrip()
     {
         var svc = App.Update;

@@ -42,6 +42,15 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            // Republished from the shared GameLogFeed (Task 5): the watcher's own diagnostic text
+            // ("Waiting for file to appear: ...", "Error opening: ...") becomes the SESSION chip's
+            // tooltip while it is in its "no log" state (app review, Task 10). Cached even while not
+            // in that state so the very first no-log render has real text instead of the fallback.
+            App.GameLog.StatusChanged += s =>
+            {
+                _lastGameLogStatus = s;
+                if (_sessionChipNoLog) SessionChip.ToolTip = s;
+            };
             App.GameLog.HandleDetected += h => { UpdateOperatorIdentity(h); RefreshApprovedTools(); RefreshOwnerTools(); };
             // Auto-mark import (a single mark, or a bulk pass from Import owned from logs) refreshes
             // the Blueprint Library's owned count + nav live. Same feed, same UI-thread contract as
@@ -50,6 +59,26 @@ public partial class MainWindow : Window
             App.GameLog.Marked += m => RefreshBlueprintOwnership();
             App.GameLog.BulkOwnershipChanged += () => RefreshBlueprintOwnership();
         }
+        // SESSION chip click-through (app review, Task 10): only its "no log" state is clickable, so
+        // both the hover tint and the navigation are gated on the flag UpdateSessionChip maintains -
+        // the normal monitoring/offline states keep no click affordance. Hover mirrors the app's
+        // existing chip-hover idiom (NetworkPage's SubTab/GroupChip: HighlightBrush on enter, back to
+        // Bg2NavBrush on leave); the chip's own Background is that same Bg2NavBrush at rest.
+        SessionChip.MouseEnter += (_, _) =>
+        {
+            if (_sessionChipNoLog) SessionChip.Background = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+        };
+        SessionChip.MouseLeave += (_, _) =>
+        {
+            if (_sessionChipNoLog) SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
+        };
+        SessionChip.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!_sessionChipNoLog) return;
+            Logger.Info("[UI] Session chip: opened Settings (no Game.log)");
+            SetActivePage("settings");
+            _settingsPage?.SwitchToGameTab();
+        };
         UpdateOperatorIdentity();
         RefreshApprovedTools();
         RefreshOwnerTools();
@@ -567,6 +596,19 @@ public partial class MainWindow : Window
     private readonly System.Windows.Media.Brush _chipDangerBrush = (System.Windows.Media.Brush)Application.Current.FindResource("DangerBrush");
     private readonly System.Windows.Media.Brush _chipWarnBrush   = (System.Windows.Media.Brush)Application.Current.FindResource("WarnBrush");
 
+    // SESSION chip's third state (app review: "Game.log health is invisible on the main window").
+    // True while the effective Game.log path resolves to nothing - the identical condition
+    // SettingsPage's GAME tab pip computes - which is orthogonal to whether Star Citizen is
+    // running: a broken path with the game open would otherwise show a falsely reassuring green
+    // "monitoring" while blueprint/hauling/shard tracking silently gets nothing. Only this state
+    // makes the chip clickable.
+    private bool _sessionChipNoLog;
+    // Latest text from the shared Game.log tail's StatusChanged (via App.GameLog, which
+    // republishes it - Task 5's GameLogFeed note), shown as the chip's tooltip only while
+    // _sessionChipNoLog is true; the normal states keep the chip's static tooltip.
+    private string? _lastGameLogStatus;
+    private const string SessionChipDefaultTooltip = "Star Citizen session tracking (always on)";
+
     // Live SHARD telemetry chip in the header status strip (updates on shard join/leave).
     private void UpdateShardChip()
     {
@@ -585,16 +627,38 @@ public partial class MainWindow : Window
 
     // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms a
     // live game session (green, monitoring) vs Star Citizen being closed / shut down (red, offline). "Live"
-    // is read from Game.log freshness, so the chip flips off shortly after the player exits the game.
+    // is read from Game.log freshness (process-based - unchanged), so the chip flips off shortly after
+    // the player exits the game. A third state (amber, "no log") is orthogonal to that: it fires whenever
+    // the effective Game.log PATH resolves to nothing, regardless of whether Star Citizen is running, and
+    // takes over the dot/text/tooltip and the chip's click affordance (app review: the old two-state
+    // read let a broken path with the game open show a falsely reassuring green "monitoring").
     private void UpdateSessionChip()
     {
         if (App.GameLog == null || SessionChipText == null) return;
         bool live = App.GameLog.IsSessionLive;
-        SessionChipText.Text = live ? "monitoring" : "offline";
-        var brush = live ? _chipOkBrush : _chipDangerBrush;
-        SessionDot.Fill = brush;
-        SessionChipText.Foreground = brush;
-        Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
+        var brush = live ? _chipOkBrush : _chipDangerBrush;   // process-based; also drives the LED mirrors below
+
+        _sessionChipNoLog = string.IsNullOrWhiteSpace(App.Settings.Current.GameLogPath)
+            && !System.IO.File.Exists(GameLogWatcher.FindGameLog());
+
+        if (_sessionChipNoLog)
+        {
+            SessionChipText.Text = "no log";
+            SessionDot.Fill = _chipWarnBrush;
+            SessionChipText.Foreground = _chipWarnBrush;
+            Hud.PulseDot(SessionDot, false);
+            SessionChip.ToolTip = _lastGameLogStatus ?? SessionChipDefaultTooltip;
+            SessionChip.Cursor = Cursors.Hand;
+        }
+        else
+        {
+            SessionChipText.Text = live ? "monitoring" : "offline";
+            SessionDot.Fill = brush;
+            SessionChipText.Foreground = brush;
+            Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
+            SessionChip.ToolTip = SessionChipDefaultTooltip;
+            SessionChip.Cursor = Cursors.Arrow;
+        }
 
         // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
         // green ONLINE while Star Citizen is running, red OFFLINE when it's closed.

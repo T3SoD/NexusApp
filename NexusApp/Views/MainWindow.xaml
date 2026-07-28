@@ -113,7 +113,9 @@
                         <TextBlock x:Name="ShardChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- SESSION telemetry chip: Game.log tracking is always on (green = monitoring, red = no log) -->
+                <!-- SESSION telemetry chip: Game.log tracking is always on (green = monitoring, red = offline,
+                     amber = no Game.log path found - click through to Settings > GAME to fix it). State,
+                     colours, tooltip and click target are driven by UpdateSessionChip in code-behind. -->
                 <Border x:Name="SessionChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"

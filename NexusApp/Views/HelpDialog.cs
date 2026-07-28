@@ -187,6 +187,21 @@ public class HelpDialog : Window
                 "No server, no account - Nexus uploads nothing on its own; your library leaves your PC only when you export a file and share it yourself.",
             ]),
 
+        new("◈", "Market Data",
+            "Live sell prices from UEX, a community price database, shown wherever Nexus already tells you what an ore is worth. Off by default, and only ever on with your say-so.",
+            [new("MARKET", "header pill"), new("Refresh now", "Settings › Updates")],
+            [
+                "Live market data is off until you turn it on - Nexus asks once, in a consent strip on the RS Decoder, Mining Codex, or Refinery Tracker page (whichever you open first), or turn it on directly in Settings › Updates.",
+                "Turning it on fetches refined sell prices from UEX community reports about once an hour while Nexus is open; turning it off stops all network activity for the feature.",
+                "Prices appear on the RS Decoder's best-match hero (\"Sell (refined, avg):\"), the Mining Codex dossier's VALUE section (\"Best sell:\"), Refinery Tracker work order cards (\"SELL\", with a + more / Show less for orders with several priced resources), and the overlay's SCAN tab result cards (\"Sell:\").",
+                "Every price shows its age (like \"2h ago\"); a price still quoted from an older game patch is grayed with a patch tag instead - Nexus never presents stale community data as current.",
+                "The MARKET pill in the header status strip is hidden entirely while the feature is off, and otherwise shows the last refresh time at a glance (or syncing / no data / offline while a first cycle runs or fails). Click it to jump to Settings.",
+                "The Mining Codex list has its own opt-in Show sell prices column, off by default, for comparing ores at a glance without opening every dossier.",
+                "Refresh now in Settings › Updates fetches the latest prices immediately, regardless of the hourly schedule.",
+                "Settings › Updates also shows the last-refresh status line, how often Nexus checks, and credits the source: Data: UEX community reports.",
+                "Nexus keeps the last snapshot on your computer, so prices (with their age) still show if UEX is unreachable or Nexus is offline.",
+            ]),
+
         new("dock:settings", "Settings",
             "One module for everything Nexus needs configured - file paths, identity, diagnostics, motion, and data.",
             [new("Settings", "app dock, bottom")],

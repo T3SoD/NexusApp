@@ -19,6 +19,7 @@ public class SettingsTabsTests : IDisposable
     [Theory]
     [InlineData("game", "game")]
     [InlineData("diagnostics", "diagnostics")]
+    [InlineData("updates", "updates")]
     [InlineData("interface", "interface")]
     [InlineData("data", "game")]        // destructive tab is never auto-restored
     [InlineData("", "game")]
@@ -29,8 +30,8 @@ public class SettingsTabsTests : IDisposable
         => Assert.Equal(expected, SettingsTabs.NormalizeForRestore(saved));
 
     [Fact]
-    public void Ids_AreTheFourTabs()
-        => Assert.Equal(new[] { "game", "diagnostics", "interface", "data" }, SettingsTabs.Ids);
+    public void Ids_AreTheFiveTabs()
+        => Assert.Equal(new[] { "game", "diagnostics", "updates", "interface", "data" }, SettingsTabs.Ids);
 
     [Fact]
     public void SettingsActiveTab_PersistsAcrossReload()

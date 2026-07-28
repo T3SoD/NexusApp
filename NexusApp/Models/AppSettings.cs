@@ -83,8 +83,8 @@ public class AppSettings
     // state is deliberately NOT persisted; ghost always wakes collapsed.
     public bool OverlayGhostMode { get; set; }
 
-    // Settings page UI state: which settings tab (game / diagnostics / interface / data) was
-    // last active, so the page reopens where the user left off. The destructive "data" tab is
+    // Settings page UI state: which settings tab (game / diagnostics / updates / interface / data)
+    // was last active, so the page reopens where the user left off. The destructive "data" tab is
     // deliberately never restored; SettingsTabs.NormalizeForRestore maps it back to the default.
     public string SettingsActiveTab { get; set; } = "game";
 
@@ -94,7 +94,7 @@ public class AppSettings
 
     // Auto-update consent: null = the one-time opt-in strip has not been answered yet (and no
     // network call ever happens), true/false = the user's standing choice, changeable anytime
-    // in Settings > Diagnostics. The check itself is throttled to once per 24h by UpdateService.
+    // in Settings > Updates. The check itself is throttled to once per 24h by UpdateService.
     public bool? UpdateCheckEnabled { get; set; }
 
     // UTC instant of the last completed update check (success or failure), driving both the

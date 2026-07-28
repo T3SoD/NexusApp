@@ -5,7 +5,7 @@ namespace NexusApp.Services;
 // checked on restore in OverlayWindow.
 public static class SettingsTabs
 {
-    public static readonly string[] Ids = ["game", "diagnostics", "interface", "data"];
+    public static readonly string[] Ids = ["game", "diagnostics", "updates", "interface", "data"];
 
     public const string Default = "game";
 
@@ -13,5 +13,5 @@ public static class SettingsTabs
     // (Clear saved data lives there; a destructive surface must never be what greets the user)
     // both fall back to the default.
     public static string NormalizeForRestore(string? saved)
-        => saved is "game" or "diagnostics" or "interface" ? saved : Default;
+        => saved is "game" or "diagnostics" or "updates" or "interface" ? saved : Default;
 }

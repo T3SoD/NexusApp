@@ -80,7 +80,7 @@ UPDATES
 
   Update checks are off until you turn them on. NexusApp asks you once
   when it starts. You can change your choice at any time in
-  Settings > Diagnostics.
+  Settings > Updates.
 
   When a new version is available, NexusApp shows a notice on the
   OPERATIONS page. Each step asks before it acts:
