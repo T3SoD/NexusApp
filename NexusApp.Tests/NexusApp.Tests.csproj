@@ -18,4 +18,9 @@
     <ProjectReference Include="..\NexusApp\NexusApp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Fixtures\scmdb-v3-sample.json" />
+    <EmbeddedResource Include="Fixtures\scmdb-v3-sample.json" />
+  </ItemGroup>
+
 </Project>
