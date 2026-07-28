@@ -14,6 +14,7 @@ public sealed class ContractScanner : IDisposable
     private bool _busy;
     private string _lastKey = "";
     private string _lastDiag = "";   // dedup for the per-stage scan breadcrumb
+    private string _lastExceptionState = "";   // dedup for OnTick's own catch, below
 
     public event Action<ContractDetails>? ContractScanned;
 
@@ -82,16 +83,37 @@ public sealed class ContractScanner : IDisposable
                     ContractScanned?.Invoke(d);
                 }
             }
+
+            _lastExceptionState = "";   // a successful tick clears the dedup so a later relapse logs again
         }
-        catch { }   // mirrors ScannerService.OnTick's catch shape - a transient OCR/parse failure
-                    // on this background poller degrades one tick instead of crashing the app.
+        catch (Exception ex)
+        {
+            // Same dedupe idiom as LogScanDiagnostic's _lastDiag, applied to this catch instead of a
+            // silent swallow: log the FIRST occurrence of a distinct exception state (type + message)
+            // so a real OCR/parse breakage leaves a trace in nexus.log, then stay quiet on repeats so
+            // a 1Hz tick hitting the same failure forever can't flood the log.
+            var state = $"{ex.GetType().Name}: {ex.Message}";
+            if (state != _lastExceptionState)
+            {
+                _lastExceptionState = state;
+                Logger.Error("[CONTRACT] scan tick failed", ex);
+            }
+        }
         finally
         {
             _busy = false;
             // Re-arm the SAME Timer instance created in Start() instead of constructing a new one
-            // every ~1000ms (see ScannerService.OnTick for the identical fix and rationale).
+            // every ~1000ms (see ScannerService.OnTick for the identical fix and rationale). Guarded
+            // against ObjectDisposedException: Stop() may run between the `_running` check and this
+            // call, disposing this very Timer mid-race (Stop/Dispose/null is not atomic against a
+            // concurrent OnTick) - a stray re-arm attempt on the outgoing instance is then a harmless
+            // no-op, not a crash, and this finally sits OUTSIDE the catch above so an unguarded throw
+            // here would otherwise escape this async void handler into the unhandled-exception path.
             if (_running)
-                _timer?.Start();
+            {
+                try { _timer?.Start(); }
+                catch (ObjectDisposedException) { }
+            }
         }
     }
 

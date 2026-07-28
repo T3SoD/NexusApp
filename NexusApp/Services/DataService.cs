@@ -16,10 +16,33 @@ public class DataService : IDisposable
     private SqliteConnection? _conn;
     private string _seedVersion = "0.0.0";
 
+    // Logs the meta-read failure at most once per process, even though MiningDataVersion is
+    // UI-reachable from several surfaces (AboutDialog, AdminPage, AppLogMonitorWindow,
+    // BlueprintImportFlow) that may each poll/rebuild repeatedly - a persistently broken
+    // connection must not flood nexus.log with the same failure over and over.
+    private bool _miningVersionReadFailed;
+
     /// <summary>The mining-data version currently applied to the database. This is the
     /// seed-content version (auto-updatable) - distinct from <see cref="GameData.Version"/>,
-    /// which tracks the Star Citizen patch and is bumped manually.</summary>
-    public string MiningDataVersion => GetMeta("data_version") ?? _seedVersion;
+    /// which tracks the Star Citizen patch and is bumped manually. Degrades to the embedded
+    /// seed's own version on a DB read failure instead of throwing into UI code - this getter
+    /// is a plain informational read, not part of the seed/migration path (which stays loud).</summary>
+    public string MiningDataVersion
+    {
+        get
+        {
+            try { return GetMeta("data_version") ?? _seedVersion; }
+            catch (Exception ex)
+            {
+                if (!_miningVersionReadFailed)
+                {
+                    _miningVersionReadFailed = true;
+                    Logger.Error($"DataService.{nameof(MiningDataVersion)} failed; degrading to the embedded seed version for the rest of this run", ex);
+                }
+                return _seedVersion;
+            }
+        }
+    }
 
     public void Initialize()
     {

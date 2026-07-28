@@ -59,10 +59,12 @@ public class SettingsService
         }
 
         var settings = TryReadSettings(_path);
+        var recovered = false;
         if (settings == null)
         {
             Logger.Error($"[WIN] settings.json failed to load ({_path}); quarantining and attempting backup recovery");
             settings = RecoverFromCorrupt();
+            recovered = true;
         }
 
         // Schema migrations - bump SettingsSchemaVersion after each one
@@ -106,7 +108,13 @@ public class SettingsService
             settings.SettingsSchemaVersion = 5;
             migrated = true;
         }
-        if (migrated) Save(settings);
+        // Recovery must re-persist unconditionally, NOT only when `migrated` fires: RecoverFromCorrupt
+        // already removed the primary file from disk (quarantined it), and a .bak at the current
+        // schema version (the realistic case for any already-migrated user) trips none of the
+        // `< N` checks above, so `migrated` alone would leave settings.json missing on disk with
+        // only the in-memory Current holding the recovered values - lost the moment the process
+        // exits without a clean Closing-handler save (e.g. CrashGuard's Environment.Exit paths).
+        if (migrated || recovered) Save(settings);
 
         return settings;
     }
