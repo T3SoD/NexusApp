@@ -481,8 +481,9 @@ public sealed class HaulingPage : UserControl
     // Prefer OCR-sourced ContractedBy over the generator-derived company name when present.
     private static string Contractor(Haul h) => string.IsNullOrWhiteSpace(h.ContractedBy) ? CompanyOf(h) : h.ContractedBy;
 
-    // Small bordered action button, mirroring NetworkPage.ActionButton. Styled via the shared
-    // NexusButton template (was a bare Button falling back to stock WPF chrome).
+    // Small bordered action button, mirroring NetworkPage.ActionButton (both now styled via the
+    // shared NexusButton template - were bare Buttons falling back to stock WPF chrome with no
+    // hover feedback).
     private Button ActionButton(string text) => new()
     {
         Content = text, Style = (Style)Application.Current.FindResource("NexusButton"),

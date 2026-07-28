@@ -1162,12 +1162,14 @@ public sealed class NetworkPage : UserControl
         return string.IsNullOrWhiteSpace(s) ? "library" : s;
     }
 
+    // Styled via the shared NexusButton template (was a bare Button falling back to stock WPF
+    // chrome with no hover feedback - the same fix applied to HaulingPage.ActionButton, which
+    // mirrors this recipe).
     private Button ActionButton(string text) => new()
     {
-        Content = text, Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(6, 0, 0, 0),
-        Background = Br("Bg2NavBrush"), Foreground = Br("AccentBrush"),
-        BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-        Cursor = Cursors.Hand, FontWeight = FontWeights.SemiBold, FontSize = 12,
+        Content = text, Style = (Style)Application.Current.FindResource("NexusButton"),
+        Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(6, 0, 0, 0),
+        FontWeight = FontWeights.SemiBold, FontSize = 12,
     };
 
     private string PersonName(string id) => _store.GetMember(id)?.DisplayName ?? "this member";
