@@ -1,0 +1,104 @@
+{
+  "version": 3,
+  "exportedAt": "2026-07-01T12:00:00.000Z",
+  "missions": [
+    {
+      "hash": "test01",
+      "name": "Sample Test Mission",
+      "url": "https://scmdb.net/?m=test01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "hash": "test02",
+      "name": "Another Sample Mission",
+      "url": "https://scmdb.net/?m=test02",
+      "completed": true,
+      "favorite": false
+    }
+  ],
+  "blueprints": [
+    {
+      "tag": "BP_CRAFT_test_pistol_01",
+      "name": "Yubarev Pistol",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_pistol_01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_pistol_01_chromic01",
+      "name": "Yubarev \"Mirage\" Pistol",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_pistol_01_chromic01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_pistol_02",
+      "name": "Arclight Pistol",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_pistol_02",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_pistol_03",
+      "name": "Coda Pistol",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_pistol_03",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_shotgun_01",
+      "name": "Devastator Shotgun",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_shotgun_01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_sniper_01",
+      "name": "Scalpel Sniper Rifle",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_sniper_01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_pistol_04",
+      "name": "S-38 Pistol",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_pistol_04",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_widget_01",
+      "name": "Nonexistent Test Widget",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_widget_01",
+      "completed": true,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_smg_01",
+      "name": "Quartz Energy SMG",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_smg_01",
+      "completed": false,
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_rifle_01",
+      "name": "P4-AR Rifle",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_rifle_01",
+      "completed": false,
+      "favorite": true
+    },
+    {
+      "tag": "BP_CRAFT_test_missing_completed",
+      "name": "Broken Entry No Completed",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_missing_completed",
+      "favorite": false
+    },
+    {
+      "tag": "BP_CRAFT_test_missing_name",
+      "url": "https://scmdb.net/?page=fab&fab=BP_CRAFT_test_missing_name",
+      "completed": true,
+      "favorite": false
+    }
+  ]
+}

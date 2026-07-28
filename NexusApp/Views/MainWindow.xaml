@@ -1006,11 +1006,18 @@
                                        VerticalAlignment="Center" FontSize="12"
                                        Foreground="{StaticResource CyanBrush}"/>
                         </StackPanel>
-                        <Button x:Name="BpImportBtn" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                Content="Import owned from logs…" Style="{StaticResource NexusButton}"
-                                Height="28" Padding="14,0" FontSize="11"
-                                Click="BlueprintImportFromLogs_Click"
-                                ToolTip="Scan your Star Citizen Game.log and logbackups for blueprints you've already received, and mark them owned"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button x:Name="BpImportScmdbBtn" Margin="0,0,8,0"
+                                    Content="Import from SCMDB…" Style="{StaticResource NexusButton}"
+                                    Height="28" Padding="14,0" FontSize="11"
+                                    Click="BlueprintImportFromScmdb_Click"
+                                    ToolTip="Import blueprint ownership from a scmdb.net export file (.json)"/>
+                            <Button x:Name="BpImportBtn"
+                                    Content="Import owned from logs…" Style="{StaticResource NexusButton}"
+                                    Height="28" Padding="14,0" FontSize="11"
+                                    Click="BlueprintImportFromLogs_Click"
+                                    ToolTip="Scan your Star Citizen Game.log and logbackups for blueprints you've already received, and mark them owned"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- Two-panel: left drill-down nav / right detail -->

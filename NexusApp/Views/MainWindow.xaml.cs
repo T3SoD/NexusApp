@@ -1573,6 +1573,13 @@ public partial class MainWindow : Window
         if (result.Applied) RefreshBlueprintOwnership();   // reflect the new ownership in the count + nav
     }
 
+    // Blueprint Library → "Import from SCMDB…": reads a scmdb.net blueprint-tracking export and
+    // marks recognized, completed blueprints owned (issue #3). FILE IMPORT ONLY - mirrors the
+    // Game.log import's shape via the small ScmdbImportFlow rather than touching that flow;
+    // RefreshBlueprintOwnership fires via App.GameLog.BulkOwnershipChanged (wired in the ctor),
+    // same path the Game.log import already uses.
+    private void BlueprintImportFromScmdb_Click(object sender, RoutedEventArgs e) => ScmdbImportFlow.Run(this);
+
     // Mirrors AppSettings.cs's own default property values (WindowLeft/Top/Width/Height) - the
     // rectangle a fresh install (or a saved rect that lands on no connected display) restores to.
     private static readonly Rect DefaultWindowRect = new(100, 100, 1280, 820);
