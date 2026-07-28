@@ -47,6 +47,89 @@ public class GameLogFeedTests
     }
 
     [Fact]
+    public void TargetedReplay_ReachesOnlyThatSubscriber_WhileLiveLinesStillReachEveryone()
+    {
+        // The advanced monitor's "From start of file": the blueprint session re-reads the log, the
+        // haul and shard trackers must NOT re-process history they already have - but they must keep
+        // getting live lines the moment the tail passes the replay boundary.
+        var fan = new GameLogFanOut();
+        var session = new List<string>();
+        var hauls = new List<string>();
+        var sessionSub = fan.Add(e => session.Add(e.Raw), includeReplay: true);
+        fan.Add(e => hauls.Add(e.Raw), includeReplay: true);
+
+        fan.Started("Game.log", fromBeginning: true, target: sessionSub);
+        fan.Line(Line("history", replay: true));
+        fan.Line(Line("now"));
+
+        Assert.Equal(new[] { "history", "now" }, session);
+        Assert.Equal(new[] { "now" }, hauls);
+    }
+
+    [Fact]
+    public void UntargetedReplay_GoesBackToEveryConsumerThatWantsIt()
+    {
+        // A Game.log path change: the new file is news to everyone.
+        var fan = new GameLogFanOut();
+        var session = new List<string>();
+        var hauls = new List<string>();
+        var sessionSub = fan.Add(e => session.Add(e.Raw), includeReplay: true);
+        fan.Add(e => hauls.Add(e.Raw), includeReplay: true);
+
+        fan.Started("Game.log", fromBeginning: true, target: sessionSub);
+        fan.Started("Other.log", fromBeginning: true, target: null);
+        fan.Line(Line("history", replay: true));
+
+        Assert.Equal(new[] { "history" }, session);
+        Assert.Equal(new[] { "history" }, hauls);
+    }
+
+    [Fact]
+    public void Started_TellsEachConsumerWhetherTheReplayIsComingItsWay()
+    {
+        var fan = new GameLogFanOut();
+        bool? toSession = null, toHauls = null;
+        var sessionSub = fan.Add(_ => { }, includeReplay: true, onStarted: (_, r) => toSession = r);
+        fan.Add(_ => { }, includeReplay: true, onStarted: (_, r) => toHauls = r);
+
+        fan.Started("Game.log", fromBeginning: true, target: sessionSub);
+
+        Assert.True(toSession);
+        Assert.False(toHauls);   // a targeted replay must not read as a from-the-top start here
+    }
+
+    [Fact]
+    public void Started_ReportsNoReplay_WhenTheTailDidNotRewind()
+    {
+        var fan = new GameLogFanOut();
+        bool? sawReplay = null;
+        fan.Add(_ => { }, includeReplay: true, onStarted: (_, r) => sawReplay = r);
+
+        fan.Started("Game.log", fromBeginning: false, target: null);
+
+        Assert.False(sawReplay);
+    }
+
+    [Fact]
+    public void ReplayTargetDetachingMidWindow_DoesNotDumpTheRestOnTheOtherConsumers()
+    {
+        // Stop pressed part-way through a from-the-top re-read: the remaining history belongs to
+        // nobody. Handing the tail end of it to the trackers would be a partial replay - worse than
+        // none. Live lines keep flowing.
+        var fan = new GameLogFanOut();
+        var hauls = new List<string>();
+        var sessionSub = fan.Add(_ => { }, includeReplay: true);
+        fan.Add(e => hauls.Add(e.Raw), includeReplay: true);
+        fan.Started("Game.log", fromBeginning: true, target: sessionSub);
+
+        sessionSub.Dispose();
+        fan.Line(Line("history", replay: true));
+        fan.Line(Line("now"));
+
+        Assert.Equal(new[] { "now" }, hauls);
+    }
+
+    [Fact]
     public void AnyWantsReplay_IsFalseWithoutAReplayConsumer()
     {
         var fan = new GameLogFanOut();
@@ -179,6 +262,34 @@ public class GameLogFeedTests
         new(() => new[] { "Bracket Cooler" }, _ => false, (_, _) => { }, null, feed);
 
     [Fact]
+    public void FeedStart_RewindsWhenAReplayConsumerIsAttached()
+    {
+        // Guards the App startup order: hauls and shards must be attached BEFORE the tail starts,
+        // or their from-the-top replay silently never happens.
+        var path = MissingLogPath();
+        using var feed = new GameLogFeed { PreferredPath = path };
+        bool? replayed = null;
+        feed.Subscribe(_ => { }, includeReplay: true, onStarted: (_, r) => replayed = r);
+
+        feed.Start(path);
+
+        Assert.True(replayed);
+    }
+
+    [Fact]
+    public void FeedStart_DoesNotRewindWhenOnlyLiveConsumersAreAttached()
+    {
+        var path = MissingLogPath();
+        using var feed = new GameLogFeed { PreferredPath = path };
+        bool? replayed = null;
+        feed.Subscribe(_ => { }, includeReplay: false, onStarted: (_, r) => replayed = r);
+
+        feed.Start(path);
+
+        Assert.False(replayed);   // nothing to replay TO: the tail starts at the end of the file
+    }
+
+    [Fact]
     public void StoppingTheBlueprintSession_LeavesTheSharedTailRunningForTheOtherConsumers()
     {
         using var feed = new GameLogFeed { PreferredPath = MissingLogPath() };
@@ -202,7 +313,7 @@ public class GameLogFeedTests
         using var feed = new GameLogFeed { PreferredPath = path };
         using var hauls = new HaulTracker(feed);
         int starts = 0;
-        feed.Started += (_, _) => starts++;
+        feed.Started += _ => starts++;
         using var session = Session(feed);
 
         session.SetAutoMark(true);                      // starts the one tail

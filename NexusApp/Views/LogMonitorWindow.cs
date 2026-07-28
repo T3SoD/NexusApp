@@ -71,9 +71,7 @@ public sealed class LogMonitorWindow : Window
         pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _pathBox = new TextBox
         {
-            Text = !string.IsNullOrEmpty(App.GameLog.Path) ? App.GameLog.Path
-                 : !string.IsNullOrEmpty(App.GameLog.PreferredPath) ? App.GameLog.PreferredPath
-                 : GameLogSession.DefaultPath,
+            Text = CurrentPathText(),
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
             ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
@@ -227,12 +225,22 @@ public sealed class LogMonitorWindow : Window
     // to match its empty initial state (Count is 0 again).
     private void OnSessionReset() => _markCountLabel.Text = "";
 
+    // The path the shared tail is on right now (or the one it would start on).
+    private static string CurrentPathText() =>
+        !string.IsNullOrEmpty(App.GameLog.Path) ? App.GameLog.Path
+        : !string.IsNullOrEmpty(App.GameLog.PreferredPath) ? App.GameLog.PreferredPath
+        : GameLogSession.DefaultPath;
+
     // Keep Start/Stop + Auto-mark in step when the overlay (or anything) changes them.
     private void OnStateChanged()
     {
         _syncing = true;
         _startBtn.Content = App.GameLog.IsRunning ? "Stop" : "Start";
         _autoMark.IsChecked = App.GameLog.AutoMark;
+        // Resync the path too: the tail can be re-pointed from Settings while this window is open,
+        // and a stale box would silently re-point the shared tail (and persist the old path) on the
+        // next Start. Never while the user is typing in it.
+        if (!_pathBox.IsKeyboardFocusWithin) _pathBox.Text = CurrentPathText();
         _syncing = false;
     }
 
@@ -288,9 +296,12 @@ public sealed class LogMonitorWindow : Window
         // Button content resyncs via OnStateChanged (which also covers overlay-driven changes).
         // Stop detaches only THIS consumer: the shared tail keeps feeding the haul and shard
         // trackers. Start re-attaches it and points the tail at the box's path - one Game.log for
-        // the whole app, so a path typed here (or a from-the-top re-read) moves every consumer.
+        // the whole app, so a path typed here moves every consumer - but a "From start of file"
+        // re-read is routed to this session ALONE, so the trackers are not made to re-process a
+        // log they have already read (they stay on the live stream throughout).
         if (App.GameLog.IsRunning) App.GameLog.Stop();
-        else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true);
+        else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true,
+                               replayToThisSessionOnly: true);
     }
 
     private void Browse()

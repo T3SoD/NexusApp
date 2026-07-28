@@ -184,6 +184,11 @@ public sealed class GameLogWatcher : IDisposable
                 LogReset?.Invoke();
             }
 
+            // Belt and braces for a recreate BOTH detectors miss (same creation time, and already
+            // grown past our offset): a boundary beyond the file's end would leave every consumer
+            // that skips replayed history deaf until the next reset, so clamp it to what exists.
+            if (len < _replayEnd) _replayEnd = len;
+
             int toRead = ReadSize(_position, len, _replayEnd, MaxBytesPerTick);
             if (toRead <= 0) return;
             bool replay = _position < _replayEnd;   // whole chunk, by construction of ReadSize

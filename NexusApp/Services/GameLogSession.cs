@@ -139,8 +139,11 @@ public sealed class GameLogSession : IDisposable
     /// <summary>Attach this consumer and point the shared tail at <paramref name="path"/>.
     /// <paramref name="fromBeginning"/> is THIS session's appetite for the history the restart
     /// replays: false joins live (startup), true re-reads the file into the tally and auto-mark
-    /// (the Settings path change, the monitor's "From start of file").</summary>
-    public void Start(string path, bool fromBeginning = false)
+    /// (the Settings path change, the monitor's "From start of file").
+    /// <paramref name="replayToThisSessionOnly"/> keeps that replayed history off the other
+    /// consumers - what the advanced monitor wants, since the haul and shard trackers have already
+    /// read this log. A Game.log path change leaves it false: the new file is news to everyone.</summary>
+    public void Start(string path, bool fromBeginning = false, bool replayToThisSessionOnly = false)
     {
         Attach(fromBeginning);   // before Start: the feed rewinds only for consumers that want it
         // Re-point the shared tail only when something actually needs it: a different file, a
@@ -148,7 +151,7 @@ public sealed class GameLogSession : IDisposable
         // A plain re-Start on the same file must never rewind the log under the haul/shard trackers.
         if (fromBeginning || !_feed.IsRunning
             || !string.Equals(path, _feed.Path, StringComparison.OrdinalIgnoreCase))
-            _feed.Start(path);
+            _feed.Start(path, fromBeginning && replayToThisSessionOnly ? _sub : null);
         StateChanged?.Invoke();
     }
 
@@ -192,8 +195,9 @@ public sealed class GameLogSession : IDisposable
 
     // The tail was re-pointed: the DERIVED global.ini path moves with it, so drop the cached live
     // map and let the next line rebuild it against the new location (covers the Settings Game.log
-    // path change and the monitor's path box in one place).
-    private void OnFeedStarted(string path, bool fromBeginning) => InvalidateLocalizationMap();
+    // path change and the monitor's path box in one place). Feed-level, so it still fires while
+    // this session is detached - otherwise a re-attach could resolve names against the old install.
+    private void OnFeedStarted(string path) => InvalidateLocalizationMap();
 
     // Only while attached: a stopped session reports "not live" and stays quiet.
     private void OnFeedSessionLiveChanged(bool live)

@@ -27,8 +27,8 @@ public sealed class ShardTracker : IDisposable
         // Always replays the log from the top: the point is to recover this session's joins.
         // History intentionally persists across SC sessions (no history clear on LogReset), but a
         // fresh log means a live game session, so stale-replay suppression lifts.
-        _sub = _feed.Subscribe(Ingest, includeReplay: true, onLogReset: () => _staleReplay = false);
-        _feed.Started += OnFeedStarted;
+        _sub = _feed.Subscribe(Ingest, includeReplay: true,
+            onLogReset: () => _staleReplay = false, onStarted: OnFeedStarted);
     }
 
     private bool _onShard;      // true while in the PU: set by a <Join PU>, cleared by a leave marker
@@ -53,14 +53,17 @@ public sealed class ShardTracker : IDisposable
     // history, but never claim to be on a shard from it (the chip showed a stale shard as live).
     private static readonly TimeSpan ColdLogAge = TimeSpan.FromMinutes(3);
 
-    // The shared tail was (re)pointed. Re-decide the cold-log question against the file it now
-    // reads, before its first replayed line arrives.
-    private void OnFeedStarted(string path, bool fromBeginning)
+    // The shared tail was (re)pointed. Re-decide the cold-log question against the file it now reads,
+    // before its first replayed line arrives - but ONLY when that replay is actually coming here: a
+    // from-the-top re-read routed to another consumer (the advanced monitor) is not a replay of ours
+    // to suppress, and must leave the current stale-replay state exactly as it is.
+    private void OnFeedStarted(string path, bool willReplayToMe)
     {
+        if (!willReplayToMe) return;
         _staleReplay = false;
         try
         {
-            if (fromBeginning && System.IO.File.Exists(path)
+            if (System.IO.File.Exists(path)
                 && DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(path) > ColdLogAge)
                 BeginStaleReplay();
         }
@@ -107,7 +110,6 @@ public sealed class ShardTracker : IDisposable
 
     public void Dispose()
     {
-        _feed.Started -= OnFeedStarted;
         _sub?.Dispose();
         _sub = null;
         if (_ownsFeed) _feed.Dispose();   // a shared feed is the app's to dispose, not ours
