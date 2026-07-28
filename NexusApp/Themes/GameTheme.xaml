@@ -59,6 +59,10 @@
     <SolidColorBrush x:Key="AccentHoverBrush"  Color="{DynamicResource AccentHoverColor}"/>
     <SolidColorBrush x:Key="AccentPressBrush"  Color="{DynamicResource AccentPressColor}"/>
     <SolidColorBrush x:Key="OnAccentBrush"     Color="{DynamicResource OnAccentColor}"/>
+    <SolidColorBrush x:Key="AccentActiveFillBrush" Color="{DynamicResource AccentActiveFillColor}"/>
+    <SolidColorBrush x:Key="AccentHairlineBrush"   Color="{DynamicResource AccentHairlineColor}"/>
+    <SolidColorBrush x:Key="CyanStrongBrush"       Color="{DynamicResource CyanStrongColor}"/>
+    <SolidColorBrush x:Key="OnCyanBrush"           Color="{DynamicResource OnCyanColor}"/>
     <SolidColorBrush x:Key="OverlayBgTopBrush" Color="{DynamicResource OverlayBgTopColor}"/>
     <SolidColorBrush x:Key="OverlayBgBotBrush" Color="{DynamicResource OverlayBgBotColor}"/>
 

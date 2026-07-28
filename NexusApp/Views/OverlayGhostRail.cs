@@ -41,15 +41,6 @@ public sealed class OverlayGhostRail : Grid
     private const string GearPathData =
         "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z";
 
-    private static readonly SolidColorBrush ActiveFill = CreateActiveFill();
-
-    private static SolidColorBrush CreateActiveFill()
-    {
-        var brush = new SolidColorBrush(Color.FromArgb(36, 255, 178, 62));
-        brush.Freeze();
-        return brush;
-    }
-
     private readonly Path _shell = new();
     private readonly List<RailIcon> _icons = [];
     private Border _gearRoot = null!;
@@ -120,8 +111,8 @@ public sealed class OverlayGhostRail : Grid
         {
             Height = 1,
             VerticalAlignment = VerticalAlignment.Bottom,
-            Background = new SolidColorBrush(Color.FromArgb(46, 255, 178, 62)),
         };
+        hairline.SetResourceReference(Border.BackgroundProperty, "AccentHairlineBrush");
         var cap = new Grid
         {
             Height = 34,
@@ -355,7 +346,15 @@ public sealed class OverlayGhostRail : Grid
         {
             bool on = icon.Id == id;
             icon.EdgeBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            icon.Root.Background = on ? ActiveFill : Brushes.Transparent;
+            if (on)
+            {
+                icon.Root.SetResourceReference(Border.BackgroundProperty, "AccentActiveFillBrush");
+            }
+            else
+            {
+                icon.Root.ClearValue(Border.BackgroundProperty);
+                icon.Root.Background = Brushes.Transparent;
+            }
             foreach (var p in icon.Paths)
                 p.SetResourceReference(Shape.StrokeProperty, on ? "AccentBrush" : "FgDimBrush");
             ToolTipService.SetIsEnabled(icon.Root, !on);
@@ -366,7 +365,15 @@ public sealed class OverlayGhostRail : Grid
     {
         _gearOn = on;
         _gearEdgeBar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        _gearRoot.Background = on ? ActiveFill : Brushes.Transparent;
+        if (on)
+        {
+            _gearRoot.SetResourceReference(Border.BackgroundProperty, "AccentActiveFillBrush");
+        }
+        else
+        {
+            _gearRoot.ClearValue(Border.BackgroundProperty);
+            _gearRoot.Background = Brushes.Transparent;
+        }
         foreach (var p in _gearPaths)
             p.SetResourceReference(Shape.StrokeProperty, on ? "AccentBrush" : "FgDimBrush");
         ToolTipService.SetIsEnabled(_gearRoot, !on);

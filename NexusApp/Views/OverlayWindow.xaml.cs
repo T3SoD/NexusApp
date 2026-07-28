@@ -883,7 +883,9 @@ public partial class OverlayWindow : Window
     private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
     // Paint the chamfered shell: the FramePath silhouette (bevelled fill + 1px border) and the matching
-    // clip on ContentRoot so inner content stays inside the TL + BR bevels. 16px chamfer = the mock frame.
+    // clip on ContentRoot so inner content stays inside the TL + BR bevels.
+    // 16px chamfer: the app's shipped silhouette (predates the 2026-07 overlay mocks; their tables
+    // were corrected to 16 - owner ruling 2026-07-28).
     private void UpdateChamfer()
     {
         // PanelHost lives INSIDE the scaled tree, so its ActualWidth/ActualHeight are already in
@@ -958,7 +960,7 @@ public partial class OverlayWindow : Window
                 break;
             case ScanPhase.PinFound:
                 OverlayScanStatus.Text = "◉  Reading…";
-                OverlayScanStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
+                OverlayScanStatus.Foreground = (Brush)FindResource("GoldBrush");
                 break;
             case ScanPhase.NoRegion:
                 OverlayScanStatus.Text = "⊕  Draw region to scan";
@@ -970,7 +972,7 @@ public partial class OverlayWindow : Window
     public void ReceiveScanProgress(int count)
     {
         OverlayScanStatus.Text = $"◉  Reading… {count}/2";
-        OverlayScanStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
+        OverlayScanStatus.Foreground = (Brush)FindResource("GoldBrush");
     }
 
     private void SetRegion_Click(object sender, MouseButtonEventArgs e)
@@ -2529,7 +2531,7 @@ public partial class OverlayWindow : Window
         var shift = new System.Windows.Media.TranslateTransform(0, 12);
         _quickAddForm.RenderTransform = shift;
         _quickAddForm.Opacity = 0;
-        var dur = TimeSpan.FromMilliseconds(200);
+        var dur = TimeSpan.FromMilliseconds(Motion.QuickRevealMs);
         _quickAddForm.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
         shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
     }
@@ -2847,7 +2849,7 @@ public partial class OverlayWindow : Window
                 // Pill fade-in (frozen pill crossfade, 150ms). The overlay status chip is inline (not a Hud.StatusChip),
                 // so this uses the sanctioned single-pill opacity fade rather than the two-chip cross-dissolve.
                 parts.Chip.Opacity = 0;
-                parts.Chip.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { EasingFunction = Motion.Settle });
+                parts.Chip.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(Motion.ChipFadeMs)) { EasingFunction = Motion.Settle });
                 // Border flash (frozen: amber -> cyan at 45% -> resting, 400ms, ease-out, one shot).
                 FlashOrderBorder(parts.FlashBorder, parts.FlashBorder.Color);
                 NexusApp.Services.Logger.Info($"[UI] Refinery: order ready flash ({wo.Label})");
@@ -3146,6 +3148,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
+        // Intentional local ease: the cascade's feel was tuned with QuadraticEase and is frozen.
         var ease = new System.Windows.Media.Animation.QuadraticEase
         { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
         for (int i = 0; i < _guidesCascade.Count; i++)

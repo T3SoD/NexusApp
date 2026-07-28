@@ -155,7 +155,7 @@ internal static class ScanCardComposition
         var shift = new TranslateTransform(0, 12);
         rows.RenderTransform = shift;
         rows.Opacity = 0;
-        var dur = TimeSpan.FromMilliseconds(200);
+        var dur = TimeSpan.FromMilliseconds(Motion.QuickRevealMs);
         var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle };
         var rise = new System.Windows.Media.Animation.DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle };
         rows.BeginAnimation(UIElement.OpacityProperty, fade);

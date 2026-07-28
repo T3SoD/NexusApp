@@ -110,7 +110,7 @@ public sealed class OverlayTabStrip : Grid
             Content = pillContent,
             Visibility = Visibility.Collapsed,
         };
-        host.Pill.SetResourceReference(Control.BackgroundProperty, "AccentTintBrush");
+        host.Pill.SetResourceReference(Control.BackgroundProperty, "AccentActiveFillBrush");
         host.Pill.SetResourceReference(Control.BorderBrushProperty, "AccentStrongBrush");
 
         var stack = new Grid { VerticalAlignment = VerticalAlignment.Center };

@@ -379,11 +379,11 @@
                                                             <Setter Property="Content" Value="+ CART"/>
                                                             <Setter Property="Foreground" Value="{DynamicResource CyanBrush}"/>
                                                             <Setter Property="Background" Value="{DynamicResource CyanDimBrush}"/>
-                                                            <Setter Property="BorderBrush" Value="#667FE9E0"/>
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource CyanStrongBrush}"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsInCart}" Value="True">
                                                                     <Setter Property="Content" Value="IN CART"/>
-                                                                    <Setter Property="Foreground" Value="#062422"/>
+                                                                    <Setter Property="Foreground" Value="{DynamicResource OnCyanBrush}"/>
                                                                     <Setter Property="Background" Value="{DynamicResource CyanBrush}"/>
                                                                     <Setter Property="BorderBrush" Value="{DynamicResource CyanBrush}"/>
                                                                 </DataTrigger>
