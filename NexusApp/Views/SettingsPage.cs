@@ -831,8 +831,7 @@ public sealed class SettingsPage : UserControl
             SettingRow("Ghost mode",
                 "Collapses the overlay to a slim icon rail with a minimal in-game footprint. " +
                 "Click a rail glyph to slide that tab out beside it; click it again to collapse. " +
-                "The rail's gear opens quick settings, and scans that land while collapsed pulse " +
-                "the SCAN glyph with a count instead of opening anything.",
+                "The rail's gear opens quick settings.",
                 ghostToggle, last: false),
             ScaleRow("Overlay scale",
                 "Make the in-game overlay and its work order flyout larger. The overlay grows " +

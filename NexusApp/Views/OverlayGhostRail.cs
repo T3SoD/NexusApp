@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using NexusApp.Services;
 
@@ -49,8 +48,6 @@ public sealed class OverlayGhostRail : Grid
     private Border _closeRoot = null!;
     private string? _active;
     private bool _gearOn;
-    private Border? _pulseRing;        // scan pulse overlay, one at a time
-    private int _pulseGen;
 
     public OverlayGhostRail()
     {
@@ -396,54 +393,5 @@ public sealed class OverlayGhostRail : Grid
         foreach (var icon in _icons) ToolTipService.SetPlacement(icon.Root, side);
         ToolTipService.SetPlacement(_gearRoot, side);
         ToolTipService.SetPlacement(_closeRoot, side);
-    }
-
-    /// <summary>Amber ring pulse on the SCAN glyph: 900ms, 3 repeats, scale 0.6 to 2,
-    /// opacity 0.9 to 0 (mock values). No-op under Motion.Reduced.</summary>
-    public void PulseScan()
-    {
-        if (Motion.Reduced) return;
-        var scan = _icons.Find(i => i.Id == "scan");
-        if (scan is null) return;
-
-        // Only one ring at a time: drop any prior ring immediately rather than letting a
-        // superseded clock's Completed handler (gen-guarded below) try to clean it up later.
-        if (_pulseRing is { } stale && stale.Parent is Panel staleHost)
-            staleHost.Children.Remove(stale);
-        _pulseRing = null;
-
-        var gen = ++_pulseGen;
-        var host = (Grid)scan.Root.Child!;
-
-        var scale = new ScaleTransform(0.6, 0.6);
-        var ring = new Border
-        {
-            Width = 32,
-            Height = 32,
-            CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(1.5),
-            IsHitTestVisible = false,
-            RenderTransformOrigin = new Point(0.5, 0.5),
-            RenderTransform = scale,
-            Opacity = 0.9,
-        };
-        ring.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-        _pulseRing = ring;
-        host.Children.Add(ring);
-
-        var duration = TimeSpan.FromMilliseconds(900);
-        var repeat = new RepeatBehavior(3);
-        var opacityAnim = new DoubleAnimation(0.9, 0, duration) { RepeatBehavior = repeat };
-        var scaleAnimX = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
-        var scaleAnimY = new DoubleAnimation(0.6, 2, duration) { RepeatBehavior = repeat };
-        scaleAnimX.Completed += (_, _) =>
-        {
-            if (gen != _pulseGen) return;   // superseded by a later pulse; this clock is orphaned
-            host.Children.Remove(ring);
-            if (_pulseRing == ring) _pulseRing = null;
-        };
-        ring.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
     }
 }

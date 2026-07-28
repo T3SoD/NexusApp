@@ -340,7 +340,6 @@ public partial class OverlayWindow : Window
     private bool _ghostFlyoutOpen;
     private GhostExpandDirection _ghostDir = GhostExpandDirection.Left;
     private int _ghostMotionGen;
-    private int _ghostScanCount;
     // Base (unscaled) rail metrics from the mock's implementation-values table. Every use multiplies
     // by the overlay UI scale; the PANEL's size is always the user's persisted OverlayWidth/Height
     // (the overlay is resizable), never a hardcoded 320x480.
@@ -438,10 +437,6 @@ public partial class OverlayWindow : Window
             ? CurrentRailRect(win, k, dpi)
             : new PxRect(win.Left, win.Top, RailW * k * dpi, win.Height);
         GhostSnapToRailChrome();                       // orphans any in-flight slide, clears its animations
-        // The normal overlay exposes everything, so the unseen-scan count is moot on exit;
-        // clear it so a later re-entry into ghost mode does not show a stale already-seen count.
-        _ghostScanCount = 0;
-        GhostRail.SetBadge("scan", 0);
         GhostRail.Visibility = Visibility.Collapsed;
         GhostEyebrow.Visibility = Visibility.Collapsed;
         TabStrip.Visibility = Visibility.Visible;
@@ -539,7 +534,6 @@ public partial class OverlayWindow : Window
         var gen = ++_ghostMotionGen;
         var wasOpen = _ghostPanelOpen;
         _ghostPanelOpen = true;
-        if (tab == "scan") { _ghostScanCount = 0; GhostRail.SetBadge("scan", 0); }
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;
         var s = App.Settings.Current;
@@ -933,17 +927,6 @@ public partial class OverlayWindow : Window
 
     public void ReceiveOcrValue(int value)
     {
-        // Ghost mode (issue #27): a scan that lands while the SCAN panel is not the one on screen
-        // signals on the rail (count badge + pulse ring) instead of opening anything. The scan
-        // itself still runs below - this is a signal, never a gate.
-        if (_ghostActive && (!_ghostPanelOpen || _activeTab != "scan"))
-        {
-            _ghostScanCount++;
-            GhostRail.SetBadge("scan", _ghostScanCount);
-            GhostRail.PulseScan();
-            Logger.Info($"[WIN] Overlay ghost: scan signal while collapsed (count {_ghostScanCount})");
-        }
-
         OverlayRsInput.Text = value.ToString("N0");
         OverlayScanStatus.Text = $"◎  Auto-scanned: {value:N0}";
         OverlayScanStatus.Foreground = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("AccentBrush");
