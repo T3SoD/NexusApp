@@ -377,8 +377,10 @@ public partial class OverlayWindow : Window
     private void ApplyGhostMode(bool on, string source)
     {
         if (_ghostActive == on) return;
-        _ghostActive = on;
-        if (on) EnterGhost(restore: source == "restore"); else ExitGhost();
+        // Only the enter path flips the flag here. ExitGhost clears it itself, after its own
+        // SaveBounds, so SaveBounds' size guard stays armed across the whole teardown (see there).
+        if (on) { _ghostActive = true; EnterGhost(restore: source == "restore"); }
+        else ExitGhost();
     }
 
     private void EnterGhost(bool restore)
@@ -428,7 +430,15 @@ public partial class OverlayWindow : Window
         GhostApplyRect(target);
         SwitchTab(_activeTab, persist: false);         // rebuild + restart per-tab timers (idempotent)
         GhostModeSwapFade();
+        // Save while STILL flagged ghost, then clear the flag. Window.Width is not guaranteed to have
+        // caught up with the MoveWindow above, so an unguarded save here would write the ghost
+        // footprint into the user's OverlayWidth/Height - the exact corruption the guard exists to
+        // prevent - and int-rounding would drift the saved size across repeated toggles even when it
+        // has caught up. Ghost never touches OverlayWidth/Height; the restored window already IS the
+        // persisted size, so there is nothing to re-save. _ghostPanelOpen and _ghostFlyoutOpen are
+        // both false by now (GhostSnapToRailChrome), so the left adjustment falls through to plain Left.
         SaveBounds();
+        _ghostActive = false;
     }
 
     // Spec: mode switches crossfade (~180ms). The window resize itself is instant; fade the
@@ -494,9 +504,16 @@ public partial class OverlayWindow : Window
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;
         var s = App.Settings.Current;
-        var railRect = wasOpen                          // rail keeps its on-screen spot
-            ? CurrentRailRect(win, k, dpi)
-            : win;                                      // collapsed: the window IS the rail
+        // Where the rail is has to come from the WINDOW's actual footprint, not from _ghostPanelOpen.
+        // CollapseGhostPanel clears that flag immediately but the window stays expanded for the whole
+        // 150ms slide, so a re-click inside that window would read the EXPANDED rect as the rail and
+        // recompute _ghostDir from its centre. The window would not move, but the layout would flip
+        // sides and the rail would jump a panel width, which the next collapse then persists. Measuring
+        // the footprint is correct on every entry path (collapsed, open, mid-collapse, flyout open).
+        bool windowIsRailOnly = win.Width <= (RailW + Seam) * k * dpi + 1;
+        var railRect = windowIsRailOnly
+            ? win                                       // collapsed: the window IS the rail
+            : CurrentRailRect(win, k, dpi);             // expanded: rail keeps its on-screen spot
         _ghostDir = GhostGeometry.DirectionFor(railRect, mon);
         GhostRail.SetExpandDirection(_ghostDir);
         double totalW = (RailW + Seam + s.OverlayWidth) * k * dpi;
