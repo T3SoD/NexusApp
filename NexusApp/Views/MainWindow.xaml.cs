@@ -57,10 +57,14 @@ public partial class MainWindow : Window
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
         // When an OCR scan first pairs with a log-detected haul, confirm it with a green flash of
         // the yellow contract box (mirrors the RS scan-success flash). No popup - toasts are removed
-        // app-wide by design. Hauls.ContractPaired is always raised from inside App's own
-        // Dispatcher.Invoke around ApplyContractDetails, so it is already on the UI thread here - no
-        // extra wrap needed (moved from App.xaml.cs's OnStartup wiring, app review Task 9; the Task 5
-        // marshaling rule already treats a same-thread re-wrap as redundant).
+        // app-wide by design. HaulTracker.ContractPaired fires from ApplyAndNotify, which has two
+        // raiser paths, both already UI-thread by the time they get here: the OCR path
+        // (ApplyContractDetails, reached via App's own Dispatcher.Invoke around it) and the ordinary
+        // Game.log path (TryApplyPending, reached via Ingest off the shared GameLogFeed, whose
+        // DispatcherTimer sourcing is documented UI-thread at GameLogFeed.cs - "Events are raised
+        // from the watcher's DispatcherTimer, i.e. on the UI thread"). No extra wrap needed here
+        // (moved from App.xaml.cs's OnStartup wiring, app review Task 9; the Task 5 marshaling rule
+        // already treats a same-thread re-wrap as redundant).
         App.Hauls.ContractPaired += h => FlashContractIndicator();
         // Keeps the price surfaces current as fetch cycles land. Fired on a worker thread;
         // BeginInvoke (not Invoke) matches the SettingsPage market subscription, since
