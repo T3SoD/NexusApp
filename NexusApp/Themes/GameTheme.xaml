@@ -278,7 +278,6 @@
                                        FontSize="{TemplateBinding FontSize}"
                                        VerticalAlignment="Center"
                                        IsHitTestVisible="False"
-                                       Opacity="0.5"
                                        Visibility="Collapsed"/>
                         </Grid>
                     </Border>
@@ -698,7 +697,7 @@
                         <TextBlock x:Name="placeholder" Text="{TemplateBinding Tag}" Padding="{TemplateBinding Padding}"
                                    Foreground="{DynamicResource FgDimBrush}" FontFamily="{TemplateBinding FontFamily}"
                                    FontSize="{TemplateBinding FontSize}" VerticalAlignment="Center"
-                                   IsHitTestVisible="False" Opacity="0.5" Visibility="Collapsed"/>
+                                   IsHitTestVisible="False" Visibility="Collapsed"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsFocused" Value="True">

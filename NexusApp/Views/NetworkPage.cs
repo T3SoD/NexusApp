@@ -137,6 +137,11 @@ public sealed class NetworkPage : UserControl
             BorderBrush = active ? Br("AccentBrush") : Br("NavBorderBrush"),
             BorderThickness = new Thickness(1),
         };
+        if (!active)
+        {
+            border.MouseEnter += (_, _) => border.Background = Br("HighlightBrush");
+            border.MouseLeave += (_, _) => border.Background = Br("Bg2NavBrush");
+        }
         border.MouseLeftButtonUp += (_, _) =>
         {
             if (_tab == key) return;
@@ -189,6 +194,11 @@ public sealed class NetworkPage : UserControl
             Background = active ? Br("AccentBrush") : Br("Bg2NavBrush"),
             BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = tb,
         };
+        if (!active)
+        {
+            border.MouseEnter += (_, _) => border.Background = Br("HighlightBrush");
+            border.MouseLeave += (_, _) => border.Background = Br("Bg2NavBrush");
+        }
         if (isNew) border.ToolTip = "Create a group like Friends or your org";
         else if (groupId == "__manage__") border.ToolTip = "Delete groups";
         border.MouseLeftButtonUp += (_, _) =>
@@ -229,6 +239,8 @@ public sealed class NetworkPage : UserControl
             Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand, Child = tb,
         };
+        btn.MouseEnter += (_, _) => btn.Background = Br("HighlightBrush");
+        btn.MouseLeave += (_, _) => btn.Background = Br("Bg2NavBrush");
         btn.ToolTip = "Show one person's blueprints (you are excluded)";
         btn.MouseLeftButtonUp += (_, _) => ShowPersonMenu(btn);
         _personPickerHost.Child = btn;

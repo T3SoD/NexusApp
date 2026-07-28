@@ -634,8 +634,8 @@ public sealed class CommandPage : UserControl
         var cards = new UIElement[]
         {
             LastScanCard(),
-            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders),
-            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu),
+            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders, nav: "workorders"),
+            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu, nav: "hauling"),
             Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString("N0"), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
             Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush", covPct, "%"),
         };
@@ -701,7 +701,7 @@ public sealed class CommandPage : UserControl
         return poly;
     }
 
-    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "")
+    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "", string? nav = null)
     {
         var sp = new StackPanel();
         sp.Children.Add(KpiLabel(icon, key));
@@ -731,8 +731,27 @@ public sealed class CommandPage : UserControl
         else footEl.Text = foot;
         sp.Children.Add(footEl);
 
-        return Hud.Panel(sp, chamfer: 12, brackets: false, border: accent ? Br("AccentStrongBrush") : Br("NavBorderBrush"),
+        var panel = Hud.Panel(sp, chamfer: 12, brackets: false, border: accent ? Br("AccentStrongBrush") : Br("NavBorderBrush"),
                          padding: new Thickness(16, 14, 16, 14));
+
+        // Refinery Queue and Cargo In Transit are the only KPI cards with a single obvious drill-in
+        // destination (Network Coverage/Session Blueprints stay static, per review recommendation).
+        // They're panels, not Buttons, so wire the hover/click/log trio by hand instead of getting it
+        // from a Style; the hover tint matches NetworkPage's chip hover (background toward HighlightBrush).
+        if (nav != null)
+        {
+            var frame = (System.Windows.Shapes.Path)panel.Children[0];
+            var restFill = frame.Fill;
+            panel.Cursor = System.Windows.Input.Cursors.Hand;
+            panel.MouseEnter += (_, _) => frame.Fill = Br("HighlightBrush");
+            panel.MouseLeave += (_, _) => frame.Fill = restFill;
+            panel.MouseLeftButtonUp += (_, _) =>
+            {
+                InteractionLog.Nav($"Command dashboard: {key} card", panel);
+                _navigate(nav);
+            };
+        }
+        return panel;
     }
 
     private UIElement KpiLabel(UIElement icon, string text)
@@ -872,6 +891,8 @@ public sealed class CommandPage : UserControl
 
         sp.Children.Add(new TextBlock { Text = single == 0 ? "No single-owner blueprints." : $"{single} blueprint(s) have only one owner.", FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
         var review = new TextBlock { Text = "Review  →", FontFamily = Ui, FontSize = 11.5, Foreground = Br("CyanBrush"), Cursor = System.Windows.Input.Cursors.Hand };
+        review.MouseEnter += (_, _) => review.TextDecorations = TextDecorations.Underline;
+        review.MouseLeave += (_, _) => review.TextDecorations = null;
         review.MouseLeftButtonUp += (_, _) => _navigate("network");
         sp.Children.Add(review);
 
@@ -920,6 +941,8 @@ public sealed class CommandPage : UserControl
         var g = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         g.Children.Add(new TextBlock { Text = title, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush") });
         var a = new TextBlock { Text = link + "  →", FontFamily = Ui, FontSize = 11, Foreground = Br("AccentBrush"), HorizontalAlignment = HorizontalAlignment.Right, Cursor = System.Windows.Input.Cursors.Hand };
+        a.MouseEnter += (_, _) => a.TextDecorations = TextDecorations.Underline;
+        a.MouseLeave += (_, _) => a.TextDecorations = null;
         a.MouseLeftButtonUp += (_, _) => _navigate(nav);
         g.Children.Add(a);
         return g;
