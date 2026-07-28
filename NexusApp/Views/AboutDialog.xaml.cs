@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.10.2  -  Jul 27, 2026",
+        [
+            "Ghost mode - a new Settings toggle collapses the overlay to a slim icon rail; click a glyph to slide that tab out beside it, click it again to collapse back",
+            "Scans that land while the rail is collapsed pulse the SCAN glyph with a count instead of opening anything, and the rail's gear opens quick settings in-game (ghost mode and opacity)",
+            "Executive hangar timer - the contested zone guides and the overlay GUIDES tab show the hangar lights and an opens-in / closes-in countdown, with a re-anchor button for after game patches",
+            "All contested zone guide maps replaced with sharper versions, plus two new guides: PYAM-EXHANG-0-1 and PYAM-SUPVISR-3-4/5",
+            "Settings descriptions now sit flush left instead of drifting toward center",
+        ]),
         ("App  6.10.1  -  Jul 27, 2026",
         [
             "The overlay tabs are redesigned - each tab is now an icon, and the active one expands into an amber pill with its name",
