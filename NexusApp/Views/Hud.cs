@@ -133,6 +133,17 @@ public static partial class Hud
         return host;
     }
 
+    // ── Hover-highlight: swap a color on MouseEnter/MouseLeave ───────────────
+    // Wires the two-statement "highlight color on hover, rest color otherwise" idiom shared by the
+    // app's simplest list/card rows, so the pair lives once instead of being hand-duplicated at every
+    // call site. apply(true) runs on MouseEnter, apply(false) on MouseLeave; the caller keeps full
+    // control over which property changes (Fill, Foreground, Background, ...).
+    public static void Hoverable(FrameworkElement host, Action<bool> apply)
+    {
+        host.MouseEnter += (_, _) => apply(true);
+        host.MouseLeave += (_, _) => apply(false);
+    }
+
     // ── Reticle: a 4-corner amber target frame (brighter/larger brackets) over a Grid ──
     public static void AttachReticle(Grid host, double size = 14)
         => host.Children.Add(BracketLayer(size, Br("AccentBrush"), 2, 2));
@@ -194,7 +205,9 @@ public static partial class Hud
     }
 
     // ── State progress bar: faint track + gradient fill color-coded by state + glow ──
-    public enum BarState { Cyan, Green, Amber, Blue }
+    // Gray is the flat "Complete" treatment: a solid (non-gradient) fill with no glow, matching the
+    // mock's dimmed-out completed-card look (formerly its own hand-built CompleteBar in MainWindow).
+    public enum BarState { Cyan, Green, Amber, Blue, Gray }
 
     public static UIElement StateBar(double frac, BarState state = BarState.Cyan, double height = 6)
     {
@@ -204,16 +217,19 @@ public static partial class Hud
             BarState.Green => Color.FromRgb(0x66, 0xE6, 0xA6),
             BarState.Amber => Color.FromRgb(0xFF, 0xB2, 0x3E),
             BarState.Blue  => Color.FromRgb(0x5F, 0xA8, 0xFF),
+            BarState.Gray  => Color.FromRgb(0x7F, 0x8C, 0x8D),
             _              => Color.FromRgb(0x7F, 0xE9, 0xE0),
         };
         var track = new Border { Height = height, CornerRadius = new CornerRadius(height / 2), Background = new SolidColorBrush(Color.FromArgb(0x1C, c.R, c.G, c.B)) };
-        var fillBrush = new LinearGradientBrush(Color.FromArgb(0xCC, c.R, c.G, c.B), c, 0);
+        Brush fillBrush = state == BarState.Gray ? new SolidColorBrush(c) : new LinearGradientBrush(Color.FromArgb(0xCC, c.R, c.G, c.B), c, 0);
         var fill = new Border
         {
             Height = height, CornerRadius = new CornerRadius(height / 2), Background = fillBrush,
             HorizontalAlignment = HorizontalAlignment.Left,
-            Effect = new DropShadowEffect { Color = c, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 },
         };
+        // Gray (Complete) is deliberately flat: no glow, mirroring the dimmed-out completed-card look.
+        if (state != BarState.Gray)
+            fill.Effect = new DropShadowEffect { Color = c, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55 };
         var grid = new Grid();
         grid.Children.Add(track);
         var host = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -223,6 +239,21 @@ public static partial class Hud
         grid.Children.Add(host);
         return grid;
     }
+
+    // ── Row card: flat (non-chamfered) chrome for the dossier's hand-built price/yield/found-in/
+    // value-summary rows - a Bg2Nav-on-NavBorder rounded rect around whatever content grid the
+    // caller builds, so the six literal chrome values (margin/padding/radius/bg/border/thickness)
+    // live once instead of at four independent call sites.
+    public static Border RowCard(UIElement content, double marginBottom = 4) => new()
+    {
+        Margin = new Thickness(0, 0, 0, marginBottom),
+        Padding = new Thickness(12, 7, 12, 7),
+        CornerRadius = new CornerRadius(6),
+        Background = Br("Bg2NavBrush"),
+        BorderBrush = Br("NavBorderBrush"),
+        BorderThickness = new Thickness(1),
+        Child = content,
+    };
 
     // ── Page header: leading glow dash + eyebrow + display title + subtitle + right action slot ──
     public static UIElement Header(string eyebrow, string title, string subtitle, UIElement? action = null)

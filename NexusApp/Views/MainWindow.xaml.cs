@@ -43,12 +43,25 @@ public partial class MainWindow : Window
         {
             App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
             App.GameLog.HandleDetected += h => { UpdateOperatorIdentity(h); RefreshApprovedTools(); RefreshOwnerTools(); };
+            // Auto-mark import (a single mark, or a bulk pass from Import owned from logs) refreshes
+            // the Blueprint Library's owned count + nav live. Same feed, same UI-thread contract as
+            // StateChanged above - moved here from App.xaml.cs's OnStartup wiring (app review, Task 9:
+            // that composition-root file no longer casts to the concrete view).
+            App.GameLog.Marked += m => RefreshBlueprintOwnership();
+            App.GameLog.BulkOwnershipChanged += () => RefreshBlueprintOwnership();
         }
         UpdateOperatorIdentity();
         RefreshApprovedTools();
         RefreshOwnerTools();
         NexusApp.Services.GatePreview.Changed += () => Dispatcher.Invoke(OnGatePreviewChanged);
         App.ContractBoxVisibilityChanged += v => Dispatcher.Invoke(() => ApplyContractBoxVisible(v));
+        // When an OCR scan first pairs with a log-detected haul, confirm it with a green flash of
+        // the yellow contract box (mirrors the RS scan-success flash). No popup - toasts are removed
+        // app-wide by design. Hauls.ContractPaired is always raised from inside App's own
+        // Dispatcher.Invoke around ApplyContractDetails, so it is already on the UI thread here - no
+        // extra wrap needed (moved from App.xaml.cs's OnStartup wiring, app review Task 9; the Task 5
+        // marshaling rule already treats a same-thread re-wrap as redundant).
+        App.Hauls.ContractPaired += h => FlashContractIndicator();
         // Keeps the price surfaces current as fetch cycles land. Fired on a worker thread;
         // BeginInvoke (not Invoke) matches the SettingsPage market subscription, since
         // Market.Dispose only drains an in-flight cycle for up to 3s.
@@ -81,6 +94,10 @@ public partial class MainWindow : Window
         UpdateScanChip();
         // Flip the SCAN chip to/from the paused (yellow) state the instant foreground relevance changes.
         App.ForegroundRelevanceChanged += _ => Dispatcher.Invoke(UpdateScanChip);
+        // Pause/resume the RS auto-scan itself on the same signal - moved from App.xaml.cs's
+        // OnForegroundRelevanceChanged (app review, Task 9), unwrapped exactly as it ran there
+        // (that handler called SetScanForegroundActive directly, with no Dispatcher marshal).
+        App.ForegroundRelevanceChanged += relevant => SetScanForegroundActive(relevant);
 
         KeyPopup.Closed += (_, __) => _keyPopupClosedAt = DateTime.UtcNow;
 
@@ -1762,15 +1779,6 @@ public partial class MainWindow : Window
         var goldBrush = hit.Stale ? dimBrush : (System.Windows.Media.Brush)FindResource("GoldBrush");
         var cyanBrush = hit.Stale ? dimBrush : (System.Windows.Media.Brush)FindResource("CyanBrush");
 
-        var row = new Border
-        {
-            Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 7, 12, 7),
-            CornerRadius = new CornerRadius(6),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1),
-        };
-
         var g = new Grid();
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });   // terminal name
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });                    // week avg (fits "999,999 aUEC/SCU")
@@ -1829,8 +1837,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(updated, 3);
         g.Children.Add(updated);
 
-        row.Child = g;
-        return row;
+        return Hud.RowCard(g);
     }
 
     private TextBlock RefSectionLabel(string text) => new TextBlock
@@ -1842,7 +1849,6 @@ public partial class MainWindow : Window
 
     private Border YieldRow(NexusApp.Models.RefineryYield y)
     {
-        var row = new Border { Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 7, 12, 7), CornerRadius = new CornerRadius(6), Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1) };
         var rg = new Grid();
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
@@ -1853,8 +1859,7 @@ public partial class MainWindow : Window
         var sign = y.ModifierPct > 0 ? "+" : "";
         var yld = new TextBlock { Text = $"{sign}{y.ModifierPct}%", FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = ModifierBrush(y.ModifierPct), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(yld, 2); rg.Children.Add(yld);
-        row.Child = rg;
-        return row;
+        return Hud.RowCard(rg);
     }
 
     private TextBlock LocRow(string loc) => new TextBlock
@@ -1877,16 +1882,6 @@ public partial class MainWindow : Window
         var host = _vm.AllResources.FirstOrDefault(x => x.Name.Equals(f.Ore, StringComparison.OrdinalIgnoreCase));
         var dotBrush = RarityBrush(host?.Rarity ?? "common");
 
-        var row = new Border
-        {
-            Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 7, 12, 7),
-            CornerRadius = new CornerRadius(6),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = $"Open {f.Ore} in the Codex  ·  carried by {f.Variants} {f.Ore} rock type{(f.Variants == 1 ? "" : "s")}",
-        };
         var g = new Grid();
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // ore name
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });                   // band bar
@@ -1919,7 +1914,9 @@ public partial class MainWindow : Window
         var prob = new TextBlock { Text = probTxt, FontSize = 11, FontFamily = monoFont, Foreground = dim, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(prob, 3); g.Children.Add(prob);
 
-        row.Child = g;
+        var row = Hud.RowCard(g);
+        row.Cursor = System.Windows.Input.Cursors.Hand;
+        row.ToolTip = $"Open {f.Ore} in the Codex  ·  carried by {f.Variants} {f.Ore} rock type{(f.Variants == 1 ? "" : "s")}";
         row.MouseLeftButtonDown += (s, e) => NavigateToResource(f.Ore);
         return row;
     }
@@ -2092,15 +2089,6 @@ public partial class MainWindow : Window
         var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
         var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
 
-        var row = new Border
-        {
-            Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(12, 7, 12, 7),
-            CornerRadius = new CornerRadius(6),
-            Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1),
-        };
-
         var g = new Grid();
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2165,8 +2153,7 @@ public partial class MainWindow : Window
             g.Children.Add(right);
         }
 
-        row.Child = g;
-        return row;
+        return Hud.RowCard(g, marginBottom: 6);
     }
 
     // ToggleLink's chrome (11 bold amber + caret, padding 12,5, radius 8, 1px NavBorder) with the
@@ -3310,20 +3297,10 @@ public partial class MainWindow : Window
         return wo.Status switch
         {
             WorkOrderStatus.ReadyToCollect => Hud.StateBar(1, Hud.BarState.Green, 6),
-            WorkOrderStatus.Complete       => CompleteBar(),
+            WorkOrderStatus.Complete       => Hud.StateBar(1, Hud.BarState.Gray, 6),
             WorkOrderStatus.Mining         => Hud.StateBar(System.Math.Clamp(wo.TimerFraction, 0, 1), Hud.BarState.Blue, 6),
             _                              => Hud.StateBar(System.Math.Clamp(wo.TimerFraction, 0, 1), Hud.BarState.Amber, 6),
         };
-    }
-
-    // Completed order: a flat gray 100% bar with no glow (the mock dims completed cards).
-    private UIElement CompleteBar()
-    {
-        var gray = System.Windows.Media.Color.FromRgb(0x7F, 0x8C, 0x8D);
-        var g = new Grid { Height = 6 };
-        g.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1C, gray.R, gray.G, gray.B)) });
-        g.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = new System.Windows.Media.SolidColorBrush(gray), HorizontalAlignment = HorizontalAlignment.Stretch });
-        return g;
     }
 
     // The mock's dashed "+ Add work order" tile, as the last cell of the gallery (and the empty state).
@@ -3905,8 +3882,7 @@ public partial class MainWindow : Window
         var host = Hud.CardFrame(g, out var frame, out _, chamfer: 11, padding: new Thickness(16, 12, 14, 12));
         host.Margin = new Thickness(0, 0, 0, 8);
         host.Cursor = System.Windows.Input.Cursors.Hand;
-        host.MouseEnter += (_, __) => frame.Fill = highlight;
-        host.MouseLeave += (_, __) => frame.Fill = bg2;
+        Hud.Hoverable(host, on => frame.Fill = on ? highlight : bg2);
         host.MouseLeftButtonDown += (_, __) => EnterCategory(cat);
         return host;
     }
@@ -3934,8 +3910,7 @@ public partial class MainWindow : Window
         var host = Hud.CardFrame(g, out var frame, out _, chamfer: 9, padding: new Thickness(14, 9, 12, 9));
         host.Margin = new Thickness(0, 0, 0, 6);
         host.Cursor = System.Windows.Input.Cursors.Hand;
-        host.MouseEnter += (_, __) => frame.Fill = highlight;
-        host.MouseLeave += (_, __) => frame.Fill = bg2;
+        Hud.Hoverable(host, on => frame.Fill = on ? highlight : bg2);
         host.MouseLeftButtonDown += (_, __) => onClick();
         return host;
     }

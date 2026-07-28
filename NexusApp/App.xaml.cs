@@ -271,10 +271,9 @@ public partial class App : Application
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
             BuildLocalizationMap,
             GameLogFeed);
-        GameLog.Marked += m =>
-            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
-        GameLog.BulkOwnershipChanged += () =>
-            (Current.MainWindow as Views.MainWindow)?.RefreshBlueprintOwnership();
+        // Marked/BulkOwnershipChanged: MainWindow's own ctor subscribes to these (it already owns
+        // the RefreshBlueprintOwnership target), so this composition root only wires services here,
+        // not the concrete view (app review, Task 9).
 
         // Cache the RSI handle auto-detected from Game.log (read-only) so export can pre-fill it.
         GameLog.HandleDetected += handle => Settings.SetDetectedRsiHandle(handle);
@@ -317,11 +316,9 @@ public partial class App : Application
         // ContractScanner runs on a System.Timers.Timer thread; ApplyContractDetails raises Changed which
         // the overlay handles by touching WPF, so marshal onto the UI thread.
         ContractScan.ContractScanned += d => Current.Dispatcher.Invoke(() => Hauls.ApplyContractDetails(d));
-        // When an OCR scan first pairs with a log-detected haul, confirm it with a green flash of
-        // the yellow contract box (mirrors the RS scan-success flash). No popup - toasts are
-        // removed app-wide by design.
-        Hauls.ContractPaired += h => Current.Dispatcher.Invoke(() =>
-            (Current.MainWindow as Views.MainWindow)?.FlashContractIndicator());
+        // ContractPaired (the green flash confirming an OCR pair): MainWindow's own ctor subscribes
+        // to it directly (app review, Task 9) - this composition root stops reaching into the
+        // concrete view.
         if (Settings.Current.AutoScanContracts) ContractScan.Start();
     }
 
@@ -382,7 +379,9 @@ public partial class App : Application
     {
         Logger.Info($"[FG] auto-scans {(relevant ? "resumed" : "paused")} (Nexus/Star Citizen {(relevant ? "in front" : "in background")})");
 
-        (Current.MainWindow as Views.MainWindow)?.SetScanForegroundActive(relevant);   // RS scanner
+        // RS scanner pause/resume: MainWindow's own ctor subscribes to the ForegroundRelevanceChanged
+        // event raised below for this (app review, Task 9) - this composition root stops reaching
+        // into the concrete view.
 
         // Contract scanner: the persisted toggle is the user's intent; the gate only suspends/restores it.
         if (ContractScan is not null)
