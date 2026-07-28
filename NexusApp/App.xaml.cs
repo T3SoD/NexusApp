@@ -81,6 +81,18 @@ public partial class App : Application
         OverlayGhostModeChanged?.Invoke(on, source);
     }
 
+    // Click-through (issue #7 setting): single write path so the Settings page row and the
+    // overlay's quick-settings flyout can never disagree.
+    public static event System.Action<bool>? OverlayPassThroughChanged;
+    public static void SetOverlayPassThrough(bool on, string source)
+    {
+        if (Settings.Current.OverlayPassThroughWhenCursorHidden == on) return;
+        Settings.Current.OverlayPassThroughWhenCursorHidden = on;
+        Settings.Save();
+        Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")} ({source})");
+        OverlayPassThroughChanged?.Invoke(on);
+    }
+
     // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
     // never inside the 24-hour throttle, never in the demo profile. Fire-and-forget is safe:
     // CheckAsync owns all its failure paths and reports through State/Changed.

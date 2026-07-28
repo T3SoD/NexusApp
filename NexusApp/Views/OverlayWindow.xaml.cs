@@ -77,6 +77,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow(MainViewModel vm)
     {
         InitializeComponent();
+        QuickSettingsBtn.Content = BuildHeaderGearGlyph();
         TabStrip.TabSelected += id => SwitchTab(id);
 
         // ── Ghost mode rail (issue #27). Wired unconditionally; the rail is collapsed and
@@ -214,7 +215,12 @@ public partial class OverlayWindow : Window
             bool visible = (bool)e.NewValue;
             Logger.Info($"[WIN] overlay {(visible ? "shown" : "hidden")}");
             if (visible) Shown?.Invoke();
-            else { SaveBounds(); Hidden?.Invoke(); }
+            else
+            {
+                if (_normalFlyoutOpen) CloseNormalFlyout(animate: false);
+                SaveBounds();
+                Hidden?.Invoke();
+            }
         };
 
         // Overlay scale (issue #20): re-apply live when the Settings slider moves. Detached in OnClosed.
@@ -364,16 +370,22 @@ public partial class OverlayWindow : Window
     // every open/close (mirrors PanelSlide, which is XAML-declared because PanelHost always exists;
     // GhostFlyoutHost's content is built lazily, so its transform is created in code alongside it).
     private TranslateTransform? _flyoutSlide;
-    // The flyout's mirrored controls, kept as fields so ToggleGhostFlyout can re-seed them from
+    // The flyout's mirrored controls, kept as fields so ReseedFlyoutControls can re-seed them from
     // shared state on every open, not just the one-time build in EnsureGhostFlyoutBuilt (fix round
-    // 1, Findings 2 and 3): the header OpacitySlider and App.Settings.Current.OverlayGhostMode are
-    // both reachable while the flyout is closed, so a construction-time-only seed goes stale.
+    // 1, Findings 2 and 3): the header OpacitySlider, App.Settings.Current.OverlayGhostMode, the
+    // click-through setting and the ghost rail scale are all reachable while the flyout is closed,
+    // so a construction-time-only seed goes stale.
     private Slider? _flyoutOpacitySlider;
     private TextBlock? _flyoutOpacityPercentLabel;
     private Hud.ToggleSwitch? _flyoutGhostSwitch;
+    private Hud.ToggleSwitch? _flyoutPassSwitch;
+    private Slider? _flyoutRailSlider;
+    private TextBlock? _flyoutRailPercentLabel;
     // Guards the opacity slider's re-seed so setting its Value doesn't echo back into OpacitySlider
     // through ValueChanged (OpacitySlider owns apply + persist; the flyout only mirrors it).
     private bool _seedingFlyoutOpacity;
+    // Same guard, for the rail-size slider mirroring UiScaleService.GhostRailScale.
+    private bool _seedingFlyoutRail;
 
     // Window + monitor rects in physical px. The window rect comes straight from the OS so it is
     // exact at any monitor DPI; the DIP-derived value is only the fallback for the moment before a
@@ -552,6 +564,13 @@ public partial class OverlayWindow : Window
         if (_ghostPanelOpen) LeaveActiveTabForGhost();
         _ghostPanelOpen = false;
         _ghostFlyoutOpen = false;
+        // Normal mode's header gear can leave its own flyout state behind when ghost mode engages
+        // mid-open (Settings toggle, live from anywhere): reset both here so a later normal-mode
+        // QuickSettings_Click never mistakes stale state for an already-open flyout, and the ghost
+        // flyout's own footprint (which never sets Margin) is not left offset by the normal-mode
+        // bottom-right placement (issue #27 review).
+        _normalFlyoutOpen = false;
+        GhostFlyoutHost.Margin = new Thickness(0);
         PanelSlide.BeginAnimation(TranslateTransform.XProperty, null);
         PanelHost.BeginAnimation(UIElement.OpacityProperty, null);
         PanelSlide.X = 0;
@@ -693,9 +712,82 @@ public partial class OverlayWindow : Window
 
     // ── Ghost settings flyout ──────────────────────────────────────────────────────────────
     // The gear's flyout: a small chamfered shell (same gradient/border recipe as the rail's own
-    // shell) holding a Ghost mode toggle and the opacity slider, built once lazily into
-    // GhostFlyoutHost the first time the gear is used. Mutually exclusive with the tab panel, and
-    // shares the panel's own "return to collapsed rail" completion (GhostReturnToCollapsed).
+    // shell) holding a Ghost mode toggle, the click-through toggle, the opacity slider and the rail
+    // size slider, built once lazily into GhostFlyoutHost the first time either gear is used.
+    // Reachable from two gears (issue #27 review): the ghost rail's own gear (ToggleGhostFlyout,
+    // mutually exclusive with the tab panel, shares the panel's "return to collapsed rail"
+    // completion GhostReturnToCollapsed) and the header gear in normal mode (QuickSettings_Click /
+    // CloseNormalFlyout below, tracked by its own _normalFlyoutOpen flag so the two modes never
+    // confuse each other's notion of "the flyout is open").
+    private bool _normalFlyoutOpen;
+
+    private void QuickSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ghostActive) { ToggleGhostFlyout(); return; }   // header visible with a ghost panel open
+        if (_normalFlyoutOpen) { CloseNormalFlyout(animate: true); return; }
+        var gen = ++_ghostMotionGen;
+        _normalFlyoutOpen = true;
+        EnsureGhostFlyoutBuilt();
+        ReseedFlyoutControls();
+        GhostFlyoutHost.HorizontalAlignment = HorizontalAlignment.Right;
+        GhostFlyoutHost.VerticalAlignment = VerticalAlignment.Bottom;
+        GhostFlyoutHost.Margin = new Thickness(0, 0, 14, 14);   // clear of the resize grip
+        GhostFlyoutHost.Visibility = Visibility.Visible;
+        Logger.Info("[WIN] Overlay quick settings open (normal)");
+        AnimateGhostFlyout(gen, opening: true, railRightSide: true);
+    }
+
+    private void CloseNormalFlyout(bool animate)
+    {
+        if (!_normalFlyoutOpen) return;
+        _normalFlyoutOpen = false;
+        Logger.Info("[WIN] Overlay quick settings closed (normal)");
+        var gen = ++_ghostMotionGen;
+        if (animate)
+        {
+            AnimateGhostFlyout(gen, opening: false, railRightSide: true,
+                onDone: () => { GhostFlyoutHost.Visibility = Visibility.Collapsed; GhostFlyoutHost.Margin = new Thickness(0); });
+            return;
+        }
+        _flyoutSlide?.BeginAnimation(TranslateTransform.XProperty, null);
+        GhostFlyoutHost.BeginAnimation(UIElement.OpacityProperty, null);
+        if (_flyoutSlide != null) _flyoutSlide.X = 0;
+        GhostFlyoutHost.Opacity = 1;
+        GhostFlyoutHost.Visibility = Visibility.Collapsed;
+        GhostFlyoutHost.Margin = new Thickness(0);
+    }
+
+    // Re-seeds every mirrored control from shared state. Called on EVERY open (ghost gear and
+    // header gear alike), not just the one-time build in EnsureGhostFlyoutBuilt: the header
+    // OpacitySlider, App.Settings.Current.OverlayGhostMode, the click-through setting and the ghost
+    // rail scale are all reachable while the flyout is closed (settings page, header slider, the
+    // other gear's own flyout), so a construction-time-only seed goes stale (fix round 1, Findings
+    // 2 and 3, extended here to the click-through and rail-size rows). The opacity and rail seeds
+    // are guarded so they do not echo back into OpacitySlider / UiScaleService.SetGhostRailScale
+    // through their own ValueChanged; SetOnSilently already does the toggles' equivalent by design.
+    private void ReseedFlyoutControls()
+    {
+        _seedingFlyoutOpacity = true;
+        try
+        {
+            _flyoutOpacitySlider!.Value = OpacitySlider.Value;
+            _flyoutOpacityPercentLabel!.Text = $"{(int)(OpacitySlider.Value * 100)}%";
+        }
+        finally
+        {
+            _seedingFlyoutOpacity = false;
+        }
+        _flyoutGhostSwitch!.SetOnSilently(App.Settings.Current.OverlayGhostMode);
+        _flyoutPassSwitch!.SetOnSilently(App.Settings.Current.OverlayPassThroughWhenCursorHidden);
+        _seedingFlyoutRail = true;
+        try
+        {
+            _flyoutRailSlider!.Value = UiScaleService.GhostRailScale;
+            _flyoutRailPercentLabel!.Text = $"{Math.Round(UiScaleService.GhostRailScale * 100)}%";
+        }
+        finally { _seedingFlyoutRail = false; }
+    }
+
     private void ToggleGhostFlyout()
     {
         if (_ghostFlyoutOpen) { CloseGhostFlyout(animate: true); return; }
@@ -714,23 +806,13 @@ public partial class OverlayWindow : Window
         // (fix round 1, Finding 1).
         ResetPanelHostToCollapsed();
         EnsureGhostFlyoutBuilt();
-        // Re-seed the mirrored controls from shared state on EVERY open, not just the first build:
-        // the header OpacitySlider and App.Settings.Current.OverlayGhostMode are both reachable
-        // while the flyout is closed (settings page, header slider), so a construction-time-only
-        // seed goes stale (fix round 1, Findings 2 and 3). The opacity seed is guarded so it does
-        // not echo back into OpacitySlider through ValueChanged; SetOnSilently already does the
-        // toggle's equivalent by design.
-        _seedingFlyoutOpacity = true;
-        try
-        {
-            _flyoutOpacitySlider!.Value = OpacitySlider.Value;
-            _flyoutOpacityPercentLabel!.Text = $"{(int)(OpacitySlider.Value * 100)}%";
-        }
-        finally
-        {
-            _seedingFlyoutOpacity = false;
-        }
-        _flyoutGhostSwitch!.SetOnSilently(App.Settings.Current.OverlayGhostMode);
+        ReseedFlyoutControls();
+        // The header gear's normal-mode flyout leaves its own bottom-right placement behind
+        // (Margin, VerticalAlignment); reset both before this footprint takes over, or the ghost
+        // flyout renders offset (issue #27 review). GhostSnapToRailChrome resets the same Margin
+        // on the reverse transition (normal-open -> ghost-enter, via EnterGhost).
+        GhostFlyoutHost.Margin = new Thickness(0);
+        GhostFlyoutHost.VerticalAlignment = VerticalAlignment.Bottom;
         ApplyFlyoutFootprint();
         bool railRightSide = _ghostDir == GhostExpandDirection.Left;
         GhostFlyoutHost.Visibility = Visibility.Visible;
@@ -861,19 +943,37 @@ public partial class OverlayWindow : Window
         _flyoutGhostSwitch = new Hud.ToggleSwitch(true)
         {
             HorizontalAlignment = HorizontalAlignment.Right,
-            // Reachable only while ghost mode is already on, so the sole real transition here is
-            // off. App.SetOverlayGhostMode is the single write path (it already saves + logs);
-            // the ExitGhost it triggers safely tears the open flyout down itself. The initial
-            // `true` here only covers this first build; ToggleGhostFlyout re-seeds from
-            // App.Settings.Current.OverlayGhostMode via SetOnSilently on every subsequent open
+            // Both directions now (issue #27 review): the flyout is reachable from normal mode too
+            // (header gear), so turning it on here is a real transition, not just off.
+            // App.SetOverlayGhostMode is the single write path (it already saves + logs); the
+            // resulting EnterGhost/ExitGhost safely tears the calling flyout down itself either way.
+            // The initial `true` here only covers this first build; ReseedFlyoutControls re-seeds
+            // from App.Settings.Current.OverlayGhostMode via SetOnSilently on every subsequent open
             // (fix round 1, Finding 3), so drift while the flyout is closed does not stick.
-            OnToggled = on => { if (!on) App.SetOverlayGhostMode(false, "flyout"); },
+            OnToggled = on => App.SetOverlayGhostMode(on, "flyout"),
         };
         Grid.SetColumn(ghostLabel, 0);
         Grid.SetColumn(_flyoutGhostSwitch, 1);
         ghostRow.Children.Add(ghostLabel);
         ghostRow.Children.Add(_flyoutGhostSwitch);
         content.Children.Add(ghostRow);
+
+        var passRow = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        passRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        passRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var passLabel = new TextBlock
+        {
+            Text = "Click-through in FPS", FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Hud.Br("FgBrush"),
+        };
+        _flyoutPassSwitch = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            OnToggled = on => App.SetOverlayPassThrough(on, "flyout"),
+        };
+        Grid.SetColumn(passLabel, 0); Grid.SetColumn(_flyoutPassSwitch, 1);
+        passRow.Children.Add(passLabel); passRow.Children.Add(_flyoutPassSwitch);
+        content.Children.Add(passRow);
 
         var opacityRow = new StackPanel
         {
@@ -913,7 +1013,55 @@ public partial class OverlayWindow : Window
         };
         opacityRow.Children.Add(_flyoutOpacitySlider);
         opacityRow.Children.Add(_flyoutOpacityPercentLabel);
+        // Mouse-only nudge, same contract as the header's own OpacityRow_MouseWheel: one wheel
+        // notch = one SmallChange step, applied through the slider's own ValueChanged.
+        opacityRow.PreviewMouseWheel += (_, e) =>
+        {
+            _flyoutOpacitySlider!.Value += e.Delta > 0 ? 0.05 : -0.05;
+            e.Handled = true;
+        };
         content.Children.Add(opacityRow);
+
+        var railRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+        railRow.Children.Add(new TextBlock
+        {
+            Text = "RAIL SIZE", FontSize = 8.5, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Hud.Br("FgDimBrush"),
+        });
+        _flyoutRailSlider = new Slider
+        {
+            Style = (Style)FindResource("HudSlider"),
+            Minimum = UiScaleService.RailMin, Maximum = UiScaleService.Max,
+            SmallChange = UiScaleService.Step, TickFrequency = UiScaleService.Step, IsSnapToTickEnabled = true,
+            Width = 104, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 6, 0),
+        };
+        _flyoutRailPercentLabel = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        _flyoutRailSlider.Value = UiScaleService.GhostRailScale;
+        _flyoutRailPercentLabel.Text = $"{Math.Round(UiScaleService.GhostRailScale * 100)}%";
+        _flyoutRailSlider.ValueChanged += (_, e) =>
+        {
+            if (_seedingFlyoutRail) return;
+            UiScaleService.SetGhostRailScale(e.NewValue);   // live; RailChanged drives the footprint
+            _flyoutRailPercentLabel.Text = $"{Math.Round(e.NewValue * 100)}%";
+        };
+        _flyoutRailSlider.LostMouseCapture += (_, _) =>
+            Logger.Info($"[UI] Ghost rail scale: {Math.Round(UiScaleService.GhostRailScale * 100)}% (flyout)");
+        railRow.Children.Add(_flyoutRailSlider);
+        railRow.Children.Add(_flyoutRailPercentLabel);
+        railRow.PreviewMouseWheel += (_, e) =>
+        {
+            _flyoutRailSlider!.Value += e.Delta > 0 ? 0.05 : -0.05;
+            e.Handled = true;
+        };
+        content.Children.Add(railRow);
 
         var host = new Grid();
         host.Children.Add(shell);
@@ -924,6 +1072,29 @@ public partial class OverlayWindow : Window
         GhostFlyoutHost.Child = host;
         _flyoutSlide = new TranslateTransform();
         GhostFlyoutHost.RenderTransform = _flyoutSlide;
+    }
+
+    // The rail's gear glyph at header size (vector, 1.5 stroke, FgDim like the rail's resting gear).
+    private static Viewbox BuildHeaderGearGlyph()
+    {
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        var gear = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(OverlayGhostRail.GearPathData),
+            StrokeThickness = 1.5,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+        };
+        gear.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "FgDimBrush");
+        canvas.Children.Add(gear);
+        var dot = new System.Windows.Shapes.Path
+        {
+            Data = new EllipseGeometry(new Point(12, 12), 3, 3),
+            StrokeThickness = 1.5,
+        };
+        dot.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "FgDimBrush");
+        canvas.Children.Add(dot);
+        return new Viewbox { Width = 14, Height = 14, Child = canvas };
     }
 
     // OverlayBgTopColor/OverlayBgBotColor are raw Colors, not brushes, so the gradient is
@@ -1344,6 +1515,14 @@ public partial class OverlayWindow : Window
         if (OpacityLabel != null) OpacityLabel.Text = $"{(int)(e.NewValue * 100)}%";
         App.Settings.Current.OverlayOpacity = e.NewValue;
         App.Settings.Save();
+    }
+
+    // Mouse-only nudge: one wheel notch = one SmallChange step. Persistence flows through the
+    // slider's own ValueChanged (the single write path).
+    private void OpacityRow_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        OpacitySlider.Value += e.Delta > 0 ? 0.05 : -0.05;
+        e.Handled = true;
     }
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
@@ -1841,6 +2020,10 @@ public partial class OverlayWindow : Window
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
         HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
         GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
+
+        // A tab switch is a real content change under the header gear's normal-mode flyout too
+        // (issue #27 review): close it rather than let it float over content it no longer relates to.
+        if (_normalFlyoutOpen) CloseNormalFlyout(animate: false);
 
         // First call is the saved-tab restore at construction: place the pill without motion and
         // without logging. Every later call animates; only real user switches log (persist=true

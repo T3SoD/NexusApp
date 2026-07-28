@@ -68,6 +68,10 @@ public sealed class SettingsPage : UserControl
     // changed elsewhere (the ghost rail's own flyout switch) instead of only seeding once here.
     private Hud.ToggleSwitch? _ghostToggle;
 
+    // Overlay click-through toggle (INTERFACE). Held so it can be re-synced when the overlay's
+    // quick-settings flyout flips it elsewhere, the same precedent as _ghostToggle above.
+    private Hud.ToggleSwitch? _passThroughToggle;
+
     public SettingsPage(Action openLogMonitor, Action openAppLogMonitor)
     {
         _openLogMonitor = openLogMonitor;
@@ -813,15 +817,14 @@ public sealed class SettingsPage : UserControl
     {
         var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
 
-        var overlayPassToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
+        _passThroughToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayPassThroughWhenCursorHidden)
         {
-            OnToggled = on =>
-            {
-                App.Settings.Current.OverlayPassThroughWhenCursorHidden = on;
-                App.Settings.Save();
-                Logger.Info($"[UI] Overlay click-through when cursor hidden: {(on ? "on" : "off")}");
-            },
+            OnToggled = on => App.SetOverlayPassThrough(on, "settings"),
         };
+        // The overlay's own quick-settings flyout can flip click-through without touching this
+        // page, the same precedent as the ghost-mode subscription below.
+        App.OverlayPassThroughChanged +=
+            on => Dispatcher.BeginInvoke(() => _passThroughToggle!.SetOnSilently(on));
         _ghostToggle = new Hud.ToggleSwitch(App.Settings.Current.OverlayGhostMode)
         {
             OnToggled = on => App.SetOverlayGhostMode(on, "settings"),
@@ -837,7 +840,7 @@ public sealed class SettingsPage : UserControl
                 "While the game hides the cursor (on foot in FPS, or piloting), the overlay stays visible " +
                 "but lets the mouse pass straight through, so a stray click can't land on it or pull focus " +
                 "from the game. It becomes clickable again the moment the game shows the cursor.",
-                overlayPassToggle, last: false),
+                _passThroughToggle, last: false),
             SettingRow("Ghost mode",
                 "Collapses the overlay to a slim icon rail with a minimal in-game footprint. " +
                 "Click a rail glyph to slide that tab out beside it; click it again to collapse. " +
@@ -850,7 +853,15 @@ public sealed class SettingsPage : UserControl
                 App.Settings.Current.OverlayUiScale,
                 onTick: v => UiScaleService.SetOverlayScale(v),
                 onCommit: v => Logger.Info($"[UI] Overlay scale: {Math.Round(UiScaleService.ClampScale(v) * 100)}%"),
-                last: true)));
+                last: false),
+            ScaleRow("Ghost rail scale",
+                "Size ghost mode's icon rail and its quick-settings flyout independently of the " +
+                "overlay panels. Below 100% the rail shrinks past its default for a minimal " +
+                "in-game footprint.",
+                App.Settings.Current.OverlayGhostRailScale,
+                onTick: v => UiScaleService.SetGhostRailScale(v),
+                onCommit: v => Logger.Info($"[UI] Ghost rail scale: {Math.Round(UiScaleService.ClampRailScale(v) * 100)}%"),
+                last: true, min: UiScaleService.RailMin, max: UiScaleService.Max)));
 
         var reduceToggle = new Hud.ToggleSwitch(App.Settings.Current.ReduceAnimations)
         {
@@ -1111,14 +1122,15 @@ public sealed class SettingsPage : UserControl
     // and break the gesture (the value jumps, and the window can jolt as its MinWidth grows).
     // Committing on mouse release keeps the drag stable and still applies the final value.
     private static FrameworkElement ScaleRow(
-        string title, string desc, double initial, Action<double>? onTick, Action<double> onCommit, bool last = false)
+        string title, string desc, double initial, Action<double>? onTick, Action<double> onCommit,
+        bool last = false, double min = UiScaleService.Min, double max = UiScaleService.Max)
     {
         var label = new TextBlock
         {
             // Clamp the readout the same way the slider thumb (below) and the applied window
             // scale do, so an out-of-range persisted value shows a label that agrees with the
             // actual scale from construction instead of only after the first drag.
-            Text = $"{Math.Round(UiScaleService.ClampScale(initial) * 100)}%",
+            Text = $"{Math.Round(Math.Clamp(double.IsNaN(initial) || initial <= 0 ? 1.0 : initial, min, max) * 100)}%",
             FontFamily = Hud.Font("MonoFont"), FontSize = 13,
             Foreground = Hud.Br("FgBrush"),
             VerticalAlignment = VerticalAlignment.Center,
@@ -1126,13 +1138,13 @@ public sealed class SettingsPage : UserControl
         };
         var slider = new Slider
         {
-            Minimum = UiScaleService.Min, Maximum = UiScaleService.Max,
+            Minimum = min, Maximum = max,
             IsSnapToTickEnabled = true, TickFrequency = UiScaleService.Step,
             SmallChange = UiScaleService.Step, LargeChange = UiScaleService.Step,
             Width = 160, VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.FindResource("HudSlider"),
         };
-        slider.Value = UiScaleService.ClampScale(initial);
+        slider.Value = Math.Clamp(double.IsNaN(initial) || initial <= 0 ? 1.0 : initial, min, max);
         slider.ValueChanged += (_, e) =>
         {
             label.Text = $"{Math.Round(e.NewValue * 100)}%";

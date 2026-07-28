@@ -56,6 +56,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0"
                             HorizontalAlignment="Stretch" Background="Transparent"
@@ -71,7 +72,8 @@
                                Margin="7,3,0,0"/>
                 </StackPanel>
                 <!-- Window opacity - shared across every tab -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0"
+                            PreviewMouseWheel="OpacityRow_MouseWheel">
                     <!-- ValueChanged is wired in code AFTER the ctor restores the saved opacity:
                          a XAML-wired handler fires during InitializeComponent (Minimum coerces the
                          default Value 0 up to 0.2) and would persist that transient over the saved
@@ -85,11 +87,16 @@
                                FontSize="9" Foreground="{DynamicResource FgDimBrush}"
                                VerticalAlignment="Center" Width="30"/>
                 </StackPanel>
-                <Button Grid.Column="2" Content="✕" Style="{StaticResource NexusButton}"
+                <!-- Quick settings: opens the same GhostFlyoutHost the ghost rail's gear uses, so
+                     click-through and rail size are reachable in normal mode too (issue #27 review). -->
+                <Button x:Name="QuickSettingsBtn" Grid.Column="2" Style="{StaticResource NexusButton}"
+                        Width="26" Height="26" Padding="0" VerticalAlignment="Center"
+                        Margin="0,0,4,0" Click="QuickSettings_Click"/>
+                <Button Grid.Column="3" Content="✕" Style="{StaticResource NexusButton}"
                         Width="26" Height="26" Padding="0" VerticalAlignment="Center"
                         Margin="0,0,8,0" Click="Close_Click"/>
                 <!-- accent hairline under header -->
-                <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1" Margin="12,0,12,0">
+                <Border Grid.ColumnSpan="4" VerticalAlignment="Bottom" Height="1" Margin="12,0,12,0">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                             <GradientStop Color="{DynamicResource AccentClearColor}" Offset="0"/>
