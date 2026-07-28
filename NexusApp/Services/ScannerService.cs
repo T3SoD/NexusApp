@@ -111,13 +111,13 @@ public class ScannerService : IDisposable
             App.Current.Dispatcher.Invoke(() => ScanTick?.Invoke());
         }
 
+        // Re-arm the SAME Timer instance created in Start() (AutoReset=false means Elapsed already
+        // stopped it) instead of constructing a new one every ~150ms - the prior recreate-per-tick
+        // pattern discarded a live Timer (and its native timer-queue registration) on every cycle
+        // without ever Dispose()'ing it. Null-conditional guards a Stop() that lands between the
+        // busy work above and this re-arm (Stop() nulls _timer after disposing it).
         if (_running)
-        {
-            _timer = new System.Timers.Timer(150);
-            _timer.Elapsed += OnTick;
-            _timer.AutoReset = false;
-            _timer.Start();
-        }
+            _timer?.Start();
     }
 
     private void EmitPhase(ScanPhase phase)

@@ -51,22 +51,19 @@ public class SettingsService
 
     private AppSettings Load()
     {
-        AppSettings settings;
-        try
+        if (!File.Exists(_path))
         {
-            if (File.Exists(_path))
-            {
-                var json = File.ReadAllText(_path);
-                settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-            }
-            else
-            {
-                settings = new AppSettings();
-                settings.SettingsSchemaVersion = 1;
-                return settings;
-            }
+            var fresh = new AppSettings();
+            fresh.SettingsSchemaVersion = 1;
+            return fresh;
         }
-        catch (Exception ex) { Logger.Error($"Failed to load settings from {_path}; using defaults", ex); return new AppSettings(); }
+
+        var settings = TryReadSettings(_path);
+        if (settings == null)
+        {
+            Logger.Error($"[WIN] settings.json failed to load ({_path}); quarantining and attempting backup recovery");
+            settings = RecoverFromCorrupt();
+        }
 
         // Schema migrations - bump SettingsSchemaVersion after each one
         var migrated = false;
@@ -114,17 +111,58 @@ public class SettingsService
         return settings;
     }
 
+    // Deserialize AppSettings from <path>. Returns null (never throws) on a missing/corrupt file
+    // so Load can tell "no file" apart from "unreadable file" and only quarantine+recover the latter.
+    private static AppSettings? TryReadSettings(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path));
+        }
+        catch (Exception ex) { Logger.Error($"Failed to read {Path.GetFileName(path)}", ex); return null; }
+    }
+
+    // Corrupt-file recovery ladder for settings.json (mirrors Services/Cargo/JsonFile's
+    // quarantine-and-.bak pattern): set the unreadable primary aside for diagnosis, try the
+    // last-known-good backup Save() kept, and only then fall back to fresh defaults. Every step
+    // is logged under [WIN] so the App Log Monitor shows exactly how far recovery got.
+    private AppSettings RecoverFromCorrupt()
+    {
+        try
+        {
+            var quarantine = $"{_path}.corrupt-{DateTime.Now:yyyyMMdd-HHmmss}";
+            File.Move(_path, quarantine);
+            Logger.Info($"[WIN] corrupt settings.json set aside as {Path.GetFileName(quarantine)}");
+        }
+        catch (Exception ex) { Logger.Error($"[WIN] failed to set aside corrupt settings.json at {_path}", ex); }
+
+        var fromBackup = TryReadSettings(_path + ".bak");
+        if (fromBackup != null)
+        {
+            Logger.Info("[WIN] settings recovered from settings.json.bak");
+            return fromBackup;
+        }
+
+        Logger.Info("[WIN] no usable settings backup found; falling back to defaults");
+        return new AppSettings();
+    }
+
     private void Save(AppSettings settings)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            // Write-temp-then-rename: a crash mid-write, or the portable self-swap's freshly
+            // Write-temp-then-replace: a crash mid-write, or the portable self-swap's freshly
             // spawned instance reading while the dying one writes, must never observe a
-            // truncated settings.json. The rename is atomic on the same volume.
+            // truncated settings.json. File.Replace is atomic on the same volume and keeps the
+            // previous good copy as settings.json.bak, so a corrupt write is always recoverable.
             var tmp = _path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(settings, _opts));
-            File.Move(tmp, _path, overwrite: true);
+            if (File.Exists(_path))
+                File.Replace(tmp, _path, _path + ".bak");
+            else
+                File.Move(tmp, _path);
         }
         catch (Exception ex) { Logger.Error($"Failed to save settings to {_path}", ex); }
     }

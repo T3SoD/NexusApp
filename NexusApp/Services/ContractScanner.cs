@@ -83,16 +83,15 @@ public sealed class ContractScanner : IDisposable
                 }
             }
         }
+        catch { }   // mirrors ScannerService.OnTick's catch shape - a transient OCR/parse failure
+                    // on this background poller degrades one tick instead of crashing the app.
         finally
         {
             _busy = false;
+            // Re-arm the SAME Timer instance created in Start() instead of constructing a new one
+            // every ~1000ms (see ScannerService.OnTick for the identical fix and rationale).
             if (_running)
-            {
-                _timer = new System.Timers.Timer(1000);
-                _timer.Elapsed += OnTick;
-                _timer.AutoReset = false;
-                _timer.Start();
-            }
+                _timer?.Start();
         }
     }
 
