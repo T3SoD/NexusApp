@@ -8,16 +8,19 @@ using NexusApp.Services;
 namespace NexusApp.Views;
 
 /// <summary>
-/// Summary shown after an "Import from SCMDB" run (issue #3). Ownership is already applied by the
-/// time this opens (ScmdbImportFlow applies before showing the summary, unlike the Game.log
-/// import's preview/confirm dialog - safe because the import is ADD-ONLY, so there is nothing to
-/// confirm away). Reports all five counts: imported, already owned, unrecognized (with the raw
-/// names listed), skipped-not-completed, and malformed entries, plus the mission-data and
-/// newer-version notices. Same visual chrome as ImportResultDialog (that class stays untouched).
+/// Preview/confirm gate shown before an "Import from SCMDB" run applies anything (issue #3).
+/// Computed entirely from the plan BEFORE any ownership write - Cancel (or the zero-toImport
+/// "Close") leaves Settings untouched; the accent button confirms and ScmdbImportFlow applies the
+/// ToImport bucket only after this returns true. Reports all five counts: would-import, already
+/// owned, unrecognized (with the raw names listed), skipped-not-completed, and malformed entries,
+/// plus the mission-data and newer-version notices. Same visual chrome AND the same Cancel/"Mark N
+/// owned" footer convention as ImportResultDialog (that class stays untouched). AMENDMENT 2:
+/// this was briefly a post-apply summary (immediate-apply ruling); the owner reversed that, so this is
+/// now a real gate, matching the Game.log import pattern.
 /// </summary>
 public sealed class ScmdbImportResultDialog : Window
 {
-    public ScmdbImportResultDialog(int imported, int alreadyOwned, IReadOnlyList<string> unrecognized,
+    public ScmdbImportResultDialog(int toImportCount, int alreadyOwned, IReadOnlyList<string> unrecognized,
         int skippedNotCompleted, int malformedEntries, int missionCount, bool newerVersion)
     {
         Title = "Import from SCMDB";
@@ -25,7 +28,9 @@ public sealed class ScmdbImportResultDialog : Window
         Background = (Brush)Application.Current.FindResource("BgBrush");
         Foreground = (Brush)Application.Current.FindResource("FgBrush");
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { DialogResult = false; } };
+
+        bool anyToImport = toImportCount > 0;
 
         var outer = new Grid();
         outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -35,8 +40,8 @@ public sealed class ScmdbImportResultDialog : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = imported > 0
-                ? $"Marked {imported} blueprint(s) owned from your SCMDB export."
+            Text = anyToImport
+                ? $"Found {toImportCount} blueprint(s) to mark owned from your SCMDB export."
                 : "No new blueprints to mark owned from this export.",
             FontSize = 14, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.FindResource("FgBrush"),
@@ -77,20 +82,34 @@ public sealed class ScmdbImportResultDialog : Window
         };
         Grid.SetRow(footer, 1);
         var footRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var closeBtn = new Button
+        if (anyToImport)
         {
-            Content = "Close",
-            Style = (Style)Application.Current.FindResource("NexusButton"),
-            Padding = new Thickness(16, 7, 16, 7),
-        };
-        closeBtn.Click += (_, _) => Close();
-        footRow.Children.Add(closeBtn);
+            footRow.Children.Add(MakeButton("Cancel", (_, _) => { DialogResult = false; }));
+            footRow.Children.Add(MakeButton($"Mark {toImportCount} owned", (_, _) => { DialogResult = true; }, accent: true, leftMargin: 8));
+        }
+        else
+        {
+            footRow.Children.Add(MakeButton("Close", (_, _) => { DialogResult = false; }));
+        }
         footer.Child = footRow;
         outer.Children.Add(footer);
 
         Content = outer;
         DialogMotion.Attach(this);
         UiScaleService.ApplyToDialog(this, outer);   // App scale (issue #20)
+    }
+
+    private Button MakeButton(string text, RoutedEventHandler onClick, bool accent = false, double leftMargin = 0)
+    {
+        var b = new Button
+        {
+            Content = text,
+            Style = (Style)Application.Current.FindResource(accent ? "AccentButton" : "NexusButton"),
+            Padding = new Thickness(16, 7, 16, 7),
+            Margin = new Thickness(leftMargin, 0, 0, 0),
+        };
+        b.Click += onClick;
+        return b;
     }
 
     private static TextBlock Line(string text) => new()
