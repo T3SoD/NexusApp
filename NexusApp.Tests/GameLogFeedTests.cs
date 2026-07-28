@@ -130,6 +130,22 @@ public class GameLogFeedTests
     }
 
     [Fact]
+    public void LogReset_ClearsTheReplayTargetLatch()
+    {
+        // A new SC session ends any routing: its lines are live and belong to every consumer.
+        var fan = new GameLogFanOut();
+        var hauls = new List<string>();
+        var sessionSub = fan.Add(_ => { }, includeReplay: true);
+        fan.Add(e => hauls.Add(e.Raw), includeReplay: true);
+        fan.Started("Game.log", fromBeginning: true, target: sessionSub);
+
+        fan.LogReset();
+        fan.Line(Line("history", replay: true));
+
+        Assert.Equal(new[] { "history" }, hauls);
+    }
+
+    [Fact]
     public void AnyWantsReplay_IsFalseWithoutAReplayConsumer()
     {
         var fan = new GameLogFanOut();

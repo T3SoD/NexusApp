@@ -35,7 +35,8 @@ public sealed class LogMonitorWindow : Window
     private readonly CheckBox _autoMark;
     private readonly TextBlock _markCountLabel;
     private bool _blueprintsOnly;
-    private bool _syncing;   // guards programmatic control updates from re-entering the session
+    private bool _syncing;      // guards programmatic control updates from re-entering the session
+    private bool _pathEdited;   // the box holds a path the user set but hasn't started yet
 
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
@@ -76,6 +77,10 @@ public sealed class LogMonitorWindow : Window
             Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(6, 5, 6, 5),
             ToolTip = "Path to Star Citizen's Game.log (LIVE / PTU / EPTU)",
         };
+        // Wired AFTER the seed above so the initial value never counts as a user edit. Any later
+        // change the app didn't make itself (typing, or Browse setting Text) marks the box dirty,
+        // which is what keeps an unsubmitted path from being reverted by a state resync.
+        _pathBox.TextChanged += (_, _) => { if (!_syncing) _pathEdited = true; };
         Grid.SetColumn(_pathBox, 0); pathRow.Children.Add(_pathBox);
         var browse = MakeButton("Browse…"); browse.Click += (_, _) => Browse();
         Grid.SetColumn(browse, 1); pathRow.Children.Add(browse);
@@ -239,8 +244,10 @@ public sealed class LogMonitorWindow : Window
         _autoMark.IsChecked = App.GameLog.AutoMark;
         // Resync the path too: the tail can be re-pointed from Settings while this window is open,
         // and a stale box would silently re-point the shared tail (and persist the old path) on the
-        // next Start. Never while the user is typing in it.
-        if (!_pathBox.IsKeyboardFocusWithin) _pathBox.Text = CurrentPathText();
+        // next Start. Never over a path the user set but hasn't started yet - StateChanged also
+        // fires on every SC open/close probe and on the auto-track toggle, which would otherwise
+        // revert a typed path the moment focus left the box.
+        if (!_pathEdited && !_pathBox.IsKeyboardFocusWithin) _pathBox.Text = CurrentPathText();
         _syncing = false;
     }
 
@@ -300,8 +307,12 @@ public sealed class LogMonitorWindow : Window
         // re-read is routed to this session ALONE, so the trackers are not made to re-process a
         // log they have already read (they stay on the live stream throughout).
         if (App.GameLog.IsRunning) App.GameLog.Stop();
-        else App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true,
-                               replayToThisSessionOnly: true);
+        else
+        {
+            App.GameLog.Start(_pathBox.Text.Trim(), _fromStart.IsChecked == true,
+                              replayToThisSessionOnly: true);
+            _pathEdited = false;   // submitted: the box may follow the tail again
+        }
     }
 
     private void Browse()
