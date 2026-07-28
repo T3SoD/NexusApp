@@ -344,6 +344,16 @@ public partial class OverlayWindow : Window
     // every open/close (mirrors PanelSlide, which is XAML-declared because PanelHost always exists;
     // GhostFlyoutHost's content is built lazily, so its transform is created in code alongside it).
     private TranslateTransform? _flyoutSlide;
+    // The flyout's mirrored controls, kept as fields so ToggleGhostFlyout can re-seed them from
+    // shared state on every open, not just the one-time build in EnsureGhostFlyoutBuilt (fix round
+    // 1, Findings 2 and 3): the header OpacitySlider and App.Settings.Current.OverlayGhostMode are
+    // both reachable while the flyout is closed, so a construction-time-only seed goes stale.
+    private Slider? _flyoutOpacitySlider;
+    private TextBlock? _flyoutOpacityPercentLabel;
+    private Hud.ToggleSwitch? _flyoutGhostSwitch;
+    // Guards the opacity slider's re-seed so setting its Value doesn't echo back into OpacitySlider
+    // through ValueChanged (OpacitySlider owns apply + persist; the flyout only mirrors it).
+    private bool _seedingFlyoutOpacity;
 
     // Window + monitor rects in physical px. The window rect comes straight from the OS so it is
     // exact at any monitor DPI; the DIP-derived value is only the fallback for the moment before a
@@ -467,6 +477,22 @@ public partial class OverlayWindow : Window
         _guidesHangarLine?.Stop();
         _ordersTicker?.Stop();
         _ordersTicker = null;
+    }
+
+    // Strips any in-flight panel slide/fade and resets PanelHost to its collapsed-chrome resting
+    // state: hidden, no margin, full opacity. Mirrors the reset GhostReturnToCollapsed/
+    // GhostSnapToRailChrome already do inline; pulled out so ToggleGhostFlyout can reach the same
+    // reset when it orphans an in-flight panel collapse whose own Completed handler was the only
+    // other path here (fix round 1, Finding 1). Window placement and SaveBounds stay each caller's
+    // own concern.
+    private void ResetPanelHostToCollapsed()
+    {
+        PanelSlide.BeginAnimation(TranslateTransform.XProperty, null);
+        PanelHost.BeginAnimation(UIElement.OpacityProperty, null);
+        PanelSlide.X = 0;
+        PanelHost.Opacity = 1;
+        PanelHost.Visibility = Visibility.Collapsed;
+        PanelHost.Margin = new Thickness(0);
     }
 
     // Snap the ghost chrome back to rail-only with no motion and no window move: drops any
@@ -621,7 +647,25 @@ public partial class OverlayWindow : Window
         // slide a fresh token of its own.
         var gen = ++_ghostMotionGen;
         _ghostFlyoutOpen = true;
+        // Orphaning CollapseGhostPanel's completion above also orphans its ONLY path back to a
+        // clean PanelHost (GhostReturnToCollapsed, which only ever runs from AnimateGhostPanel's
+        // Completed). Without this, a gear click during an in-flight collapse leaves PanelHost
+        // Visible with a stale margin and mid-fade opacity for as long as the flyout stays open.
+        // A no-op when no collapse was in flight, since these are just resting-state assignments
+        // (fix round 1, Finding 1).
+        ResetPanelHostToCollapsed();
         EnsureGhostFlyoutBuilt();
+        // Re-seed the mirrored controls from shared state on EVERY open, not just the first build:
+        // the header OpacitySlider and App.Settings.Current.OverlayGhostMode are both reachable
+        // while the flyout is closed (settings page, header slider), so a construction-time-only
+        // seed goes stale (fix round 1, Findings 2 and 3). The opacity seed is guarded so it does
+        // not echo back into OpacitySlider through ValueChanged; SetOnSilently already does the
+        // toggle's equivalent by design.
+        _seedingFlyoutOpacity = true;
+        _flyoutOpacitySlider!.Value = OpacitySlider.Value;
+        _flyoutOpacityPercentLabel!.Text = $"{(int)(OpacitySlider.Value * 100)}%";
+        _seedingFlyoutOpacity = false;
+        _flyoutGhostSwitch!.SetOnSilently(App.Settings.Current.OverlayGhostMode);
         var (win, mon, dpi) = GhostContext();
         var k = _uiScale;
         // Same windowIsRailOnly test ExpandGhostPanel uses: CollapseGhostPanel above only resizes
@@ -731,18 +775,21 @@ public partial class OverlayWindow : Window
             Text = "Ghost mode", FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center,
             Foreground = Hud.Br("FgBrush"),
         };
-        var ghostSwitch = new Hud.ToggleSwitch(true)
+        _flyoutGhostSwitch = new Hud.ToggleSwitch(true)
         {
             HorizontalAlignment = HorizontalAlignment.Right,
             // Reachable only while ghost mode is already on, so the sole real transition here is
             // off. App.SetOverlayGhostMode is the single write path (it already saves + logs);
-            // the ExitGhost it triggers safely tears the open flyout down itself.
+            // the ExitGhost it triggers safely tears the open flyout down itself. The initial
+            // `true` here only covers this first build; ToggleGhostFlyout re-seeds from
+            // App.Settings.Current.OverlayGhostMode via SetOnSilently on every subsequent open
+            // (fix round 1, Finding 3), so drift while the flyout is closed does not stick.
             OnToggled = on => { if (!on) App.SetOverlayGhostMode(false, "flyout"); },
         };
         Grid.SetColumn(ghostLabel, 0);
-        Grid.SetColumn(ghostSwitch, 1);
+        Grid.SetColumn(_flyoutGhostSwitch, 1);
         ghostRow.Children.Add(ghostLabel);
-        ghostRow.Children.Add(ghostSwitch);
+        ghostRow.Children.Add(_flyoutGhostSwitch);
         content.Children.Add(ghostRow);
 
         var opacityRow = new StackPanel
@@ -755,31 +802,34 @@ public partial class OverlayWindow : Window
             Text = "OPACITY", FontSize = 8.5, VerticalAlignment = VerticalAlignment.Center,
             Foreground = Hud.Br("FgDimBrush"),
         });
-        var flyoutSlider = new Slider
+        _flyoutOpacitySlider = new Slider
         {
             Style = (Style)FindResource("HudSlider"),
             Minimum = 0.2, Maximum = 1.0, SmallChange = 0.05, Width = 120,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 6, 0),
         };
-        var percentLabel = new TextBlock
+        _flyoutOpacityPercentLabel = new TextBlock
         {
             FontFamily = Hud.Font("MonoFont"), FontSize = 9,
             Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
         };
         // Seed BEFORE attaching ValueChanged - the same construction-order lesson as the header
         // opacity slider (:100-107): wiring the handler first would let construction-time coercion
-        // fire and stomp the seeded value.
-        flyoutSlider.Value = OpacitySlider.Value;
-        percentLabel.Text = $"{(int)(OpacitySlider.Value * 100)}%";
-        flyoutSlider.ValueChanged += (_, e) =>
+        // fire and stomp the seeded value. This only covers the first build; ToggleGhostFlyout
+        // re-seeds both on every subsequent open (fix round 1, Finding 2), guarded by
+        // _seedingFlyoutOpacity so that later re-seed does not echo into OpacitySlider below.
+        _flyoutOpacitySlider.Value = OpacitySlider.Value;
+        _flyoutOpacityPercentLabel.Text = $"{(int)(OpacitySlider.Value * 100)}%";
+        _flyoutOpacitySlider.ValueChanged += (_, e) =>
         {
+            if (_seedingFlyoutOpacity) return;         // re-seed from OpacitySlider, not a user edit
             // Single write path: the header's own OpacitySlider_ValueChanged owns apply + persist
             // + its own label. This only mirrors the percent readout onto the flyout.
             OpacitySlider.Value = e.NewValue;
-            percentLabel.Text = $"{(int)(e.NewValue * 100)}%";
+            _flyoutOpacityPercentLabel.Text = $"{(int)(e.NewValue * 100)}%";
         };
-        opacityRow.Children.Add(flyoutSlider);
-        opacityRow.Children.Add(percentLabel);
+        opacityRow.Children.Add(_flyoutOpacitySlider);
+        opacityRow.Children.Add(_flyoutOpacityPercentLabel);
         content.Children.Add(opacityRow);
 
         var host = new Grid();
