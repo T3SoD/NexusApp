@@ -38,6 +38,11 @@ public sealed class LogMonitorWindow : Window
     private bool _syncing;      // guards programmatic control updates from re-entering the session
     private bool _pathEdited;   // the box holds a path the user set but hasn't started yet
 
+    // Filter debounce (perf): RebuildView() walks up to MaxEntries rows and allocates a TextBlock per
+    // surviving line, so rebuilding on every keystroke is costly. Mirrors MainWindow's reference-catalog
+    // filter debounce (_refFilterDebounce) - restart a short timer on each keystroke, rebuild once at rest.
+    private System.Windows.Threading.DispatcherTimer? _filterDebounce;
+
     private static Brush Res(string key) => (Brush)System.Windows.Application.Current.FindResource(key);
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Lucida Console, monospace");
 
@@ -121,7 +126,7 @@ public sealed class LogMonitorWindow : Window
         var ctl = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         ctl.Children.Add(new TextBlock { Text = "Filter:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Foreground = Res("FgBrush") });
         _filterBox = new TextBox { Width = 240, Padding = new Thickness(6, 5, 6, 5), ToolTip = "Show only lines containing this text" };
-        _filterBox.TextChanged += (_, _) => RebuildView();
+        _filterBox.TextChanged += (_, _) => DebounceFilter();
         ctl.Children.Add(_filterBox);
         _bpBtn = MakeButton("Blueprints only"); _bpBtn.Margin = new Thickness(8, 0, 0, 0);
         _bpBtn.Click += (_, _) => { _blueprintsOnly = !_blueprintsOnly; _bpBtn.Background = _blueprintsOnly ? Res("AccentBrush") : Res("Bg2NavBrush"); RebuildView(); };
@@ -195,6 +200,8 @@ public sealed class LogMonitorWindow : Window
         App.GameLog.SessionReset += OnSessionReset;
         Closed += (_, _) =>
         {
+            _filterDebounce?.Stop();   // this window can be reopened (ShowLogMonitor builds a fresh instance) -
+                                        // stop so a pending tick never fires against a closed window
             PersistGlobalIniPath();   // catch a path typed but never imported
             App.GameLog.LineAppended -= OnLine;
             App.GameLog.StatusChanged -= OnStatus;
@@ -282,6 +289,19 @@ public sealed class LogMonitorWindow : Window
         foreach (var e in _all) if (PassesFilter(e)) AddRow(e);
         if (_autoScroll.IsChecked == true && _list.Items.Count > 0)
             _list.ScrollIntoView(_list.Items[_list.Items.Count - 1]);
+    }
+
+    // Restart-on-keystroke debounce (220ms, same idiom as MainWindow's _refFilterDebounce): rebuilding
+    // the up-to-MaxEntries list on every character typed is wasted work while the user is still typing.
+    private void DebounceFilter()
+    {
+        if (_filterDebounce == null)
+        {
+            _filterDebounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+            _filterDebounce.Tick += (_, __) => { _filterDebounce!.Stop(); RebuildView(); };
+        }
+        _filterDebounce.Stop();
+        _filterDebounce.Start();
     }
 
     private static Brush ColorFor(LogCategory c) => c switch

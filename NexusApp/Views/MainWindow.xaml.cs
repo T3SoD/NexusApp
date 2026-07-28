@@ -131,7 +131,11 @@ public partial class MainWindow : Window
 
         RestoreScanRegion();
 
-        _vm.WorkOrders.CollectionChanged += (s, e) => RebuildWorkOrderList();
+        // Coalesced: LoadWorkOrders (SaveWorkOrder's reseed) clears + re-adds every order, firing one
+        // Reset and N Add notifications for N orders - scheduling the rebuild itself (same
+        // BeginInvoke+queued-flag idiom as ScheduleWorkOrderAnimations below) collapses that storm to a
+        // single rebuild instead of running the full gallery pass N+1 times per save.
+        _vm.WorkOrders.CollectionChanged += (s, e) => ScheduleWorkOrderRebuild();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
         Loaded += (s, e) => App.MaybeStartUpdateCheck();
@@ -2726,6 +2730,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _woFlashedReady = new();      // ids whose ready-flash has already played (once per order)
     private readonly Dictionary<string, WoCardParts> _woCardParts = new();   // final card refs by id, rebuilt each pass
     private bool _woAnimQueued;                                    // coalesces the deferred animation pass across the storm
+    private bool _woRebuildQueued;                                 // coalesces RebuildWorkOrderList itself across the same storm
 
     // Refined sell line (Task 12): ids whose "+N more" expander is open, so an incidental rebuild
     // (e.g. an hourly market refresh via OnMarketDataChanged) does not collapse it - same survives-
@@ -3183,6 +3188,21 @@ public partial class MainWindow : Window
         var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, dur) { EasingFunction = Motion.Reveal };
         rows.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
         rows.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    // Coalesced rebuild trigger for the WorkOrders.CollectionChanged storm (a single save clears + re-adds
+    // every order, firing one rebuild per notification). Mirrors ScheduleWorkOrderAnimations immediately
+    // below: guard flag + Dispatcher.BeginInvoke at Loaded priority collapses any number of synchronous
+    // notifications raised in the same dispatcher frame into exactly one RebuildWorkOrderList call.
+    private void ScheduleWorkOrderRebuild()
+    {
+        if (_woRebuildQueued) return;
+        _woRebuildQueued = true;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _woRebuildQueued = false;
+            RebuildWorkOrderList();
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     // Coalesced deferred animation pass. LoadWorkOrders clears + re-adds every order, so a single save fires many
