@@ -14,13 +14,9 @@
         ResizeMode="CanResize">
 
     <Window.Resources>
-        <conv:TierColorConverter             x:Key="TierColor"/>
         <conv:RarityColorConverter           x:Key="RarityColor"/>
-        <conv:SystemColorConverter           x:Key="SystemColor"/>
-        <conv:RefineryModifierColorConverter x:Key="ModColor"/>
         <conv:BoolToVisibilityConverter      x:Key="BoolVis"/>
         <conv:HexColorConverter              x:Key="HexColor"/>
-        <conv:WorkOrderStatusColorConverter  x:Key="WoStatusColor"/>
     </Window.Resources>
 
     <Grid x:Name="RootLayout">

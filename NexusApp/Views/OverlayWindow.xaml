@@ -13,7 +13,6 @@
         ShowInTaskbar="False">
 
     <Window.Resources>
-        <conv:TierColorConverter x:Key="TierColor"/>
         <conv:RarityColorConverter x:Key="RarityColor"/>
         <conv:HexColorConverter x:Key="HexColor"/>
         <conv:BoolToVisibilityConverter x:Key="BoolVis"/>

@@ -15,24 +15,6 @@
     <SineEase x:Key="EaseBreathe" EasingMode="EaseInOut"/>
     <CubicEase x:Key="EaseSlideOut" EasingMode="EaseOut"/>
 
-    <!-- Tier colors -->
-    <Color x:Key="TierSColor">#FFFFD700</Color>
-    <Color x:Key="TierAColor">#FF4CAF50</Color>
-    <Color x:Key="TierBColor">#FF29B6F6</Color>
-    <Color x:Key="TierCColor">#FFFFFFFF</Color>
-
-    <!-- Rarity colors -->
-    <Color x:Key="RarityLegendaryColor">#FFFFD700</Color>
-    <Color x:Key="RarityEpicColor">#FFA855F7</Color>
-    <Color x:Key="RarityRareColor">#FF3B82F6</Color>
-    <Color x:Key="RarityUncommonColor">#FF22C55E</Color>
-    <Color x:Key="RarityCommonColor">#FF9E9E9E</Color>
-
-    <!-- System colors -->
-    <Color x:Key="SystemStantonColor">#FF3B82F6</Color>
-    <Color x:Key="SystemPyroColor">#FFF97316</Color>
-    <Color x:Key="SystemNyxColor">#FFA78BFA</Color>
-
     <!-- Brushes - Color via DynamicResource so a palette swap repaints live -->
     <SolidColorBrush x:Key="BgBrush"       Color="{DynamicResource BgColor}"/>
     <SolidColorBrush x:Key="Bg2Brush"      Color="{DynamicResource Bg2Color}"/>
@@ -603,32 +585,6 @@
         </Style.Resources>
     </Style>
 
-    <!-- ── ListView row style -->
-    <Style x:Key="NexusListViewItem" TargetType="ListViewItem">
-        <Setter Property="Background"   Value="Transparent"/>
-        <Setter Property="Foreground"   Value="{DynamicResource FgBrush}"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding"      Value="8,4"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ListViewItem">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            Padding="{TemplateBinding Padding}" CornerRadius="4" SnapsToDevicePixels="True">
-                        <ContentPresenter/>
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-        <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{DynamicResource HighlightBrush}"/>
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{DynamicResource AccentDimBrush}"/>
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
     <!-- ════ Command-center vocabulary (UI overhaul): reusable text + surface styles ════ -->
 
     <!-- Eyebrow: small uppercase teal kicker above a page title -->
@@ -823,18 +779,10 @@
     </Style>
 
     <!-- ============================================================
-         WRIST-OS APP DOCK (nav mock #31): clean line glyphs + chamfered dock tiles.
+         WRIST-OS APP DOCK (nav mock #31): chamfered dock tiles. Module glyphs render
+         via views:AnimatedDockIcon (see AnimatedDockIcon.cs/DockIconSpecs.cs), not the
+         static PathGeometry resources this dictionary used to declare here.
          ============================================================ -->
-    <!-- Monochrome 24x24 line glyphs (stroke, no fill) for each module. -->
-    <PathGeometry x:Key="GlyphOps"       Figures="M3,3 H14 V10 H3 Z M16,3 H21 V10 H16 Z M3,12 H8 V21 H3 Z M10,12 H21 V21 H10 Z"/>
-    <PathGeometry x:Key="GlyphRs"        Figures="M5,9 L5,5 L9,5 M15,5 L19,5 L19,9 M5,15 L5,19 L9,19 M15,19 L19,19 L19,15 M4,12 L20,12"/>
-    <PathGeometry x:Key="GlyphRefinery"  Figures="M6 12 L18 12 L16 19 Q15.5 20 14.5 20 L9.5 20 Q8.5 20 8 19 Z M6,12 A6,1.6 0 1 1 18,12 A6,1.6 0 1 1 6,12 Z M9 10 C8 8.7 10 7.8 9 6.5 M12 10 C11 8.7 13 7.8 12 6.5 M15 10 C14 8.7 16 7.8 15 6.5"/>
-    <PathGeometry x:Key="GlyphCodex"     Figures="M5,6 A7,2.4 0 1 1 19,6 A7,2.4 0 1 1 5,6 Z M5 6 L5 18 C5 19.5 8.1 20.6 12 20.6 C15.9 20.6 19 19.5 19 18 L19 6 M5 11.5 C5 13 8.1 14.1 12 14.1 C15.9 14.1 19 13 19 11.5"/>
-    <PathGeometry x:Key="GlyphBlueprint" Figures="M12,3 L20,7.5 L20,16.5 L12,21 L4,16.5 L4,7.5 Z M12 12V3M12 12L4 16.5M12 12L20 16.5"/>
-    <PathGeometry x:Key="GlyphNetwork"   Figures="M3.5,12 A2,2 0 1 1 7.5,12 A2,2 0 1 1 3.5,12 Z M16,5 A2,2 0 1 1 20,5 A2,2 0 1 1 16,5 Z M16,19 A2,2 0 1 1 20,19 A2,2 0 1 1 16,19 Z M7.2,11 L16.3,6 M7.2,13 L16.3,18"/>
-    <PathGeometry x:Key="GlyphCargo"     Figures="M3,8 H13 V18 H3 Z M3,11 L13,11 M13,13 L20,13 M17,10 L20,13 L17,16"/>
-    <PathGeometry x:Key="GlyphSettings"  Figures="M13.83,7.71 L13.83,10.29 L11.86,10.65 L12.54,12.54 L10.29,13.83 L9,12.3 L7.71,13.83 L5.46,12.54 L6.14,10.65 L4.17,10.29 L4.17,7.71 L6.14,7.35 L5.46,5.46 L7.71,4.17 L9,5.7 L10.29,4.17 L12.54,5.46 L11.86,7.35 Z M7.7,9 A1.3,1.3 0 1 1 10.3,9 A1.3,1.3 0 1 1 7.7,9 Z M19.56,16.59 L18.47,18.47 L16.9,17.92 L16.59,19.56 L14.41,19.56 L14.1,17.92 L12.53,18.47 L11.44,16.59 L12.7,15.5 L11.44,14.41 L12.53,12.53 L14.1,13.08 L14.41,11.44 L16.59,11.44 L16.9,13.08 L18.47,12.53 L19.56,14.41 L18.3,15.5 Z M14.4,15.5 A1.1,1.1 0 1 1 16.6,15.5 A1.1,1.1 0 1 1 14.4,15.5 Z"/>
-
     <!-- DockTile: a chamfered app-dock module button (RadioButton). Foreground drives glyph + name +
          chip border (dim default, amber on hover/active). Hover slides 3px; active grows an amber left
          bar in. The chip + name + optional pill are supplied as the tile's Content. -->
@@ -915,24 +863,6 @@
         </Style.Triggers>
     </Style>
 
-    <!-- DockGlyph: line-glyph Path in a chip. Dim default, amber on hover, dark on active (amber chip). -->
-    <Style x:Key="DockGlyph" TargetType="Path">
-        <Setter Property="Fill" Value="{x:Null}"/>
-        <Setter Property="StrokeThickness" Value="1.6"/>
-        <Setter Property="StrokeStartLineCap" Value="Round"/>
-        <Setter Property="StrokeEndLineCap" Value="Round"/>
-        <Setter Property="StrokeLineJoin" Value="Round"/>
-        <Setter Property="Stroke" Value="{DynamicResource FgDimBrush}"/>
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
-                <Setter Property="Stroke" Value="{DynamicResource AccentBrush}"/>
-            </DataTrigger>
-            <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
-                <Setter Property="Stroke" Value="{DynamicResource OnAccentBrush}"/>
-            </DataTrigger>
-        </Style.Triggers>
-    </Style>
-
     <!-- DockTileName: module name. Dim default, bright when hovered or active. -->
     <Style x:Key="DockTileName" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
@@ -956,40 +886,6 @@
         <Setter Property="FontSize"    Value="10"/>
         <Setter Property="FontWeight"  Value="Bold"/>
         <Setter Property="Foreground"  Value="{DynamicResource FgDimBrush}"/>
-    </Style>
-
-    <!-- DataText: tabular JetBrains Mono for numbers/values -->
-    <Style x:Key="DataText" TargetType="TextBlock">
-        <Setter Property="FontFamily"  Value="{StaticResource MonoFont}"/>
-        <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
-    </Style>
-
-    <!-- KpiValue: big Rajdhani readout for dashboard KPI cards -->
-    <Style x:Key="KpiValue" TargetType="TextBlock">
-        <Setter Property="FontFamily"  Value="{StaticResource DisplayFont}"/>
-        <Setter Property="FontSize"    Value="30"/>
-        <Setter Property="FontWeight"  Value="Bold"/>
-        <Setter Property="Foreground"  Value="{DynamicResource FgBrush}"/>
-    </Style>
-
-    <!-- Card / Panel: the HUD surface (sharp 4px corners, faint cyan hairline) -->
-    <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background"      Value="{DynamicResource Bg2NavBrush}"/>
-        <Setter Property="BorderBrush"     Value="{DynamicResource NavBorderBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius"    Value="4"/>
-        <Setter Property="Padding"         Value="16"/>
-    </Style>
-
-    <!-- HudCard: an accented panel that carries the amber-line + soft glow signature.
-         Use for hero / primary readout surfaces (Operations hero, RS Decoder readout). -->
-    <Style x:Key="HudCard" TargetType="Border" BasedOn="{StaticResource Card}">
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="22" ShadowDepth="0" Opacity="0.22"/>
-            </Setter.Value>
-        </Setter>
     </Style>
 
 </ResourceDictionary>
