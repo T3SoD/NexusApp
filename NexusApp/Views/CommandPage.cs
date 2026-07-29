@@ -928,7 +928,7 @@ public sealed class CommandPage : UserControl
         {
             sp.Children.Add(new TextBlock { Text = "RECENT", FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 12, 0, 4) });
             foreach (var s in recent)
-                sp.Children.Add(new TextBlock { Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}", FontFamily = Mono, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+                sp.Children.Add(new TextBlock { Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}" + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}"), FontFamily = Mono, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
         }
 
         return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));

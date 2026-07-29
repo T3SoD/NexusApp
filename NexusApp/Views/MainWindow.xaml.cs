@@ -42,6 +42,10 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
+            // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
+            // ChipSuffix on the next Game.log channel resolve.
+            App.GameLogFeed.ChannelChanged += _ => UpdateSessionChip();
             // Republished from the shared GameLogFeed (Task 5): the watcher's own diagnostic text
             // ("Waiting for file to appear: ...", "Error opening: ...") becomes the SESSION chip's
             // tooltip while it is in its "no log" state (app review, Task 10). Cached even while not
@@ -621,7 +625,8 @@ public partial class MainWindow : Window
         var s = App.Shards?.Current;
         if (s != null)
         {
-            ShardChipText.Text = string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}";
+            ShardChipText.Text = (string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}")
+                + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}");
             ShardDot.Fill = _chipOkBrush;
         }
         else
@@ -658,7 +663,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            SessionChipText.Text = live ? "monitoring" : "offline";
+            SessionChipText.Text = (live ? "monitoring" : "offline")
+                + GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel);
             SessionDot.Fill = brush;
             SessionChipText.Foreground = brush;
             Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
