@@ -345,4 +345,52 @@ public class GameLogFeedTests
         session.Start(MissingLogPath(), fromBeginning: false);   // different file: must re-point
         Assert.Equal(3, starts);
     }
+
+    // ── auto-follow: channel bookkeeping and start-path selection (issue #28) ─────────────
+
+    [Fact]
+    public void Start_UpdatesActiveChannel_AndRaisesChangeOnce()
+    {
+        using var feed = new GameLogFeed();
+        var changes = new List<GameChannel>();
+        feed.ChannelChanged += c => changes.Add(c);
+
+        feed.Start(@"X:\SC\HOTFIX\Game.log");
+        feed.Start(@"X:\SC\HOTFIX\Game.log");   // same channel: no second event
+        feed.Start(@"X:\SC\PTU\Game.log");
+
+        Assert.Equal(GameChannel.Ptu, feed.ActiveChannel);
+        Assert.Equal(new[] { GameChannel.Hotfix, GameChannel.Ptu }, changes);
+    }
+
+    [Fact]
+    public void StartPath_PicksFreshestSiblingChannel()
+    {
+        var root = Directory.CreateTempSubdirectory("nexus-feed-test").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "LIVE"));
+            Directory.CreateDirectory(Path.Combine(root, "HOTFIX"));
+            var live = Path.Combine(root, "LIVE", "Game.log");
+            var hotfix = Path.Combine(root, "HOTFIX", "Game.log");
+            File.WriteAllText(live, "x");
+            File.WriteAllText(hotfix, "x");
+            // Make LIVE decisively stale, HOTFIX the last-launched channel.
+            File.SetCreationTimeUtc(live, DateTime.UtcNow.AddDays(-2));
+            File.SetLastWriteTimeUtc(live, DateTime.UtcNow.AddDays(-2));
+            File.SetCreationTimeUtc(hotfix, DateTime.UtcNow.AddMinutes(-1));
+            File.SetLastWriteTimeUtc(hotfix, DateTime.UtcNow.AddMinutes(-1));
+
+            using var feed = new GameLogFeed { PreferredPath = live };
+            Assert.Equal(hotfix, feed.StartPath());
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void StartPath_CustomLayout_KeepsPreferredPath()
+    {
+        using var feed = new GameLogFeed { PreferredPath = @"X:\NotAChannel\Game.log" };
+        Assert.Equal(@"X:\NotAChannel\Game.log", feed.StartPath());
+    }
 }

@@ -130,12 +130,30 @@ public sealed class GameLogFeed : IDisposable
     private readonly GameLogWatcher _watcher = new();
     private readonly GameLogFanOut _subs = new();
 
+    // Issue #28 auto-follow: every ~2s (matching the process-probe cadence) stat the sibling
+    // channel Game.logs and re-point the ONE tail if another channel took over. Stats only -
+    // never a second watcher, never a process handle.
+    private readonly System.Windows.Threading.DispatcherTimer _probeTimer;
+
+    /// <summary>Launcher channel of the file the tail currently watches. Derived from the path on
+    /// every (re)point; Custom for unrecognized folders (single-file mode, no auto-follow).</summary>
+    public GameChannel ActiveChannel { get; private set; } = GameChannel.Live;
+    /// <summary>The watched channel changed (auto-follow or a manual path change).</summary>
+    public event Action<GameChannel>? ChannelChanged;
+
     public GameLogFeed()
     {
         _watcher.LineAppended  += _subs.Line;
         _watcher.LogReset      += _subs.LogReset;
         _watcher.StatusChanged += _subs.Status;
         _watcher.SessionLiveChanged += live => SessionLiveChanged?.Invoke(live);
+
+        _probeTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _probeTimer.Tick += (_, _) => AutoFollowTick();
+        _probeTimer.Start();
     }
 
     /// <summary>The user's saved Game.log path (injected from settings); honored over the install
@@ -152,9 +170,14 @@ public sealed class GameLogFeed : IDisposable
     /// else a best-effort probe of common installs.</summary>
     public string StartPath()
     {
-        if (!string.IsNullOrEmpty(Path) && System.IO.File.Exists(Path)) return Path;
-        if (!string.IsNullOrEmpty(PreferredPath)) return PreferredPath;
-        return GameLogWatcher.FindGameLog();
+        var anchor = !string.IsNullOrEmpty(Path) && System.IO.File.Exists(Path) ? Path
+            : !string.IsNullOrEmpty(PreferredPath) ? PreferredPath
+            : GameLogWatcher.FindGameLog();
+        var candidates = GameChannelProbe.Candidates(anchor);
+        if (candidates.Count < 2) return anchor;   // custom layout or single channel: unchanged behavior
+        var stats = new List<GameChannelProbe.LogStat>(candidates.Count);
+        foreach (var c in candidates) { try { stats.Add(GameChannelProbe.Stat(c)); } catch { } }
+        return GameChannelProbe.SelectActive(stats, anchor, DateTime.UtcNow) ?? anchor;
     }
 
     /// <summary>The tail was (re)pointed at this path. Feed-level and deliberately replay-agnostic:
@@ -179,14 +202,40 @@ public sealed class GameLogFeed : IDisposable
         bool fromBeginning = _subs.WouldReplay(replayOnlyTo);
         _watcher.Start(path, fromBeginning);
         var route = !fromBeginning ? "none" : replayOnlyTo is null ? "all consumers" : "requesting consumer only";
-        Logger.Info($"[GameLog] tail (re)pointed: {Redact(_watcher.Path)}; replay={route}");
+        var channel = GameChannels.FromLogPath(_watcher.Path);
+        bool channelFlip = channel != ActiveChannel;
+        ActiveChannel = channel;
+        Logger.Info($"[GameLog] tail (re)pointed: {Redact(_watcher.Path)}; replay={route}; channel={GameChannels.FolderName(channel)}");
         _subs.Started(_watcher.Path, fromBeginning, replayOnlyTo);
         Started?.Invoke(_watcher.Path);
+        if (channelFlip) ChannelChanged?.Invoke(channel);
     }
 
     public void Stop() => _watcher.Stop();
 
-    public void Dispose() => _watcher.Dispose();
+    private void AutoFollowTick()
+    {
+        if (!IsRunning) return;
+        try
+        {
+            var candidates = GameChannelProbe.Candidates(Path);
+            if (candidates.Count < 2) return;   // custom layout / single channel: nothing to follow
+            var stats = new List<GameChannelProbe.LogStat>(candidates.Count);
+            foreach (var c in candidates) { try { stats.Add(GameChannelProbe.Stat(c)); } catch { } }
+            var next = GameChannelProbe.SelectActive(stats, Path, DateTime.UtcNow);
+            if (next is null || string.Equals(next, Path, StringComparison.OrdinalIgnoreCase)) return;
+            Logger.Info($"[GameLog] channel switch: {GameChannels.FolderName(ActiveChannel)} -> " +
+                        $"{GameChannels.FolderName(GameChannels.FromLogPath(next))} (auto-follow)");
+            Start(next);   // normal re-point: replay routing and consumer notifications as a manual change
+        }
+        catch { /* probe hiccup: try again next tick */ }
+    }
+
+    public void Dispose()
+    {
+        _probeTimer.Stop();
+        _watcher.Dispose();
+    }
 
     // The path can sit under the user's profile (a free-text Settings override or an auto-detected
     // install path), so redact at the source - the same helper App's startup line and the diagnostic
