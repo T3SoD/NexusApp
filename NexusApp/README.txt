@@ -38,7 +38,7 @@ GETTING STARTED
 1. Right-click the ZIP file.
 2. Select "Extract All...".
 3. Choose a location. The Desktop or the Documents folder works well.
-4. Open the extracted folder.
+4. Open the extracted folder. Then open the NexusApp folder.
 5. Double-click "NexusApp.exe" to start NexusApp.
 
 NexusApp needs no installation. NexusApp does not need the internet to
@@ -116,7 +116,8 @@ LIVE MARKET PRICES
   key, and nothing about you.
 
   NexusApp shows these prices on the RS SIGNAL DECODER, the MINING
-  CODEX, and the REFINERY TRACKER.
+  CODEX, the REFINERY TRACKER, and the overlay scan results. The
+  MINING CODEX list also has an optional sell-price column.
 
   NexusApp saves the prices on your PC. NexusApp works fully offline
   from these saved prices between fetches. UEX prices come from the
@@ -144,6 +145,12 @@ PAGES
                        cargo in transit, session blueprints, and
                        network coverage. It links to every module.
 
+  MISSION GUIDES     - Zoomable maps and tactical reference guides.
+                       All guides ship inside the app. The contested
+                       zone section shows the executive hangar lights
+                       and a live countdown. Open a guide, zoom with
+                       the scroll wheel, and drag to pan.
+
   RS SIGNAL DECODER  - Enter an RS value by hand, or use auto-scan.
                        NexusApp then shows the resource and the node
                        count. Each result card shows a composition
@@ -155,7 +162,10 @@ PAGES
                        bill of materials and how to unlock it. A
                        ranked WHERE TO MINE plan shows the best
                        places to gather the resources, with
-                       byproduct sourcing.
+                       byproduct sourcing. Click "Import from
+                       SCMDB..." to import the blueprints that you
+                       own from an SCMDB export file. A preview
+                       shows the changes before they apply.
 
   BLUEPRINT NETWORK  - Share your blueprints with your friends or
                        your org. You trade library files to do this.
@@ -167,10 +177,12 @@ PAGES
                        You can filter it by system (Stanton, Pyro, or
                        Nyx) and by mining method (Ship, ROC, or FPS).
                        Select a resource to open its dossier. The
-                       dossier shows the resource class (Metal,
+                       dossier leads with the refinery yields and,
+                       when market data is on, the best sell price.
+                       It also shows the resource class (Metal,
                        Mineral, or Gem), a mining profile, the rock
                        composition, byproduct sourcing, locations,
-                       blueprints, and refinery yields.
+                       and blueprints.
 
   REFINERY TRACKER   - Track your active refinery jobs. NexusApp shows
                        live countdown timers and status indicators.
@@ -188,6 +200,11 @@ TIPS
     drag the NEXUS header bar.
   - Use the opacity slider in the overlay header to change the overlay
     transparency.
+  - The overlay has six tabs: HUB, SCAN, REFINERY, SHOPPING, HAULING,
+    and GUIDES. The gear in the overlay header opens quick settings.
+  - Ghost mode collapses the overlay to a slim icon rail. Click a
+    glyph to slide that tab out beside the rail. Turn ghost mode on
+    in Settings or in the overlay quick settings.
   - The overlay click-through is on by default. In FPS and flight, the
     overlay passes the mouse through to the game while the game hides
     the cursor. You can turn this off in Settings.

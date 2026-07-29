@@ -11,10 +11,12 @@ Select the download that you want.
 
 | | |
 |:--:|:--:|
-| [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay.jpg) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png) |
+| [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay-scan.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/overlay-scan.png) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/blueprint-library.png) |
 | **Auto-scan overlay** - decodes RS values live over the game | **Blueprint Library** - recipes, ingredients, and unlock missions |
 | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mining-codex.png) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/refinery-tracker.png) |
 | **Mining Codex** - full resource reference, filterable | **Refinery Tracker** - live countdown timers for jobs |
+| [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mission-guides.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/mission-guides.png) | [<img src="https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/operations.png" width="420">](https://raw.githubusercontent.com/T3SoD/NexusApp/main/docs/screenshots/operations.png) |
+| **Mission Guides** - zoomable maps with the executive hangar countdown | **Operations** - the landing dashboard that links every module |
 
 ---
 
@@ -38,10 +40,11 @@ Run Nexus directly. Nexus needs no installation.
 3. Right-click the ZIP file. Select **Extract All…**. Select a location, for example the Desktop or the Documents folder.
 
    **Caution:** Keep all the files in the folder together.
-4. Open the extracted folder. Double-click **`NexusApp.exe`**.
+4. Open the extracted folder. Then open the **NexusApp** folder inside it. Double-click **`NexusApp.exe`**.
 
 - Nexus needs no installation. It writes nothing to the registry.
-- Nexus leaves no traces on the system. To remove Nexus completely, delete the folder.
+- Nexus stores settings and work orders under `%APPDATA%\NexusApp`. To remove Nexus completely, delete the app folder and that data folder.
+- With update checks on, the portable can install a new version in place and restart. Updates stay off until you say yes.
 - You can move Nexus between PCs. You can also run Nexus from a USB stick.
 
 ---
@@ -50,9 +53,15 @@ Run Nexus directly. Nexus needs no installation.
 
 ### Features
 - **RS Signal Decoder** - enter values manually or use auto-scan to find the resource and the node count
-- **Blueprint Library** - search blueprints and see the raw resources that a blueprint needs
+- **Blueprint Library** - search blueprints, see the resources and the unlock contracts, and track what you own; import ownership from an SCMDB export file
+- **Blueprint Network** - pool owned-blueprint libraries with your org by trading files, fully offline
 - **Mining Codex** - a full resource reference that you can filter by system and by method
 - **Refinery Tracker** - live countdown timers for refinery jobs
+- **Cargo Hauling** - accepted contracts appear from `Game.log` and consolidate into one route plan
+- **Mission Guides** - zoomable maps and tactical guides, with the executive hangar countdown
+- **In-game overlay** - six tabs float over the game; ghost mode collapses the overlay to a slim icon rail
+- **Live market prices (optional)** - refined sell prices from UEX community data, off by default
+- **Update checks (optional)** - opt in once; the portable can install updates itself
 
 ---
 *Nexus is not affiliated with, endorsed by, or sponsored by Cloud Imperium Games or Roberts Space Industries. Star Citizen®, Roberts Space Industries® and Cloud Imperium® are registered trademarks of Cloud Imperium Rights LLC.*

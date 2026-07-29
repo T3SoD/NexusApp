@@ -29,11 +29,15 @@ app makes a network call.
 +----------------------------v------------------------------+
 |  Services                                                 |
 |  Data | Ocr | Scanner | Settings | Theme |                |
-|  GameLog(Session/Watcher/Importer) |                      |
+|  GameLogFeed -> Session / Hauling / Shard | Importer |    |
 |  Hauling(HaulTracker/Parser/Contract/Shard) |             |
 |  Network(File/Store/Scope) |                              |
 |  Update(Service/Verifier/Manifest/Notice) |               |
 |  Market(DataService/Snapshot/NameMap/Queries/Notice) |    |
+|  Guides(Catalog) | ExecHangarCycle |                      |
+|  Overlay(Tabs/GhostGeometry/GhostFootprints) |            |
+|  ScmdbImport(Parser/Plan) |                               |
+|  UiScaleService |                                         |
 |  PortableUpdater / SwapJournal (portable self-update) |   |
 |  Diagnostics(CrashGuard/Breadcrumbs/Sanitizer/Notice) |   |
 |  Logger / InteractionLog / ForegroundMonitor              |
@@ -53,11 +57,23 @@ The Views are the WPF windows and dialogs. The two main surfaces are
 **OverlayWindow** is a compact panel. **OverlayWindow** stays always-on-top and
 floats over the game.
 
+**MainWindow** shows one dock page at a time. `GuidesPage` is the Mission
+Guides dock page: a category-grouped card grid over the shared `GuideCatalog`.
+Clicking a card hands the page over to `GuideViewer`, a zoom-and-pan image
+view shared with the overlay.
+
+**OverlayWindow** shows the same tabs in a compact strip, `OverlayTabStrip`,
+where the active tab expands into an amber pill and the rest show only their
+icon. Ghost mode replaces this strip with `OverlayGhostRail`, a narrow
+vertical icon rail with a per-tab flyout, for a smaller footprint over the
+game.
+
 Supporting windows include:
 - the region selector for auto-scan
 - the toast and scan-indicator popups
 - the app-log monitor
 - the settings, about, and help dialogs
+- the SCMDB import preview and result dialogs (`ScmdbImportResultDialog`)
 
 ### ViewModel (`ViewModels/MainViewModel.cs`)
 Both the main window and the overlay share a single **MainViewModel** instance.
@@ -107,13 +123,49 @@ The view model controls these services. Each service holds little or no state.
   `%AppData%\NexusApp\cache\uex_snapshot.json` and reloads it at startup, so the
   last fetched prices still show when Nexus is offline. `MarketNameMap` links
   the seed's raw resource names to UEX's commodity names and their refined
-  counterparts. `MarketQueries` is the pure read layer that the RS Signal
-  Decoder, the Mining Codex, and the Refinery Tracker call for a priced hit.
-  `MarketNotice` holds the feature's user-facing copy (the consent strip, the
-  Settings section, the source note), mirroring `UpdateNotice`. Consent is a
-  tri-state setting, `MarketDataEnabled` (null = unanswered, true/false = the
-  user's standing choice), the same pattern as the update-check toggle, and it
-  lives in its own Settings section rather than under Diagnostics.
+  counterparts. `MarketQueries` is the pure read layer. The RS Signal Decoder,
+  the Mining Codex, the Refinery Tracker, and the overlay's own scan cards
+  (`OverlayWindow.FillMarketSell` / `RefreshMarketSellLines`) all call it for a
+  priced hit. `MarketNotice` holds the feature's user-facing copy (the consent
+  strip, the Settings section, the source note), mirroring `UpdateNotice`.
+  Consent is a tri-state setting, `MarketDataEnabled` (null = unanswered,
+  true/false = the user's standing choice), the same pattern as the
+  update-check toggle. The toggle sits in the Settings UPDATES tab, in its own
+  Market Data section next to the update check, not under Diagnostics.
+- **GuideCatalog** - the single source of truth for the Mission Guides feature.
+  Each entry is one curated guide image: an id, a title, a category, an
+  embedded PNG resource, and its native pixel size. `GuidesPage` and the
+  overlay's GUIDES tab both read this one list, so a guide added once shows on
+  both surfaces.
+- **ExecHangarCycle** - pure, deterministic math for the PYAM contested-zone
+  Executive Hangar cycle (see Key flows). It computes the open/closed phase,
+  how many dots are lit, and the next few open times. The instant it starts
+  from is one compiled-in anchor timestamp, or a user re-anchor override
+  stored in settings. The caller supplies the clock, so every phase boundary
+  is unit-testable.
+- **OverlayTabs** - tab identity and the restore rule for the overlay's tab
+  strip. It holds the id list and the display label per tab. A guard falls
+  back to the default tab on an unknown or stale saved id. This is kept out
+  of the WPF view so the guard is testable headlessly, the same split
+  `SettingsTabs` uses for the Settings page.
+- **GhostGeometry / GhostFootprints** - pure placement and sizing math for the
+  overlay's ghost mode (see Key flows). `GhostGeometry` decides which way a
+  collapsed rail expands. It clamps every rect to the monitor. All of this is
+  in physical pixels. A Per-Monitor-DPI V2 lesson requires it: DIP
+  positioning can land a window on the wrong monitor at a DPI boundary.
+  `GhostFootprints` turns the rail scale and the panel scale into window
+  sizes for the collapsed rail, the expanded panel, and the gear flyout.
+- **UiScaleService** - the app-wide UI scale. It holds two persisted scale
+  factors: one for the main window and dialogs, one for the overlay. Each
+  factor applies as a `LayoutTransform` on a window's root element. A third,
+  independent factor scales the ghost rail alone, from 0.75 to 1.5. This
+  floor sits below the 1.0 floor of the other two factors, because the
+  rail exists to keep the footprint small.
+- **ScmdbExportParser / ScmdbImportPlan** - the SCMDB import subsystem (see Key
+  flows). `ScmdbExportParser` never throws: a bad or oversized file comes back
+  as a clear error instead of a crash. `ScmdbImportPlan` is the pure,
+  add-only bucketing of an export's completed blueprints into names to
+  import, names already owned, and unrecognized names.
 - **PortableUpdater / SwapJournal** - the portable self-update (see Key flows).
   PortableUpdater verifies the download again on one open file handle, unpacks
   it, and verifies each file. It then replaces the app's files with journaled
@@ -146,6 +198,17 @@ types.
   keys to their official names. The build refreshes it for each game patch.
 - **User data** (settings, work orders, and the owned-blueprint library) is on
   disk in the per-user app-data folder. NexusApp stores it with SQLite and JSON.
+- **Settings recovery.** NexusApp writes `settings.json` with a
+  write-temp-then-replace step (`File.Replace`). This step is atomic on the
+  same volume and keeps the previous good copy as `settings.json.bak`, so a
+  crash mid-write never leaves a truncated file as the only copy. If
+  `settings.json` fails to load, NexusApp moves the unreadable file aside as a
+  timestamped `.corrupt-` file for diagnosis, then tries `settings.json.bak`,
+  and falls back to fresh defaults only when neither file reads back cleanly.
+  NexusApp re-persists the recovered file right away, not only on the next
+  user-triggered save. The same rule applies after a schema migration, so a
+  recovered or migrated file is not lost if the app closes without a clean
+  shutdown.
 - **Blueprint Network** uses a separate local `network.db`. It exchanges
   `.nexuslib` files that the user moves by hand. Nothing syncs automatically.
 - **Versioning** comes from one source: the `<Version>` in
@@ -226,6 +289,83 @@ adds the reward, the contractor, and the cargo details to the matching haul.
 `ShardTracker` and `ShardLogParser` read the shard join lines. They keep the
 recent server and shard list. `ContractCapCatalog` is an embedded table. It maps
 each contract to its container size in SCU. The `Haul` model holds the haul state.
+
+### Mission Guides
+`GuideCatalog` is the single list of curated guide images. Each entry names a
+PNG the build embeds as a resource, and carries its native pixel size for the
+zoom and fit math. `GuidesPage` shows the catalog as a category-grouped card
+grid on the main window. The overlay's GUIDES tab shows the same catalog as a
+compact list. Both surfaces open the same shared `GuideViewer` to show one
+guide at full size.
+
+`GuideViewer` is mouse only. The wheel zooms on the cursor position. A left
+drag pans the image. A double click resets the view to fit. `GuideViewer`
+never decodes a bitmap above its native size. It decodes at about twice the
+viewport width until the user zooms past that point, then it decodes once
+more at full size. The overlay caps this decode at a lower size, because it
+never shows a guide this large on screen.
+
+### Executive Hangar timer
+`ExecHangarCycle` computes the state of the PYAM contested-zone Executive
+Hangar rotation. The cycle has a fixed open phase, then a fixed closed phase,
+repeating from one compiled-in anchor timestamp. The math is pure. It takes
+the current time as a parameter, so every phase boundary has a test.
+
+A user can re-anchor the cycle from the current moment, for example after a
+game patch shifts the schedule. NexusApp stores this override in settings and
+uses it in place of the built-in anchor until the user resets it.
+
+`ExecHangarStatusLine` is the one control that shows this state. NexusApp uses
+the same control on the Guides page, in the Contested Zones section header,
+and in the overlay's GUIDES tab. This shared control keeps both surfaces the
+same. The control owns its own timer. The host page starts the timer on entry
+and stops it on exit.
+
+### Overlay tab strip and ghost mode
+`OverlayTabs` holds the tab id list and the display label for each tab. This
+is the single source that both `OverlayTabStrip` and `OverlayGhostRail` read,
+so the two surfaces always agree on which tabs exist.
+
+`OverlayTabStrip` is the overlay's normal-mode tab row. The active tab expands
+into a chamfered, amber pill with an icon and a label. Each other tab shows
+only its icon, with a hover chip for the label. A small badge on a tab's icon
+shows a count when one applies.
+
+Ghost mode replaces this row with `OverlayGhostRail`, a narrow vertical icon
+rail with the same tabs. A settings gear and a close glyph sit at the bottom
+of the rail, for a smaller footprint over the game. `GhostGeometry` decides
+which side of the rail a flyout or the expanded panel opens toward. It grows
+toward the monitor's center, and it clamps every rect to stay on the
+monitor. `GhostFootprints` turns the independent rail scale and the
+overlay's own UI scale into the window sizes: the collapsed rail, the
+expanded panel, and the gear flyout. This math works in physical pixels
+throughout, because DIP positioning can land a window on the wrong monitor
+at a Per-Monitor-DPI V2 boundary.
+
+A quick-settings flyout holds the ghost-mode toggle, the click-through-in-FPS
+toggle, the opacity slider, and the rail-size slider. NexusApp builds it once,
+lazily, inside the overlay window. The overlay header's own gear button
+(normal mode) and the ghost rail's gear button open this same flyout.
+
+### SCMDB import
+NexusApp can import a one-time blueprint-tracking export from the SCMDB
+community website. `ScmdbExportParser` reads the export's JSON text and never
+throws. A bad or oversized file (over 5 MB) comes back as a clear error
+message in place of a crash.
+
+`ScmdbImportPlan` sorts the export's completed blueprints into three buckets:
+names to mark owned, names already owned, and names NexusApp does not
+recognize. Import is add-only. No step in this feature ever un-marks a
+blueprint.
+
+Name resolution reuses the same official-name and localization pipeline the
+`Game.log` importer uses (`GameLogSession.ResolveName`). So a modded or
+renamed blueprint name resolves the same way through either import path.
+
+`ScmdbImportFlow` drives the whole run: pick a file, parse it, build the plan,
+then show `ScmdbImportResultDialog` as a preview and confirm gate. NexusApp
+marks nothing owned until the user confirms. Cancelling at any point,
+including closing the preview dialog, applies nothing and logs nothing.
 
 ### Blueprint Network (offline sharing)
 A user exports their owned-blueprint library to a `.nexuslib` file. The user
