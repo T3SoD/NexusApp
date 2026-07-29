@@ -64,7 +64,7 @@ public sealed class GameLogWatcher : IDisposable
     // Falls back to the LIVE default path if nothing is found.
     public static string FindGameLog()
     {
-        string[] channels = { "LIVE", "PTU", "EPTU", "TECH-PREVIEW" };
+        string[] channels = GameChannels.KnownFolders;   // includes HOTFIX (issue #28)
         string[] roots =
         {
             @"C:\Program Files\Roberts Space Industries\StarCitizen",

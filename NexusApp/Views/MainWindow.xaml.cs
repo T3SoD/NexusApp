@@ -42,6 +42,10 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
+            // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
+            // ChipSuffix on the next Game.log channel resolve.
+            App.GameLogFeed.ChannelChanged += _ => UpdateSessionChip();
             // Republished from the shared GameLogFeed (Task 5): the watcher's own diagnostic text
             // ("Waiting for file to appear: ...", "Error opening: ...") becomes the SESSION chip's
             // tooltip while it is in its "no log" state (app review, Task 10). Cached even while not
@@ -82,8 +86,7 @@ public partial class MainWindow : Window
         {
             if (!_sessionChipNoLog) return;
             Logger.Info("[UI] Session chip: opened Settings (no Game.log)");
-            SetActivePage("settings");
-            _settingsPage?.SwitchToGameTab();
+            OpenSettingsGameTab();
         };
         UpdateOperatorIdentity();
         RefreshApprovedTools();
@@ -582,6 +585,23 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Navigate to Settings > Game (the Game.log path controls). Used by the SESSION
+    /// chip's no-log click-through and the custom-channel notice on Operations (issue #28).
+    /// Navigation only - each caller logs its own accurate context line before calling this,
+    /// since a shared log line here would misdescribe whichever caller didn't originate it.</summary>
+    public void OpenSettingsGameTab()
+    {
+        SetActivePage("settings");
+        _settingsPage?.SwitchToGameTab();
+    }
+
+    /// <summary>Re-evaluate the Settings GAME tab's needs-attention pip (issue #28). The
+    /// custom-folder notice can be acknowledged from Operations, which is a different page, and
+    /// SettingsPage is built once and kept - nothing re-runs its refresh on navigation - so the
+    /// acknowledging view calls this. No-op until Settings has been opened at least once: the page's
+    /// own constructor computes the pip from current state.</summary>
+    public void RefreshSettingsGameDot() => _settingsPage?.RefreshGameDot();
+
     private CommandPage? _commandPage;
     private void InitCommandPage()
     {
@@ -621,7 +641,8 @@ public partial class MainWindow : Window
         var s = App.Shards?.Current;
         if (s != null)
         {
-            ShardChipText.Text = string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}";
+            ShardChipText.Text = (string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}")
+                + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}");
             ShardDot.Fill = _chipOkBrush;
         }
         else
@@ -658,7 +679,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            SessionChipText.Text = live ? "monitoring" : "offline";
+            SessionChipText.Text = (live ? "monitoring" : "offline")
+                + GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel);
             SessionDot.Fill = brush;
             SessionChipText.Foreground = brush;
             Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
@@ -1562,6 +1584,12 @@ public partial class MainWindow : Window
         var result = await BlueprintImportFlow.RunAsync(this, path);
         BpImportBtn.Content = prev;
         BpImportBtn.IsEnabled = true;
+
+        if (result.Refused)
+        {
+            MessageBox.Show(this, result.Status, "Import owned blueprints", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         if (result.FilesScanned == 0)
         {

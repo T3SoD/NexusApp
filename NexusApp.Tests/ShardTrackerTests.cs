@@ -164,4 +164,31 @@ public class ShardTrackerTests
         Assert.Null(t.Current);
         Assert.Single(t.All);
     }
+
+    [Fact]
+    public void Join_TagsShardWithChannel()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { }, channelTag: () => "PTU");
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        Assert.Equal("PTU", t.Current!.Channel);
+    }
+
+    [Fact]
+    public void Join_NoChannelTagFunc_LeavesChannelUntagged()
+    {
+        var t = new ShardTracker(() => new List<ShardSession>(), _ => { });
+        t.Ingest(E(Join("pub_use1b_12030094_140")));
+        Assert.Equal("", t.Current!.Channel);
+    }
+
+    [Fact]
+    public void PersistedLegacyShard_DeserializesWithEmptyChannel()
+    {
+        // Additive property: pre-#28 settings.json entries have no Channel and must default to ""
+        // (untagged = LIVE-era). This is the spec's "existing entries migrate to untagged" - the
+        // default covers it, no SettingsSchemaVersion bump required.
+        var json = "{\"ShardId\":\"pub_use1b_12030094_140\",\"Region\":\"US East\"}";
+        var s = System.Text.Json.JsonSerializer.Deserialize<ShardSession>(json);
+        Assert.Equal("", s!.Channel);
+    }
 }

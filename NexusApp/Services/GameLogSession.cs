@@ -38,13 +38,18 @@ public sealed class GameLogSession : IDisposable
     // Unresolved receipt names already logged this session - one nexus.log line per distinct name,
     // not one per notification-lifecycle repeat (issue #17 diagnostics).
     private readonly HashSet<string> _unresolvedLogged = new(StringComparer.OrdinalIgnoreCase);
+    // True when the active channel's progress is real LIVE-account progress (issue #28). Injected so
+    // a test channel (PTU/EPTU/TECH-PREVIEW) or an unauthorized custom folder never records receipts.
+    private readonly Func<bool> _recordingEnabled;
+    private bool _recordingSuppressedLogged;   // one nexus.log line per suppressed stretch, not per receipt
 
     public GameLogSession(
         Func<IEnumerable<string>> seedNames,
         Func<string, bool> isOwned,
         Action<string, bool> setOwned,
         Func<string, IReadOnlyDictionary<string, string>?>? localizationMapFor = null,
-        GameLogFeed? feed = null)
+        GameLogFeed? feed = null,
+        Func<bool>? ownershipRecordingEnabled = null)
     {
         _seedNames = seedNames;
         _isOwned   = isOwned;
@@ -52,6 +57,7 @@ public sealed class GameLogSession : IDisposable
         _localizationMapFor = localizationMapFor;
         _feed = feed ?? new GameLogFeed();
         _ownsFeed = feed is null;
+        _recordingEnabled = ownershipRecordingEnabled ?? (static () => true);
         // Feed-level (not per-subscription): re-pointing the tail moves the DERIVED global.ini path
         // with it, whoever triggered it, so the cached live map must go even while detached.
         _feed.Started += OnFeedStarted;
@@ -197,7 +203,11 @@ public sealed class GameLogSession : IDisposable
     // map and let the next line rebuild it against the new location (covers the Settings Game.log
     // path change and the monitor's path box in one place). Feed-level, so it still fires while
     // this session is detached - otherwise a re-attach could resolve names against the old install.
-    private void OnFeedStarted(string path) => InvalidateLocalizationMap();
+    private void OnFeedStarted(string path)
+    {
+        InvalidateLocalizationMap();
+        _recordingSuppressedLogged = false;   // a channel switch resets the once-per-stretch throttle
+    }
 
     // Only while attached: a stopped session reports "not live" and stays quiet.
     private void OnFeedSessionLiveChanged(bool live)
@@ -244,6 +254,20 @@ public sealed class GameLogSession : IDisposable
         if (RsiHandleParser.TryExtract(e.Raw, out var liveHandle)) PublishHandle(liveHandle);
 
         if (!AutoMark || e.Category != LogCategory.Blueprint) return;
+
+        // Issue #28: on a test channel (PTU/EPTU/TECH-PREVIEW) or an unauthorized custom folder,
+        // blueprint receipts are real notifications of NON-real progress - never record them.
+        // Handle detection above and the raw feed stay fully live.
+        if (!_recordingEnabled())
+        {
+            if (!_recordingSuppressedLogged)
+            {
+                _recordingSuppressedLogged = true;
+                Logger.Info("[GameLog] blueprint receipt ignored: active channel does not record real data");
+            }
+            return;
+        }
+        _recordingSuppressedLogged = false;   // recording is live again: next suppressed stretch logs anew
 
         var canon = Importer.ResolveLine(e.Raw, LiveLocalizationMap(), out bool viaFallback);
         if (canon is null)

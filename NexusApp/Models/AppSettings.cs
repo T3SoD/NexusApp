@@ -127,6 +127,15 @@ public class AppSettings
     // Issue #26: user-observed Executive Hangar open instant, replacing the embedded calibration
     // anchor (set from the Guides page re-anchor control; null = built-in calibration).
     public DateTime? ExecHangarAnchorOverrideUtc { get; set; }
+
+    // Issue #28: blueprint recording authorization for a CUSTOM (unrecognized) Game.log folder.
+    // Known channels never consult this: LIVE/HOTFIX always record, PTU/EPTU/TECH-PREVIEW never do.
+    // Default false - a non-standard install must opt in explicitly in Settings > Game.
+    public bool CustomChannelRecordsBlueprints { get; set; }
+
+    // Issue #28: the custom-folder path the one-time Operations notice was last dismissed for,
+    // so the notice shows once per DISTINCT custom path instead of once ever or every launch.
+    public string CustomChannelNoticePath { get; set; } = "";
 }
 
 public class ScanRegion

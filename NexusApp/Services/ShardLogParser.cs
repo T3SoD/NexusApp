@@ -10,7 +10,7 @@ public static class ShardLogParser
 {
     private static readonly Regex Join = new(
         @"^<(?<ts>[0-9T:.Z+-]+)>.*?<Join PU> address\[(?<ip>[0-9.]+)\] port\[\d+\] " +
-        @"shard\[(?<shard>(?:pub|priv)_(?<region>[a-z]+\d+[a-z])_\d+_(?<instance>\d+))\]",
+        @"shard\[(?<shard>[a-z]+_(?<region>[a-z]+\d+[a-z])_\d+_(?<instance>\d+))\]",
         RegexOptions.Compiled);
 
     public static ShardSession? ParseJoin(string raw)

@@ -46,7 +46,7 @@ public class DemoProfileTests : IDisposable
         DemoProfile.EnsureSeeded(_root);
         var s = JsonSerializer.Deserialize<AppSettings>(
             File.ReadAllText(Path.Combine(_root, "settings.json")));
-        Assert.Equal(Path.Combine(_root, "Game.log"), s!.GameLogPath);
+        Assert.Equal(Path.Combine(_root, "LIVE", "Game.log"), s!.GameLogPath);
         // The patch round-trips the whole object; these pin that it cannot silently reset the
         // rest of the demo profile to defaults (a casing or model drift would do exactly that).
         Assert.Equal("StarlightHauler", s.LocalDisplayName);
@@ -78,8 +78,20 @@ public class DemoProfileTests : IDisposable
     [Fact]
     public void PinGameLogPath_PinsEmptyToTheRoot_KeepsExisting()
     {
-        Assert.Equal(Path.Combine(_root, "Game.log"), DemoProfile.PinGameLogPath("", _root));
-        Assert.Equal(Path.Combine(_root, "Game.log"), DemoProfile.PinGameLogPath(null, _root));
+        Assert.Equal(Path.Combine(_root, "LIVE", "Game.log"), DemoProfile.PinGameLogPath("", _root));
+        Assert.Equal(Path.Combine(_root, "LIVE", "Game.log"), DemoProfile.PinGameLogPath(null, _root));
         Assert.Equal(@"D:\somewhere\Game.log", DemoProfile.PinGameLogPath(@"D:\somewhere\Game.log", _root));
+    }
+
+    // The demo Game.log seeds under LIVE so channel inference (issue #28) reads the demo profile as
+    // an ordinary LIVE install: a root-level file would infer Custom and put CUSTOM chips, shard
+    // badges and the custom-folder notice into every public screenshot.
+    [Fact]
+    public void SeededGameLog_LivesUnderTheLiveChannelFolder()
+    {
+        DemoProfile.EnsureSeeded(_root);
+        var log = Path.Combine(_root, "LIVE", "Game.log");
+        Assert.True(File.Exists(log));
+        Assert.Equal(GameChannel.Live, GameChannels.FromLogPath(log));
     }
 }

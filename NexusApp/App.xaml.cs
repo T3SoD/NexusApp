@@ -282,7 +282,9 @@ public partial class App : Application
             name => Settings.IsBlueprintOwned(name),
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
             BuildLocalizationMap,
-            GameLogFeed);
+            GameLogFeed,
+            ownershipRecordingEnabled: () => GameChannels.RecordsRealData(
+                GameLogFeed.ActiveChannel, Settings.Current.CustomChannelRecordsBlueprints));
         // Marked/BulkOwnershipChanged: MainWindow's own ctor subscribes to these (it already owns
         // the RefreshBlueprintOwnership target), so this composition root only wires services here,
         // not the concrete view (app review, Task 9).
@@ -301,7 +303,8 @@ public partial class App : Application
         Shards = new ShardTracker(
             () => Settings.Current.RecentShards,
             list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
-            GameLogFeed);
+            GameLogFeed,
+            channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
 
         // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
         // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and

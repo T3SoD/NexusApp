@@ -16,12 +16,20 @@ namespace NexusApp.Views;
 public static class BlueprintImportFlow
 {
     /// <param name="Applied">true only when the user confirmed and ownership was written.</param>
-    public sealed record Result(bool Applied, int Added, int Found, int FilesScanned, string Status);
+    public sealed record Result(bool Applied, int Added, int Found, int FilesScanned, string Status, bool Refused = false);
 
     /// <summary>Scan <paramref name="path"/> (+ its logbackups), confirm via dialog, mark owned.
     /// <paramref name="status"/> receives progress/result text for the caller's own status surface.</summary>
     public static async Task<Result> RunAsync(Window owner, string path, Action<string>? status = null)
     {
+        var refusal = BlueprintImportGate.Refusal(GameChannels.FromLogPath(path),
+            App.Settings.Current.CustomChannelRecordsBlueprints);
+        if (refusal is not null)
+        {
+            Logger.Info("[GameLog] past-logs import refused: channel gate");
+            return new Result(false, 0, 0, 0, refusal, Refused: true);
+        }
+
         status?.Invoke("Scanning logs…");
         GameLogBlueprintImporter.HistoryScan scan;
         string? buildLine;

@@ -10,4 +10,9 @@ public sealed class ShardSession
     public string Instance { get; init; } = "";      // "140"
     public string ServerIp { get; init; } = "";      // 34.181.129.126
     public DateTime JoinedAt { get; init; } = DateTime.UtcNow;
+
+    // Launcher channel this join happened on ("LIVE", "HOTFIX", "PTU", ...). Settable, not init:
+    // ShardLogParser builds the session from the log line alone and ShardTracker stamps the channel
+    // after the fact. "" = recorded before issue #28 (untagged, treated as LIVE-era in the UI).
+    public string Channel { get; set; } = "";
 }
