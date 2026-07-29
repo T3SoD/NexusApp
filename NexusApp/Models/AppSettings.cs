@@ -136,6 +136,31 @@ public class AppSettings
     // Issue #28: the custom-folder path the one-time Operations notice was last dismissed for,
     // so the notice shows once per DISTINCT custom path instead of once ever or every launch.
     public string CustomChannelNoticePath { get; set; } = "";
+
+    // Trading tab (2026-07-29): which flow (planner/sell/prices) was last open, so the tab
+    // reopens where the user left it.
+    public string TradeActiveFlow { get; set; } = "planner";
+
+    // The cargo ship catalog id (ShipCargoDef.Id) last selected in the route planner. "" = no
+    // selection yet.
+    public string TradeShipId { get; set; } = "";
+
+    // Manual origin override (a terminal identity string) for when no live Game.log session is
+    // running, or the player wants to plan from somewhere other than where they stand. "" = none
+    // set; the planner falls back to whatever the live-location facility reports, if anything.
+    public string TradeOriginManual { get; set; } = "";
+
+    // System-name scope filter pill (ALL / a specific star system name). Default ALL.
+    public string TradeScope { get; set; } = "ALL";
+
+    // FROM HERE (true, default) restricts the route planner's buy legs to the current origin;
+    // ANYWHERE (false) lifts that restriction. Same ranking math either way.
+    public bool TradeAnchorFromHere { get; set; } = true;
+
+    // Dark flag: SC Trade Tools corroboration data, owner-only Admin-tab surface until the SCT
+    // maintainer approves in-app use of their endpoints. Off means SctMarketService never makes a
+    // network call at all. Default off.
+    public bool SctDataEnabled { get; set; }
 }
 
 public class ScanRegion

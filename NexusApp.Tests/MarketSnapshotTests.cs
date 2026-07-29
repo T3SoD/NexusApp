@@ -374,6 +374,95 @@ public class MarketSnapshotTests
         Assert.Equal(1, skipped);
     }
 
+    // --- ParseTradePriceRows (bulk /commodities_prices_all) ------------------
+
+    [Fact]
+    public void ParseTradePriceRows_FullFieldsRow_ParsesAllValuesAndConvertsEpoch()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id_terminal":12,"id_commodity":47,"price_buy":0,"price_sell":8500,
+           "scu_buy":0,"scu_sell_stock":683,"status_buy":0,"status_sell":3,
+           "container_sizes":"1,2,4,8,16,24,32","date_modified":1785229167,
+           "terminal_name":"TDD Area 18","commodity_name":"Laranite"}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseTradePriceRows(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        var row = Assert.Single(rows);
+        Assert.Equal(new TradePriceRow(12, 47, 0, 8500, 0, 683, 0, 3, "1,2,4,8,16,24,32",
+            new DateTime(2026, 7, 28, 8, 59, 27, DateTimeKind.Utc), "TDD Area 18", "Laranite"), row);
+    }
+
+    [Fact]
+    public void ParseTradePriceRows_BothPricesZero_IsKeptNotSkipped()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id_terminal":1,"id_commodity":1,"price_buy":0,"price_sell":0,
+           "scu_buy":0,"scu_sell_stock":0,"status_buy":0,"status_sell":0,
+           "container_sizes":"1,2,4","date_modified":1785000000,
+           "terminal_name":"Quiet Terminal","commodity_name":"Quiet Commodity"}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseTradePriceRows(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        var row = Assert.Single(rows);
+        Assert.Equal(0, row.Buy);
+        Assert.Equal(0, row.Sell);
+    }
+
+    [Fact]
+    public void ParseTradePriceRows_WrongTypeOnOneField_SkipsThatRowOnly()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id_terminal":"not-a-number","id_commodity":47,"price_buy":5000,"price_sell":0,
+           "scu_buy":10,"scu_sell_stock":0,"status_buy":1,"status_sell":0,
+           "container_sizes":"1,2,4,8","date_modified":1785000001,
+           "terminal_name":"Bad Row","commodity_name":"Laranite"},
+          {"id_terminal":2,"id_commodity":47,"price_buy":7541,"price_sell":0,
+           "scu_buy":1050,"scu_sell_stock":0,"status_buy":7,"status_sell":0,
+           "container_sizes":"1,2,4,8,16","date_modified":1785175401,
+           "terminal_name":"Good Row","commodity_name":"Laranite"}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseTradePriceRows(body, out var skipped);
+
+        Assert.Equal(1, skipped);
+        var row = Assert.Single(rows);
+        Assert.Equal("Good Row", row.TerminalName);
+    }
+
+    [Fact]
+    public void ParseTradePriceRows_BadEnvelope_ReturnsEmptyWithZeroSkipped()
+    {
+        var rows = MarketParse.ParseTradePriceRows(NotAllowedEnvelope, out var skipped);
+        Assert.Empty(rows);
+        Assert.Equal(0, skipped);
+    }
+
+    [Fact]
+    public void ParseTradePriceRows_UnpairedSurrogate_ReturnsEmptyNoThrow()
+    {
+        string body = "{\"status\":\"ok\",\"data\":[{\"id_terminal\":1,\"id_commodity\":1," +
+            "\"price_buy\":0,\"price_sell\":0,\"scu_buy\":0,\"scu_sell_stock\":0,\"status_buy\":0," +
+            "\"status_sell\":0,\"container_sizes\":\"1\",\"date_modified\":1785000000," +
+            "\"terminal_name\":\"Bad\uD800Name\",\"commodity_name\":\"X\"}]}";
+
+        var ex = Record.Exception(() => MarketParse.ParseTradePriceRows(body, out _));
+
+        Assert.Null(ex);
+        var rows = MarketParse.ParseTradePriceRows(body, out var skipped);
+        Assert.Empty(rows);
+        Assert.Equal(0, skipped);
+    }
+
     // --- NewestFetchUtc -----------------------------------------------------
 
     [Fact]
@@ -394,6 +483,7 @@ public class MarketSnapshotTests
             Commodities = new MarketDataset<MarketCommodity> { FetchedUtc = t1 },
             RawPrices = new MarketDataset<MarketPriceRow> { FetchedUtc = t2 },
             RefinedPrices = new MarketDataset<MarketPriceRow> { FetchedUtc = t3 },
+            TradePrices = new MarketDataset<TradePriceRow>(),  // MinValue - proves the new dataset never wins by default
             Yields = new MarketDataset<MarketYieldRow>(),      // MinValue
             Terminals = new MarketDataset<MarketTerminal>(),   // MinValue
         };

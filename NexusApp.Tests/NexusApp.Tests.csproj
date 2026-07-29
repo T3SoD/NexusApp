@@ -21,6 +21,8 @@
   <ItemGroup>
     <None Remove="Fixtures\scmdb-v3-sample.json" />
     <EmbeddedResource Include="Fixtures\scmdb-v3-sample.json" />
+    <None Remove="Fixtures\uex_prices_all_sample.json" />
+    <EmbeddedResource Include="Fixtures\uex_prices_all_sample.json" />
   </ItemGroup>
 
 </Project>

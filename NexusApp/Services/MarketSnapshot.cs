@@ -12,17 +12,24 @@ internal sealed class MarketSnapshot
     public MarketDataset<MarketCommodity> Commodities { get; set; } = new();
     public MarketDataset<MarketPriceRow> RawPrices { get; set; } = new();
     public MarketDataset<MarketPriceRow> RefinedPrices { get; set; } = new();
+
+    // Trade tab (2026-07-29): every commodity at every terminal, via the bulk
+    // /commodities_prices_all endpoint (Task 2). Same hourly cadence as RefinedPrices; kept as
+    // its own dataset because the row shape is disjoint (buy AND sell price/stock/status, no
+    // game_version) from RefinedPrices' per-commodity /commodities_prices rows.
+    public MarketDataset<TradePriceRow> TradePrices { get; set; } = new();
     public MarketDataset<MarketYieldRow> Yields { get; set; } = new();
     public MarketDataset<MarketTerminal> Terminals { get; set; } = new();
 
-    // The freshest of the five dataset fetch stamps. All five default to DateTime.MinValue
-    // (never fetched), so a brand new snapshot reports MinValue here too.
+    // The freshest of the dataset fetch stamps. All default to DateTime.MinValue (never
+    // fetched), so a brand new snapshot reports MinValue here too.
     public DateTime NewestFetchUtc =>
         new[]
         {
             Commodities.FetchedUtc,
             RawPrices.FetchedUtc,
             RefinedPrices.FetchedUtc,
+            TradePrices.FetchedUtc,
             Yields.FetchedUtc,
             Terminals.FetchedUtc,
         }.Max();
@@ -38,6 +45,14 @@ internal sealed record MarketCommodity(int Id, string Name, string Slug, bool Is
 internal sealed record MarketPriceRow(int TerminalId, int CommodityId, double Sell, double SellAvgWeek, string GameVersion, DateTime ModifiedUtc, string TerminalName);
 internal sealed record MarketYieldRow(int TerminalId, int CommodityId, int BonusPct, int BonusPctWeek, DateTime ModifiedUtc, string TerminalName);
 internal sealed record MarketTerminal(int Id, string Name, string Type, bool IsRefinery, string System, string Location);
+
+// Every commodity at every terminal (bulk /commodities_prices_all), for the trading tab. Reduced
+// field set vs. MarketPriceRow above: no game_version, no statistical windows - just the instant
+// buy/sell price+stock+status pair and container sizes. Public (unlike its neighbours here): the
+// trading tab's UI/route-planner code lives in other files that consume it directly.
+public sealed record TradePriceRow(int TerminalId, int CommodityId, double Buy, double Sell,
+    int BuyStockScu, int SellDemandScu, int StatusBuy, int StatusSell, string ContainerSizes,
+    DateTime ModifiedUtc, string TerminalName, string CommodityName);
 
 // Tolerant parsing of UEX API responses. Never throws on any input: malformed JSON, an error
 // envelope, or an unexpected shape all resolve to an empty/false result. Individual bad rows in
@@ -172,6 +187,61 @@ internal static class MarketParse
             // malformed UTF-16) skips out cleanly instead of throwing into the caller.
             skipped = 0;
             return new List<MarketPriceRow>();
+        }
+        return result;
+    }
+
+    // The row shape of the bulk /commodities_prices_all endpoint: every commodity at every
+    // terminal in one call, hourly, for the trading tab's full-catalogue surfaces (route planner,
+    // sell lookup, price browser). Rows where BOTH price_buy and price_sell are 0 are kept, not
+    // skipped: a terminal that neither buys nor sells a commodity today is a real, displayable
+    // state (a tagged absence in the UI), not a parse failure.
+    public static List<TradePriceRow> ParseTradePriceRows(string body, out int skipped)
+    {
+        var result = new List<TradePriceRow>();
+        skipped = 0;
+        try
+        {
+            if (!TryGetData(body, out var data) || data.ValueKind != JsonValueKind.Array) return result;
+            foreach (var row in data.EnumerateArray())
+            {
+                if (row.ValueKind == JsonValueKind.Object
+                    && TryInt(row, "id_terminal", out var terminalId)
+                    && TryInt(row, "id_commodity", out var commodityId)
+                    && TryDouble(row, "price_buy", out var buy)
+                    && TryDouble(row, "price_sell", out var sell)
+                    && TryInt(row, "scu_buy", out var buyStockScu)
+                    // SellDemandScu reads scu_sell_stock, not scu_sell: verified against the real
+                    // capture (nexus-assets/specs/sct-uex-benchmark-raw/uex_prices_all.json,
+                    // 2,596 rows) - scu_sell is 0 in ~90% of all rows and ~86% of active-sell
+                    // rows, while scu_sell_stock reliably carries the meaningful current-stock
+                    // figure (0 rows have scu_sell nonzero while scu_sell_stock is zero).
+                    && TryInt(row, "scu_sell_stock", out var sellDemandScu)
+                    && TryInt(row, "status_buy", out var statusBuy)
+                    && TryInt(row, "status_sell", out var statusSell)
+                    && TryStr(row, "container_sizes", out var containerSizes)
+                    && TryEpoch(row, "date_modified", out var modifiedUtc)
+                    && TryStr(row, "terminal_name", out var terminalName)
+                    && TryStr(row, "commodity_name", out var commodityName))
+                {
+                    result.Add(new TradePriceRow(terminalId, commodityId, buy, sell, buyStockScu,
+                        sellDemandScu, statusBuy, statusSell, containerSizes, modifiedUtc,
+                        terminalName, commodityName));
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Trust-boundary guard: this parses arbitrary bytes off the network. The ValueKind
+            // checks above are the primary defense; this catch-all is the guarantee that an
+            // encoding or shape edge case we didn't anticipate (e.g. ArgumentException from
+            // malformed UTF-16) skips out cleanly instead of throwing into the caller.
+            skipped = 0;
+            return new List<TradePriceRow>();
         }
         return result;
     }
