@@ -274,4 +274,40 @@ public class GameLogSessionTests
         s.Resolve("Received Blueprint: Tundra");
         Assert.Equal(2, builds);
     }
+
+    // ── Blueprint recording gate (issue #28): a test channel (PTU/EPTU/TECH-PREVIEW) or an
+    // unauthorized custom folder must never record blueprint receipts, even with Auto-Track on. ──
+
+    [Fact]
+    public void Ingest_RecordingDisabled_MarksNothing()
+    {
+        var owned = new List<string>();
+        var s = new GameLogSession(
+            () => new[] { "Bracket Cooler" },
+            _ => false,
+            (name, _) => owned.Add(name),
+            ownershipRecordingEnabled: () => false);
+        s.SetAutoMark(true);
+        s.Ingest(Bp("Bracket Cooler"));
+        Assert.Empty(owned);
+        Assert.Empty(s.Marks);
+    }
+
+    [Fact]
+    public void Ingest_RecordingReEnabled_MarksAgain()
+    {
+        bool enabled = false;
+        var owned = new List<string>();
+        var s = new GameLogSession(
+            () => new[] { "Bracket Cooler" },
+            _ => false,
+            (name, _) => owned.Add(name),
+            ownershipRecordingEnabled: () => enabled);
+        s.SetAutoMark(true);
+        s.Ingest(Bp("Bracket Cooler"));
+        Assert.Empty(owned);
+        enabled = true;   // channel switched back to LIVE
+        s.Ingest(Bp("Bracket Cooler"));
+        Assert.Single(owned);
+    }
 }

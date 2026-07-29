@@ -282,7 +282,9 @@ public partial class App : Application
             name => Settings.IsBlueprintOwned(name),
             (name, owned) => Settings.SetBlueprintOwned(name, owned),
             BuildLocalizationMap,
-            GameLogFeed);
+            GameLogFeed,
+            ownershipRecordingEnabled: () => GameChannels.RecordsRealData(
+                GameLogFeed.ActiveChannel, Settings.Current.CustomChannelRecordsBlueprints));
         // Marked/BulkOwnershipChanged: MainWindow's own ctor subscribes to these (it already owns
         // the RefreshBlueprintOwnership target), so this composition root only wires services here,
         // not the concrete view (app review, Task 9).
