@@ -52,6 +52,12 @@ public sealed class CommandPage : UserControl
     private bool _swapFailedDismissed;             // user dismissed the swap-failed strip this session
     private bool _swapFailedStripLogged;           // "shown" logged once, not on every rebuild
 
+    // ── Custom Game.log folder notice (issue #28) ──
+    // Same session-scoped rebuild contract as the strips above. Dismiss persists the exact path
+    // to AppSettings.CustomChannelNoticePath instead of a session-only flag, so a DIFFERENT
+    // custom path notifies again but this one never re-nags across restarts either.
+    private bool _customChannelStripLogged;        // "shown" logged once, not on every rebuild
+
     // ── Operations entrance (tab-open only; never on data ticks) ──
     // Fires once per tab-open visit (MainWindow's SetActivePage calls PlayEntrance after
     // InitCommandPage/Refresh, and calls ResetEntrance whenever the page is not the active
@@ -95,6 +101,11 @@ public sealed class CommandPage : UserControl
         if (App.Shards != null) App.Shards.Changed += Refresh;
         // Update state changes arrive on a worker thread, so those DO need marshaling.
         if (App.Update != null) App.Update.Changed += () => Dispatcher.Invoke(Refresh);
+        // Channel switches (LIVE <-> PTU/EPTU/etc, and into/out of a custom folder, issue #28)
+        // decide the custom-channel strip's visibility, so Operations needs its own trigger to
+        // pick this up live - same UI-thread contract as the shard/update wiring above (the
+        // watcher's DispatcherTimer already raises on the UI thread, per GameLogFeed.cs).
+        App.GameLogFeed.ChannelChanged += _ => Refresh();
     }
 
     public void Refresh()
@@ -107,6 +118,8 @@ public sealed class CommandPage : UserControl
         if (postUpdate != null) _root.Children.Add(postUpdate);
         var swapFailed = SwapFailedStrip();
         if (swapFailed != null) _root.Children.Add(swapFailed);
+        var customChannel = CustomChannelStrip();
+        if (customChannel != null) _root.Children.Add(customChannel);
         var consent = ConsentStrip();
         if (consent != null) _root.Children.Add(consent);
         _updateStrip = UpdateStrip();
@@ -380,6 +393,40 @@ public sealed class CommandPage : UserControl
             {
                 _swapFailedDismissed = true;
                 Logger.Info("[UI] swap-failed notice dismissed");
+                Refresh();
+            });
+    }
+
+    // One-time notice when the watched Game.log lives in a custom (unrecognized) folder:
+    // blueprint recording is off by default there (issue #28). Dismiss remembers the exact
+    // path, so a DIFFERENT custom path notifies again but this one never re-nags.
+    private FrameworkElement? CustomChannelStrip()
+    {
+        if (AppPaths.IsDemoProfile) return null;
+        if (!CustomChannelNotice.ShouldShow(App.GameLogFeed.ActiveChannel, App.GameLogFeed.Path,
+                App.Settings.Current.CustomChannelNoticePath,
+                App.Settings.Current.CustomChannelRecordsBlueprints)) return null;
+
+        if (!_customChannelStripLogged)
+        {
+            _customChannelStripLogged = true;
+            Logger.Info("[UI] custom-channel notice shown on Operations");
+        }
+
+        var open = StripButton("Open Settings");
+        open.Click += (_, _) =>
+        {
+            Logger.Info("[UI] custom-channel notice: open settings");
+            (Application.Current.MainWindow as MainWindow)?.OpenSettingsGameTab();
+        };
+        return NoticeStrip("GAME LOG",
+            "Nexus is reading a Game.log in a custom folder. Blueprint recording is off by default " +
+            "for non-standard installs. If this is your real LIVE install, allow it in Settings > Game.",
+            new[] { open }, onDismiss: () =>
+            {
+                App.Settings.Current.CustomChannelNoticePath = App.GameLogFeed.Path;
+                App.Settings.Save();
+                Logger.Info("[UI] custom-channel notice dismissed");
                 Refresh();
             });
     }

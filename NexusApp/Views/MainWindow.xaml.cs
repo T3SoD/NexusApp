@@ -86,8 +86,7 @@ public partial class MainWindow : Window
         {
             if (!_sessionChipNoLog) return;
             Logger.Info("[UI] Session chip: opened Settings (no Game.log)");
-            SetActivePage("settings");
-            _settingsPage?.SwitchToGameTab();
+            OpenSettingsGameTab();
         };
         UpdateOperatorIdentity();
         RefreshApprovedTools();
@@ -584,6 +583,16 @@ public partial class MainWindow : Window
             _settingsPage = new SettingsPage(ShowLogMonitor, ShowAppLogMonitor);
             PageSettings.Children.Add(_settingsPage);
         }
+    }
+
+    /// <summary>Navigate to Settings > Game (the Game.log path controls). Used by the SESSION
+    /// chip's no-log click-through and the custom-channel notice on Operations (issue #28).
+    /// Navigation only - each caller logs its own accurate context line before calling this,
+    /// since a shared log line here would misdescribe whichever caller didn't originate it.</summary>
+    public void OpenSettingsGameTab()
+    {
+        SetActivePage("settings");
+        _settingsPage?.SwitchToGameTab();
     }
 
     private CommandPage? _commandPage;
