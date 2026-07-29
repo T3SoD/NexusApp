@@ -23,6 +23,13 @@ public class ShardLogParserTests
     private const string TestJoin =
         "<2026-07-29T13:14:51.882Z> [Notice] <Join PU> address[10.0.0.1] port[64318] shard[test_euw1b_12030094_002] locationId[1] [x]";
 
+    // Verbatim from a real PTU Game.log (2026-07-29, owner's install). Confirms the live PTU
+    // shard prefix is "ptu" - the pre-#28 (?:pub|priv) regex would have rejected it. Server ip
+    // only, no PII.
+    private const string PtuJoinReal =
+        "<2026-07-29T21:21:26.856Z> [Notice] <Join PU> address[34.11.100.210] port[64375] " +
+        "shard[ptu_use1b_12335477_040] locationId[562954248454145] [Team_GameServices][GIM][Matchmaking]";
+
     [Fact]
     public void ParseJoin_ExtractsAllFields()
     {
@@ -71,6 +78,18 @@ public class ShardLogParserTests
         Assert.Equal("ptu_use1a_12030094_140", s!.ShardId);
         Assert.Equal("use1a", s.RegionCode);
         Assert.Equal("140", s.Instance);
+    }
+
+    [Fact]
+    public void ParseJoin_RealPtuSample_Parses()
+    {
+        var s = ShardLogParser.ParseJoin(PtuJoinReal);
+        Assert.NotNull(s);
+        Assert.Equal("ptu_use1b_12335477_040", s!.ShardId);
+        Assert.Equal("use1b", s.RegionCode);
+        Assert.Equal("US East", s.Region);
+        Assert.Equal("040", s.Instance);
+        Assert.Equal("34.11.100.210", s.ServerIp);
     }
 
     [Fact]
