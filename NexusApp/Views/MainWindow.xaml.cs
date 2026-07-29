@@ -1563,6 +1563,12 @@ public partial class MainWindow : Window
         BpImportBtn.Content = prev;
         BpImportBtn.IsEnabled = true;
 
+        if (result.Refused)
+        {
+            MessageBox.Show(this, result.Status, "Import owned blueprints", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         if (result.FilesScanned == 0)
         {
             MessageBox.Show(this,
