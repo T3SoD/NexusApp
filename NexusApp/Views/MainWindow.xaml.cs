@@ -595,6 +595,13 @@ public partial class MainWindow : Window
         _settingsPage?.SwitchToGameTab();
     }
 
+    /// <summary>Re-evaluate the Settings GAME tab's needs-attention pip (issue #28). The
+    /// custom-folder notice can be acknowledged from Operations, which is a different page, and
+    /// SettingsPage is built once and kept - nothing re-runs its refresh on navigation - so the
+    /// acknowledging view calls this. No-op until Settings has been opened at least once: the page's
+    /// own constructor computes the pip from current state.</summary>
+    public void RefreshSettingsGameDot() => _settingsPage?.RefreshGameDot();
+
     private CommandPage? _commandPage;
     private void InitCommandPage()
     {

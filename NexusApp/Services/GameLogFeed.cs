@@ -174,10 +174,21 @@ public sealed class GameLogFeed : IDisposable
             : !string.IsNullOrEmpty(PreferredPath) ? PreferredPath
             : GameLogWatcher.FindGameLog();
         var candidates = GameChannelProbe.Candidates(anchor);
-        if (candidates.Count < 2) return anchor;   // custom layout or single channel: unchanged behavior
+        if (candidates.Count == 0) return anchor;   // custom layout: unchanged single-file behavior
+        // One surviving candidate still runs selection: it wins over an anchor whose own file is
+        // gone (a persisted path to an uninstalled channel), and a healthy single-channel install
+        // no-ops because selection returns that same path.
+        return GameChannelProbe.SelectActive(StatAll(candidates), anchor, DateTime.UtcNow, IsSessionLive) ?? anchor;
+    }
+
+    // Stat every candidate, dropping any that vanished or refused between the probe and the stat
+    // (a channel folder can be removed mid-tick). Shared by StartPath and AutoFollowTick so both
+    // sites keep the same swallow-and-continue behavior.
+    private static List<GameChannelProbe.LogStat> StatAll(IReadOnlyList<string> candidates)
+    {
         var stats = new List<GameChannelProbe.LogStat>(candidates.Count);
         foreach (var c in candidates) { try { stats.Add(GameChannelProbe.Stat(c)); } catch { } }
-        return GameChannelProbe.SelectActive(stats, anchor, DateTime.UtcNow) ?? anchor;
+        return stats;
     }
 
     /// <summary>The tail was (re)pointed at this path. Feed-level and deliberately replay-agnostic:
@@ -219,10 +230,11 @@ public sealed class GameLogFeed : IDisposable
         try
         {
             var candidates = GameChannelProbe.Candidates(Path);
-            if (candidates.Count < 2) return;   // custom layout / single channel: nothing to follow
-            var stats = new List<GameChannelProbe.LogStat>(candidates.Count);
-            foreach (var c in candidates) { try { stats.Add(GameChannelProbe.Stat(c)); } catch { } }
-            var next = GameChannelProbe.SelectActive(stats, Path, DateTime.UtcNow);
+            if (candidates.Count == 0) return;   // custom layout: nothing to follow
+            // A single candidate is still evaluated: when the watched file itself is gone (its
+            // channel was uninstalled while the path stayed persisted), the survivor recovers the
+            // tail. An intact single-channel install selects itself and falls through the guard below.
+            var next = GameChannelProbe.SelectActive(StatAll(candidates), Path, DateTime.UtcNow, IsSessionLive);
             if (next is null || string.Equals(next, Path, StringComparison.OrdinalIgnoreCase)) return;
             Logger.Info($"[GameLog] channel switch: {GameChannels.FolderName(ActiveChannel)} -> " +
                         $"{GameChannels.FolderName(GameChannels.FromLogPath(next))} (auto-follow)");

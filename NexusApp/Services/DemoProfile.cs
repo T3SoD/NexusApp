@@ -10,11 +10,21 @@ namespace NexusApp.Services;
 // public screenshots. Nothing here ever reads or writes the live profile.
 public static class DemoProfile
 {
-    // The embedded dataset (NexusApp/Data/demo/**). Extracted verbatim except settings.json,
-    // whose GameLogPath is patched to the seeded Game.log once the root is known.
-    internal static readonly string[] Files = ["settings.json", "nexus.db", "network.db", "Game.log"];
+    // The seeded Game.log lands in a LIVE subfolder, not at the demo root: channel inference reads
+    // the parent folder (issue #28), and a demo root is not a channel name, so a root-level file
+    // would put "CUSTOM" chip tags, CUSTOM shard badges and the custom-folder notice into every
+    // public screenshot. Under LIVE the demo profile reads as an ordinary LIVE install.
+    private static readonly string GameLogRelative = Path.Combine("LIVE", "Game.log");
+
+    // The embedded dataset (NexusApp/Data/demo/**) as root-relative destinations. Extracted verbatim
+    // except settings.json, whose GameLogPath is patched to the seeded Game.log once the root is known.
+    internal static readonly string[] Files = ["settings.json", "nexus.db", "network.db", GameLogRelative];
 
     private const string ResourcePrefix = "NexusApp.Data.demo.";
+
+    // Where the demo's Game.log lives under a given root. One definition for seeding, the
+    // settings patch and the watcher pin, so the three can never drift apart.
+    internal static string GameLogPath(string root) => Path.Combine(root, GameLogRelative);
 
     public static bool IsSeeded(string root) => File.Exists(Path.Combine(root, "settings.json"));
 
@@ -31,9 +41,13 @@ public static class DemoProfile
         // databases (such a root would self-hide forever behind the early return above).
         foreach (var name in Files.OrderBy(n => n == "settings.json" ? 1 : 0))
         {
-            using var src = asm.GetManifestResourceStream(ResourcePrefix + name)
-                ?? throw new FileNotFoundException($"embedded demo resource missing: {name}");
-            using var dst = File.Create(Path.Combine(root, name));
+            // Resources are flat (Data\demo\<file>); only the destination is nested.
+            var leaf = Path.GetFileName(name);
+            using var src = asm.GetManifestResourceStream(ResourcePrefix + leaf)
+                ?? throw new FileNotFoundException($"embedded demo resource missing: {leaf}");
+            var target = Path.Combine(root, name);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            using var dst = File.Create(target);
             src.CopyTo(dst);
         }
         PatchGameLogPath(root);
@@ -45,7 +59,7 @@ public static class DemoProfile
     {
         var path = Path.Combine(root, "settings.json");
         var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
-        s.GameLogPath = Path.Combine(root, "Game.log");
+        s.GameLogPath = GameLogPath(root);
         File.WriteAllText(path, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
     }
 
@@ -60,7 +74,7 @@ public static class DemoProfile
     // root's Game.log even when that file does not exist yet (PreferredPath honors missing
     // files instead of probing).
     internal static string PinGameLogPath(string? current, string root) =>
-        string.IsNullOrEmpty(current) ? Path.Combine(root, "Game.log") : current;
+        string.IsNullOrEmpty(current) ? GameLogPath(root) : current;
 
     // Seed if needed, then start the demo instance. Returns false (and logs) when the child
     // could not start; the caller must keep the live app running in that case. ProcessPath,

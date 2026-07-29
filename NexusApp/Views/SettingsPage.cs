@@ -328,14 +328,25 @@ public sealed class SettingsPage : UserControl
         slide.BeginAnimation(TranslateTransform.XProperty, glide);
     }
 
-    // Show the GAME pip only when no effective Game.log exists: no manual path set and nothing
-    // auto-detected on disk. FindGameLog always returns a candidate (its LIVE default fallback), so the
-    // file itself is probed rather than trusting a null.
-    private void RefreshGameDot()
+    // Show the GAME pip while the tab needs attention. Two causes: no effective Game.log exists (no
+    // manual path set and nothing auto-detected on disk - FindGameLog always returns a candidate via
+    // its LIVE default fallback, so the file itself is probed rather than trusting a null), or the
+    // custom-folder notice is still unacknowledged (issue #28, spec section 4: the pip lights until
+    // the user has seen why a non-standard install records no blueprints).
+    //
+    // internal, not private: the notice can also be acknowledged from Operations, and this page is a
+    // lazily-built singleton that is never rebuilt on navigation, so MainWindow re-runs this through
+    // its RefreshSettingsGameDot pass-through. internal keeps it off the public surface - the
+    // pass-through is the intended entry point for other views.
+    internal void RefreshGameDot()
     {
         bool missing = string.IsNullOrWhiteSpace(App.Settings.Current.GameLogPath)
             && !System.IO.File.Exists(GameLogWatcher.FindGameLog());
-        _gameDot.Visibility = missing ? Visibility.Visible : Visibility.Collapsed;
+        bool needsAttention = missing
+            || CustomChannelNotice.ShouldShow(App.GameLogFeed.ActiveChannel, App.GameLogFeed.Path,
+                   App.Settings.Current.CustomChannelNoticePath,
+                   App.Settings.Current.CustomChannelRecordsBlueprints);
+        _gameDot.Visibility = needsAttention ? Visibility.Visible : Visibility.Collapsed;
 
         // The dot changes the GAME tab's width, so re-place the traveling underline when GAME is
         // the active tab. Deferred to DispatcherPriority.Loaded so the tab's ActualWidth reflects
@@ -349,7 +360,7 @@ public sealed class SettingsPage : UserControl
         // it needs attention; hold it solid when hidden or when Reduce animations is on. Reduced is read
         // here, so a live toggle is honored the next time the effective path is re-checked, matching how
         // the app applies Reduced lazily.
-        if (missing && !Motion.Reduced)
+        if (needsAttention && !Motion.Reduced)
         {
             var dur = TimeSpan.FromMilliseconds(Motion.BreatheMs);
             _gameDot.BeginAnimation(UIElement.OpacityProperty,
@@ -400,9 +411,14 @@ public sealed class SettingsPage : UserControl
         {
             var ch = App.GameLogFeed.ActiveChannel;
             var candidates = GameChannelProbe.Candidates(App.GameLogFeed.Path);
-            var found = candidates.Count == 0
-                ? "custom folder (single file, no auto-follow)"
-                : string.Join(" · ", candidates.Select(p => GameChannels.FolderName(GameChannels.FromLogPath(p))));
+            // Nothing found has two very different causes: a genuinely custom folder (auto-follow is
+            // off by design), or a standard layout whose Game.log simply is not there yet because
+            // Star Citizen has not run. Only the first deserves the custom-folder note.
+            var found = candidates.Count > 0
+                ? string.Join(" · ", candidates.Select(p => GameChannels.FolderName(GameChannels.FromLogPath(p))))
+                : GameChannels.FromLogPath(App.GameLogFeed.Path) == GameChannel.Custom
+                    ? "custom folder (single file, no auto-follow)"
+                    : "none yet (Game.log appears after Star Citizen runs)";
             envStatus.Text = $"Watching: {GameChannels.FolderName(ch)} (auto)\nChannels found: {found}";
         }
         RefreshEnvStatus();
@@ -429,6 +445,9 @@ public sealed class SettingsPage : UserControl
             App.GameLogFeed.ActiveChannel == GameChannel.Custom ? Visibility.Visible : Visibility.Collapsed;
         RefreshCustomRow();
         App.GameLogFeed.ChannelChanged += _ => Dispatcher.Invoke(RefreshCustomRow);
+        // A channel flip can also start or clear the custom-folder notice, which the tab's
+        // needs-attention pip mirrors.
+        App.GameLogFeed.ChannelChanged += _ => Dispatcher.Invoke(RefreshGameDot);
 
         panel.Children.Add(SectionPanel("Game.log Paths", false,
             BuildPathRow(
@@ -1263,13 +1282,16 @@ public sealed class SettingsPage : UserControl
     }
 
     // Issue #28: the user's explicit opt-in that a non-standard (Custom-channel) install is really
-    // their LIVE game, so its Game.log should record blueprint receipts. Off by default.
-    private static void ApplyCustomAllow(bool on)
+    // their LIVE game, so its Game.log should record blueprint receipts. Off by default. Instance
+    // method so it can refresh the GAME tab's needs-attention pip: authorizing settles the
+    // custom-folder notice, revoking raises it again.
+    private void ApplyCustomAllow(bool on)
     {
         if (App.Settings.Current.CustomChannelRecordsBlueprints == on) return;
         App.Settings.Current.CustomChannelRecordsBlueprints = on;
         App.Settings.Save();
         Logger.Info($"[UI] custom-folder blueprint recording {(on ? "authorized" : "revoked")}");
+        RefreshGameDot();
     }
 
     // ── Saved data ────────────────────────────────────────────────────────────

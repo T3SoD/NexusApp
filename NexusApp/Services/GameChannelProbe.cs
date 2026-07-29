@@ -48,26 +48,57 @@ public static class GameChannelProbe
         System.IO.File.GetCreationTimeUtc(path),
         System.IO.File.GetLastWriteTimeUtc(path));
 
-    /// <summary>The candidate to watch (spec section 2): keep an actively-written current file;
-    /// else newest creation time wins (SC recreates Game.log on every launch), last-write breaks
-    /// creation ties, and the current path wins full ties so equal stats never cause a switch.</summary>
-    public static string? SelectActive(IReadOnlyList<LogStat> stats, string currentPath, DateTime nowUtc)
+    /// <summary>The candidate to watch (spec section 2). Last-write time is the signal, never
+    /// creation time on its own: copying a LIVE Game.log into a PTU folder (a documented user
+    /// habit) keeps the source's last write but stamps a brand new creation time, so ranking by
+    /// creation would abandon the log the player is actually playing on.
+    ///
+    /// - No candidates: null.
+    /// - Star Citizen running and the current file written inside <see cref="ActiveWriteWindow"/>:
+    ///   the current file, always. One log is written at a time, so this is never wrong.
+    /// - Star Citizen running, current file among the candidates: another candidate takes over only
+    ///   with a STRICTLY newer last write (the copied-log case ties, and a tie stays put). Newest
+    ///   last write wins among several, newer creation breaks that tie.
+    /// - Star Citizen running, current file NOT among the candidates (its channel was uninstalled
+    ///   or the file was deleted): the recovery path - newest last write wins, creation breaks ties.
+    /// - Star Citizen closed: newest last write wins; the current file wins a last-write tie so
+    ///   unchanged stats never cause a switch, and newer creation breaks ties between the rest.</summary>
+    public static string? SelectActive(IReadOnlyList<LogStat> stats, string currentPath, DateTime nowUtc, bool sessionLive)
     {
         if (stats.Count == 0) return null;
+
+        LogStat? current = null;
         foreach (var s in stats)
-            if (PathsEqual(s.Path, currentPath) && nowUtc - s.LastWriteUtc < ActiveWriteWindow)
-                return s.Path;
+            if (PathsEqual(s.Path, currentPath)) { current = s; break; }
+
+        if (sessionLive && current is { } active)
+        {
+            if (nowUtc - active.LastWriteUtc < ActiveWriteWindow) return active.Path;
+
+            LogStat? rival = null;
+            foreach (var s in stats)
+            {
+                if (PathsEqual(s.Path, currentPath)) continue;
+                if (rival is null || Beats(s, rival.Value, currentPath)) rival = s;
+            }
+            return rival is { } r && r.LastWriteUtc > active.LastWriteUtc ? r.Path : active.Path;
+        }
 
         var best = stats[0];
         foreach (var s in stats.Skip(1))
-        {
-            int byCreation = s.CreationUtc.CompareTo(best.CreationUtc);
-            if (byCreation > 0
-                || (byCreation == 0 && s.LastWriteUtc > best.LastWriteUtc)
-                || (byCreation == 0 && s.LastWriteUtc == best.LastWriteUtc && PathsEqual(s.Path, currentPath)))
-                best = s;
-        }
+            if (Beats(s, best, currentPath)) best = s;
         return best.Path;
+    }
+
+    /// <summary>Ranking: newer last write wins; the current path wins a last-write tie (equal stats
+    /// must never cause a switch); newer creation breaks what is left.</summary>
+    private static bool Beats(LogStat a, LogStat b, string currentPath)
+    {
+        int byWrite = a.LastWriteUtc.CompareTo(b.LastWriteUtc);
+        if (byWrite != 0) return byWrite > 0;
+        bool aIsCurrent = PathsEqual(a.Path, currentPath), bIsCurrent = PathsEqual(b.Path, currentPath);
+        if (aIsCurrent != bIsCurrent) return aIsCurrent;
+        return a.CreationUtc > b.CreationUtc;
     }
 
     private static bool PathsEqual(string a, string b) =>

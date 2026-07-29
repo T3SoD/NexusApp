@@ -11,46 +11,106 @@ public class GameChannelProbeTests
 
     [Fact]
     public void SelectActive_EmptyList_ReturnsNull()
-        => Assert.Null(GameChannelProbe.SelectActive(new List<GameChannelProbe.LogStat>(), @"X:\LIVE\Game.log", Now));
+        => Assert.Null(GameChannelProbe.SelectActive(
+            new List<GameChannelProbe.LogStat>(), @"X:\LIVE\Game.log", Now, sessionLive: false));
+
+    // ── Star Citizen closed: pure newest-last-write, current wins ties ────────────────────
 
     [Fact]
-    public void SelectActive_NewestCreationWins()
+    public void SelectActive_GameClosed_NewestLastWriteWins()
     {
         var stats = new List<GameChannelProbe.LogStat>
         {
             S(@"X:\SC\LIVE\Game.log", createdMinAgo: 120, wroteMinAgo: 60),
-            S(@"X:\SC\HOTFIX\Game.log", createdMinAgo: 5, wroteMinAgo: 5),   // just launched
+            S(@"X:\SC\HOTFIX\Game.log", createdMinAgo: 5, wroteMinAgo: 5),   // last channel played
         };
-        Assert.Equal(@"X:\SC\HOTFIX\Game.log", GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now));
+        Assert.Equal(@"X:\SC\HOTFIX\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: false));
+    }
+
+    // The documented copy-LIVE-to-PTU habit: an Explorer copy preserves the source's last-write
+    // time but stamps a brand new creation time. Ranking by creation would abandon the real log,
+    // so the copy must NOT win.
+    [Fact]
+    public void SelectActive_GameClosed_CopiedLog_NewerCreationSameLastWrite_DoesNotWin()
+    {
+        var stats = new List<GameChannelProbe.LogStat>
+        {
+            S(@"X:\SC\LIVE\Game.log", createdMinAgo: 180, wroteMinAgo: 30),
+            S(@"X:\SC\PTU\Game.log", createdMinAgo: 2, wroteMinAgo: 30),     // the copy
+        };
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: false));
     }
 
     [Fact]
-    public void SelectActive_ActivelyWrittenCurrent_NeverAbandoned()
+    public void SelectActive_GameClosed_LastWriteTieBetweenNonCurrent_NewerCreationBreaksIt()
+    {
+        var stats = new List<GameChannelProbe.LogStat>
+        {
+            S(@"X:\SC\HOTFIX\Game.log", createdMinAgo: 90, wroteMinAgo: 20),
+            S(@"X:\SC\PTU\Game.log", createdMinAgo: 30, wroteMinAgo: 20),
+        };
+        Assert.Equal(@"X:\SC\PTU\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: false));
+    }
+
+    // ── Star Citizen running ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SelectActive_Running_ActivelyWrittenCurrent_NeverAbandoned()
     {
         var stats = new List<GameChannelProbe.LogStat>
         {
             new(@"X:\SC\LIVE\Game.log", Now.AddHours(-2), Now.AddSeconds(-3)),   // being written NOW
-            S(@"X:\SC\PTU\Game.log", createdMinAgo: 1, wroteMinAgo: 1),          // fresher creation
+            S(@"X:\SC\PTU\Game.log", createdMinAgo: 1, wroteMinAgo: 1),          // fresher stats
         };
-        Assert.Equal(@"X:\SC\LIVE\Game.log", GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now));
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: true));
     }
 
     [Fact]
-    public void SelectActive_FullTie_CurrentWins()
+    public void SelectActive_Running_RivalNewerCreationButNotNewerLastWrite_NoSwitch()
     {
-        var a = S(@"X:\SC\LIVE\Game.log", 60, 60);
-        var b = S(@"X:\SC\PTU\Game.log", 60, 60);
-        Assert.Equal(@"X:\SC\PTU\Game.log",
-            GameChannelProbe.SelectActive(new[] { a, b }, @"X:\SC\PTU\Game.log", Now));
+        var stats = new List<GameChannelProbe.LogStat>
+        {
+            S(@"X:\SC\LIVE\Game.log", createdMinAgo: 240, wroteMinAgo: 40),   // outside the active window
+            S(@"X:\SC\PTU\Game.log", createdMinAgo: 1, wroteMinAgo: 40),      // copied in just now
+        };
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: true));
     }
 
     [Fact]
-    public void SelectActive_CreationTie_LastWriteBreaksIt()
+    public void SelectActive_Running_RivalStrictlyNewerLastWrite_Switches()
     {
-        var a = S(@"X:\SC\LIVE\Game.log", 60, 50);
-        var b = S(@"X:\SC\PTU\Game.log", 60, 10);   // same creation, written more recently
+        var stats = new List<GameChannelProbe.LogStat>
+        {
+            S(@"X:\SC\LIVE\Game.log", createdMinAgo: 240, wroteMinAgo: 40),
+            S(@"X:\SC\PTU\Game.log", createdMinAgo: 240, wroteMinAgo: 1),   // the player relaunched on PTU
+        };
         Assert.Equal(@"X:\SC\PTU\Game.log",
-            GameChannelProbe.SelectActive(new[] { a, b }, @"X:\SC\LIVE\Game.log", Now));
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: true));
+    }
+
+    // Recovery: the watched path is gone (channel uninstalled while the path stayed persisted), so
+    // the lone survivor wins even though the current file cannot be compared against it.
+    [Fact]
+    public void SelectActive_DeadCurrentPath_SingleSurvivor_Recovers()
+    {
+        var stats = new List<GameChannelProbe.LogStat> { S(@"X:\SC\LIVE\Game.log", 300, 200) };
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\PTU\Game.log", Now, sessionLive: true));
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\PTU\Game.log", Now, sessionLive: false));
+    }
+
+    [Fact]
+    public void SelectActive_IntactSingleChannel_SelectsItself()
+    {
+        var stats = new List<GameChannelProbe.LogStat> { S(@"X:\SC\LIVE\Game.log", 300, 200) };
+        Assert.Equal(@"X:\SC\LIVE\Game.log",
+            GameChannelProbe.SelectActive(stats, @"X:\SC\LIVE\Game.log", Now, sessionLive: false));
     }
 
     [Fact]
@@ -62,7 +122,7 @@ public class GameChannelProbeTests
             S(@"X:\SC\PTU\Game.log", 1, 1),
         };
         Assert.Equal(@"X:\SC\LIVE\Game.log",
-            GameChannelProbe.SelectActive(stats, @"x:\sc\live\GAME.LOG", Now));
+            GameChannelProbe.SelectActive(stats, @"x:\sc\live\GAME.LOG", Now, sessionLive: true));
     }
 
     [Fact]

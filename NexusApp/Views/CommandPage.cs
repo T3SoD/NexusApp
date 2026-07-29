@@ -427,6 +427,9 @@ public sealed class CommandPage : UserControl
                 App.Settings.Current.CustomChannelNoticePath = App.GameLogFeed.Path;
                 App.Settings.Save();
                 Logger.Info("[UI] custom-channel notice dismissed");
+                // The Settings GAME tab's pip mirrors this same notice state, and that page is built
+                // once and kept, so it has to be told the notice was acknowledged here.
+                (Application.Current.MainWindow as MainWindow)?.RefreshSettingsGameDot();
                 Refresh();
             });
     }
