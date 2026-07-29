@@ -301,7 +301,8 @@ public partial class App : Application
         Shards = new ShardTracker(
             () => Settings.Current.RecentShards,
             list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
-            GameLogFeed);
+            GameLogFeed,
+            channelTag: () => GameChannels.FolderName(GameChannels.FromLogPath(GameLogFeed.Path)));
 
         // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
         // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and

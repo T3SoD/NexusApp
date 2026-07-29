@@ -15,12 +15,15 @@ public sealed class ShardTracker : IDisposable
     private GameLogSubscription? _sub;
     private readonly List<ShardSession> _history = new();   // newest first; current = [0]
     private readonly Action<IReadOnlyList<ShardSession>> _save;
+    private readonly Func<string>? _channelTag;
 
     public ShardTracker(Func<IEnumerable<ShardSession>> loadPersisted,
                         Action<IReadOnlyList<ShardSession>> savePersisted,
-                        GameLogFeed? feed = null)
+                        GameLogFeed? feed = null,
+                        Func<string>? channelTag = null)
     {
         _save = savePersisted;
+        _channelTag = channelTag;
         _history.AddRange(loadPersisted() ?? Enumerable.Empty<ShardSession>());
         _feed = feed ?? new GameLogFeed();
         _ownsFeed = feed is null;
@@ -92,6 +95,7 @@ public sealed class ShardTracker : IDisposable
         if (!raw.Contains("<Join PU>")) return;
         var s = ShardLogParser.ParseJoin(raw);
         if (s is null) return;
+        s.Channel = _channelTag?.Invoke() ?? "";
 
         // Re-joined the SAME shard (e.g. after a brief disconnect): just mark us back on it.
         if (_history.Count > 0 && _history[0].ShardId == s.ShardId)
@@ -104,7 +108,8 @@ public sealed class ShardTracker : IDisposable
         while (_history.Count > MaxKeep) _history.RemoveAt(_history.Count - 1);
         _onShard = !_staleReplay;
         _save(_history);
-        Logger.Info($"[SHARD] joined {s.Region} shard {s.Instance} ({s.ShardId})");
+        Logger.Info($"[SHARD] joined {s.Region} shard {s.Instance} ({s.ShardId})"
+            + (s.Channel is "" or "LIVE" ? "" : $" [{s.Channel}]"));
         Changed?.Invoke();
     }
 
