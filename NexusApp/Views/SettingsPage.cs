@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -383,6 +384,52 @@ public sealed class SettingsPage : UserControl
 
         var openLogBtn = GhostButton("Open Game.log Monitor");
         openLogBtn.Click += (s, e) => _openLogMonitor?.Invoke();
+
+        // Issue #28 auto-follow: which channel the shared tail is watching right now, and which
+        // sibling channel Game.logs exist on disk. Refreshed whenever the feed switches channels
+        // (auto-follow or a manual path change) or is (re)pointed at all, so a channel flip during a
+        // live session is reflected here without reopening Settings.
+        var envStatus = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 12,
+            Foreground = Hud.Br("FgBrush"),
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 360,
+            HorizontalAlignment = HorizontalAlignment.Right, TextAlignment = TextAlignment.Right,
+        };
+        void RefreshEnvStatus()
+        {
+            var ch = App.GameLogFeed.ActiveChannel;
+            var candidates = GameChannelProbe.Candidates(App.GameLogFeed.Path);
+            var found = candidates.Count == 0
+                ? "custom folder (single file, no auto-follow)"
+                : string.Join(" · ", candidates.Select(p => GameChannels.FolderName(GameChannels.FromLogPath(p))));
+            envStatus.Text = $"Watching: {GameChannels.FolderName(ch)} (auto)\nChannels found: {found}";
+        }
+        RefreshEnvStatus();
+        App.GameLogFeed.ChannelChanged += _ => Dispatcher.Invoke(RefreshEnvStatus);
+        App.GameLogFeed.Started += _ => Dispatcher.Invoke(RefreshEnvStatus);
+
+        // Custom-folder authorization: visible only while the active channel is Custom (an
+        // unrecognized parent folder). Blueprint recording there defaults off; this is the user's
+        // explicit opt-in that a non-standard install is really their LIVE game.
+        var customAllow = new CheckBox
+        {
+            Content = "Record blueprints from this custom folder",
+            IsChecked = App.Settings.Current.CustomChannelRecordsBlueprints,
+            Foreground = Hud.Br("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        customAllow.Checked += (_, _) => ApplyCustomAllow(true);
+        customAllow.Unchecked += (_, _) => ApplyCustomAllow(false);
+        var customRow = SettingRow("Custom folder detected",
+            "This Game.log is not in a standard channel folder. Blueprint recording is OFF by default " +
+            "for non-standard installs; check the box only if this is your real LIVE install.",
+            customAllow);
+        void RefreshCustomRow() => customRow.Visibility =
+            App.GameLogFeed.ActiveChannel == GameChannel.Custom ? Visibility.Visible : Visibility.Collapsed;
+        RefreshCustomRow();
+        App.GameLogFeed.ChannelChanged += _ => Dispatcher.Invoke(RefreshCustomRow);
+
         panel.Children.Add(SectionPanel("Game.log Paths", false,
             BuildPathRow(
                 "Game.log path",
@@ -398,6 +445,12 @@ public sealed class SettingsPage : UserControl
                 "Used to translate blueprint names renamed by a community localization mod (custom component " +
                 "strings). Leave blank to auto-detect next to the Game.log.",
                 ApplyGlobalIniPath),
+            SettingRow("Environment status",
+                "Nexus follows whichever channel is writing its Game.log (LIVE, HOTFIX, PTU, EPTU, " +
+                "TECH-PREVIEW - siblings of the path above). Test channels never record blueprints; " +
+                "HOTFIX counts as LIVE.",
+                envStatus),
+            customRow,
             SettingRow("Game.log Monitor",
                 "Track your session from Star Citizen's Game.log: auto-collect blueprints you receive " +
                 "(they're marked Owned in your library), or import the ones you already own from past logs.",
@@ -1207,6 +1260,16 @@ public sealed class SettingsPage : UserControl
         App.Settings.Save();
         App.GameLog.InvalidateLocalizationMap();   // the live tail must pick up the new path now
         Logger.Info("[UI] global.ini path updated in Settings");
+    }
+
+    // Issue #28: the user's explicit opt-in that a non-standard (Custom-channel) install is really
+    // their LIVE game, so its Game.log should record blueprint receipts. Off by default.
+    private static void ApplyCustomAllow(bool on)
+    {
+        if (App.Settings.Current.CustomChannelRecordsBlueprints == on) return;
+        App.Settings.Current.CustomChannelRecordsBlueprints = on;
+        App.Settings.Save();
+        Logger.Info($"[UI] custom-folder blueprint recording {(on ? "authorized" : "revoked")}");
     }
 
     // ── Saved data ────────────────────────────────────────────────────────────
