@@ -378,8 +378,12 @@ public class MarketQueriesTests
         var logPath = Environment.GetEnvironmentVariable("NEXUS_LOG_PATH");
         Assert.NotNull(logPath);
         Assert.True(File.Exists(logPath));
-        var text = File.ReadAllText(logPath!);
-        var occurrences = Regex.Matches(text, Regex.Escape(name)).Count;
+        // FileShare.ReadWrite (not File.ReadAllText's default FileShare.Read): this file is the
+        // shared Logger.LogPath every parallel test class can be appending to, and a plain
+        // exclusive-of-writers read would deny the writer, whose never-throw guarantee then
+        // silently drops the line - see TestFiles.cs for the same fix applied elsewhere.
+        var occurrences = TestFiles.ReadSharedLines(logPath!)
+            .Sum(l => Regex.Matches(l, Regex.Escape(name)).Count);
         Assert.Equal(1, occurrences);
     }
 }
