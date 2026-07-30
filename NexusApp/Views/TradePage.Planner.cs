@@ -259,19 +259,29 @@ public sealed partial class TradePage
     // the tier or fraction. The fix is to let it Stretch (the default - no HorizontalAlignment set)
     // so it fills the ENTIRE available width of its host column, which `host`'s two Star columns
     // already size to exactly `frac` of the full track width.
+    // Review fix (2026-07-30, Medium regression on B/D): the fill is a SIBLING of the tooltip-
+    // carrying track, not a descendant, and Stretch made it hit-test-visible for the first time -
+    // so hovering the colored fill (the exact spot users check to confirm coverage, worst on a
+    // full/green bar where fill covers the whole track) showed no tooltip; only the exposed track
+    // remainder did. Fix: the ToolTip now lives on the OUTER grid this method returns, so it shows
+    // for the bar's entire footprint no matter which child the mouse actually hits (WPF's tooltip
+    // lookup walks up from the hit element to the nearest ancestor with a ToolTip set) - and fill/
+    // host are marked IsHitTestVisible=false, since they are pure visuals that should never
+    // intercept input in the first place. track still fully covers the bar's width on its own, so
+    // every hit still lands on something inside grid's subtree and bubbles up to the one tooltip.
     private static UIElement TripBar(double frac, Brush color, string tooltip)
     {
-        var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(((SolidColorBrush)color).Color) { Opacity = 0.12 }, ToolTip = tooltip };
+        var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(((SolidColorBrush)color).Color) { Opacity = 0.12 } };
         var fill = new Border
         {
-            Height = 6, CornerRadius = new CornerRadius(3), Background = color,
+            Height = 6, CornerRadius = new CornerRadius(3), Background = color, IsHitTestVisible = false,
             Effect = new DropShadowEffect { Color = ((SolidColorBrush)color).Color, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5 },
         };
-        var host = new Grid();
+        var host = new Grid { IsHitTestVisible = false };
         host.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.0001, frac), GridUnitType.Star) });
         host.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.0001, 1 - frac), GridUnitType.Star) });
         Grid.SetColumn(fill, 0);
-        var grid = new Grid();
+        var grid = new Grid { ToolTip = tooltip };
         grid.Children.Add(track);
         host.Children.Add(fill);
         grid.Children.Add(host);
