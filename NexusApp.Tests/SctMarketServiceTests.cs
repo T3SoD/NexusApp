@@ -111,7 +111,8 @@ public class SctMarketServiceTests : IDisposable
 
     // Same as Make, plus the snapshot path: the preserve-the-previous-snapshot tests assert on the
     // on-disk file as well as the in-memory one.
-    private (SctMarketService svc, FakeSctTransport t, SettingsService settings, string snapshotPath) MakeWithPath(bool enabled)
+    private (SctMarketService svc, FakeSctTransport t, SettingsService settings, string snapshotPath) MakeWithPath(
+        bool enabled, Func<bool>? isForegroundRelevant = null)
     {
         var dir = Directory.CreateTempSubdirectory("nexus-sct-test").FullName;
         _tempDirs.Add(dir);
@@ -119,7 +120,7 @@ public class SctMarketServiceTests : IDisposable
         settings.Current.SctDataEnabled = enabled;
         var t = new FakeSctTransport();
         var snapshotPath = Path.Combine(dir, "sct_snapshot.json");
-        var svc = new SctMarketService(settings, t, snapshotPath);
+        var svc = new SctMarketService(settings, t, snapshotPath, isForegroundRelevant);
         return (svc, t, settings, snapshotPath);
     }
 
@@ -456,5 +457,177 @@ public class SctMarketServiceTests : IDisposable
         settings.Current.SctDataEnabled = false;
 
         Assert.Empty(svc.SctOnlyBuyers(commodityId: 22));
+    }
+
+    // --- 6h auto-refresh cadence (2026-07-30) ---------------------------------------------------
+    // ── (a) ShouldFetch: the pure staleness gate ─────────────────────────────────────────────
+
+    [Fact]
+    public void ShouldFetch_NoSnapshot_IsDue()
+    {
+        Assert.True(SctMarketService.ShouldFetch(null, NowUtc));
+    }
+
+    [Fact]
+    public void ShouldFetch_JustUnderSixHours_IsNotDue()
+    {
+        var fetched = NowUtc - TimeSpan.FromHours(5) - TimeSpan.FromMinutes(59);
+        Assert.False(SctMarketService.ShouldFetch(fetched, NowUtc));
+    }
+
+    [Fact]
+    public void ShouldFetch_ExactlySixHours_IsDue()
+    {
+        var fetched = NowUtc - SctMarketService.RefreshInterval;
+        Assert.True(SctMarketService.ShouldFetch(fetched, NowUtc));
+    }
+
+    // A stamp in the FUTURE (a clock rollback, or data fetched while the clock was wrong) counts
+    // as stale too: otherwise the subtraction stays negative and the auto path freezes forever
+    // (MarketDataService.IsStale's own precedent).
+    [Fact]
+    public void ShouldFetch_FutureStamp_IsDue()
+    {
+        Assert.True(SctMarketService.ShouldFetch(NowUtc + TimeSpan.FromDays(3), NowUtc));
+    }
+
+    // ── (b) MaybeAutoRefresh / Start behavioral seams ────────────────────────────────────────
+
+    [Fact]
+    public void MaybeAutoRefresh_FlagOff_MakesNoRequests()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: false);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.MaybeAutoRefresh();
+
+        Assert.Empty(t.Requested);
+    }
+
+    [Fact]
+    public void Start_FlagOff_KicksNothing_ZeroTransportCalls()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: false);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+
+        Assert.Empty(t.Requested);   // Start() checks the flag before the timer/staleness check too
+    }
+
+    [Fact]
+    public void Start_FreshDiskCache_DoesNotFetch()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        var fresh = new SctSnapshot { FetchedUtc = DateTime.UtcNow, Rows = new List<SctListing>() };
+        SctSnapshotFile.Save(snapshotPath, fresh);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+
+        // ShouldFetch is checked synchronously before the fire-and-forget Task.Run, so a fresh
+        // cache never even reaches it: no race to spin-wait for here.
+        Assert.Empty(t.Requested);
+    }
+
+    [Fact]
+    public void Start_NoSnapshotOnDisk_KicksTheAutoRefresh()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: true);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+
+        // Fire-and-forget (Task.Run), same timing note as MarketDataServiceTests' own
+        // MaybeAutoRefresh_ForegroundRelevant_RunsNormally.
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public void Start_StaleDiskCache_KicksTheAutoRefresh()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        var stale = new SctSnapshot { FetchedUtc = DateTime.UtcNow - TimeSpan.FromHours(7), Rows = new List<SctListing>() };
+        SctSnapshotFile.Save(snapshotPath, stale);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public void MaybeAutoRefresh_ForegroundNotRelevant_MakesNoRequests()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: true, isForegroundRelevant: () => false);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.MaybeAutoRefresh();
+
+        Assert.Empty(t.Requested);
+    }
+
+    [Fact]
+    public void Start_ForegroundNotRelevant_DoesNotFetch_EvenWithNoSnapshotOnDisk()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: true, isForegroundRelevant: () => false);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+
+        Assert.Empty(t.Requested);
+    }
+
+    [Fact]
+    public void MaybeAutoRefresh_ForegroundRelevant_RunsWhenDue()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: true, isForegroundRelevant: () => true);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.MaybeAutoRefresh();
+
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public void MaybeAutoRefresh_NoForegroundFuncGiven_DefaultsToAlwaysRelevant()
+    {
+        var (svc, t, _, _) = MakeWithPath(enabled: true);   // no isForegroundRelevant passed
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.MaybeAutoRefresh();
+
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    // Dispose must stop the timer as well as cancel any in-flight cycle: a late tick firing after
+    // shutdown (simulated here by calling MaybeAutoRefresh directly) must still do nothing.
+    [Fact]
+    public void Dispose_StopsTheTimerAndIsIdempotent()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        var fresh = new SctSnapshot { FetchedUtc = DateTime.UtcNow, Rows = new List<SctListing>() };
+        SctSnapshotFile.Save(snapshotPath, fresh);
+
+        svc.Start();   // fresh cache: Start's own staleness check does not fire the timer's work early
+        Assert.Empty(t.Requested);   // isolates the assertion below from Start's own auto-kick
+
+        svc.Dispose();
+        svc.Dispose();   // idempotent: must not throw
+
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        svc.MaybeAutoRefresh();   // simulates a late timer tick firing after shutdown
+
+        Assert.Empty(t.Requested);
     }
 }

@@ -79,9 +79,15 @@ public sealed class SctMarketService : IDisposable
     public static readonly TimeSpan FetchDeadline = TimeSpan.FromMinutes(10);
     private const int MaxPages = 400;   // safety cap above the observed ~300
 
+    // Auto-refresh cadence (2026-07-30): the crowdsource feed is a slow-moving ledger (median
+    // listing age 38 days), so there is no value chasing MarketDataService's hourly cadence -
+    // 6h keeps the cache reasonably current without hammering the endpoint on every launch.
+    public static readonly TimeSpan RefreshInterval = TimeSpan.FromHours(6);
+
     private readonly SettingsService _settings;
     private readonly ISctTransport _transport;
     private readonly string _snapshotPath;
+    private readonly Func<bool>? _isForegroundRelevant;
     private readonly CancellationTokenSource _life = new();
 
     private int _busy;
@@ -91,6 +97,8 @@ public sealed class SctMarketService : IDisposable
     private volatile TaskCompletionSource<bool>? _cycleDone;
     private volatile SctSnapshot? _snapshot;
     private volatile bool _disposed;
+    private bool _started;
+    private System.Windows.Threading.DispatcherTimer? _timer;
 
     // Cached once, lazily, and only from a code path already gated by the flag check (never
     // touched while SctDataEnabled is false - "zero map load while off" applies here too, not
@@ -113,36 +121,107 @@ public sealed class SctMarketService : IDisposable
     // reachable when the flag is on, so this never fires while SctDataEnabled is false.
     public event Action? Changed;
 
-    public SctMarketService(SettingsService settings)
-        : this(settings, new HttpSctTransport(), Path.Combine(AppPaths.Root, "cache", "sct_snapshot.json"))
+    public SctMarketService(SettingsService settings, Func<bool>? isForegroundRelevant = null)
+        : this(settings, new HttpSctTransport(), Path.Combine(AppPaths.Root, "cache", "sct_snapshot.json"),
+               isForegroundRelevant)
     { }
 
-    internal SctMarketService(SettingsService settings, ISctTransport transport, string snapshotPath)
+    internal SctMarketService(SettingsService settings, ISctTransport transport, string snapshotPath,
+                              Func<bool>? isForegroundRelevant = null)
     {
         _settings = settings;
         _transport = transport;
         _snapshotPath = snapshotPath;
+        _isForegroundRelevant = isForegroundRelevant;
     }
 
-    // Called once from app startup. Loads any cache from a PREVIOUS on-period - fully skipped
-    // while the flag is off, so a user who tried this once and turned it back off carries no
-    // residual disk read on every later launch.
+    // Pure gate for the automatic path (MarketDataService.ShouldFetch's own idiom, collapsed to
+    // one timestamp because SCT has exactly one dataset rather than several independently-stamped
+    // ones). Null (no snapshot yet, this run or ever) is due immediately. A stamp in the future (a
+    // clock rollback, or data fetched while the clock was wrong) counts as stale too, so the auto
+    // path cannot freeze forever behind a negative subtraction.
+    internal static bool ShouldFetch(DateTime? snapshotFetchedUtc, DateTime nowUtc)
+    {
+        if (snapshotFetchedUtc is null) return true;
+        var fetchedUtc = snapshotFetchedUtc.Value;
+        return fetchedUtc > nowUtc || nowUtc - fetchedUtc >= RefreshInterval;
+    }
+
+    // Called once from app startup, on the UI thread. Loads any cache from a PREVIOUS on-period -
+    // fully skipped while the flag is off, so a user who tried this once and turned it back off
+    // carries no residual disk read on every later launch. The timer is created HERE and not in
+    // the constructor so tests (and any non-UI caller) can build the service without a dispatcher
+    // (MarketDataService.Start's own reasoning).
     public void Start()
     {
+        if (_started || _disposed) return;
         if (_settings.Current.SctDataEnabled != true)
         {
             Logger.Info($"{Tag} sct: dark flag off, not starting");
             return;
         }
+        _started = true;
+
         var loaded = SctSnapshotFile.Load(_snapshotPath, out var reason);
         if (loaded is null)
         {
             Logger.Info($"{Tag} sct snapshot not loaded: {reason ?? "no snapshot"}");
+        }
+        else
+        {
+            _snapshot = loaded;
+            Logger.Info($"{Tag} sct snapshot loaded: {loaded.Rows.Count} listing(s), fetched {loaded.FetchedUtc:yyyy-MM-dd HH:mm} UTC");
+            RaiseChanged();
+        }
+
+        // Fetch-on-launch-when-stale (2026-07-30): the same 6h staleness check the timer below
+        // applies on every tick, so a fresh disk cache never triggers a network call on startup,
+        // but a missing or 6h+ old one is topped up right away instead of waiting for the first
+        // tick.
+        MaybeAutoRefresh();
+
+        try
+        {
+            _timer = new System.Windows.Threading.DispatcherTimer { Interval = RefreshInterval };
+            _timer.Tick += (_, _) => MaybeAutoRefresh();
+            _timer.Start();
+        }
+        catch (Exception ex)
+        {
+            // A missing dispatcher costs the 6h tick, not the feature: manual refresh (the Admin
+            // one-shot button) and the snapshot already on disk both still work
+            // (MarketDataService.Start's own rationale).
+            Logger.Error($"{Tag} sct refresh timer could not start", ex);
+        }
+    }
+
+    // The auto path: the flag, foreground relevance, and the 6h staleness check all gate it. Fire
+    // and forget on the thread pool so a UI-thread caller (Start, timer tick) never blocks
+    // (MarketDataService.MaybeAutoRefresh's own pattern).
+    public void MaybeAutoRefresh()
+    {
+        if (_disposed) return;
+        if (_settings.Current.SctDataEnabled != true) return;   // every public entry point checks first
+
+        // Trading tab (2026-07-30): no background polling while neither Nexus nor Star Citizen
+        // has focus. Reuses the existing foreground facility (App.IsForegroundRelevant) the same
+        // way MarketDataService does; null (no func given, e.g. every existing construction site
+        // and every existing test) means "always relevant," so this is a no-op change for callers
+        // that never opt in.
+        if (_isForegroundRelevant is not null && !_isForegroundRelevant())
+        {
+            Logger.Info($"{Tag} sct auto refresh skipped: Nexus/Star Citizen not in the foreground");
             return;
         }
-        _snapshot = loaded;
-        Logger.Info($"{Tag} sct snapshot loaded: {loaded.Rows.Count} listing(s), fetched {loaded.FetchedUtc:yyyy-MM-dd HH:mm} UTC");
-        RaiseChanged();
+
+        // Read the snapshot once: it can be swapped by a cycle finishing on another thread.
+        if (!ShouldFetch(_snapshot?.FetchedUtc, DateTime.UtcNow)) return;
+
+        _ = Task.Run(async () =>
+        {
+            try { await RefreshAsync(manual: false).ConfigureAwait(false); }
+            catch (Exception ex) { Logger.Error($"{Tag} sct auto refresh failed", ex); }
+        });
     }
 
     // The one fetch cycle: page the crowdsource-listings endpoint, cut anything older than
@@ -354,6 +433,11 @@ public sealed class SctMarketService : IDisposable
     {
         if (_disposed) return;   // double-Dispose is a no-op (MarketDataService.Dispose precedent)
         _disposed = true;
+        // Stop must run on the timer's own dispatcher thread; on shutdown from anywhere else it
+        // throws, and a failed stop on a service that is going away is not worth an error
+        // (MarketDataService.Dispose's own rationale).
+        try { _timer?.Stop(); } catch { /* best effort */ }
+        _timer = null;
 
         var pending = _cycleDone?.Task;   // captured BEFORE the cancel, which may clear the field
         // Cancels the in-flight refresh through its linked source. _life is deliberately NOT

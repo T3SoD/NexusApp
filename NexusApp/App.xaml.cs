@@ -260,10 +260,12 @@ public partial class App : Application
         Market = new MarketDataService(Settings, () => App.IsForegroundRelevant);
         Market.Start();
 
-        // Dark SCT cache: fully inert unless the owner-only Admin flag is on (Start() checks it
-        // first). Constructed unconditionally so the Admin toggle always has a live instance to
-        // call into, exactly like Market above.
-        Sct = new SctMarketService(Settings);
+        // Dark SCT cache: fully inert unless SctDataEnabled is on (Start() checks it first).
+        // Constructed unconditionally so the Settings/Admin toggle always has a live instance to
+        // call into, exactly like Market above. Foreground-gated (2026-07-30, trading tab
+        // cadence): the 6h auto-refresh reuses the same foreground facility as Market so it does
+        // not poll while neither Nexus nor Star Citizen has focus.
+        Sct = new SctMarketService(Settings, () => App.IsForegroundRelevant);
         Sct.Start();
 
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
