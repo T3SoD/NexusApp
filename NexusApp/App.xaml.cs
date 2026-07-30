@@ -40,6 +40,10 @@ public partial class App : Application
     // Update so the consent gate and throttle read real values; inert in the demo profile.
     public static MarketDataService Market { get; private set; } = null!;
 
+    // Dark SCT (SC Trade Tools) second-source cache. Inert unless Settings.Current.SctDataEnabled
+    // is true (owner-only Admin toggle, Task 9) - Start() itself checks the flag first.
+    public static SctMarketService Sct { get; private set; } = null!;
+
     // The app version that ran LAST session (null on fresh installs), captured before this
     // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
     public static string? PreviousSessionVersion { get; private set; }
@@ -251,6 +255,12 @@ public partial class App : Application
         Market = new MarketDataService(Settings, () => App.IsForegroundRelevant);
         Market.Start();
 
+        // Dark SCT cache: fully inert unless the owner-only Admin flag is on (Start() checks it
+        // first). Constructed unconditionally so the Admin toggle always has a live instance to
+        // call into, exactly like Market above.
+        Sct = new SctMarketService(Settings);
+        Sct.Start();
+
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
         // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before
         // any window exists - MainWindow is created from StartupUri after OnStartup returns.
@@ -427,6 +437,7 @@ public partial class App : Application
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();
         Market?.Dispose();
+        Sct?.Dispose();
         Data?.Dispose();
         // Portable self-swap handoff: spawn the NEW exe as the very LAST action, after every
         // settings and database write above has finished, so the two instances never overlap
