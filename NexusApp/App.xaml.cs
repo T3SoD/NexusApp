@@ -60,6 +60,16 @@ public partial class App : Application
     // Diagnostic-only: logs which process takes the OS foreground (for the mid-session tab-out reports).
     private static ForegroundMonitor? _foreground;
 
+    // Issue #29: detects a second Nexus launch (e.g. minimized and forgotten, then relaunched from the
+    // desktop shortcut) and activates the already-running instance instead of opening a duplicate main
+    // window. Scoped per profile (live vs --demo-profile) rather than one global name, because the
+    // Admin demo profile kit deliberately runs a second NexusApp.exe alongside the live instance for
+    // screenshots (DemoProfile.StartDemoInstance) - that second process must be its own primary, not a
+    // "duplicate" of the live one. Disposed in OnExit for the primary path; the second-instance
+    // early-exit path (below, in OnStartup) disposes it itself before Shutdown, since that path never
+    // reaches the rest of OnExit's usual cleanup.
+    private static SingleInstanceGuard? _singleInstance;
+
     // 0 until an unhandled-exception handler owns the crash flow; later entries log and return,
     // so a render-failure exception storm can never stack dialogs or exit paths (6.2.0 field bug).
     private static int _crashHandling;
@@ -189,6 +199,43 @@ public partial class App : Application
                 CrashGuard.ShowCrashMessageAndExit(crashMessage);
             }
         };
+
+        // Single-instance check: as early as practical, before any other startup work, so a second
+        // launch never touches Settings/DB/services and never flashes a second window. Scoped per
+        // profile (see the field's doc comment above) so the demo-profile launcher is never mistaken
+        // for a duplicate live instance.
+        var instanceSuffix = AppPaths.IsDemoProfile ? ".Demo" : ".Live";
+        _singleInstance = new SingleInstanceGuard(
+            SingleInstanceGuard.DefaultMutexName + instanceSuffix,
+            SingleInstanceGuard.DefaultActivateEventName + instanceSuffix);
+        if (!_singleInstance.TryAcquirePrimary())
+        {
+            Logger.Info("[WIN] another instance is running, activating it and exiting");
+            // Signal regardless of whether the primary is actually listening yet (a razor-thin
+            // startup race): this instance's job is done either way - if the race is lost, the
+            // primary simply doesn't restore itself that one time, it does not hang here.
+            _singleInstance.SignalPrimary();
+            _singleInstance.Dispose();
+            // Environment.Exit, NOT Shutdown()/return: live-tested and disproven that Shutdown()
+            // suppresses the StartupUri window. WPF's DoStartup calls OnStartup (this override,
+            // which never reaches base.OnStartup on this path) and then unconditionally proceeds to
+            // build the StartupUri window regardless of whether Shutdown() was called from inside
+            // OnStartup - Shutdown() only short-circuits the LATER "keep running" checks (last
+            // window closed / main window closed), it does not cancel a startup already in
+            // progress. The result was MainWindow's ctor running against services that were never
+            // initialized on this path (Settings, Data, etc. all still null), throwing and hitting
+            // the crash dialog instead of exiting quietly. Environment.Exit(0) is the same hard-exit
+            // already used by CrashGuard's terminal paths, which document the same bypass-OnExit
+            // tradeoff: correct here too, since this instance owns no services or resources yet for
+            // OnExit to clean up. Logger.Write is a synchronous File.AppendAllText under a lock (see
+            // Logger.cs), not buffered, so the line above is already on disk before Exit runs.
+            Environment.Exit(0);
+        }
+        _singleInstance.StartActivationListener(() =>
+        {
+            Logger.Info("[WIN] second-instance activation signal received");
+            Dispatcher.BeginInvoke(new Action(RestoreMainWindow));
+        });
 
         Logger.Info($"[WIN] Nexus {AppInfo.Version} starting");
         Logger.Info($"[WIN] Distribution: {AppInfo.Distribution}");
@@ -409,6 +456,24 @@ public partial class App : Application
             }));
     }
 
+    // The dispatcher-dependent half of the single-instance restore (issue #29): brings the main window
+    // back from minimized/hidden and to the foreground when a second launch signals the primary. Kept
+    // separate from SingleInstanceGuard (which stays WPF-free) so the guard's acquire/signal/listen
+    // logic is headlessly testable - this method is the thin injected callback. Never touches the
+    // OverlayWindow: if one is up mid-game, a relaunch from the desktop must not disturb it.
+    private static void RestoreMainWindow()
+    {
+        if (Current?.MainWindow is not { } win) return;
+        if (win.WindowState == WindowState.Minimized) win.WindowState = WindowState.Normal;
+        if (!win.IsVisible) win.Show();
+        win.Activate();
+        // Reliable foregrounding trick: Activate() alone can be ignored by Windows' foreground-lock
+        // rules when another process currently holds focus, so pulse Topmost to force it to the front.
+        win.Topmost = true;
+        win.Topmost = false;
+        win.Activate();
+    }
+
     // Pause RS + contract OCR auto-scans while neither Nexus nor Star Citizen is in front (saves CPU and
     // avoids scanning whatever app the user tabbed to); resume them when one returns to the foreground.
     private static void OnForegroundRelevanceChanged(bool relevant)
@@ -436,6 +501,7 @@ public partial class App : Application
         // or crashed. The crash paths bypass OnExit (Environment.Exit) and log their own
         // [WIN] lines, so the distinction holds.
         Logger.Info("[WIN] Nexus closing (clean exit)");
+        _singleInstance?.Dispose();
         _foreground?.Dispose();
         ContractScan?.Dispose();
         ContractOcr?.Dispose();
