@@ -245,13 +245,26 @@ public sealed partial class TradePage
         FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush"),
     };
 
-    // Trip-coverage bar: track 6px, radius 3, fill glow blur6/.5 (mock:657-661, .legBarTrack/.legBarFill).
+    // Trip-coverage bar: full-width track (6px, radius 3, tier color @ 12% alpha) with a
+    // proportional-width fill overlay (solid tier color, glow blur6/.5) laid over it - mock:656-661
+    // + CSS 250-253 (.legBarTrack/.legBarFill), matching the mock's track-plus-overlay construction
+    // exactly rather than two abutting star-width columns.
+    //
+    // Owner's live-pass ask, 2026-07-30 (items B/D): "the green and red bars dont make much sense,
+    // are they supposed to be filled or what?" Root cause was `fill.HorizontalAlignment = Left`
+    // below: a Border with no Child and no explicit Width measures to a natural DesiredSize.Width
+    // of 0, and Left/Right/Center alignment (unlike Stretch) arranges an element at its
+    // DesiredSize, not the available space - so the fill rendered as a genuine zero-width,
+    // invisible rectangle every time, leaving only the dim 12%-alpha track visible regardless of
+    // the tier or fraction. The fix is to let it Stretch (the default - no HorizontalAlignment set)
+    // so it fills the ENTIRE available width of its host column, which `host`'s two Star columns
+    // already size to exactly `frac` of the full track width.
     private static UIElement TripBar(double frac, Brush color, string tooltip)
     {
         var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(((SolidColorBrush)color).Color) { Opacity = 0.12 }, ToolTip = tooltip };
         var fill = new Border
         {
-            Height = 6, CornerRadius = new CornerRadius(3), Background = color, HorizontalAlignment = HorizontalAlignment.Left,
+            Height = 6, CornerRadius = new CornerRadius(3), Background = color,
             Effect = new DropShadowEffect { Color = ((SolidColorBrush)color).Color, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5 },
         };
         var host = new Grid();
@@ -474,7 +487,13 @@ public sealed partial class TradePage
         // placing the tag right after the name, inline, in the same row.
         var name = new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = terminalName };
         Grid.SetColumn(name, 0); top.Children.Add(name);
-        if (SystemTag(system) is { } tag) { Grid.SetColumn(tag, 1); top.Children.Add(tag); }
+        // Owner's live-pass ask, 2026-07-30 (item A): "the system is extremely close to the price
+        // per scu in the planner tab" - SystemTag's own left margin (6px) already separates it from
+        // the name, but the two Auto columns (tag, priceRow) sit flush against each other with no
+        // gap at all, so the tag crowded straight into the price. Right margin only, matching the
+        // Sell flow's own tag-to-next-element gap idiom (TradePage.Sell.cs:393, 10px) at the top of
+        // this fix's 10-12px ask so the two clusters (name+tag vs price) read as clearly distinct.
+        if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(6, 0, 12, 1); Grid.SetColumn(tag, 1); top.Children.Add(tag); }
         var priceRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         priceRow.Children.Add(new TextBlock { Text = price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush") });
         priceRow.Children.Add(new TextBlock { Text = "/SCU", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(3, 0, 0, 0) });

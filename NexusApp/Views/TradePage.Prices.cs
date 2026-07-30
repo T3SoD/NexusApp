@@ -47,17 +47,29 @@ public sealed partial class TradePage
         pickerGrp.Children.Add(FieldLabel("Commodity"));
         // Left-aligned text (owner's live-pass ask, 2026-07-30, item 3): fixed at this usage site
         // only, NOT in the shared NexusComboBox style (GameTheme.xaml) - other pages depend on that
-        // style's current look. HorizontalContentAlignment is set for completeness, but the actual
-        // fix is ItemTemplate: ComboBox mirrors ItemTemplate into SelectionBoxItemTemplate
-        // automatically (core ComboBox behavior, independent of which ControlTemplate is applied),
-        // and NexusComboBox's own closed-box ContentPresenter already binds its ContentTemplate to
-        // SelectionBoxItemTemplate - so one small left-aligned TextBlock template fixes both the
-        // closed box and the open dropdown items at once, without touching GameTheme.xaml.
+        // style's current look. ItemTemplate below still drives the OPEN dropdown rows correctly
+        // (ComboBoxItem's own default template binds its ContentPresenter's ContentTemplate via a
+        // direct, ordinary TemplateBinding to ItemTemplate - reliable), but the owner confirmed this
+        // alone did NOT fix the CLOSED box: that box is painted by a different, unnamed-in-XAML path
+        // (GameTheme.xaml:548-553, x:Name="contentPresenter" - Content/ContentTemplate bound to
+        // SelectionBoxItem/SelectionBoxItemTemplate, which WPF mirrors from ItemTemplate itself,
+        // off-XAML, inside ComboBox's private UpdateSelectionBoxItem() on selection-changed events -
+        // nothing in this file or GameTheme.xaml declares that mirror, so its timing is invisible
+        // and unverifiable from here, and evidently did not paint the closed box left-aligned live).
+        // Item E's real fix (below, on Loaded) stops depending on that mirror: it grabs the actual
+        // "contentPresenter" element once the template has applied and forces it left directly, so
+        // the closed box renders correctly regardless of whether SelectionBoxItemTemplate ever gets
+        // populated.
         _pricesCommodityCombo = new ComboBox
         {
             Style = (Style)Application.Current.FindResource("NexusComboBox"),
             HorizontalContentAlignment = HorizontalAlignment.Left,
             ItemTemplate = LeftAlignedComboItemTemplate,
+        };
+        _pricesCommodityCombo.Loaded += (_, _) =>
+        {
+            if (_pricesCommodityCombo.Template?.FindName("contentPresenter", _pricesCommodityCombo) is ContentPresenter cp)
+                cp.HorizontalAlignment = HorizontalAlignment.Left;
         };
         _pricesCommodityCombo.SelectionChanged += (_, _) =>
         {

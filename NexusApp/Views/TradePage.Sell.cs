@@ -47,6 +47,11 @@ public sealed partial class TradePage
     private string _sellCommodityText = "";
     private string _sellQtyText = "";
 
+    // Reentrancy guard for the qty box's live TextChanged re-rank below (item C) - RebuildSell
+    // never writes back to _qtyBox.Text itself, so nothing today re-enters this handler, but the
+    // guard is cheap insurance against a future write-back (or IME composition) looping back in.
+    private bool _inQtyLiveRerank;
+
     private string SellCommodity => _sellCommodityText;
     private int SellQty => int.TryParse(new string((_qtyBox?.Text ?? "").Where(char.IsDigit).ToArray()), out var n) ? n : 0;
 
@@ -89,6 +94,22 @@ public sealed partial class TradePage
             _sellQtyText = _qtyBox.Text;
             Logger.Info("[UI] Trade sell: quantity updated");
             RebuildSell();   // results only: the control the user just clicked is still alive
+        };
+        // Live re-rank per keystroke (owner's live-pass ask, 2026-07-30, item C; mock index.html:918,
+        // onChange re-ranks immediately - was LostFocus-only here, so nothing ranked until the user
+        // typed a quantity AND clicked elsewhere). RebuildSell only ever clears/repopulates
+        // _sellResults, never _sellInputs (this box's own parent, built once - see this method's
+        // opening comment), so this can never recreate the box the user is typing into or steal its
+        // focus/caret. Deliberately leaves _sellQtyText and the log line alone: SellQty already
+        // reads _qtyBox.Text directly (not _sellQtyText), so a rebuild here re-ranks against the
+        // box's live text with no extra bookkeeping - the one "quantity updated" log line stays
+        // exclusively on LostFocus-with-change above, so typing does not spam the log.
+        _qtyBox.TextChanged += (_, _) =>
+        {
+            if (_inQtyLiveRerank) return;
+            _inQtyLiveRerank = true;
+            try { RebuildSell(); }
+            finally { _inQtyLiveRerank = false; }
         };
         qtyGrp.Children.Add(_qtyBox);
         inputRow.Children.Add(qtyGrp);
