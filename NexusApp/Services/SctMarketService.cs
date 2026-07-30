@@ -386,36 +386,41 @@ internal static class SctSnapshotFile
         }
         catch (Exception ex)
         {
-            Logger.Error($"Failed to save SCT snapshot to {path}", ex);
+            // No path in the message: this flows straight to Logger.Error, and path is always
+            // under %AppData% - it would carry the Windows username into nexus.log (task-16 audit).
+            Logger.Error("Failed to save SCT snapshot", ex);
             return false;
         }
     }
 
     public static SctSnapshot? Load(string path, out string? reason)
     {
+        // reason is logged verbatim by SctMarketService.Start (Logger.Info, [NET]-tagged), and path
+        // is always under %AppData% - so none of these ever interpolate path into the message (it
+        // would carry the Windows username into nexus.log; task-16 audit).
         reason = null;
-        if (!File.Exists(path)) { reason = $"SCT snapshot file not found: {path}"; return null; }
+        if (!File.Exists(path)) { reason = "SCT snapshot file not found"; return null; }
         try
         {
             var info = new FileInfo(path);
             if (info.Length > MaxLoadBytes)
             {
-                reason = $"SCT snapshot file exceeds max size ({info.Length} > {MaxLoadBytes} bytes): {path}";
+                reason = $"SCT snapshot file exceeds max size ({info.Length} > {MaxLoadBytes} bytes)";
                 return null;
             }
             var json = File.ReadAllText(path);
             var snapshot = JsonSerializer.Deserialize<SctSnapshot>(json, SerializerOptions);
-            if (snapshot is null) { reason = $"Failed to deserialize SCT snapshot: {path}"; return null; }
+            if (snapshot is null) { reason = "Failed to deserialize SCT snapshot"; return null; }
             if (snapshot.Schema != 1)
             {
-                reason = $"Unsupported SCT snapshot schema (expected 1, got {snapshot.Schema}): {path}";
+                reason = $"Unsupported SCT snapshot schema (expected 1, got {snapshot.Schema})";
                 return null;
             }
             return snapshot;
         }
         catch (Exception ex)
         {
-            reason = $"Error loading SCT snapshot: {path} - {ex.Message}";
+            reason = $"Error loading SCT snapshot: {ex.Message}";
             return null;
         }
     }
