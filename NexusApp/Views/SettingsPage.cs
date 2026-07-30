@@ -716,10 +716,20 @@ public sealed class SettingsPage : UserControl
 
             RefreshMarketRows();
             App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshMarketRows);
+
+            RefreshSctRow();
+            App.Sct.Changed += () => Dispatcher.BeginInvoke(RefreshSctRow);
         }
 
         return Pane(panel);
     }
+
+    // The pane is built once and cached for the app lifetime, but consent can change elsewhere
+    // (the Admin DATA TOOLS card writes the same AppSettings.SctDataEnabled field): mirror the
+    // setting so the toggle never lies - same shape as RefreshUpdateRows/RefreshMarketRows above.
+    // Subscribed to App.Sct.Changed (worker thread on a real fetch, caller's own thread on
+    // Start's disk load), so it always marshals through the dispatcher like those two.
+    private void RefreshSctRow() => _sctToggle?.SetOnSilently(App.Settings.Current.SctDataEnabled);
 
     // Keeps the Market data rows honest as the fetch cycle moves through its states. Subscribed
     // to App.Market.Changed (worker thread): the subscription above uses Dispatcher.BeginInvoke,
