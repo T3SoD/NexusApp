@@ -139,9 +139,9 @@ public sealed partial class TradePage : UserControl
         return false;
     }
 
-    // Task 12/13/14 replace these three bodies outright (interim stub, same pattern as the
-    // env-autofollow plan's Task 4/5 "swap the interim expression").
-    private void RebuildSell() { }
+    // Task 14 replaces this body outright (interim stub, same pattern as the env-autofollow
+    // plan's Task 4/5 "swap the interim expression" - RebuildPlanner/RebuildSell were already
+    // swapped in by Tasks 12/13, each in its own partial-class file).
     private void RebuildPrices() { }
 
     // ── CascadeIn: hand-duplicated per page by house convention (confirmed: NOT a shared Hud

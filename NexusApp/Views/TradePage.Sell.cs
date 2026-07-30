@@ -1,0 +1,271 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
+using NexusApp.Services;
+
+namespace NexusApp.Views;
+
+public sealed partial class TradePage
+{
+    private TextBox _commodityBox = null!;
+    private TextBox _qtyBox = null!;
+    private Border? _pickerMenu;
+    private int _sellExpanded = -1;   // keyed by index within the CURRENT rows list (rebuilt every call, same as Planner's _plannerExpanded)
+
+    // Session-typed commodity/quantity (architect resolution for this task: in-memory page
+    // fields, not AppSettings - same precedent as TradePage.Planner.cs's _budgetText.
+    // AppSettings' fixed Trade* contract (TradeActiveFlow/TradeShipId/TradeOriginManual/
+    // TradeScope/TradeAnchorFromHere) has no TradeSellCommodity/TradeSellQty and this task does
+    // not add any; both fields reset each session, which affects nothing else in this file.
+    private string _sellCommodityText = "";
+    private string _sellQtyText = "";
+
+    private string SellCommodity => _sellCommodityText;
+    private int SellQty => int.TryParse(new string((_qtyBox?.Text ?? "").Where(char.IsDigit).ToArray()), out var n) ? n : 0;
+
+    private void RebuildSell()
+    {
+        if (!EnsureMarketConsent(SellHost)) return;
+        SellHost.Children.Clear();
+        _sellExpanded = -1;
+        _pickerMenu = null;   // the old menu (if any) was a grandchild of the cleared inputRow - drop the stale reference too
+
+        var snap = App.Market.Snapshot;
+        var commodities = snap?.TradePrices.Rows
+            .Select(r => (r.CommodityId, r.CommodityName))
+            .Distinct()
+            .OrderBy(c => c.CommodityName, StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new List<(int CommodityId, string CommodityName)>();
+
+        var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+
+        var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 16, 0) };
+        pickerGrp.Children.Add(FieldLabel("Commodity"));
+        _commodityBox = new TextBox { Style = (Style)Application.Current.FindResource("NexusTextBox"), Text = SellCommodity };
+        _commodityBox.TextChanged += (_, _) => ShowCommodityPicker(commodities, pickerGrp);
+        _commodityBox.LostFocus += (_, _) => { /* commit happens via picker item click, not free text - see ShowCommodityPicker */ };
+        pickerGrp.Children.Add(_commodityBox);
+        inputRow.Children.Add(pickerGrp);
+
+        var qtyGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        qtyGrp.Children.Add(FieldLabel("Quantity"));
+        _qtyBox = new TextBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusTextBox"), FontFamily = Hud.Font("MonoFont"),
+            Width = 110, Text = _sellQtyText,
+        };
+        _qtyBox.LostFocus += (_, _) =>
+        {
+            if (_sellQtyText == _qtyBox.Text) return;   // guard, same pattern as Planner's budget box: no-op blur never logs or rebuilds
+            _sellQtyText = _qtyBox.Text;
+            Logger.Info("[UI] Trade sell: quantity updated");
+            RebuildSell();
+        };
+        qtyGrp.Children.Add(_qtyBox);
+        inputRow.Children.Add(qtyGrp);
+
+        if (TryGetPrefill(snap, commodities, out var prefillCommodity))
+        {
+            var chip = new Border
+            {
+                BorderBrush = Hud.Br("AccentStrongBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(12, 6, 12, 6), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Bottom,
+                Child = new TextBlock { Text = $"APPLY WORK ORDER: {prefillCommodity}", FontFamily = Hud.Font("UiFont"), FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush") },
+                // Deviates from the mock's verbatim tooltip (trading-tab/index.html:924, "Prefills
+                // the commodity and quantity fields..."): WorkOrder carries no output-quantity
+                // field (WorkOrderPrefill.cs), so this task's architect resolution has the chip
+                // fill the COMMODITY ONLY - a recorded mock deviation. The tooltip is reworded to
+                // match what the chip actually does rather than promise a quantity prefill that
+                // never happens.
+                ToolTip = "Prefills the commodity field from your latest completed work order.",
+            };
+            chip.MouseLeftButtonUp += (_, _) =>
+            {
+                _sellCommodityText = prefillCommodity;
+                Logger.Info($"[UI] Trade sell: prefilled from work order ({prefillCommodity})");
+                RebuildSell();
+            };
+            inputRow.Children.Add(chip);
+        }
+
+        SellHost.Children.Add(inputRow);
+        SellHost.Children.Add(new TextBlock
+        {
+            Text = "Ranked by effective value for your load. Bars show trip coverage.",   // architect resolution caption, verbatim
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
+        });
+
+        if (snap is null || commodities.Count == 0) { SellHost.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc)); return; }
+
+        var picked = commodities.FirstOrDefault(c => string.Equals(c.CommodityName, SellCommodity, StringComparison.OrdinalIgnoreCase));
+        if (picked == default) picked = commodities[0];
+        int qty = SellQty;
+        if (qty <= 0) { SellHost.Children.Add(new TextBlock { Text = "Enter a quantity to rank buyers.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
+
+        var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
+        var originIds = OriginTerminalIds(snap.Terminals.Rows);
+        int? originId = originIds.Count == 1 ? originIds.First() : null;   // SellLookup takes one optional origin, not a set - proximity tier still ranks the rest
+        var buyers = SellLookup.Rank(snap.TradePrices.Rows, terminals, picked.CommodityId, qty, originId, App.Settings.Current.TradeScope);
+
+        if (buyers.Count == 0) { SellHost.Children.Add(new TextBlock { Text = $"No buyers found for {picked.CommodityName} in this scope.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
+
+        for (int i = 0; i < buyers.Count; i++)
+        {
+            var row = BuildBuyerRow(buyers[i], i, qty);
+            CascadeIn(row, i);
+            SellHost.Children.Add(row);
+        }
+
+        Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}");
+    }
+
+    // Search-first picker: filters the full commodity list against the box's live text (case-
+    // insensitive substring, top 8), rebuilt on every keystroke. Selection commits only via an
+    // item click (MouseLeftButtonUp), never via free text or LostFocus - that ordering matters:
+    // clicking an item first steals focus from the TextBox (firing its LostFocus), and if that
+    // handler tore the menu down there, the pending click on the now-detached item would never
+    // resolve. Leaving LostFocus a no-op (see RebuildSell above) is what keeps the click reliable.
+    private void ShowCommodityPicker(List<(int CommodityId, string CommodityName)> commodities, Panel host)
+    {
+        if (_pickerMenu != null) host.Children.Remove(_pickerMenu);
+        var query = _commodityBox.Text ?? "";
+        var matches = commodities.Where(c => c.CommodityName.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(8).ToList();
+        if (matches.Count == 0) { _pickerMenu = null; return; }
+        var list = new StackPanel();
+        foreach (var m in matches)
+        {
+            var item = new Border { Padding = new Thickness(12, 8, 12, 8), Cursor = Cursors.Hand, Child = new TextBlock { Text = m.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush") } };
+            item.MouseEnter += (_, _) => item.Background = Hud.Br("AccentFaintBrush");
+            item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+            item.MouseLeftButtonUp += (_, _) =>
+            {
+                _sellCommodityText = m.CommodityName;
+                Logger.Info($"[UI] Trade sell: commodity {m.CommodityName}");
+                RebuildSell();
+            };
+            list.Children.Add(item);
+        }
+        _pickerMenu = new Border
+        {
+            Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(0, 0, 6, 6), Child = list,
+        };
+        host.Children.Add(_pickerMenu);
+    }
+
+    // Prefill resolution, per this task's architect override of the brief's ASSUMED
+    // WorkOrderPrefillResolver: WorkOrderPrefill.LatestCompleted picks the order, then
+    // ResolveCommodityId resolves its free-text Resources field to a UEX commodity id against the
+    // FULL commodity catalog (snap.Commodities.Rows - the same chain the Codex/work-order sell
+    // hints already use). WorkOrder carries no output-quantity field, so this fills the commodity
+    // only (recorded mock deviation) - the Sell flow's quantity is always the user's own entry.
+    //
+    // The chip is absent entirely (returns false) unless the resolved id is ALSO present in
+    // `commodities` - the narrower list built from TradePrices that the search picker itself
+    // offers and that RebuildSell's own picked-commodity lookup matches against. A commodity id
+    // that resolves in the full catalog but isn't currently priced/traded would apply a work
+    // order and silently land on the alphabetically-first commodity instead (RebuildSell's
+    // fallback below), which is worse than showing no chip at all.
+    private static bool TryGetPrefill(MarketSnapshot? snap, List<(int CommodityId, string CommodityName)> commodities, out string commodityName)
+    {
+        commodityName = "";
+        if (snap is null) return false;
+
+        var order = WorkOrderPrefill.LatestCompleted(App.Data.GetWorkOrders());
+        if (order is null) return false;
+
+        var commodityId = WorkOrderPrefill.ResolveCommodityId(order, snap.Commodities.Rows);
+        if (commodityId is null) return false;
+
+        foreach (var c in commodities)
+        {
+            if (c.CommodityId == commodityId.Value) { commodityName = c.CommodityName; return true; }
+        }
+        return false;
+    }
+
+    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int index, int qty)
+    {
+        var frame = Hud.CardFrame(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost),
+            out _, out _, chamfer: 8, padding: new Thickness(18, 13, 18, 13));
+        frame.Children.Add(PositionChevron(chevron));
+        var host = new Border { Cursor = Cursors.Hand, Child = frame, Margin = new Thickness(0, 0, 0, 10) };
+        host.MouseLeftButtonUp += (_, _) =>
+        {
+            bool nowOpen = _sellExpanded != index;
+            _sellExpanded = nowOpen ? index : -1;
+            detailHost.Visibility = nowOpen ? Visibility.Visible : Visibility.Collapsed;
+            SetChevronOpen(chevron, nowOpen);
+        };
+        return host;
+    }
+
+    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, out Path chevron, out Border detailHost)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var left = new StackPanel();
+        var top = new StackPanel { Orientation = Orientation.Horizontal };
+        top.Children.Add(new TextBlock { Text = b.Row.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        top.Children.Add(new TextBlock { Text = $"{b.Row.Sell:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        top.Children.Add(TierChip(b.Tier));
+        left.Children.Add(top);
+
+        var meta = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+        var bar = new Grid { Width = 90 };
+        string tier = TradeBarMath.Tier(b.Row.SellDemandScu, qty);
+        bar.Children.Add(TripBar(TradeBarMath.FillFraction(b.Row.SellDemandScu, qty), TradeBarMath.Color(tier),
+            "This bar shows how much of your trip the demand covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
+        meta.Children.Add(bar);
+        meta.Children.Add(new TextBlock { Text = $"DEMAND {b.Row.SellDemandScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 8, 0) });
+        var age = DateTime.UtcNow - b.Row.ModifiedUtc;
+        // Same "strip trailing ' ago', fall back to '<1m'" idiom as Planner.BuildLeg
+        // (TradePage.Planner.cs): FreshChip always appends " ago" itself, and FormatAge's "just
+        // now" shape (age < 1 minute) has none to strip - a naive Replace(" ago","") would render
+        // "just now ago".
+        var rawAge = MarketNotice.FormatAge(age);
+        var chipAge = rawAge.EndsWith(" ago", StringComparison.Ordinal) ? rawAge[..^4] : "<1m";
+        meta.Children.Add(FreshChip(chipAge, age.TotalHours >= 24));
+        left.Children.Add(meta);
+        Grid.SetColumn(left, 0); Grid.SetRow(left, 0);
+        grid.Children.Add(left);
+
+        var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        right.Children.Add(new TextBlock { Text = "EFFECTIVE VALUE", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
+        var valRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        valRow.Children.Add(new TextBlock { Text = b.EffectiveValue.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 21, Foreground = Hud.Br("AccentBrush"), Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 } });
+        valRow.Children.Add(new TextBlock { Text = " aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(4, 0, 0, 3) });
+        right.Children.Add(valRow);
+        // Sublabel per architect resolution: "for your {qty} SCU" plus ", capped by demand {n}"
+        // ONLY when demand is strictly less than qty (never at demand == qty - that is full,
+        // uncapped coverage).
+        string sub = $"for your {qty:n0} SCU" + (b.Row.SellDemandScu < qty ? $", capped by demand {b.Row.SellDemandScu:n0}" : "");
+        right.Children.Add(new TextBlock { Text = sub, FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
+        right.ToolTip = "Price times sellable quantity, capped by the buyer's demand.";   // mock:971, verbatim
+        Grid.SetColumn(right, 1); Grid.SetRowSpan(right, 2); Grid.SetRow(right, 0);
+        grid.Children.Add(right);
+
+        detailHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(0, 10, 0, 0), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0) };
+        detailHost.Child = new TextBlock
+        {
+            Text = $"Effective value = min({qty:n0}, demand {b.Row.SellDemandScu:n0}) SCU x {b.Row.Sell:n0} aUEC/SCU = {b.EffectiveValue:n0} aUEC",   // mock:979, verbatim format
+            FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+        };
+        Grid.SetRow(detailHost, 1); Grid.SetColumnSpan(detailHost, 2);
+        grid.Children.Add(detailHost);
+
+        chevron = ChevronGlyph();
+        return grid;
+    }
+}
