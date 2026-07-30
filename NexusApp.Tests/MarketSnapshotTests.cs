@@ -338,6 +338,31 @@ public class MarketSnapshotTests
         Assert.Equal(1, skipped);
     }
 
+    [Fact]
+    public void ParseTerminals_ParsesOrbitAndPlanetHierarchyFields()
+    {
+        const string body = """
+        {"status":"ok","data":[
+          {"id":200,"name":"TDD Area 18","type":"commodity","is_refinery":0,"star_system_name":"Stanton",
+           "orbit_name":"ArcCorp","planet_name":"ArcCorp","moon_name":null,"city_name":"Area 18"},
+          {"id":201,"name":"Refinement Center - Nyx Gateway","type":"refinery","is_refinery":1,
+           "star_system_name":"Pyro","orbit_name":"Nyx Gateway (Pyro system)","planet_name":null,
+           "moon_name":null,"space_station_name":"Nyx Gateway (Pyro)"},
+          {"id":202,"name":"No Hierarchy Fields","type":"trade","is_refinery":0,"star_system_name":"Stanton"}
+        ],"message":""}
+        """;
+
+        var rows = MarketParse.ParseTerminals(body, out var skipped);
+
+        Assert.Equal(0, skipped);
+        Assert.Equal("ArcCorp", rows[0].Orbit);
+        Assert.Equal("ArcCorp", rows[0].PlanetOrMoon);
+        Assert.Equal("Nyx Gateway (Pyro system)", rows[1].Orbit);
+        Assert.Equal("", rows[1].PlanetOrMoon);   // both planet_name and moon_name null
+        Assert.Equal("", rows[2].Orbit);
+        Assert.Equal("", rows[2].PlanetOrMoon);
+    }
+
     // --- ParseYieldRows -----------------------------------------------------
 
     [Fact]

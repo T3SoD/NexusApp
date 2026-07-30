@@ -44,7 +44,13 @@ internal sealed class MarketDataset<T>
 internal sealed record MarketCommodity(int Id, string Name, string Slug, bool IsRaw, bool IsRefined, int IdParent);
 internal sealed record MarketPriceRow(int TerminalId, int CommodityId, double Sell, double SellAvgWeek, string GameVersion, DateTime ModifiedUtc, string TerminalName);
 internal sealed record MarketYieldRow(int TerminalId, int CommodityId, int BonusPct, int BonusPctWeek, DateTime ModifiedUtc, string TerminalName);
-internal sealed record MarketTerminal(int Id, string Name, string Type, bool IsRefinery, string System, string Location);
+// Location hierarchy fields beyond System/Location (Orbit, PlanetOrMoon) are optional trailing
+// params so every existing 6-arg call site keeps compiling; added for the trading tab's
+// ProximityTiers (Task 3). An empty value means "not recorded," never "matches everything."
+// Public (unlike its neighbours here, same reason as TradePriceRow below): ProximityTiers.Derive
+// is public trading-tab API and cannot expose an internal parameter type (CS0051).
+public sealed record MarketTerminal(int Id, string Name, string Type, bool IsRefinery, string System,
+    string Location, string Orbit = "", string PlanetOrMoon = "");
 
 // Every commodity at every terminal (bulk /commodities_prices_all), for the trading tab. Reduced
 // field set vs. MarketPriceRow above: no game_version, no statistical windows - just the instant
@@ -301,7 +307,13 @@ internal static class MarketParse
                     && TryStr(row, "star_system_name", out var system))
                 {
                     var location = FirstNonEmptyStr(row, "space_station_name", "city_name", "outpost_name");
-                    result.Add(new MarketTerminal(id, name, type, isRefinery, system, location));
+                    // Proximity-tier hierarchy fields (trading tab, Task 3): optional, same as
+                    // Location - a terminal missing either one still parses, it just falls
+                    // through to a wider proximity tier (ProximityTiers.Derive treats an empty
+                    // field as "cannot confirm," never as a match).
+                    var orbit = TryStr(row, "orbit_name", out var orbitVal) ? orbitVal : "";
+                    var planetOrMoon = FirstNonEmptyStr(row, "planet_name", "moon_name");
+                    result.Add(new MarketTerminal(id, name, type, isRefinery, system, location, orbit, planetOrMoon));
                 }
                 else
                 {
