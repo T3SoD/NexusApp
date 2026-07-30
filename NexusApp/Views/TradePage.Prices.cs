@@ -30,7 +30,12 @@ public sealed partial class TradePage
 
         var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16) };
         pickerGrp.Children.Add(FieldLabel("Commodity"));
-        _pricesSelectedCommodity ??= commodities.FirstOrDefault();
+        // Re-validate on every rebuild (mirrors TradePage.Sell.cs's re-resolve-every-render
+        // pattern): an hourly snapshot refresh can drop the previously selected commodity, and a
+        // one-time `??=` seed would leave the field stuck on a name no longer in `commodities`,
+        // producing a blank ComboBox selection and a permanent "0 terminals" render.
+        if (_pricesSelectedCommodity is null || !commodities.Any(c => string.Equals(c, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase)))
+            _pricesSelectedCommodity = commodities.FirstOrDefault();
         _pricesCommodityCombo = new ComboBox
         {
             Style = (Style)Application.Current.FindResource("NexusComboBox"),
@@ -149,7 +154,10 @@ public sealed partial class TradePage
         }
         if (_priceCols[1])
         {
-            var status = new TextBlock { Text = outOfStock ? "OUT OF STOCK" : "ACTIVE", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            // Label from the real UEX inventory-state code (TradeFlows.BuyStatusLabel), not a
+            // binary derived-from-stock guess (task-14 review finding 1). Color rule unchanged:
+            // still keyed off BuyStockScu == 0, only the text source changed.
+            var status = new TextBlock { Text = TradeFlows.BuyStatusLabel(r.StatusBuy), FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(status, col++); grid.Children.Add(status);
         }
         if (_priceCols[2])
