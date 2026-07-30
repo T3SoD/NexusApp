@@ -21,26 +21,36 @@ public static class PriceReconciler
         // side is caller-validated ("buy"|"sell" per contract); anything other than "buy" reads sell.
         double? uexValue = uexRow is null ? null : side == "buy" ? uexRow.Buy : uexRow.Sell;
 
-        if (uexValue is null && sct is null) return null;
+        // A UEX side price <= 0 is treated as UEX-ABSENT, before any ammo/freshness/pct logic
+        // below runs (architect fix, 2026-07-29 review): rows with price 0 are kept BY DESIGN (a
+        // terminal that neither buys nor sells today is a real, displayable state - see
+        // MarketParse.ParseTradePriceRows), so this is not an edge case, it is a common row. With
+        // nothing on the UEX side to corroborate, folding it into the same path as uexRow being
+        // null avoids reporting a fabricated Corroborated/Disagree/UexOnly reading at Value=0.
+        bool uexUsable = uexValue is > 0;
+
+        if (!uexUsable && sct is null) return null;
 
         // Architect resolution (2026-07-29): Ship Ammunition commodities never receive
         // corroboration. UEX names these in title case ("Ship Ammunition - Size 3"); SCT names
         // them lower case ("ship ammunition - size 3") - the size-tier split never lines up
         // cleanly enough across the two sources for an agree/disagree reading to mean anything,
-        // so this always wins over the ordinary comparison below.
-        if (uexRow is not null && IsShipAmmunition(uexRow.CommodityName))
+        // so this always wins over the ordinary comparison below. Gated on uexUsable (not just
+        // uexRow being non-null): a zero-price ammunition row has already folded into the
+        // UEX-absent path above and is decided by the SCT-side ammo check just below instead.
+        if (uexUsable && IsShipAmmunition(uexRow!.CommodityName))
             return new ReconciledPrice(uexValue!.Value, PriceSourceState.UexOnly, 0, uexRow.ModifiedUtc, sct?.TimestampUtc);
 
-        if (uexValue is null)
+        if (!uexUsable)
         {
             // Same rule, SCT-only direction: an ammunition-only observation isn't corroboration
-            // of anything and has no UEX row to fall back to, so it is not surfaced at all.
+            // of anything and has no usable UEX row to fall back to, so it is not surfaced at all.
             if (IsShipAmmunition(sct!.Commodity)) return null;
             return new ReconciledPrice(sct.Price, PriceSourceState.SctOnly, 0, default, sct.TimestampUtc);
         }
 
         if (sct is null)
-            return new ReconciledPrice(uexValue.Value, PriceSourceState.UexOnly, 0, uexRow!.ModifiedUtc, null);
+            return new ReconciledPrice(uexValue!.Value, PriceSourceState.UexOnly, 0, uexRow!.ModifiedUtc, null);
 
         bool uexFresh = nowUtc - uexRow!.ModifiedUtc <= FreshWindow;
         bool sctFresh = nowUtc - sct.TimestampUtc <= FreshWindow;
@@ -49,9 +59,12 @@ public static class PriceReconciler
             // a missing SCT row would produce, rather than a false Corroborated/Disagree claim.
             // SctTimestampUtc is still populated (there WAS a second source, just too old) - only
             // the STATE, not this field, is what tells a caller not to trust it as corroboration.
-            return new ReconciledPrice(uexValue.Value, PriceSourceState.UexOnly, 0, uexRow.ModifiedUtc, sct.TimestampUtc);
+            return new ReconciledPrice(uexValue!.Value, PriceSourceState.UexOnly, 0, uexRow.ModifiedUtc, sct.TimestampUtc);
 
-        double pct = uexValue.Value == 0 ? 0 : Math.Abs(sct.Price - uexValue.Value) / uexValue.Value * 100.0;
+        // uexUsable guarantees uexValue.Value > 0 here (the compiler cannot narrow a plain bool
+        // flag the way it narrows a direct null check, hence the ! below), so this division is
+        // always safe.
+        double pct = Math.Abs(sct.Price - uexValue!.Value) / uexValue.Value * 100.0;
         var state = pct <= AgreeThresholdPct ? PriceSourceState.Corroborated : PriceSourceState.Disagree;
         return new ReconciledPrice(uexValue.Value, state, pct, uexRow.ModifiedUtc, sct.TimestampUtc);
     }

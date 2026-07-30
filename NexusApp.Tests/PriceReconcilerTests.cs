@@ -180,4 +180,54 @@ public class PriceReconcilerTests
         var r = PriceReconciler.Reconcile(null, "buy", sct, NowUtc);
         Assert.Null(r);
     }
+
+    // Fix (post-review, 2026-07-29): a UEX side price of 0 is kept BY DESIGN - "terminal that
+    // neither buys nor sells today" (MarketParse.ParseTradePriceRows) - and must not be treated as
+    // a real number to corroborate. Without this fold, the divide-by-zero guard used to force
+    // pct=0 and silently report a fabricated Corroborated at Value=0. It must instead behave as if
+    // uexRow were absent: SctOnly when SCT is present and not ammunition.
+    [Fact]
+    public void Reconcile_ZeroPriceUex_SctPresent_ReturnsSctOnly()
+    {
+        var row = Row(buy: 0, sell: 0, modifiedUtc: NowUtc.AddHours(-1));
+        var sct = Listing(price: 500, timestampUtc: NowUtc.AddHours(-1));
+        var r = PriceReconciler.Reconcile(row, "buy", sct, NowUtc);
+        Assert.NotNull(r);
+        Assert.Equal(500, r!.Value);
+        Assert.Equal(PriceSourceState.SctOnly, r.State);
+        Assert.Equal(default, r.UexModifiedUtc);
+        Assert.Equal(sct.TimestampUtc, r.SctTimestampUtc);
+    }
+
+    // Same fold, ammunition branch: with the UEX side absent (price 0), the ammo check that
+    // applies is the SCT-side one (sct.Commodity), not uexRow.CommodityName - proven here by
+    // giving the UEX row an ordinary, non-ammo CommodityName while the SCT row is ammunition.
+    [Fact]
+    public void Reconcile_ZeroPriceUex_SctPresentAmmunition_ReturnsNull()
+    {
+        var row = Row(buy: 0, sell: 0, modifiedUtc: NowUtc.AddHours(-1), commodityName: "Laranite");
+        var sct = Listing(price: 7384, timestampUtc: NowUtc.AddHours(-1), commodity: "ship ammunition - size 5");
+        var r = PriceReconciler.Reconcile(row, "buy", sct, NowUtc);
+        Assert.Null(r);
+    }
+
+    [Fact]
+    public void Reconcile_ZeroPriceUex_NoSct_ReturnsNull()
+    {
+        var row = Row(buy: 0, sell: 0, modifiedUtc: NowUtc.AddHours(-1));
+        var r = PriceReconciler.Reconcile(row, "buy", null, NowUtc);
+        Assert.Null(r);
+    }
+
+    // Bonus robustness check: the decision reads "<= 0", not "== 0" - a negative UEX price (should
+    // never occur in real data, but the guard is written as an inequality) folds the same way.
+    [Fact]
+    public void Reconcile_NegativePriceUex_SctPresent_ReturnsSctOnly()
+    {
+        var row = Row(buy: -1, sell: 0, modifiedUtc: NowUtc.AddHours(-1));
+        var sct = Listing(price: 500, timestampUtc: NowUtc.AddHours(-1));
+        var r = PriceReconciler.Reconcile(row, "buy", sct, NowUtc);
+        Assert.NotNull(r);
+        Assert.Equal(PriceSourceState.SctOnly, r!.State);
+    }
 }
