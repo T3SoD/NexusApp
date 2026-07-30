@@ -147,7 +147,14 @@ public sealed class SctMarketService : IDisposable
         return fetchedUtc > nowUtc || nowUtc - fetchedUtc >= RefreshInterval;
     }
 
-    // Called once from app startup, on the UI thread. Loads any cache from a PREVIOUS on-period -
+    // Called once from app startup, on the UI thread, and never again: App.xaml.cs calls this
+    // exactly once. The timer is therefore created UNCONDITIONALLY, before the flag check below
+    // (MarketDataService.Start's own shape) - the flag can be turned on later purely through the
+    // Settings/Admin toggle, with no second Start() call ever happening, so the periodic tick is
+    // the ONLY mechanism that ever notices a later opt-in. A tick that fires while the flag is
+    // off is completely inert: MaybeAutoRefresh checks the flag first and returns silently,
+    // logging nothing, so the timer's existence carries no observable behavior while the flag is
+    // off. The flag check further down still gates the disk load and the fetch-on-launch kick -
     // fully skipped while the flag is off, so a user who tried this once and turned it back off
     // carries no residual disk read on every later launch. The timer is created HERE and not in
     // the constructor so tests (and any non-UI caller) can build the service without a dispatcher
@@ -155,30 +162,7 @@ public sealed class SctMarketService : IDisposable
     public void Start()
     {
         if (_started || _disposed) return;
-        if (_settings.Current.SctDataEnabled != true)
-        {
-            Logger.Info($"{Tag} sct: dark flag off, not starting");
-            return;
-        }
         _started = true;
-
-        var loaded = SctSnapshotFile.Load(_snapshotPath, out var reason);
-        if (loaded is null)
-        {
-            Logger.Info($"{Tag} sct snapshot not loaded: {reason ?? "no snapshot"}");
-        }
-        else
-        {
-            _snapshot = loaded;
-            Logger.Info($"{Tag} sct snapshot loaded: {loaded.Rows.Count} listing(s), fetched {loaded.FetchedUtc:yyyy-MM-dd HH:mm} UTC");
-            RaiseChanged();
-        }
-
-        // Fetch-on-launch-when-stale (2026-07-30): the same 6h staleness check the timer below
-        // applies on every tick, so a fresh disk cache never triggers a network call on startup,
-        // but a missing or 6h+ old one is topped up right away instead of waiting for the first
-        // tick.
-        MaybeAutoRefresh();
 
         try
         {
@@ -193,6 +177,30 @@ public sealed class SctMarketService : IDisposable
             // (MarketDataService.Start's own rationale).
             Logger.Error($"{Tag} sct refresh timer could not start", ex);
         }
+
+        if (_settings.Current.SctDataEnabled != true)
+        {
+            Logger.Info($"{Tag} sct: dark flag off, not starting");
+            return;
+        }
+
+        var loaded = SctSnapshotFile.Load(_snapshotPath, out var reason);
+        if (loaded is null)
+        {
+            Logger.Info($"{Tag} sct snapshot not loaded: {reason ?? "no snapshot"}");
+        }
+        else
+        {
+            _snapshot = loaded;
+            Logger.Info($"{Tag} sct snapshot loaded: {loaded.Rows.Count} listing(s), fetched {loaded.FetchedUtc:yyyy-MM-dd HH:mm} UTC");
+            RaiseChanged();
+        }
+
+        // Fetch-on-launch-when-stale (2026-07-30): the same 6h staleness check the timer above
+        // applies on every tick, so a fresh disk cache never triggers a network call on startup,
+        // but a missing or 6h+ old one is topped up right away instead of waiting for the first
+        // tick.
+        MaybeAutoRefresh();
     }
 
     // The auto path: the flag, foreground relevance, and the 6h staleness check all gate it. Fire

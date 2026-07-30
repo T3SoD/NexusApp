@@ -514,7 +514,33 @@ public class SctMarketServiceTests : IDisposable
 
         svc.Start();
 
-        Assert.Empty(t.Requested);   // Start() checks the flag before the timer/staleness check too
+        // The timer is created regardless of the flag (so a later opt-in is picked up by the next
+        // tick without a second Start() call - see the toggle-on test below), but the flag still
+        // gates the disk load and the fetch-on-launch kick, so Start() itself makes zero requests.
+        Assert.Empty(t.Requested);
+    }
+
+    // Closes the gap the review found: App.xaml.cs calls Start() exactly once, at launch, and
+    // both toggle-on surfaces (SettingsPage, AdminPage) only ever call RefreshAsync(manual: true)
+    // directly - neither one calls Start() again. So a user who launches with the flag off (the
+    // default) and opts in later must be picked up by the timer's own tick, not by anything
+    // Start() does at construction time. This drives the tick's entry point directly
+    // (MaybeAutoRefresh, the existing test idiom for "simulate a tick" throughout this file)
+    // rather than waiting on a real 6h DispatcherTimer.
+    [Fact]
+    public void Start_FlagOffThenToggledOn_TickPicksItUpWithoutASecondStartCall()
+    {
+        var (svc, t, settings, _) = MakeWithPath(enabled: false);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+
+        svc.Start();
+        Assert.Empty(t.Requested);   // flag off at launch: Start() kicks nothing
+
+        settings.Current.SctDataEnabled = true;   // opted in later, e.g. via the Settings row
+        svc.MaybeAutoRefresh();                   // the tick's own entry point, no second Start()
+
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
     }
 
     [Fact]
