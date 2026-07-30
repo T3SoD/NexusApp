@@ -443,6 +443,10 @@ public partial class MainWindow : Window
             RefreshMarketConsent();
             RefreshCodexPrices();
             RefreshMarketPill();   // the pill appears the moment the feature is turned on
+            // Same fan-out reason as RefreshCodexPrices below: answering "Turn on" while standing on
+            // TRADE has to repaint that page too, or all three of its flows keep showing the
+            // "Turn on live market data..." message until the fetch's Changed lands.
+            if (_activePage == "trade") _tradePage?.Refresh();
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>

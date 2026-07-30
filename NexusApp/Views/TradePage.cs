@@ -41,8 +41,22 @@ public sealed partial class TradePage : UserControl
     private Ellipse _originDot = null!;
     private TextBlock _originValue = null!;
     private ComboBox? _originCombo;
+    private bool _originDotLive;          // the dot is already wearing its live dressing (glow effect +
+                                            // breathe loop): refreshes that STAY in live mode must not
+                                            // re-allocate the effect or restart the loop from full opacity
     private bool _originManualOverride;   // in-memory only: "manual override always available" (spec)
                                             // without a persisted mode flag - not in the fixed contract
+
+    // Single source of truth for the manual ORIGIN pick. The dropdown's SelectedItem, OriginLabel
+    // and OriginTerminalIds ALL read this field, never AppSettings.TradeOriginManual directly, so
+    // the FROM HERE pill's text and the chip's selection are provably the same value from first
+    // paint. The persisted setting is READ exactly once (the first render that has a non-empty
+    // terminal list) and WRITTEN only from the dropdown's SelectionChanged - never from a render
+    // path. Before this, the combo's initializer picked a default without firing SelectionChanged,
+    // so the setting stayed "" while the chip showed a terminal, and re-clicking the same item
+    // (which raises no SelectionChanged) left the user stuck in the origin-unknown state.
+    private string? _manualOriginName;
+    private bool _manualOriginSeeded;
     private readonly Border[] _scopePills = new Border[4];
     private static readonly string[] Scopes = { "ALL", "STANTON", "PYRO", "NYX" };   // mock:1116
     private Border _uexPill = null!;
@@ -89,11 +103,17 @@ public sealed partial class TradePage : UserControl
         _stripHost.Loaded += (_, _) => MoveUnderline(_activeIndex, animate: false);
         _stripHost.SizeChanged += (_, _) => MoveUnderline(_activeIndex, animate: false);
 
-        // Live data refresh triggers. Always rebuild on Market.Changed regardless of which tab is
-        // active (cheap: three StackPanel rebuilds against in-memory data, same cost model as
-        // MainWindow.OnMarketDataChanged rebuilding the whole Codex tree on every tick).
-        App.Market.Changed += () => Dispatcher.BeginInvoke(Refresh);
-        App.Locations.Changed += () => Dispatcher.BeginInvoke(RefreshContextRow);
+        // Live data refresh triggers, each gated on the page actually being on screen: MainWindow
+        // collapses the whole page host (SetActivePage sets PageTrade.Visibility), which clears
+        // IsVisible on this control, and re-entry always calls Refresh() via InitTradePage - so a
+        // tick that lands while the user is elsewhere is never lost, just not paid for. Off-screen
+        // repaints are not free either: they churn the inputs' surrounding state for nobody.
+        App.Market.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshContextRow(); });
+        // SCT is a worker-thread raise (the service documents it), so this marshals like the other
+        // two. Without this subscription nothing repainted when the first dark fetch landed: the
+        // age pill and every corroboration badge waited for the next hourly market tick.
+        App.Sct.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
 
         RebuildPlanner();
         RebuildSell();
@@ -117,6 +137,17 @@ public sealed partial class TradePage : UserControl
         RebuildPrices();
     }
 
+    /// <summary>The surfaces a new SCT snapshot changes: the age pill, plus every flow's results
+    /// (the planner's corroboration line, the sell flow's badges and SCT-only rows, the price
+    /// browser's merged SCT-only rows). The UEX-sourced context row readouts are untouched.</summary>
+    private void RefreshSctSurfaces()
+    {
+        RefreshSctAgePill();
+        RebuildPlanner();
+        RebuildSell();
+        RebuildPrices();
+    }
+
     // ── Shared consent guard (Tasks 12-14 call this first in every Rebuild*) ─────────────────
     // Mirrors the tri-state check used at every other price surface (MainWindow.Codex.cs:1033,
     // MainWindow.WorkOrders.cs:274, OverlayWindow.xaml.cs:1732): only "== true" (explicit opt-in)
@@ -126,11 +157,20 @@ public sealed partial class TradePage : UserControl
     private const string ConsentEmptyMessage =
         "Turn on live market data (above, or in Settings) to see trade routes, sell prices, and the price browser.";
 
-    private bool EnsureMarketConsent(Panel host)
+    // Each flow's input area is built ONCE and only its results area is torn down and rebuilt, so
+    // this hides the inputs while unconsented rather than destroying them: the flow renders exactly
+    // this one message and no stale controls, and the inputs come straight back when consent flips
+    // on (MainWindow's enable handler calls Refresh()).
+    private bool EnsureMarketConsent(Panel resultsHost, UIElement inputs)
     {
-        if (App.Settings.Current.MarketDataEnabled == true) return true;
-        host.Children.Clear();
-        host.Children.Add(new TextBlock
+        if (App.Settings.Current.MarketDataEnabled == true)
+        {
+            inputs.Visibility = Visibility.Visible;
+            return true;
+        }
+        inputs.Visibility = Visibility.Collapsed;
+        resultsHost.Children.Clear();
+        resultsHost.Children.Add(new TextBlock
         {
             Text = ConsentEmptyMessage, FontFamily = Hud.Font("UiFont"), FontSize = 12.5,
             Foreground = Hud.Br("FgDimBrush"), TextWrapping = TextWrapping.Wrap, MaxWidth = 520,
@@ -169,6 +209,13 @@ public sealed partial class TradePage : UserControl
 
     internal static ReconciledPrice? Reconcile(TradePriceRow row, string side) =>
         PriceReconciler.Reconcile(row, side, FindSctListing(row, side), DateTime.UtcNow);
+
+    // The synthesized reconciliation for a listing UEX has no row for at all - the same shape
+    // PriceReconciler.Reconcile itself returns for the SCT-only case. Shared by the sell flow's
+    // SCT-only buyer rows and the price browser's merged SCT-only rows so the synthesized shape
+    // lives in one place instead of two identical constructor calls.
+    internal static ReconciledPrice SctOnlyReconciled(SctListing listing) =>
+        new(listing.Price, PriceSourceState.SctOnly, 0, default, listing.TimestampUtc);
 
     // Fade+scale-in 150ms SlideOut easing, reduced-motion instant (mock BADGE_MS=150, index.html:458).
     // Shared by CorroborationBadge (badges, scale 0.8, mock:942-957) and the planner's corrline
@@ -261,6 +308,18 @@ public sealed partial class TradePage : UserControl
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
             Padding = new Thickness(5, 1, 5, 1), Child = text, VerticalAlignment = VerticalAlignment.Center,
         };
+    }
+
+    /// <summary>FreshChip's age fragment, from an age. FreshChip always appends " ago" itself, so
+    /// this strips that suffix from MarketNotice.FormatAge's "Xm/Xh/Xd ago" shapes before handing it
+    /// over. FormatAge's "just now" case (age under a minute) has no " ago" to strip - passing it
+    /// through would render "just now ago" - so that one case gets its own short unit fragment
+    /// instead, matching FreshChip's "number+unit" contract. Shared by the planner's legs and the
+    /// sell flow's buyer rows, which need the identical fragment.</summary>
+    internal static string FreshChipAge(TimeSpan age)
+    {
+        var raw = MarketNotice.FormatAge(age);
+        return raw.EndsWith(" ago", StringComparison.Ordinal) ? raw[..^4] : "<1m";
     }
 
     // ── Tab strip (ported from SettingsPage.cs:133-173, 3 tabs, no right-docked danger tab) ──
@@ -492,15 +551,52 @@ public sealed partial class TradePage : UserControl
         };
     }
 
+    /// <summary>The terminal names the manual ORIGIN dropdown offers, in the order it offers
+    /// them.</summary>
+    private static List<string> TerminalNames()
+    {
+        var snap = App.Market.Snapshot;
+        return snap?.Terminals.Rows.Select(t => t.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
+               ?? new List<string>();
+    }
+
+    /// <summary>The current manual ORIGIN pick, or null when there are genuinely no terminal names
+    /// to pick from. Seeds itself from the persisted setting the first time a non-empty list exists;
+    /// after that the field owns the value, and a pick that drops out of a refreshed snapshot falls
+    /// back to the first name (the same revalidation rule the price browser applies to its
+    /// commodity) so the field and the dropdown can never disagree.</summary>
+    private string? ManualOrigin() => ManualOrigin(TerminalNames());
+
+    /// <inheritdoc cref="ManualOrigin()"/>
+    /// <remarks>Overload for the dropdown itself, which resolves the pick against the very list it
+    /// binds as ItemsSource - one snapshot read, so the selection can never name something the list
+    /// does not contain.</remarks>
+    private string? ManualOrigin(List<string> names)
+    {
+        if (names.Count == 0) { _manualOriginName = null; return null; }
+        if (!_manualOriginSeeded)
+        {
+            _manualOriginSeeded = true;
+            var persisted = App.Settings.Current.TradeOriginManual;
+            _manualOriginName = names.Contains(persisted) ? persisted : names[0];
+        }
+        else if (_manualOriginName is null || !names.Contains(_manualOriginName))
+        {
+            _manualOriginName = names[0];
+        }
+        return _manualOriginName;
+    }
+
     /// <summary>True origin display name for RoutePlanner/SellLookup's FROM HERE anchor: the live
-    /// location when known and not overridden, else the persisted manual terminal name.</summary>
+    /// location when known and not overridden, else the manual terminal pick (the field, never the
+    /// raw setting - see _manualOriginName).</summary>
     internal string OriginLabel =>
-        (!_originManualOverride && App.Locations.LastKnownLocation is { } loc) ? loc : App.Settings.Current.TradeOriginManual;
+        (!_originManualOverride && App.Locations.LastKnownLocation is { } loc) ? loc : ManualOrigin() ?? "";
 
     internal IReadOnlySet<int> OriginTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
         (!_originManualOverride && App.Locations.LastKnownLocation is { } loc)
             ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals)
-            : TradeOriginResolver.TerminalIdForName(App.Settings.Current.TradeOriginManual, terminals) is { } id
+            : TradeOriginResolver.TerminalIdForName(ManualOrigin(), terminals) is { } id
                 ? new HashSet<int> { id } : new HashSet<int>();
 
     private void RefreshContextRow()
@@ -522,15 +618,22 @@ public sealed partial class TradePage : UserControl
                                                                 // stated role is "live data readouts" (mock:696-698)
             content.Children.Add(_originValue);
             _originDot.Fill = Hud.Br("CyanBrush");
-            _originDot.Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 };
-            // Breathe 1900->3800ms (mock MS.breathe*2, index.html:700): PulseDot always uses
-            // Motion.BreatheMs (1900) as-is, so this ORIGIN dot needs its own animation rather than
-            // Hud.PulseDot to match the mock's slower cadence exactly - a deliberate deviation, noted.
-            if (!Motion.Reduced)
+            // Dressed ONCE per entry into live mode. A refresh that stays live must not re-allocate
+            // the glow or restart a Forever loop from full opacity: the dot would visibly snap back
+            // to bright on every tick that has nothing to do with it.
+            if (!_originDotLive)
             {
-                var anim = new DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromMilliseconds(Motion.BreatheMs * 2)))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe };
-                _originDot.BeginAnimation(UIElement.OpacityProperty, anim);
+                _originDotLive = true;
+                _originDot.Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 };
+                // Breathe 1900->3800ms (mock MS.breathe*2, index.html:700): PulseDot always uses
+                // Motion.BreatheMs (1900) as-is, so this ORIGIN dot needs its own animation rather than
+                // Hud.PulseDot to match the mock's slower cadence exactly - a deliberate deviation, noted.
+                if (!Motion.Reduced)
+                {
+                    var anim = new DoubleAnimation(1.0, 0.3, new Duration(TimeSpan.FromMilliseconds(Motion.BreatheMs * 2)))
+                    { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Motion.Breathe };
+                    _originDot.BeginAnimation(UIElement.OpacityProperty, anim);
+                }
             }
             _originChip.ToolTip = "Auto-detected from your current session.";   // mock:703, verbatim
 
@@ -545,29 +648,33 @@ public sealed partial class TradePage : UserControl
         }
         else
         {
-            _originDot.BeginAnimation(UIElement.OpacityProperty, null);
+            if (_originDotLive) { _originDot.BeginAnimation(UIElement.OpacityProperty, null); _originDotLive = false; }
             content.Children.Add(new TextBlock
             {
                 Text = "ORIGIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
                 Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
             });
             _originChip.ToolTip = null;
-            var snap = App.Market.Snapshot;
-            var names = snap?.Terminals.Rows.Select(t => t.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
-                        ?? new System.Collections.Generic.List<string>();
+            // ManualOrigin() is the same value OriginLabel/OriginTerminalIds read, so the chip's
+            // selection and the FROM HERE pill's text are the same string by construction - not two
+            // reads of a setting that only one of them has written yet. Selected BEFORE the handler
+            // is attached (a seeded default is not a user pick and must not persist or re-log), and
+            // the handler is what owns every later write.
+            var names = TerminalNames();
             _originCombo = new ComboBox
             {
                 Style = (Style)Application.Current.FindResource("NexusComboBox"),
                 ItemsSource = names, MinWidth = 140,
-                SelectedItem = names.Contains(App.Settings.Current.TradeOriginManual) ? App.Settings.Current.TradeOriginManual : names.FirstOrDefault(),
+                SelectedItem = ManualOrigin(names),
             };
             _originCombo.SelectionChanged += (_, _) =>
             {
                 if (_originCombo.SelectedItem is not string name) return;
+                _manualOriginName = name;
                 App.Settings.Current.TradeOriginManual = name;
                 App.Settings.Save();
                 Logger.Info($"[UI] Trade origin (manual): {name}");
-                RebuildPlanner();
+                RebuildPlanner();   // also retitles the FROM HERE pill in place (it tracks OriginLabel)
                 RebuildSell();
             };
             content.Children.Add(_originCombo);

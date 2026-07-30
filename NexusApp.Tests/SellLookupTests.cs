@@ -5,7 +5,11 @@ namespace NexusApp.Tests;
 
 public class SellLookupTests
 {
-    private static MarketTerminal Term(int id, string system) => new(id, $"Terminal {id}", "commodity", false, system, "");
+    // Location/Orbit stay empty by default (ProximityTiers treats an empty field as "not recorded",
+    // never as a match), so the existing scope/ranking tests keep their CrossSystem shape; the
+    // same-system/same-orbit tests below fill them in to reach the tighter tiers.
+    private static MarketTerminal Term(int id, string system, string location = "", string orbit = "") =>
+        new(id, $"Terminal {id}", "commodity", false, system, location, orbit);
 
     private static TradePriceRow SellRow(int terminalId, int commodityId, double sell, int demand) =>
         new(terminalId, commodityId, 0, sell, 0, demand, 0, 1, "1,2,4,8,16,24,32", DateTime.UtcNow,
@@ -83,6 +87,39 @@ public class SellLookupTests
         var buyer = Assert.Single(SellLookup.Rank(rows, terminals, 47, 50, originTerminalId: 99, scope: "ALL"));
 
         Assert.Equal(ProximityTier.CrossSystem, buyer.Tier);
+    }
+
+    // Guards the tier path itself, not just its fallback: every other origin test here lands on
+    // CrossSystem, so Derive collapsing to the fallback would have shipped green. Mirrors
+    // RoutePlannerTests.Rank_RealLaraniteFixtureData's shape - two real stations, one system.
+    [Fact]
+    public void Rank_OriginAndBuyerInTheSameSystem_TierReachesBuyerAsSameSystem()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton", location: "HDMS-Lathan"),
+            [2] = Term(2, "Stanton", location: "TDD Area 18"),
+        };
+        var rows = new List<TradePriceRow> { SellRow(2, 47, 8500, 100) };
+
+        var buyer = Assert.Single(SellLookup.Rank(rows, terminals, 47, 50, originTerminalId: 1, scope: "ALL"));
+
+        Assert.Equal(ProximityTier.SameSystem, buyer.Tier);
+    }
+
+    [Fact]
+    public void Rank_OriginAndBuyerInTheSameOrbit_TierReachesBuyerAsSameOrbit()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton", location: "HDMS-Lathan", orbit: "Hurston"),
+            [2] = Term(2, "Stanton", location: "Everus Harbor", orbit: "Hurston"),
+        };
+        var rows = new List<TradePriceRow> { SellRow(2, 47, 8500, 100) };
+
+        var buyer = Assert.Single(SellLookup.Rank(rows, terminals, 47, 50, originTerminalId: 1, scope: "ALL"));
+
+        Assert.Equal(ProximityTier.SameOrbit, buyer.Tier);
     }
 
     [Fact]

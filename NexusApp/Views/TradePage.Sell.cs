@@ -17,7 +17,27 @@ public sealed partial class TradePage
     private TextBox _commodityBox = null!;
     private TextBox _qtyBox = null!;
     private Border? _pickerMenu;
-    private int _sellExpanded = -1;   // keyed by index within the CURRENT rows list (rebuilt every call, same as Planner's _plannerExpanded)
+    private StackPanel _pickerGrp = null!;        // the commodity box plus the search picker below it
+    private ContentControl _prefillSlot = null!;   // the APPLY WORK ORDER chip's slot (chip presence is data-dependent)
+    private string? _prefillChipName;              // the commodity the CURRENT chip names; null = no chip rendered
+
+    // Input area built ONCE, results the only thing rebuilt - same reasoning as the planner's
+    // (TradePage.Planner.cs): the qty box's own LostFocus fires synchronously inside the mouse
+    // handling of whatever was clicked, and the old Host.Children.Clear() destroyed the commodity
+    // box, the open picker and the APPLY WORK ORDER chip mid-click.
+    private StackPanel _sellInputs = null!;
+    private StackPanel _sellResults = null!;
+
+    // Keyed by buyer TERMINAL NAME, not by row index (mock index.html keys the same way): sell rows
+    // re-rank whenever the quantity or a new SCT snapshot changes the effective values, so an index
+    // would point at whatever row later took that slot. A string key survives a re-rank and keeps
+    // the band the user opened open. null = nothing expanded.
+    private string? _sellExpanded;
+
+    // A programmatic write to the commodity box (the picker committing a choice, or item H's
+    // fallback write-back) must not be read as the user typing: TextChanged would otherwise reopen
+    // the search picker on top of a selection that was just made.
+    private bool _suppressCommodityText;
 
     // Session-typed commodity/quantity (architect resolution for this task: in-memory page
     // fields, not AppSettings - same precedent as TradePage.Planner.cs's _budgetText.
@@ -30,29 +50,31 @@ public sealed partial class TradePage
     private string SellCommodity => _sellCommodityText;
     private int SellQty => int.TryParse(new string((_qtyBox?.Text ?? "").Where(char.IsDigit).ToArray()), out var n) ? n : 0;
 
-    private void RebuildSell()
-    {
-        if (!EnsureMarketConsent(SellHost)) return;
-        SellHost.Children.Clear();
-        _sellExpanded = -1;
-        _pickerMenu = null;   // the old menu (if any) was a grandchild of the cleared inputRow - drop the stale reference too
-
-        var snap = App.Market.Snapshot;
-        var commodities = snap?.TradePrices.Rows
+    // Every commodity currently priced anywhere in the snapshot, alphabetical: the list the search
+    // picker offers and the list RebuildSell resolves the pick against. Read fresh on every use
+    // (the picker's keystroke handler included) rather than captured once, since the inputs it feeds
+    // now outlive any single snapshot.
+    private static List<(int CommodityId, string CommodityName)> CommodityChoices() =>
+        App.Market.Snapshot?.TradePrices.Rows
             .Select(r => (r.CommodityId, r.CommodityName))
             .Distinct()
             .OrderBy(c => c.CommodityName, StringComparer.OrdinalIgnoreCase)
             .ToList() ?? new List<(int CommodityId, string CommodityName)>();
 
+    private void BuildSellChrome()
+    {
+        if (_sellInputs is not null) return;
+
+        _sellInputs = new StackPanel();
         var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
 
-        var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 16, 0) };
-        pickerGrp.Children.Add(FieldLabel("Commodity"));
+        _pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 16, 0) };
+        _pickerGrp.Children.Add(FieldLabel("Commodity"));
         _commodityBox = new TextBox { Style = (Style)Application.Current.FindResource("NexusTextBox"), Text = SellCommodity };
-        _commodityBox.TextChanged += (_, _) => ShowCommodityPicker(commodities, pickerGrp);
+        _commodityBox.TextChanged += (_, _) => { if (!_suppressCommodityText) ShowCommodityPicker(); };
         _commodityBox.LostFocus += (_, _) => { /* commit happens via picker item click, not free text - see ShowCommodityPicker */ };
-        pickerGrp.Children.Add(_commodityBox);
-        inputRow.Children.Add(pickerGrp);
+        _pickerGrp.Children.Add(_commodityBox);
+        inputRow.Children.Add(_pickerGrp);
 
         var qtyGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
         qtyGrp.Children.Add(FieldLabel("Quantity"));
@@ -66,61 +88,118 @@ public sealed partial class TradePage
             if (_sellQtyText == _qtyBox.Text) return;   // guard, same pattern as Planner's budget box: no-op blur never logs or rebuilds
             _sellQtyText = _qtyBox.Text;
             Logger.Info("[UI] Trade sell: quantity updated");
-            RebuildSell();
+            RebuildSell();   // results only: the control the user just clicked is still alive
         };
         qtyGrp.Children.Add(_qtyBox);
         inputRow.Children.Add(qtyGrp);
 
-        if (TryGetPrefill(snap, commodities, out var prefillCommodity))
-        {
-            var chip = new Border
-            {
-                BorderBrush = Hud.Br("AccentStrongBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(12, 6, 12, 6), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Bottom,
-                Child = new TextBlock { Text = $"APPLY WORK ORDER: {prefillCommodity}", FontFamily = Hud.Font("UiFont"), FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush") },
-                // Deviates from the mock's verbatim tooltip (trading-tab/index.html:924, "Prefills
-                // the commodity and quantity fields..."): WorkOrder carries no output-quantity
-                // field (WorkOrderPrefill.cs), so this task's architect resolution has the chip
-                // fill the COMMODITY ONLY - a recorded mock deviation. The tooltip is reworded to
-                // match what the chip actually does rather than promise a quantity prefill that
-                // never happens.
-                ToolTip = "Prefills the commodity field from your latest completed work order.",
-            };
-            chip.MouseLeftButtonUp += (_, _) =>
-            {
-                _sellCommodityText = prefillCommodity;
-                Logger.Info($"[UI] Trade sell: prefilled from work order ({prefillCommodity})");
-                RebuildSell();
-            };
-            inputRow.Children.Add(chip);
-        }
+        // Bottom-aligned like the chip it holds, and zero-sized while empty, so the input row lays
+        // out identically whether or not there is a work order to apply.
+        _prefillSlot = new ContentControl { VerticalAlignment = VerticalAlignment.Bottom, Focusable = false };
+        inputRow.Children.Add(_prefillSlot);
 
-        SellHost.Children.Add(inputRow);
-        SellHost.Children.Add(new TextBlock
+        _sellInputs.Children.Add(inputRow);
+        _sellInputs.Children.Add(new TextBlock
         {
             Text = "Ranked by effective value for your load. Bars show trip coverage.",   // architect resolution caption, verbatim
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
         });
 
-        if (snap is null || commodities.Count == 0) { SellHost.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc)); return; }
+        _sellResults = new StackPanel();
+        SellHost.Children.Add(_sellInputs);
+        SellHost.Children.Add(_sellResults);
+    }
+
+    // The chip's presence and label are data-dependent (latest completed work order, resolved
+    // against the currently-priced commodities), so the slot is refreshed on every results rebuild -
+    // but ONLY when the answer actually changed. Re-creating an unchanged chip would put the wave's
+    // own mid-click bug back: a rebuild triggered by the quantity box's LostFocus fires while the
+    // click that caused it is still resolving on the chip.
+    private void RefreshPrefillChip(MarketSnapshot? snap, List<(int CommodityId, string CommodityName)> commodities)
+    {
+        string? name = TryGetPrefill(snap, commodities, out var prefillCommodity) ? prefillCommodity : null;
+        if (name == _prefillChipName) return;
+        _prefillChipName = name;
+        if (name is null) { _prefillSlot.Content = null; return; }
+
+        var chip = new Border
+        {
+            BorderBrush = Hud.Br("AccentStrongBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12, 6, 12, 6), Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Bottom,
+            Child = new TextBlock { Text = $"APPLY WORK ORDER: {name}", FontFamily = Hud.Font("UiFont"), FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush") },
+            // Deviates from the mock's verbatim tooltip (trading-tab/index.html:924, "Prefills
+            // the commodity and quantity fields..."): WorkOrder carries no output-quantity
+            // field (WorkOrderPrefill.cs), so this task's architect resolution has the chip
+            // fill the COMMODITY ONLY - a recorded mock deviation. The tooltip is reworded to
+            // match what the chip actually does rather than promise a quantity prefill that
+            // never happens.
+            ToolTip = "Prefills the commodity field from your latest completed work order.",
+        };
+        chip.MouseLeftButtonUp += (_, _) =>
+        {
+            SetCommodity(name);
+            Logger.Info($"[UI] Trade sell: prefilled from work order ({name})");
+            RebuildSell();
+        };
+        _prefillSlot.Content = chip;
+    }
+
+    /// <summary>Commits a commodity choice: the field the ranking reads AND the box the user sees,
+    /// always together (the UI must never name one commodity while ranking another). The box write
+    /// is suppressed so it does not reopen the search picker, and any open picker closes - the
+    /// commodity has just been decided, so a stale filtered list under the box would be wrong.</summary>
+    private void SetCommodity(string commodityName)
+    {
+        _sellCommodityText = commodityName;
+        _suppressCommodityText = true;
+        try { _commodityBox.Text = commodityName; }
+        finally { _suppressCommodityText = false; }
+        CloseCommodityPicker();
+    }
+
+    private void RebuildSell()
+    {
+        BuildSellChrome();
+        if (!EnsureMarketConsent(_sellResults, _sellInputs)) return;
+        _sellResults.Children.Clear();
+
+        var snap = App.Market.Snapshot;
+        var commodities = CommodityChoices();
+        RefreshPrefillChip(snap, commodities);
+
+        if (snap is null || commodities.Count == 0) { _sellResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc)); return; }
 
         var picked = commodities.FirstOrDefault(c => string.Equals(c.CommodityName, SellCommodity, StringComparison.OrdinalIgnoreCase));
-        if (picked == default) picked = commodities[0];
+        if (picked == default)
+        {
+            // The chosen commodity is not in this snapshot (nothing chosen yet, or an hourly refresh
+            // dropped it). Ranking falls back to the first commodity, and the box is corrected to
+            // match: it used to keep showing the stale name while the rows below ranked something
+            // else. Guarded on a real change so a settled selection never re-writes the box (which
+            // would throw away text the user is still typing).
+            picked = commodities[0];
+            if (!string.Equals(_sellCommodityText, picked.CommodityName, StringComparison.Ordinal))
+                SetCommodity(picked.CommodityName);
+        }
         int qty = SellQty;
-        if (qty <= 0) { SellHost.Children.Add(new TextBlock { Text = "Enter a quantity to rank buyers.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
+        if (qty <= 0) { _sellResults.Children.Add(new TextBlock { Text = "Enter a quantity to rank buyers.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
         var originIds = OriginTerminalIds(snap.Terminals.Rows);
-        int? originId = originIds.Count == 1 ? originIds.First() : null;   // SellLookup takes one optional origin, not a set - proximity tier still ranks the rest
+        // SellLookup takes ONE optional origin, not a set. Every terminal of one location shares the
+        // same hierarchy (system/orbit/planet), so any of them derives the same proximity tier -
+        // taking the first is correct for a multi-terminal station, where collapsing to null used to
+        // force every buyer to CROSS-SYSTEM. null only for a genuinely empty set.
+        int? originId = originIds.Count >= 1 ? originIds.First() : null;
         var buyers = SellLookup.Rank(snap.TradePrices.Rows, terminals, picked.CommodityId, qty, originId, App.Settings.Current.TradeScope);
 
-        if (buyers.Count == 0) { SellHost.Children.Add(new TextBlock { Text = $"No buyers found for {picked.CommodityName} in this scope.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
+        if (buyers.Count == 0) { _sellResults.Children.Add(new TextBlock { Text = $"No buyers found for {picked.CommodityName} in this scope.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
         for (int i = 0; i < buyers.Count; i++)
         {
-            var row = BuildBuyerRow(buyers[i], i, qty);
+            var row = BuildBuyerRow(buyers[i], qty);
             CascadeIn(row, i);
-            SellHost.Children.Add(row);
+            _sellResults.Children.Add(row);
         }
 
         // SCT-only rows: listings SCT has at mapped terminals where UEX has no matching row at
@@ -134,9 +213,9 @@ public sealed partial class TradePage
         for (int i = 0; i < sctOnly.Count; i++)
         {
             int idx = buyers.Count + i;
-            var row = BuildSctOnlyBuyerRow(sctOnly[i], idx, qty);
+            var row = BuildSctOnlyBuyerRow(sctOnly[i], qty);
             CascadeIn(row, idx);
-            SellHost.Children.Add(row);
+            _sellResults.Children.Add(row);
         }
 
         string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
@@ -148,13 +227,13 @@ public sealed partial class TradePage
     // item click (MouseLeftButtonUp), never via free text or LostFocus - that ordering matters:
     // clicking an item first steals focus from the TextBox (firing its LostFocus), and if that
     // handler tore the menu down there, the pending click on the now-detached item would never
-    // resolve. Leaving LostFocus a no-op (see RebuildSell above) is what keeps the click reliable.
-    private void ShowCommodityPicker(List<(int CommodityId, string CommodityName)> commodities, Panel host)
+    // resolve. Leaving LostFocus a no-op (see BuildSellChrome above) is what keeps the click reliable.
+    private void ShowCommodityPicker()
     {
-        if (_pickerMenu != null) host.Children.Remove(_pickerMenu);
+        CloseCommodityPicker();
         var query = _commodityBox.Text ?? "";
-        var matches = commodities.Where(c => c.CommodityName.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(8).ToList();
-        if (matches.Count == 0) { _pickerMenu = null; return; }
+        var matches = CommodityChoices().Where(c => c.CommodityName.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(8).ToList();
+        if (matches.Count == 0) return;
         var list = new StackPanel();
         foreach (var m in matches)
         {
@@ -163,7 +242,10 @@ public sealed partial class TradePage
             item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
             item.MouseLeftButtonUp += (_, _) =>
             {
-                _sellCommodityText = m.CommodityName;
+                // Box, field and picker all together (SetCommodity): the box is built once now, so a
+                // commit has to write the full name into it here - the rebuild no longer re-creates
+                // the box from the field, nor destroys the menu as a side effect of clearing the host.
+                SetCommodity(m.CommodityName);
                 Logger.Info($"[UI] Trade sell: commodity {m.CommodityName}");
                 RebuildSell();
             };
@@ -174,7 +256,14 @@ public sealed partial class TradePage
             Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(0, 0, 6, 6), Child = list,
         };
-        host.Children.Add(_pickerMenu);
+        _pickerGrp.Children.Add(_pickerMenu);
+    }
+
+    private void CloseCommodityPicker()
+    {
+        if (_pickerMenu is null) return;
+        _pickerGrp.Children.Remove(_pickerMenu);
+        _pickerMenu = null;
     }
 
     // Prefill resolution, per this task's architect override of the brief's ASSUMED
@@ -208,26 +297,37 @@ public sealed partial class TradePage
         return false;
     }
 
-    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int index, int qty)
-        => WrapBuyerRow(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost), chevron, detailHost, index, sctOnly: false);
+    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty)
+        => WrapBuyerRow(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost), chevron, detailHost,
+                        b.Row.TerminalName, sctOnly: false);
 
     // SCT-only row: a listing SCT has at a terminal UEX has no row for at all. Same row chrome,
     // de-emphasized (mock .buyerRow.sctonly, index.html:286/935: opacity 0.82 + the frame's
-    // stroke swapped to the "line-strong" token instead of the normal one).
-    private FrameworkElement BuildSctOnlyBuyerRow(SctListing s, int index, int qty)
-        => WrapBuyerRow(BuildSctOnlyBuyerRowContent(s, qty, out var chevron, out var detailHost), chevron, detailHost, index, sctOnly: true);
+    // stroke swapped to the "line-strong" token instead of the normal one). Its expansion key is the
+    // SCT location, which by definition names no UEX terminal, so it can never collide with a
+    // ranked buyer's terminal name.
+    private FrameworkElement BuildSctOnlyBuyerRow(SctListing s, int qty)
+        => WrapBuyerRow(BuildSctOnlyBuyerRowContent(s, qty, out var chevron, out var detailHost), chevron, detailHost,
+                        s.Location, sctOnly: true);
 
-    private FrameworkElement WrapBuyerRow(UIElement content, Path chevron, Border detailHost, int index, bool sctOnly)
+    private FrameworkElement WrapBuyerRow(UIElement content, Path chevron, Border detailHost, string key, bool sctOnly)
     {
         var host = Hud.CardFrame(content, out var framePath, out _, chamfer: 8, padding: new Thickness(18, 13, 18, 13));
         if (sctOnly) framePath.Stroke = Hud.Br("BorderBrush");   // mock:935, stroke=lineStrong for sctOnly rows
         host.Children.Add(PositionChevron(chevron));
         var wrapper = new Border { Cursor = Cursors.Hand, Child = host, Margin = new Thickness(0, 0, 0, 10) };
         if (sctOnly) wrapper.Opacity = 0.82;   // mock:286, single-source de-emphasis
+        // Restored, not animated: this row was already open before the rows re-ranked, so the band
+        // and the chevron start in their open state rather than replaying the expand.
+        if (string.Equals(_sellExpanded, key, StringComparison.Ordinal))
+        {
+            detailHost.Visibility = Visibility.Visible;
+            chevron.RenderTransform = new RotateTransform(90);
+        }
         wrapper.MouseLeftButtonUp += (_, _) =>
         {
-            bool nowOpen = _sellExpanded != index;
-            _sellExpanded = nowOpen ? index : -1;
+            bool nowOpen = !string.Equals(_sellExpanded, key, StringComparison.Ordinal);
+            _sellExpanded = nowOpen ? key : null;
             detailHost.Visibility = nowOpen ? Visibility.Visible : Visibility.Collapsed;
             SetChevronOpen(chevron, nowOpen);
         };
@@ -248,7 +348,7 @@ public sealed partial class TradePage
     private UIElement BuildSctOnlyBuyerRowContent(SctListing s, int qty, out Path chevron, out Border detailHost)
     {
         double effectiveValue = Math.Min(qty, s.Quantity) * s.Price;
-        var badge = CorroborationBadge(new ReconciledPrice(s.Price, PriceSourceState.SctOnly, 0, default, s.TimestampUtc));
+        var badge = CorroborationBadge(SctOnlyReconciled(s));
         return BuildBuyerRowCore(s.Location, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, out chevron, out detailHost);
     }
 
@@ -281,13 +381,7 @@ public sealed partial class TradePage
         meta.Children.Add(bar);
         meta.Children.Add(new TextBlock { Text = $"DEMAND {demandScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 8, 0) });
         var age = DateTime.UtcNow - priceUtc;
-        // Same "strip trailing ' ago', fall back to '<1m'" idiom as Planner.BuildLeg
-        // (TradePage.Planner.cs): FreshChip always appends " ago" itself, and FormatAge's "just
-        // now" shape (age < 1 minute) has none to strip - a naive Replace(" ago","") would render
-        // "just now ago".
-        var rawAge = MarketNotice.FormatAge(age);
-        var chipAge = rawAge.EndsWith(" ago", StringComparison.Ordinal) ? rawAge[..^4] : "<1m";
-        meta.Children.Add(FreshChip(chipAge, age.TotalHours >= 24));
+        meta.Children.Add(FreshChip(FreshChipAge(age), age.TotalHours >= 24));   // shared idiom, see FreshChipAge
         left.Children.Add(meta);
         Grid.SetColumn(left, 0); Grid.SetRow(left, 0);
         grid.Children.Add(left);
@@ -307,7 +401,7 @@ public sealed partial class TradePage
         Grid.SetColumn(right, 1); Grid.SetRowSpan(right, 2); Grid.SetRow(right, 0);
         grid.Children.Add(right);
 
-        detailHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(0, 10, 0, 0), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0) };
+        detailHost = DetailBand(new Thickness(0, 10, 0, 0), new Thickness(0, 10, 0, 0));
         detailHost.Child = new TextBlock
         {
             Text = $"Effective value = min({qty:n0}, demand {demandScu:n0}) SCU x {price:n0} aUEC/SCU = {effectiveValue:n0} aUEC",   // mock:979, verbatim format

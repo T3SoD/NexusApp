@@ -89,6 +89,7 @@ public sealed class SctMarketService : IDisposable
     // on (the same MarketDataService._cycleDone contract).
     private volatile TaskCompletionSource<bool>? _cycleDone;
     private volatile SctSnapshot? _snapshot;
+    private volatile bool _disposed;
 
     // Cached once, lazily, and only from a code path already gated by the flag check (never
     // touched while SctDataEnabled is false - "zero map load while off" applies here too, not
@@ -170,6 +171,12 @@ public sealed class SctMarketService : IDisposable
 
             var all = new List<SctListing>();
             int totalSkippedRows = 0, page = 0;
+            // A cycle that did not page cleanly to its natural end publishes NOTHING: the same rule
+            // MarketDataService's Carry applies (every dataset a cycle failed to replace keeps its
+            // previous rows and its previous FetchedUtc). Without this, a transient failure - or
+            // Dispose's own cancellation - replaced a good in-memory AND on-disk snapshot with an
+            // empty one stamped fresh, which reads to every consumer as "SCT genuinely has nothing".
+            bool cycleOk = true;
             while (page < MaxPages)
             {
                 string body;
@@ -181,11 +188,13 @@ public sealed class SctMarketService : IDisposable
                 catch (OperationCanceledException)
                 {
                     Logger.Error($"{Tag} sct refresh stopped: deadline ({FetchDeadline.TotalMinutes:0}m) reached at page {page}");
+                    cycleOk = false;
                     break;
                 }
                 catch (Exception ex)
                 {
                     Logger.Error($"{Tag} sct fetch page {page} failed: {ex.Message}");
+                    cycleOk = false;
                     break;
                 }
 
@@ -197,6 +206,14 @@ public sealed class SctMarketService : IDisposable
                 page++;
                 if (page < MaxPages)
                     await Task.Delay(PageSpacing, cts.Token).ConfigureAwait(false);   // polite spacing
+            }
+
+            if (!cycleOk)
+            {
+                // The failure itself is already logged above (deadline or page error); this line is
+                // what tells the App Log Monitor that the previous data is still what the UI shows.
+                Logger.Info($"{Tag} sct refresh incomplete after {page} page(s): previous snapshot kept");
+                return;
             }
 
             var fresh = SctListingParser.Fresh(all, MaxListingAge, utcNow);
@@ -334,16 +351,20 @@ public sealed class SctMarketService : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;   // double-Dispose is a no-op (MarketDataService.Dispose precedent)
+        _disposed = true;
+
         var pending = _cycleDone?.Task;   // captured BEFORE the cancel, which may clear the field
         // Cancels the in-flight refresh through its linked source. _life is deliberately NOT
         // disposed: that refresh still holds a token derived from it (MarketDataService's own
         // Dispose rationale - see its comment for the full reasoning).
         try { _life.Cancel(); } catch { /* best effort */ }
 
-        // Then WAIT for it. Cancelling alone is not enough: the refresh still writes the snapshot
-        // file on its way out (even a cancelled page loop falls through to the save), and that
-        // write must not race whatever runs after App.OnExit calls this. Bounded, because a
-        // subscriber that blocks inside Changed must not be able to hang shutdown.
+        // Then WAIT for it. Cancelling alone is not enough: a cancelled cycle publishes no snapshot
+        // at all now, but it is still unwinding on its way out - still logging, still able to raise
+        // Changed into a subscriber - and none of that may race whatever runs after App.OnExit
+        // calls this. Bounded, because a subscriber that blocks inside Changed must not be able to
+        // hang shutdown.
         try
         {
             if (pending is not null && !pending.Wait(DisposeDrainTimeout))
@@ -386,9 +407,12 @@ internal static class SctSnapshotFile
         }
         catch (Exception ex)
         {
-            // No path in the message: this flows straight to Logger.Error, and path is always
-            // under %AppData% - it would carry the Windows username into nexus.log (task-16 audit).
-            Logger.Error("Failed to save SCT snapshot", ex);
+            // NEITHER the message NOR the exception itself may reach the log: path is always under
+            // %AppData%, so it would carry the Windows username into nexus.log (task-16 audit) -
+            // and .NET file-IO exception Messages embed that full path, which Logger appends
+            // verbatim (ex.ToString()) whenever an exception object is passed. So: operation plus
+            // exception TYPE only, and no ex argument.
+            Logger.Error($"Failed to save SCT snapshot ({ex.GetType().Name})");
             return false;
         }
     }
@@ -396,8 +420,10 @@ internal static class SctSnapshotFile
     public static SctSnapshot? Load(string path, out string? reason)
     {
         // reason is logged verbatim by SctMarketService.Start (Logger.Info, [NET]-tagged), and path
-        // is always under %AppData% - so none of these ever interpolate path into the message (it
-        // would carry the Windows username into nexus.log; task-16 audit).
+        // is always under %AppData% - so none of these ever interpolate path into the message, and
+        // none interpolates an exception's own Message either (a .NET file-IO Message embeds the
+        // full path). Both would carry the Windows username into nexus.log (task-16 audit), so the
+        // catch-all below reports the exception TYPE only.
         reason = null;
         if (!File.Exists(path)) { reason = "SCT snapshot file not found"; return null; }
         try
@@ -420,7 +446,7 @@ internal static class SctSnapshotFile
         }
         catch (Exception ex)
         {
-            reason = $"Error loading SCT snapshot: {ex.Message}";
+            reason = $"Error loading SCT snapshot: {ex.GetType().Name}";
             return null;
         }
     }

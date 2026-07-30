@@ -1,3 +1,7 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using NexusApp.Services;
 using Xunit;
 
@@ -91,5 +95,73 @@ public class LocationTrackerTests
         t.Ingest(E(LocationInventoryRequest));
         t.Ingest(E("<2026-07-29T22:40:00.000Z> [Notice] <Something> foo"));   // unrelated: no fire
         Assert.Equal(2, changed);
+    }
+
+    // A station's inventory can be opened twenty times in one stop, and every launch replays the
+    // whole Game.log (includeReplay: true) on top of that. Only a real transition is news:
+    // ShardTracker, the sibling on this same feed, logs and raises on transitions only, and this
+    // tracker now matches it. LastSeenUtc still advances on every matching line (freshness is
+    // exactly what the repeats are evidence of), it just does so silently.
+    [Fact]
+    public void Ingest_SamePlaceTwice_LogsOnceAndRaisesChangedOnce()
+    {
+        var place = $"ZzzUnitTestPlace_{Guid.NewGuid():N}";
+        string Line(string ts) =>
+            $"<{ts}> [Notice] <RequestLocationInventory> Player[TestPilot] requested inventory " +
+            $"for Location[{place}] [Team_CoreGameplayFeatures][Inventory]";
+
+        int changed = 0;
+        var t = new LocationTracker(new GameLogFeed());
+        t.Changed += () => changed++;
+
+        t.Ingest(E(Line("2026-07-29T22:39:34.863Z")));
+        t.Ingest(E(Line("2026-07-29T22:41:10.100Z")));
+        t.Ingest(E(Line("2026-07-29T22:44:02.500Z")));
+
+        Assert.Equal(1, changed);
+        Assert.Equal(place, t.LastKnownLocation);
+        // The repeats are still ACTIVITY: LastSeenUtc tracks the newest line, silently.
+        Assert.Equal(DateTime.Parse("2026-07-29T22:44:02.500Z").ToUniversalTime(), t.LastSeenUtc);
+
+        // Logged once too. Same shared-log read idiom as MarketQueriesTests'
+        // UnmappedResource_LogsMissOnceOnlyPerName: the place name is unique to this test, so its
+        // occurrence count in the shared test log is this tracker's own line count.
+        var logPath = Environment.GetEnvironmentVariable("NEXUS_LOG_PATH");
+        Assert.NotNull(logPath);
+        var occurrences = TestFiles.ReadSharedLines(logPath!)
+            .Sum(l => Regex.Matches(l, Regex.Escape(place)).Count);
+        Assert.Equal(1, occurrences);
+    }
+
+    [Fact]
+    public void Ingest_DifferentPlaceAfterRepeats_LogsAndRaisesAgain()
+    {
+        int changed = 0;
+        var t = new LocationTracker(new GameLogFeed());
+        t.Changed += () => changed++;
+
+        t.Ingest(E(LocationInventoryRequest));   // Stanton4_NewBabbage
+        t.Ingest(E(LocationInventoryRequest));   // same place again: silent
+        t.Ingest(E(MicroTechJurisdiction));      // a real transition: news again
+
+        Assert.Equal(2, changed);
+        Assert.Equal("microTech", t.LastKnownLocation);
+    }
+
+    // The <Update Inventory Location> freshness branch is a deliberate contract of its own: a
+    // silent LastSeenUtc update that STILL raises Changed (the place did not change, but the
+    // signal's age did, and the ORIGIN chip renders that age). Asserted here with a handler
+    // attached so the raise itself is covered, not just the LastSeenUtc side effect.
+    [Fact]
+    public void Ingest_InventoryTransitionLine_RaisesChanged()
+    {
+        int changed = 0;
+        var t = new LocationTracker(new GameLogFeed());
+        t.Changed += () => changed++;
+
+        t.Ingest(E(InventoryLocationTransition));
+
+        Assert.Equal(1, changed);
+        Assert.NotNull(t.LastSeenUtc);
     }
 }

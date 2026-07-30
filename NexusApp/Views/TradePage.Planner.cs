@@ -42,6 +42,16 @@ public sealed partial class TradePage
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
+    // The input area (ship combo, budget box, anchor pills, caption) is built ONCE and only its
+    // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
+    // Before this, every rebuild started with PlannerHost.Children.Clear(), so the budget box's own
+    // LostFocus - which WPF raises synchronously inside the mouse handling of whatever the user just
+    // clicked - destroyed the ship combo and the anchor pills mid-click and ate that first click.
+    // The same clear also wiped typed-but-unblurred text and collapsed expanded bands on every
+    // hourly market tick.
+    private StackPanel _plannerInputs = null!;
+    private StackPanel _plannerResults = null!;
+
     // Session-typed budget (ASSUMED not in the fixed AppSettings contract - see task-12 brief's
     // "NOTE on a second small assumption": AppSettings has no TradeBudget field, so this holds the
     // value in memory only; it resets each session, which does not affect anything else in this file.
@@ -56,11 +66,14 @@ public sealed partial class TradePage
         return digits.Length > 0 && double.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : null;
     }
 
-    private void RebuildPlanner()
+    // Built once, on the first RebuildPlanner. Everything here survives every later rebuild: the
+    // controls keep their identity, so a click that moved focus off the budget box lands on a live
+    // control, and typed-but-unblurred text is never thrown away by a background tick.
+    private void BuildPlannerChrome()
     {
-        if (!EnsureMarketConsent(PlannerHost)) return;
-        PlannerHost.Children.Clear();
-        _plannerExpanded = -1;
+        if (_plannerInputs is not null) return;
+
+        _plannerInputs = new StackPanel();
 
         var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
 
@@ -96,7 +109,7 @@ public sealed partial class TradePage
             if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetAnchor/SetScope: no-op blur never logs or rebuilds
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
-            RebuildPlanner();
+            RebuildPlanner();   // results only: the control the user just clicked is still alive
         };
         budgetGrp.Children.Add(_budgetBox);
         inputRow.Children.Add(budgetGrp);
@@ -113,19 +126,31 @@ public sealed partial class TradePage
         anchorGrp.Children.Add(anchorRow);
         inputRow.Children.Add(anchorGrp);
 
-        PlannerHost.Children.Add(inputRow);
-        RefreshAnchorPills();
+        _plannerInputs.Children.Add(inputRow);
 
-        PlannerHost.Children.Add(new TextBlock
+        _plannerInputs.Children.Add(new TextBlock
         {
             Text = "Ranked by what a trip really pays with your ship and budget, not raw margin. Bars show trip coverage.",   // mock:857, verbatim
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
         });
 
+        _plannerResults = new StackPanel();
+        PlannerHost.Children.Add(_plannerInputs);
+        PlannerHost.Children.Add(_plannerResults);
+    }
+
+    private void RebuildPlanner()
+    {
+        BuildPlannerChrome();
+        if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
+        _plannerResults.Children.Clear();
+        _plannerExpanded = -1;
+        RefreshAnchorPills();
+
         var snap = App.Market.Snapshot;
         if (snap is null || snap.TradePrices.Rows.Count == 0)
         {
-            PlannerHost.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
+            _plannerResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
             return;
         }
 
@@ -156,7 +181,7 @@ public sealed partial class TradePage
                     ? "No routes buy from here right now. Try ANYWHERE, or a wider scope."
                     : "No routes match the current scope and budget.";
             }
-            PlannerHost.Children.Add(new TextBlock
+            _plannerResults.Children.Add(new TextBlock
             {
                 Text = message,
                 FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush"),
@@ -168,7 +193,7 @@ public sealed partial class TradePage
         {
             var row = BuildRouteRow(routes[i], i, ship);
             CascadeIn(row, i);
-            PlannerHost.Children.Add(row);
+            _plannerResults.Children.Add(row);
         }
 
         Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, anchor {(App.Settings.Current.TradeAnchorFromHere ? "FROM HERE" : "ANYWHERE")}");
@@ -186,6 +211,10 @@ public sealed partial class TradePage
     private void RefreshAnchorPills()
     {
         bool fromHere = App.Settings.Current.TradeAnchorFromHere;
+        // The pill is built once, so its label has to keep tracking OriginLabel here rather than at
+        // construction: the origin changes under it (a live location arriving, a manual pick, the
+        // Manual/Live links) and the pill must always name the origin the results were ranked from.
+        ((TextBlock)_fromHerePill.Child).Text = $"FROM HERE ({OriginLabel})";
         SetPillOn(_fromHerePill, fromHere);
         SetPillOn(_anywherePill, !fromHere);
     }
@@ -258,6 +287,24 @@ public sealed partial class TradePage
         row.Children.Add(new Border { Width = 5, Height = 1.6, Background = ok, VerticalAlignment = VerticalAlignment.Center });
         row.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = ok, VerticalAlignment = VerticalAlignment.Center });
         return row;
+    }
+
+    // The expanded detail band, for both the planner and the sell flow. Clicks inside it are marked
+    // handled so they never reach the row host and re-collapse the row the user is reading (mock
+    // index.html:978 does the same with onClick stopPropagation). A Transparent background is what
+    // makes the whole band hit-testable: with the default null background, only the glyphs of the
+    // text inside it are, and every click on the band's own whitespace fell through to the card
+    // frame behind it and collapsed the row anyway.
+    private static Border DetailBand(Thickness margin, Thickness padding)
+    {
+        var band = new Border
+        {
+            Visibility = Visibility.Collapsed, Margin = margin, Padding = padding,
+            Background = Brushes.Transparent,
+            BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
+        };
+        band.MouseLeftButtonUp += (_, e) => e.Handled = true;
+        return band;
     }
 
     private static void SetChevronOpen(Path chevron, bool open)
@@ -341,7 +388,7 @@ public sealed partial class TradePage
         bool fits = TradeMath.BoxFits(r.BuyRow.ContainerSizes, ship.MaxContainerScu);   // RoutePlanner already
                                                                                           // filters incompatible pairs, so this is always true for a
                                                                                           // returned row - kept explicit rather than assumed silently.
-        detailHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(0, 12, 0, 0), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0) };
+        detailHost = DetailBand(new Thickness(0, 12, 0, 0), new Thickness(0, 12, 0, 0));
         var detail = new StackPanel();
         var fitLine = new StackPanel { Orientation = Orientation.Horizontal };
         fitLine.Children.Add(new Path { Data = Geometry.Parse("M5,13 L10,18 L19,6"), Width = 15, Height = 15, Stroke = Hud.Br("OkBrush"), StrokeThickness = 1.7, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent, Margin = new Thickness(0, 0, 8, 0) });
@@ -414,13 +461,7 @@ public sealed partial class TradePage
         leg.Children.Add(barRow);
 
         var age = DateTime.UtcNow - modifiedUtc;
-        // FreshChip always appends " ago" itself, so this strips that suffix from FormatAge's
-        // "Xm/Xh/Xd ago" shapes before handing it over. FormatAge's "just now" case (age < 1 minute)
-        // has no " ago" to strip - passing it through as-is would render "just now ago", so that one
-        // case gets its own short unit fragment instead, matching FreshChip's "number+unit" contract.
-        var rawAge = MarketNotice.FormatAge(age);
-        var chipAge = rawAge.EndsWith(" ago", StringComparison.Ordinal) ? rawAge[..^4] : "<1m";
-        leg.Children.Add(FreshChip(chipAge, age.TotalHours >= 24));
+        leg.Children.Add(FreshChip(FreshChipAge(age), age.TotalHours >= 24));   // shared idiom, see FreshChipAge
         return leg;
     }
 }

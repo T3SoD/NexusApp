@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace NexusApp.Services;
 
 // Pure capacity/quantity math for the trading tab (route planner + sell lookup): how much of a
@@ -20,11 +22,19 @@ public static class TradeMath
     // Mirrors the mock's expanded-band narration (nexus-design-lab/trading-tab/index.html:732-733):
     // "ship N", "stock N", and "budget affords N" only when a budget was actually entered - the
     // same guard TripQty uses, so the two can never disagree about whether the budget term applies.
+    // InvariantCulture, like every sibling number in the card that renders this narration (the
+    // planner's profit/price/leg values all force it): a comma group separator on a machine set to
+    // a comma-decimal locale would otherwise read as a decimal point right next to values that
+    // never move.
     public static string[] TripParts(int shipScu, int buyStockScu, double? budget, double buyPrice)
     {
-        var parts = new List<string> { $"ship {shipScu:N0}", $"stock {buyStockScu:N0}" };
+        var parts = new List<string>
+        {
+            $"ship {shipScu.ToString("N0", CultureInfo.InvariantCulture)}",
+            $"stock {buyStockScu.ToString("N0", CultureInfo.InvariantCulture)}",
+        };
         if (budget.HasValue && buyPrice > 0)
-            parts.Add($"budget affords {(int)Math.Floor(budget.Value / buyPrice):N0}");
+            parts.Add($"budget affords {((int)Math.Floor(budget.Value / buyPrice)).ToString("N0", CultureInfo.InvariantCulture)}");
         return parts.ToArray();
     }
 

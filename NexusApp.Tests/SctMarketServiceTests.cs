@@ -105,13 +105,22 @@ public class SctMarketServiceTests : IDisposable
 
     private (SctMarketService svc, FakeSctTransport t, SettingsService settings) Make(bool enabled)
     {
+        var (svc, t, settings, _) = MakeWithPath(enabled);
+        return (svc, t, settings);
+    }
+
+    // Same as Make, plus the snapshot path: the preserve-the-previous-snapshot tests assert on the
+    // on-disk file as well as the in-memory one.
+    private (SctMarketService svc, FakeSctTransport t, SettingsService settings, string snapshotPath) MakeWithPath(bool enabled)
+    {
         var dir = Directory.CreateTempSubdirectory("nexus-sct-test").FullName;
         _tempDirs.Add(dir);
         var settings = new SettingsService(Path.Combine(dir, "settings.json"));
         settings.Current.SctDataEnabled = enabled;
         var t = new FakeSctTransport();
-        var svc = new SctMarketService(settings, t, Path.Combine(dir, "sct_snapshot.json"));
-        return (svc, t, settings);
+        var snapshotPath = Path.Combine(dir, "sct_snapshot.json");
+        var svc = new SctMarketService(settings, t, snapshotPath);
+        return (svc, t, settings, snapshotPath);
     }
 
     [Fact]
@@ -169,13 +178,15 @@ public class SctMarketServiceTests : IDisposable
         Assert.Equal(2, t.Requested.Count);   // page 0, then the empty page 1 that ends the loop
     }
 
-    // Cancelling alone is not enough: a cancelled page loop still falls through and writes the
-    // snapshot file on its way out, and that write must not race whatever runs right after
-    // Dispose returns (App.OnExit calls Market.Dispose() then Sct.Dispose() in that order). The
-    // fake's CancelUnwindDelay makes the unwind take measurable wall-clock time, so this proves
-    // Dispose() itself blocks for it rather than cancelling and returning immediately (a plain
-    // "does the refresh eventually finish" assertion would pass either way, since cancellation
-    // alone lets the refresh finish on its own shortly after Dispose returns).
+    // Cancelling alone is not enough: the cancelled cycle is still unwinding (still logging, still
+    // able to raise Changed into a subscriber) after Dispose returns, and none of that may race
+    // whatever runs right after (App.OnExit calls Market.Dispose() then Sct.Dispose() in that
+    // order). The fake's CancelUnwindDelay makes the unwind take measurable wall-clock time, so
+    // this proves Dispose() itself blocks for it rather than cancelling and returning immediately
+    // (a plain "does the refresh eventually finish" assertion would pass either way, since
+    // cancellation alone lets the refresh finish on its own shortly after Dispose returns).
+    // The cancelled cycle itself publishes NOTHING - no snapshot file at all here, since this
+    // service had none before (see the preserve-the-previous-snapshot tests below).
     [Fact]
     public async Task Dispose_BlocksUntilTheInFlightRefreshFinishesUnwinding()
     {
@@ -200,9 +211,65 @@ public class SctMarketServiceTests : IDisposable
         Assert.True(sw.Elapsed >= unwindDelay - TimeSpan.FromMilliseconds(50),
             $"Dispose returned after {sw.Elapsed.TotalMilliseconds:0}ms, expected to block for close to {unwindDelay.TotalMilliseconds:0}ms");
         Assert.True(refresh.IsCompleted);
-        Assert.True(File.Exists(snapshotPath));
+        Assert.False(File.Exists(snapshotPath));   // a cancelled cycle never writes a snapshot
         Assert.False(svc.FetchInProgress);
         await refresh;
+    }
+
+    // --- A failed or cancelled cycle must not replace good data with an empty snapshot ---------
+    // Same rule MarketDataService's Carry precedent applies (it keeps prior rows for every dataset
+    // a cycle did not successfully replace): a transient network failure must leave the last good
+    // in-memory snapshot AND the last good snapshot file exactly as they were.
+
+    [Fact]
+    public async Task RefreshAsync_FirstPageFails_KeepsThePreviousSnapshotAndFile()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        await svc.RefreshAsync(manual: true, NowUtc);
+        var good = svc.Snapshot!;
+        var goodJson = File.ReadAllText(snapshotPath);
+        Assert.Equal(4, good.Rows.Count);
+
+        t.Responses.Clear();   // every page now 404s: the whole cycle fails at page 0
+        await svc.RefreshAsync(manual: true, NowUtc.AddHours(1));
+
+        Assert.Same(good, svc.Snapshot);                        // in-memory snapshot untouched
+        Assert.Equal(goodJson, File.ReadAllText(snapshotPath));   // on-disk snapshot untouched
+    }
+
+    [Fact]
+    public async Task RefreshAsync_MidPaginationFailure_KeepsThePreviousSnapshotRatherThanPublishingATruncatedOne()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        await svc.RefreshAsync(manual: true, NowUtc);
+        var good = svc.Snapshot!;
+        var goodJson = File.ReadAllText(snapshotPath);
+
+        // Second cycle: page 0 succeeds with DIFFERENT rows, page 1 throws. Publishing here would
+        // hand the UI a partial page-0-only snapshot stamped fresh.
+        t.Responses[PageUrl(0)] = SctOnlyLocationBody;
+        t.Responses.Remove(PageUrl(1));
+        await svc.RefreshAsync(manual: true, NowUtc.AddHours(1));
+
+        Assert.Same(good, svc.Snapshot);
+        Assert.Equal(goodJson, File.ReadAllText(snapshotPath));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_FirstPageFails_DoesNotRaiseChanged()
+    {
+        var (svc, t, _) = Make(enabled: true);
+        var fired = 0;
+        svc.Changed += () => fired++;
+
+        await svc.RefreshAsync(manual: true, NowUtc);   // no responses registered at all: page 0 fails
+
+        Assert.Equal(0, fired);
+        Assert.Null(svc.Snapshot);
     }
 
     // --- Architect resolution 1: the UI-facing read surface (SnapshotFetchedUtc, Changed, Find,

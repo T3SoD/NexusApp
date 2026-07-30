@@ -18,42 +18,36 @@ public sealed partial class TradePage
 
     private ComboBox _pricesCommodityCombo = null!;
     private readonly bool[] _priceCols = { true, true, true, false };   // STOCK, STATUS, AGE, +WEEK AVG - session only, not persisted (task brief: "persist nothing new")
-    private readonly Border[] _priceColChips = new Border[4];
     private static readonly string[] PriceColLabels = { "STOCK", "STATUS", "AGE", "+WEEK AVG" };
     private string? _pricesSelectedCommodity;
 
-    private void RebuildPrices()
-    {
-        if (!EnsureMarketConsent(PricesHost)) return;
-        PricesHost.Children.Clear();
+    // Input area (commodity ComboBox + the four column-toggle chips) built ONCE, results the only
+    // thing rebuilt - same reasoning as the other two flows. The chips' visuals and the ComboBox's
+    // items are updated in place from here on, so a column toggle or an hourly refresh no longer
+    // rebuilds the control the user is interacting with (an open dropdown included).
+    private StackPanel _pricesInputs = null!;
+    private StackPanel _pricesResults = null!;
+    private List<string>? _pricesCommodityNames;   // the list currently bound to the ComboBox
+    private bool _suppressPricesSelection;          // in-place ItemsSource/SelectedItem writes are not user picks
 
-        var snap = App.Market.Snapshot;
-        var commodities = snap?.TradePrices.Rows
-            .Select(r => r.CommodityName).Distinct()
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
-            ?? new System.Collections.Generic.List<string>();
+    private void BuildPricesChrome()
+    {
+        if (_pricesInputs is not null) return;
+
+        _pricesInputs = new StackPanel();
 
         var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16) };
         pickerGrp.Children.Add(FieldLabel("Commodity"));
-        // Re-validate on every rebuild (mirrors TradePage.Sell.cs's re-resolve-every-render
-        // pattern): an hourly snapshot refresh can drop the previously selected commodity, and a
-        // one-time `??=` seed would leave the field stuck on a name no longer in `commodities`,
-        // producing a blank ComboBox selection and a permanent "0 terminals" render.
-        if (_pricesSelectedCommodity is null || !commodities.Any(c => string.Equals(c, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase)))
-            _pricesSelectedCommodity = commodities.FirstOrDefault();
-        _pricesCommodityCombo = new ComboBox
-        {
-            Style = (Style)Application.Current.FindResource("NexusComboBox"),
-            ItemsSource = commodities, SelectedItem = _pricesSelectedCommodity,
-        };
+        _pricesCommodityCombo = new ComboBox { Style = (Style)Application.Current.FindResource("NexusComboBox") };
         _pricesCommodityCombo.SelectionChanged += (_, _) =>
         {
+            if (_suppressPricesSelection) return;
             _pricesSelectedCommodity = _pricesCommodityCombo.SelectedItem as string;
             if (_pricesSelectedCommodity is not null) Logger.Info($"[UI] Trade prices: commodity {_pricesSelectedCommodity}");
             RebuildPrices();
         };
         pickerGrp.Children.Add(_pricesCommodityCombo);
-        PricesHost.Children.Add(pickerGrp);
+        _pricesInputs.Children.Add(pickerGrp);
 
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
         for (int i = 0; i < PriceColLabels.Length; i++)
@@ -63,17 +57,61 @@ public sealed partial class TradePage
             chip.MouseLeftButtonUp += (_, _) =>
             {
                 _priceCols[idx] = !_priceCols[idx];
+                SetColumnChipOn(chip, _priceCols[idx]);   // the chip itself lives on: retint it in place
                 Logger.Info($"[UI] Trade prices: column {PriceColLabels[idx]} {(_priceCols[idx] ? "ON" : "OFF")}");
                 RebuildPrices();
             };
-            _priceColChips[i] = chip;
             toggles.Children.Add(chip);
         }
-        PricesHost.Children.Add(toggles);
+        _pricesInputs.Children.Add(toggles);
+
+        _pricesResults = new StackPanel();
+        PricesHost.Children.Add(_pricesInputs);
+        PricesHost.Children.Add(_pricesResults);
+    }
+
+    // Re-validate on every rebuild (Task 14 rule, and the Sell flow now does the same): an hourly
+    // snapshot refresh can drop the previously selected commodity, and a one-time seed would leave
+    // the field stuck on a name no longer in `commodities`, producing a blank ComboBox selection and
+    // a permanent "0 terminals" render. The ComboBox is updated in place afterwards so the box
+    // visibly shows the commodity that was actually rendered - suppressed, since neither write is a
+    // user pick, and skipped entirely when nothing changed (an open dropdown must survive a tick).
+    private void RefreshPricesCommodityBox(List<string> commodities)
+    {
+        if (_pricesSelectedCommodity is null || !commodities.Any(c => string.Equals(c, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase)))
+            _pricesSelectedCommodity = commodities.FirstOrDefault();
+
+        _suppressPricesSelection = true;
+        try
+        {
+            if (_pricesCommodityNames is null || !_pricesCommodityNames.SequenceEqual(commodities, StringComparer.Ordinal))
+            {
+                _pricesCommodityNames = commodities;
+                _pricesCommodityCombo.ItemsSource = commodities;
+            }
+            if (!string.Equals(_pricesCommodityCombo.SelectedItem as string, _pricesSelectedCommodity, StringComparison.Ordinal))
+                _pricesCommodityCombo.SelectedItem = _pricesSelectedCommodity;
+        }
+        finally { _suppressPricesSelection = false; }
+    }
+
+    private void RebuildPrices()
+    {
+        BuildPricesChrome();
+        if (!EnsureMarketConsent(_pricesResults, _pricesInputs)) return;
+        _pricesResults.Children.Clear();
+
+        var snap = App.Market.Snapshot;
+        var commodities = snap?.TradePrices.Rows
+            .Select(r => r.CommodityName).Distinct()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
+            ?? new List<string>();
+
+        RefreshPricesCommodityBox(commodities);
 
         if (snap is null || commodities.Count == 0 || _pricesSelectedCommodity is null)
         {
-            PricesHost.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
+            _pricesResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
             return;
         }
 
@@ -111,16 +149,16 @@ public sealed partial class TradePage
         if (_priceCols[1]) header.Children.Add(HeaderCell("Status", col++, true));
         if (_priceCols[2]) header.Children.Add(HeaderCell("Age", col++, true));
         if (_priceCols[3]) header.Children.Add(HeaderCell("Week avg (sell)", col++, true));
-        PricesHost.Children.Add(header);
+        _pricesResults.Children.Add(header);
 
         for (int i = 0; i < top.Count; i++)
         {
             var row = BuildPriceRow(top[i], cols);
             CascadeIn(row, i);
-            PricesHost.Children.Add(row);
+            _pricesResults.Children.Add(row);
         }
 
-        PricesHost.Children.Add(new TextBlock
+        _pricesResults.Children.Add(new TextBlock
         {
             Text = $"{totalTerminals} terminals - showing top {top.Count} by price",   // mock:1039, verbatim format
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
@@ -139,13 +177,23 @@ public sealed partial class TradePage
 
     private static Border ColumnToggleChip(string label, bool on)
     {
-        var text = new TextBlock { Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush") };
-        return new Border
+        var text = new TextBlock { Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 10.5, FontWeight = FontWeights.Bold };
+        var chip = new Border
         {
-            BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("BorderBrush"), BorderThickness = new Thickness(1),
-            Background = on ? Hud.Br("AccentFaintBrush") : Brushes.Transparent, CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
             Padding = new Thickness(11, 4, 11, 4), Margin = new Thickness(0, 0, 8, 0), Cursor = Cursors.Hand, Child = text,
         };
+        SetColumnChipOn(chip, on);
+        return chip;
+    }
+
+    // The on/off dressing, applied both at build time and in place on every later toggle (the chip
+    // is built once now, so the click has to retint the live control rather than rely on a rebuild).
+    private static void SetColumnChipOn(Border chip, bool on)
+    {
+        ((TextBlock)chip.Child).Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
+        chip.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("BorderBrush");
+        chip.Background = on ? Hud.Br("AccentFaintBrush") : Brushes.Transparent;
     }
 
     private FrameworkElement BuildPriceRow(PriceRowItem item, System.Collections.Generic.List<ColumnDefinition> colTemplate)
@@ -203,8 +251,9 @@ public sealed partial class TradePage
             var termPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             termPanel.Children.Add(new TextBlock { Text = s.Location, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
             // Reuses CorroborationBadge with a synthesized SctOnly ReconciledPrice - the same
-            // shape PriceReconciler.Reconcile itself returns for the SCT-only case.
-            if (CorroborationBadge(new ReconciledPrice(s.Price, PriceSourceState.SctOnly, 0, default, s.TimestampUtc)) is { } sctBadge)
+            // shape PriceReconciler.Reconcile itself returns for the SCT-only case (shared factory,
+            // also used by the sell flow's SCT-only rows).
+            if (CorroborationBadge(SctOnlyReconciled(s)) is { } sctBadge)
             {
                 sctBadge.Margin = new Thickness(8, 0, 0, 0);
                 termPanel.Children.Add(sctBadge);

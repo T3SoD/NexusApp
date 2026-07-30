@@ -64,10 +64,17 @@ public sealed class LocationTracker : IDisposable
         }
     }
 
+    // Freshness always advances; only a REAL transition is news. Twenty inventory opens at the same
+    // station are twenty matching lines, and every launch replays the whole Game.log on top of that
+    // (includeReplay: true above) - logging and raising on each would bury the App Log Monitor and
+    // fan a rebuild out to every subscriber for a place that never changed. ShardTracker, the
+    // sibling on this same feed, already logs and raises on transitions only.
     private void Apply(string place, DateTime seenUtc, string kind)
     {
+        bool moved = !string.Equals(LastKnownLocation, place, StringComparison.Ordinal);
         LastKnownLocation = place;
         LastSeenUtc = seenUtc;
+        if (!moved) return;
         Logger.Info($"[WHERE] location updated: {place} (source: {kind})");
         Changed?.Invoke();
     }
