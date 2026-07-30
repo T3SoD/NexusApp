@@ -1,0 +1,1108 @@
+{
+ "_meta": {
+  "generated": "2026-07-29",
+  "purpose": "SCT shop path -> UEX terminal ids, role-split: commodityId for refined/general trade, rawId for refinery ore sales. null commodityId = SCT-only coverage.",
+  "sources": "UEX /terminals + SCT /api/commodity/shops, curated by hand where granularity differs",
+  "uexOnlyTerminals": [
+   {
+    "id": 65,
+    "name": "Admin - Port Olisar",
+    "system": "Stanton",
+    "type": "commodity"
+   },
+   {
+    "id": 280,
+    "name": "NT-999-XXII",
+    "system": "Stanton",
+    "type": "commodity"
+   },
+   {
+    "id": 329,
+    "name": "INS Jericho - Pyro Gateway",
+    "system": "Stanton",
+    "type": "commodity"
+   },
+   {
+    "id": 422,
+    "name": "Admin - UEX Station",
+    "system": "Stanton",
+    "type": "commodity"
+   },
+   {
+    "id": 477,
+    "name": "Scarper's Turn",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 680,
+    "name": "Prospect Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 681,
+    "name": "Feo Canyon Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 682,
+    "name": "Dinger's Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 683,
+    "name": "Gray Gardens Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 684,
+    "name": "Slowburn Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   },
+   {
+    "id": 685,
+    "name": "Watcher's Depot",
+    "system": "Pyro",
+    "type": "commodity"
+   }
+  ]
+ },
+ "terminals": {
+  "Nyx > Keeger Belt > People's Service Station Alpha": {
+   "commodityId": 830,
+   "rawId": 858
+  },
+  "Nyx > Keeger Belt > People's Service Station Delta": {
+   "commodityId": 855,
+   "rawId": 857
+  },
+  "Nyx > Keeger Belt > People's Service Station Lambda": {
+   "commodityId": 843,
+   "rawId": 844
+  },
+  "Nyx > Keeger Belt > People's Service Station Theta": {
+   "commodityId": 839,
+   "rawId": 859
+  },
+  "Nyx > Levski": {
+   "commodityId": 778,
+   "rawId": 786
+  },
+  "Nyx > Pyro Gateway": {
+   "commodityId": 763,
+   "rawId": 776
+  },
+  "Nyx > Pyro Gateway > Platinum Bay": {
+   "commodityId": 764
+  },
+  "Nyx > Stanton Gateway": {
+   "commodityId": 802,
+   "rawId": 816
+  },
+  "Nyx > Stanton Gateway > Platinum Bay": {
+   "commodityId": 803
+  },
+  "Pyro > Bloom > Bueno Ravine": {
+   "commodityId": 551
+  },
+  "Pyro > Bloom > Frigid Knot": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 558)"
+  },
+  "Pyro > Bloom > Orbituary": {
+   "commodityId": 443,
+   "rawId": 691
+  },
+  "Pyro > Bloom > Shepherd's Rest": {
+   "commodityId": 555
+  },
+  "Pyro > Bloom > The Golden Riviera": {
+   "commodityId": 665
+  },
+  "Pyro > Checkmate": {
+   "commodityId": 436,
+   "rawId": 442
+  },
+  "Pyro > Dudley & Daughters": {
+   "commodityId": 549
+  },
+  "Pyro > Endgame": {
+   "commodityId": 482
+  },
+  "Pyro > Gaslight": {
+   "commodityId": 511
+  },
+  "Pyro > Megumi Refueling": {
+   "commodityId": 479
+  },
+  "Pyro > Monox > Arid Reach": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 686)"
+  },
+  "Pyro > Monox > Jackson's Swap": {
+   "commodityId": 504
+  },
+  "Pyro > Monox > Sunset Mesa": {
+   "commodityId": 599
+  },
+  "Pyro > Nyx Gateway": {
+   "commodityId": 742,
+   "rawId": 756
+  },
+  "Pyro > Nyx Gateway > Platinum Bay": {
+   "commodityId": 743
+  },
+  "Pyro > Patch City": {
+   "commodityId": 453
+  },
+  "Pyro > Pyro I > Rustville": {
+   "commodityId": 590
+  },
+  "Pyro > Pyro V > Ignis > Ashland": {
+   "commodityId": 507
+  },
+  "Pyro > Pyro V > Ignis > Kabir's Outpost": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 552, Kabir's Post)"
+  },
+  "Pyro > Pyro V > Pyro IV > Chawla's Beach": {
+   "commodityId": 510
+  },
+  "Pyro > Pyro V > Pyro IV > Fallow Field": {
+   "commodityId": 605
+  },
+  "Pyro > Pyro V > Pyro IV > Goner's Deal": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 585)"
+  },
+  "Pyro > Pyro V > Pyro IV > Sacren's Plot": {
+   "commodityId": 688
+  },
+  "Pyro > Pyro V > Vatra > Seer's Canyon": {
+   "commodityId": 518
+  },
+  "Pyro > Rat's Nest": {
+   "commodityId": 523
+  },
+  "Pyro > Rod's Fuel 'N Supplies": {
+   "commodityId": 486
+  },
+  "Pyro > Stanton Gateway": {
+   "commodityId": 520,
+   "rawId": 697
+  },
+  "Pyro > Stanton Gateway > Platinum Bay": {
+   "commodityId": 521
+  },
+  "Pyro > Starlight Service Station": {
+   "commodityId": 450
+  },
+  "Pyro > Terminus > Blackrock Exchange": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 476)"
+  },
+  "Pyro > Terminus > Canard View": {
+   "commodityId": 591
+  },
+  "Pyro > Terminus > Last Landings": {
+   "commodityId": 565
+  },
+  "Pyro > Terminus > Rough Landing": {
+   "commodityId": null,
+   "note": "SCT-only (UEX item shop 497)"
+  },
+  "Pyro > Terminus > Ruin Station": {
+   "commodityId": 466,
+   "rawId": 471
+  },
+  "Stanton > ARC L1 > ARC-L1 Wide Forest Station": {
+   "commodityId": 1,
+   "rawId": 234
+  },
+  "Stanton > ARC L1 > ARC-L1 Wide Forest Station > Platinum Bay": {
+   "commodityId": 263
+  },
+  "Stanton > ARC L2 > ARC-L2 Lively Pathway Station": {
+   "commodityId": 2,
+   "rawId": 235
+  },
+  "Stanton > ARC L3 > ARC-L3 Modern Express Station": {
+   "commodityId": 3
+  },
+  "Stanton > ARC L4 > ARC-L4 Faint Glen Station": {
+   "commodityId": 4,
+   "rawId": 723
+  },
+  "Stanton > ARC L5 > ARC-L5 Yellow Core Station": {
+   "commodityId": 5
+  },
+  "Stanton > ArcCorp > Area18": {
+   "commodityId": 12,
+   "note": "TDD; IO-North and Dumpers are separate SCT rows"
+  },
+  "Stanton > ArcCorp > Area18 > Dumper's Depot": {
+   "commodityId": 331
+  },
+  "Stanton > ArcCorp > Area18 > IO-North Tower": {
+   "commodityId": 49
+  },
+  "Stanton > ArcCorp > Baijini Point": {
+   "commodityId": 13
+  },
+  "Stanton > ArcCorp > Baijini Point > Platinum Bay": {
+   "commodityId": 301
+  },
+  "Stanton > ArcCorp > Lyria > Humboldt Mines": {
+   "commodityId": 43
+  },
+  "Stanton > ArcCorp > Lyria > Loveridge Mineral Reserve": {
+   "commodityId": 53
+  },
+  "Stanton > ArcCorp > Lyria > Paradise Cove": {
+   "commodityId": 64
+  },
+  "Stanton > ArcCorp > Lyria > Shubin Mining Facility SAL-2": {
+   "commodityId": 77
+  },
+  "Stanton > ArcCorp > Lyria > Shubin Mining Facility SAL-5": {
+   "commodityId": 78
+  },
+  "Stanton > ArcCorp > Lyria > The Orphanage": {
+   "commodityId": 88
+  },
+  "Stanton > ArcCorp > Wala > ArcCorp Mining Area 045": {
+   "commodityId": 6
+  },
+  "Stanton > ArcCorp > Wala > ArcCorp Mining Area 048": {
+   "commodityId": 7
+  },
+  "Stanton > ArcCorp > Wala > ArcCorp Mining Area 056": {
+   "commodityId": 8
+  },
+  "Stanton > ArcCorp > Wala > ArcCorp Mining Area 061": {
+   "commodityId": 9
+  },
+  "Stanton > ArcCorp > Wala > Samson & Son's Salvage Center": {
+   "commodityId": 75
+  },
+  "Stanton > ArcCorp > Wala > Shady Glen Farms": {
+   "commodityId": 76
+  },
+  "Stanton > CRU L1 > CRU-L1 Ambitious Dream Station": {
+   "commodityId": 19,
+   "rawId": 236
+  },
+  "Stanton > CRU L1 > CRU-L1 Ambitious Dream Station > Platinum Bay": {
+   "commodityId": 302
+  },
+  "Stanton > CRU L4 > CRU-L4 Shallow Fields Station": {
+   "commodityId": 20
+  },
+  "Stanton > CRU L4 > CRU-L4 Shallow Fields Station > Locker room": {
+   "commodityId": 21
+  },
+  "Stanton > CRU L4 > CRU-L4 Shallow Fields Station > Platinum Bay": {
+   "commodityId": 283
+  },
+  "Stanton > CRU L5 > CRU-L5 Beautiful Glen Station": {
+   "commodityId": 22
+  },
+  "Stanton > CRU L5 > CRU-L5 Beautiful Glen Station > Maintenance Area": {
+   "commodityId": 352
+  },
+  "Stanton > CRU L5 > CRU-L5 Beautiful Glen Station > Platinum Bay": {
+   "commodityId": 282
+  },
+  "Stanton > Crusader > Cellin > Gallete Family Farms": {
+   "commodityId": 26
+  },
+  "Stanton > Crusader > Cellin > Hickes Research Outpost": {
+   "commodityId": 42
+  },
+  "Stanton > Crusader > Cellin > PRIVATE PROPERTY": {
+   "commodityId": 67
+  },
+  "Stanton > Crusader > Cellin > Terra Mills HydroFarm": {
+   "commodityId": 86
+  },
+  "Stanton > Crusader > Cellin > Tram & Myers Mining": {
+   "commodityId": 91
+  },
+  "Stanton > Crusader > Daymar > ArcCorp Mining Area 141": {
+   "commodityId": 10
+  },
+  "Stanton > Crusader > Daymar > Bountiful Harvest Hydroponics": {
+   "commodityId": 15
+  },
+  "Stanton > Crusader > Daymar > Brio's Breaker Yard": {
+   "commodityId": 16
+  },
+  "Stanton > Crusader > Daymar > Jumptown": {
+   "commodityId": 332
+  },
+  "Stanton > Crusader > Daymar > Kudre Ore": {
+   "commodityId": 50
+  },
+  "Stanton > Crusader > Daymar > Nuen Waste Management": {
+   "commodityId": 61
+  },
+  "Stanton > Crusader > Daymar > Shubin Mining Facility SCD-1": {
+   "commodityId": 79
+  },
+  "Stanton > Crusader > Orison": {
+   "commodityId": 90,
+   "note": "city-wide in SCT; UEX also has Orison Municipal Services (62), see Providence Platform row"
+  },
+  "Stanton > Crusader > Orison > Providence Platform": {
+   "commodityId": 62
+  },
+  "Stanton > Crusader > Seraphim Station": {
+   "commodityId": 259
+  },
+  "Stanton > Crusader > Yela > ArcCorp Mining Area 157": {
+   "commodityId": 11
+  },
+  "Stanton > Crusader > Yela > Benson Mining Outpost": {
+   "commodityId": 14
+  },
+  "Stanton > Crusader > Yela > Deakins Research Outpost": {
+   "commodityId": 23
+  },
+  "Stanton > Crusader > Yela > Grim HEX": {
+   "commodityId": 27
+  },
+  "Stanton > Crusader > Yela > Grim HEX > Dumper's Depot": {
+   "commodityId": 344
+  },
+  "Stanton > Crusader > Yela > NT-999-XX": {
+   "commodityId": 60
+  },
+  "Stanton > HUR L1 > HUR-L1 Green Glade Station": {
+   "commodityId": 44,
+   "rawId": 237
+  },
+  "Stanton > HUR L2 > HUR-L2 Faithful Dream Station": {
+   "commodityId": 45,
+   "rawId": 238
+  },
+  "Stanton > HUR L2 > HUR-L2 Faithful Dream Station > Platinum Bay": {
+   "commodityId": 304
+  },
+  "Stanton > HUR L3 > HUR-L3 Thundering Express Station": {
+   "commodityId": 46
+  },
+  "Stanton > HUR L3 > HUR-L3 Thundering Express Station > Platinum Bay": {
+   "commodityId": 305
+  },
+  "Stanton > HUR L4 > HUR-L4 Melodic Fields Station": {
+   "commodityId": 47
+  },
+  "Stanton > HUR L5 > HUR-L5 High Course Station": {
+   "commodityId": 48
+  },
+  "Stanton > HUR L5 > HUR-L5 High Course Station > Platinum Bay": {
+   "commodityId": 306
+  },
+  "Stanton > Hurston > Aberdeen > HDMS-Anderson": {
+   "commodityId": 28
+  },
+  "Stanton > Hurston > Aberdeen > HDMS-Norgaard": {
+   "commodityId": 34
+  },
+  "Stanton > Hurston > Arial > HDMS-Bezdek": {
+   "commodityId": 29
+  },
+  "Stanton > Hurston > Arial > HDMS-Lathan": {
+   "commodityId": 33
+  },
+  "Stanton > Hurston > Everus Harbor": {
+   "commodityId": 25
+  },
+  "Stanton > Hurston > Everus Harbor > Platinum Bay": {
+   "commodityId": 303
+  },
+  "Stanton > Hurston > HDMS-Edmond": {
+   "commodityId": 30
+  },
+  "Stanton > Hurston > HDMS-Hadley": {
+   "commodityId": 31
+  },
+  "Stanton > Hurston > HDMS-Oparei": {
+   "commodityId": 35
+  },
+  "Stanton > Hurston > HDMS-Pinewood": {
+   "commodityId": 37
+  },
+  "Stanton > Hurston > HDMS-Stanhope": {
+   "commodityId": 39
+  },
+  "Stanton > Hurston > HDMS-Thedus": {
+   "commodityId": 40
+  },
+  "Stanton > Hurston > Ita > HDMS-Ryder": {
+   "commodityId": 38
+  },
+  "Stanton > Hurston > Ita > HDMS-Woodruff": {
+   "commodityId": 41
+  },
+  "Stanton > Hurston > Lorville": {
+   "commodityId": 18,
+   "note": "CBD; UEX L19 Admin (51) is the separate Leavsden SCT row"
+  },
+  "Stanton > Hurston > Lorville > Leavsden Square Admin Office": {
+   "commodityId": 51
+  },
+  "Stanton > Hurston > Magda > HDMS-Hahn": {
+   "commodityId": 32
+  },
+  "Stanton > Hurston > Magda > HDMS-Perlman": {
+   "commodityId": 36
+  },
+  "Stanton > Hurston > Maker's Point": {
+   "commodityId": null,
+   "note": "SCT-only (no UEX terminal)"
+  },
+  "Stanton > Hurston > Pickers Field": {
+   "commodityId": 276
+  },
+  "Stanton > Hurston > Rappel": {
+   "commodityId": 274
+  },
+  "Stanton > Hurston > Reclamation & Disposal Orinth": {
+   "commodityId": 74
+  },
+  "Stanton > MIC L1 > MIC-L1 Shallow Frontier Station": {
+   "commodityId": 54,
+   "rawId": 239
+  },
+  "Stanton > MIC L2 > MIC-L2 Long Forest Station": {
+   "commodityId": 55,
+   "rawId": 240
+  },
+  "Stanton > MIC L3 > MIC-L3 Endless Odyssey Station": {
+   "commodityId": 56
+  },
+  "Stanton > MIC L4 > MIC-L4 Red Crossroads Station": {
+   "commodityId": 57
+  },
+  "Stanton > MIC L5 > MIC-L5 Modern Icarus Station": {
+   "commodityId": 58,
+   "rawId": 241
+  },
+  "Stanton > Nyx Gateway": {
+   "commodityId": 253
+  },
+  "Stanton > Nyx Gateway > Platinum Bay": {
+   "commodityId": 257
+  },
+  "Stanton > Pyro Gateway": {
+   "commodityId": 252,
+   "rawId": 309,
+   "note": "INS Jericho (329) is the separate checkpoint station, UEX-only"
+  },
+  "Stanton > Pyro Gateway > Platinum Bay": {
+   "commodityId": 318
+  },
+  "Stanton > Terra Gateway": {
+   "commodityId": 251,
+   "rawId": 300
+  },
+  "Stanton > Terra Gateway > Platinum Bay": {
+   "commodityId": 258
+  },
+  "Stanton > microTech > Astor\u2019s Clearing": {
+   "commodityId": null,
+   "note": "SCT-only (UEX has only bar/FPS item shops)"
+  },
+  "Stanton > microTech > Calliope > Rayari Anvik Research Outpost": {
+   "commodityId": 69
+  },
+  "Stanton > microTech > Calliope > Rayari Kaltag Research Outpost": {
+   "commodityId": 72
+  },
+  "Stanton > microTech > Calliope > Shubin Mining Facility SMCa-6": {
+   "commodityId": 84
+  },
+  "Stanton > microTech > Calliope > Shubin Mining Facility SMCa-8": {
+   "commodityId": 85
+  },
+  "Stanton > microTech > Clio > Rayari Cantwell Research Outpost": {
+   "commodityId": 70
+  },
+  "Stanton > microTech > Clio > Rayari McGrath Research Outpost": {
+   "commodityId": 73
+  },
+  "Stanton > microTech > Dunboro": {
+   "commodityId": 333
+  },
+  "Stanton > microTech > Euterpe > Bud's Growery": {
+   "commodityId": 17
+  },
+  "Stanton > microTech > Euterpe > Devlin Scrap & Salvage": {
+   "commodityId": 24
+  },
+  "Stanton > microTech > New Babbage": {
+   "commodityId": 89,
+   "note": "TDD; MT Planetary Services (59) is the separate SCT row"
+  },
+  "Stanton > microTech > New Babbage > Commons > MT Planetary Services": {
+   "commodityId": 59
+  },
+  "Stanton > microTech > Outpost 54": {
+   "commodityId": 63
+  },
+  "Stanton > microTech > Port Tressler": {
+   "commodityId": 66
+  },
+  "Stanton > microTech > Port Tressler > Platinum Bay": {
+   "commodityId": 262
+  },
+  "Stanton > microTech > Raven's Roost": {
+   "commodityId": 68
+  },
+  "Stanton > microTech > Rayari Deltana Research Outpost": {
+   "commodityId": 71
+  },
+  "Stanton > microTech > Shubin Mining Facility SM0-10": {
+   "commodityId": 80
+  },
+  "Stanton > microTech > Shubin Mining Facility SM0-13": {
+   "commodityId": 81
+  },
+  "Stanton > microTech > Shubin Mining Facility SM0-18": {
+   "commodityId": 82
+  },
+  "Stanton > microTech > Shubin Mining Facility SM0-22": {
+   "commodityId": 83
+  },
+  "Stanton > microTech > The Necropolis": {
+   "commodityId": 87
+  }
+ },
+ "commodities": {
+  "AcryliPlex Composite": {
+   "uexId": 82
+  },
+  "Agricium": {
+   "uexId": 1
+  },
+  "Agricium (Ore)": {
+   "uexId": 2
+  },
+  "Agricultural Supplies": {
+   "uexId": 3
+  },
+  "Altruciatoxin": {
+   "uexId": 4
+  },
+  "Aluminum": {
+   "uexId": 5
+  },
+  "Aluminum (Ore)": {
+   "uexId": 6
+  },
+  "Amioshi Plague": {
+   "uexId": 7
+  },
+  "Ammonia": {
+   "uexId": 85
+  },
+  "Aphorite": {
+   "uexId": 8
+  },
+  "Apoxygenite": {
+   "uexId": 108
+  },
+  "Argon": {
+   "uexId": 111
+  },
+  "Aslarite": {
+   "uexId": 193
+  },
+  "Astatine": {
+   "uexId": 9
+  },
+  "Atlasium": {
+   "uexId": 130
+  },
+  "Beradom": {
+   "uexId": 167
+  },
+  "Beryl": {
+   "uexId": 11
+  },
+  "Beryl (Raw)": {
+   "uexId": 12
+  },
+  "Bexalite": {
+   "uexId": 13
+  },
+  "Bexalite (Raw)": {
+   "uexId": 14
+  },
+  "Bioplastic": {
+   "uexId": 112
+  },
+  "Blue Bilva": {
+   "uexId": 215
+  },
+  "Borase": {
+   "uexId": 15
+  },
+  "Borase (Ore)": {
+   "uexId": 16
+  },
+  "CK13-GID Seed Blend": {
+   "uexId": 126
+  },
+  "Carbon": {
+   "uexId": 102
+  },
+  "Carbon-Silk": {
+   "uexId": 113
+  },
+  "Carinite": {
+   "uexId": 170
+  },
+  "Chlorine": {
+   "uexId": 17
+  },
+  "Cobalt": {
+   "uexId": 110
+  },
+  "Compboard": {
+   "uexId": 18
+  },
+  "Construction Materials": {
+   "uexId": 19
+  },
+  "Copper": {
+   "uexId": 20
+  },
+  "Copper (Ore)": {
+   "uexId": 21
+  },
+  "Corundum": {
+   "uexId": 22
+  },
+  "Corundum (Raw)": {
+   "uexId": 23
+  },
+  "DCSR2": {
+   "uexId": 98
+  },
+  "Decari Pod": {
+   "uexId": 105
+  },
+  "Degnous Root": {
+   "uexId": 24
+  },
+  "Detatrine": {
+   "uexId": 166
+  },
+  "Diamond": {
+   "uexId": 25
+  },
+  "Diamond (Raw)": {
+   "uexId": 26
+  },
+  "Diamond Laminate": {
+   "uexId": 119
+  },
+  "Diluthermex": {
+   "uexId": 83
+  },
+  "Distilled Spirits": {
+   "uexId": 27
+  },
+  "Dolivine": {
+   "uexId": 28
+  },
+  "Dopple": {
+   "uexId": 155
+  },
+  "Dymantium": {
+   "uexId": 127
+  },
+  "DynaFlex": {
+   "uexId": 93
+  },
+  "E'tam": {
+   "uexId": 29
+  },
+  "Elespo": {
+   "uexId": 138
+  },
+  "Feynmaline": {
+   "uexId": 169
+  },
+  "Fireworks": {
+   "uexId": 30
+  },
+  "Fluorine": {
+   "uexId": 31
+  },
+  "Fotia Seedpod": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Freeze": {
+   "uexId": 156
+  },
+  "Fresh Food": {
+   "uexId": 120
+  },
+  "Gasping Weevil Eggs": {
+   "uexId": 32
+  },
+  "Glacosite": {
+   "uexId": 168
+  },
+  "Glacosite (Raw)": {
+   "uexId": 168
+  },
+  "Glow": {
+   "uexId": 157
+  },
+  "Gold": {
+   "uexId": 33
+  },
+  "Gold (Ore)": {
+   "uexId": 34
+  },
+  "Golden Medmon": {
+   "uexId": 35
+  },
+  "HLX99 Hyperprocessors": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Hadanite": {
+   "uexId": 36
+  },
+  "Heart of the Woods": {
+   "uexId": 37
+  },
+  "Helium": {
+   "uexId": 38
+  },
+  "Hephaestanite": {
+   "uexId": 39
+  },
+  "Hephaestanite (Raw)": {
+   "uexId": 40
+  },
+  "HexaPolyMesh Coating": {
+   "uexId": 129
+  },
+  "Human Food Bars": {
+   "uexId": 97
+  },
+  "Hydrogen": {
+   "uexId": 41
+  },
+  "Hydrogen Fuel": {
+   "uexId": 104
+  },
+  "Inert Materials": {
+   "uexId": 42
+  },
+  "Iodine": {
+   "uexId": 43
+  },
+  "Iron": {
+   "uexId": 44
+  },
+  "Iron (Ore)": {
+   "uexId": 45
+  },
+  "Jaclium (Ore)": {
+   "uexId": 173
+  },
+  "Janalite": {
+   "uexId": 46
+  },
+  "Jumping Limes": {
+   "uexId": 144
+  },
+  "Kopion Horn": {
+   "uexId": 92
+  },
+  "Laranite": {
+   "uexId": 47
+  },
+  "Laranite (Raw)": {
+   "uexId": 48
+  },
+  "Lastaprene": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Lindinium": {
+   "uexId": 184
+  },
+  "Lindinium (Ore)": {
+   "uexId": 185
+  },
+  "Luminalia Gift": {
+   "uexId": 49
+  },
+  "Lunes (Spiral Fruit)": {
+   "uexId": 145
+  },
+  "Lycara": {
+   "uexId": 136
+  },
+  "Mala": {
+   "uexId": 158
+  },
+  "Marok Gem": {
+   "uexId": 91
+  },
+  "Maze": {
+   "uexId": 50
+  },
+  "MedPens": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Medical Supplies": {
+   "uexId": 51
+  },
+  "Mercury": {
+   "uexId": 123
+  },
+  "Methane": {
+   "uexId": 114
+  },
+  "Neograph": {
+   "uexId": 133
+  },
+  "Neon": {
+   "uexId": 52
+  },
+  "Nitrogen": {
+   "uexId": 106
+  },
+  "Omnapoxy": {
+   "uexId": 115
+  },
+  "Organics": {
+   "uexId": 186
+  },
+  "Osoian Hides": {
+   "uexId": 53
+  },
+  "Ouratite": {
+   "uexId": 194
+  },
+  "OxyPens": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Oza": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Partillium": {
+   "uexId": 121
+  },
+  "Pingala Seeds": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Pitambu": {
+   "uexId": 55
+  },
+  "Potassium": {
+   "uexId": 116
+  },
+  "Pressurized Ice": {
+   "uexId": 101
+  },
+  "Processed Food": {
+   "uexId": 56
+  },
+  "Prota": {
+   "uexId": 57
+  },
+  "Quantainium": {
+   "uexId": 58
+  },
+  "Quantainium (Raw)": {
+   "uexId": 59
+  },
+  "Quantum Fuel": {
+   "uexId": 87
+  },
+  "Quartz": {
+   "uexId": 60
+  },
+  "Quartz (Raw)": {
+   "uexId": 61
+  },
+  "RS1 Odysey Spacesuits": {
+   "uexId": null,
+   "note": "SCT-only"
+  },
+  "Ranta Dung": {
+   "uexId": 62
+  },
+  "Raw Ice": {
+   "uexId": 125
+  },
+  "Recycled Material Composite": {
+   "uexId": 63
+  },
+  "Redfin Energy Modulators": {
+   "uexId": 95
+  },
+  "Revenant Pod": {
+   "uexId": 65
+  },
+  "Revenant Tree Pollen": {
+   "uexId": 66
+  },
+  "Riccite": {
+   "uexId": 124
+  },
+  "SLAM": {
+   "uexId": 68
+  },
+  "Sadaryx": {
+   "uexId": 200
+  },
+  "Saldynium (Ore)": {
+   "uexId": 172
+  },
+  "Sarilus": {
+   "uexId": 134
+  },
+  "Savrilium": {
+   "uexId": 188
+  },
+  "Savrilium (Ore)": {
+   "uexId": 187
+  },
+  "Scrap": {
+   "uexId": 67
+  },
+  "Ship Ammunition": {
+   "uexId": 128
+  },
+  "Ship ammunition - size 1": {
+   "uexId": 201
+  },
+  "Ship ammunition - size 2": {
+   "uexId": 202
+  },
+  "Ship ammunition - size 3": {
+   "uexId": 203
+  },
+  "Ship ammunition - size 4": {
+   "uexId": 204
+  },
+  "Ship ammunition - size 5": {
+   "uexId": 205
+  },
+  "Ship ammunition - size 6": {
+   "uexId": 206
+  },
+  "Ship ammunition - size 7": {
+   "uexId": 207
+  },
+  "Ship decoy countermeasures": {
+   "uexId": 208
+  },
+  "Ship noise countermeasures": {
+   "uexId": 209
+  },
+  "Silicon": {
+   "uexId": 100
+  },
+  "Silnex": {
+   "uexId": 135
+  },
+  "Souvenirs": {
+   "uexId": 69
+  },
+  "Steel": {
+   "uexId": 109
+  },
+  "Stileron": {
+   "uexId": 122
+  },
+  "Stims": {
+   "uexId": 70
+  },
+  "Stone Bug Shell": {
+   "uexId": 71
+  },
+  "Sunset Berries": {
+   "uexId": 72
+  },
+  "Taranite": {
+   "uexId": 73
+  },
+  "Taranite (Raw)": {
+   "uexId": 74
+  },
+  "ThermalFoam": {
+   "uexId": 132
+  },
+  "Thrust": {
+   "uexId": 159
+  },
+  "Tin": {
+   "uexId": 103
+  },
+  "Titanium": {
+   "uexId": 75
+  },
+  "Titanium (Ore)": {
+   "uexId": 76
+  },
+  "Torite": {
+   "uexId": 190
+  },
+  "Tritium": {
+   "uexId": 153
+  },
+  "Tungsten": {
+   "uexId": 77
+  },
+  "Tungsten (Ore)": {
+   "uexId": 78
+  },
+  "Uncut SLAM": {
+   "uexId": 68
+  },
+  "Waste": {
+   "uexId": 79
+  },
+  "WiDoW": {
+   "uexId": 80
+  },
+  "Xa'Pyen": {
+   "uexId": 118
+  },
+  "Year of the Dog Envelope": {
+   "uexId": 88
+  },
+  "Zeta-Prolanide": {
+   "uexId": 84
+  },
+  "Zip": {
+   "uexId": 160
+  },
+  "mobyGlass Personal Computers": {
+   "uexId": null,
+   "note": "SCT-only"
+  }
+ }
+}
