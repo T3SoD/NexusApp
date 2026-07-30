@@ -1,0 +1,2156 @@
+{
+  "schema": 1,
+  "gameBuild": "4.9.188.5236",
+  "places": [
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ARC-L1 Wide Forest Station",
+      "x": 16729220034.957521,
+      "y": -19942048185.734924,
+      "z": 2239765.2149551306,
+      "starmap": "StarMapObject.RR_ARC_L1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ARC-L2 Lively Pathway Station",
+      "x": 20451005907.884228,
+      "y": -24368053520.67112,
+      "z": -293845.4529822935,
+      "starmap": "StarMapObject.RR_ARC_L2",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ARC-L3 Modern Express Station",
+      "x": -25045525486.8275,
+      "y": 14463255232.637161,
+      "z": -1892762.8174739594,
+      "starmap": "StarMapObject.RR_ARC_L3",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ARC-L4 Faint Glen Station",
+      "x": 28476140156.22003,
+      "y": 5018904178.643525,
+      "z": 959731.5056521406,
+      "starmap": "StarMapObject.RR_ARC_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ARC-L5 Yellow Core Station",
+      "x": -9895751577.395786,
+      "y": -27175156672.48326,
+      "z": 882465.4164157388,
+      "starmap": "StarMapObject.RR_ARC_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 045",
+      "x": 18379366511.42695,
+      "y": -22000452660.046917,
+      "z": 10620.368276,
+      "starmap": "StarMapObject.Stanton3b_ArcCorp_Area045",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 048",
+      "x": 18379471117.19944,
+      "y": -22000369011.556034,
+      "z": -196339.526963,
+      "starmap": "StarMapObject.Stanton3b_ArcCorp_Area048",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 056",
+      "x": 18379765855.56446,
+      "y": -22000516914.62886,
+      "z": 253154.550617,
+      "starmap": "StarMapObject.Stanton3b_ArcCorp_Area056",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 061",
+      "x": 18379628269.999943,
+      "y": -22000714315.963623,
+      "z": -132569.892484,
+      "starmap": "StarMapObject.Stanton3b_ArcCorp_Area061",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 141",
+      "x": -18930557706.53434,
+      "y": -2609978403.3315363,
+      "z": -232759.931235,
+      "starmap": "StarMapObject.Stanton2b_ArcCorpMining_Area141",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "ArcCorp Mining Area 157",
+      "x": -19022910775.949898,
+      "y": -2613773795.781988,
+      "z": 220312.841505,
+      "starmap": "StarMapObject.Stanton2c_ArcCorpMining_Area157",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Area 18",
+      "x": 18586917330.719185,
+      "y": -22152033653.831776,
+      "z": -262094.438106,
+      "starmap": "StarMapObject.Stanton3_Area18",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Astor's Clearing",
+      "x": 22461275033.46784,
+      "y": 37186322848.47139,
+      "z": -101430.451723,
+      "starmap": "StarMapObject.Stanton4_AstorsClearing",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Baijini Point",
+      "x": 18586892779.29352,
+      "y": -22152238267.53135,
+      "z": -359509.34375,
+      "starmap": "StarMapObject.RR_ARC_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Benson Mining Outpost",
+      "x": -19022867800.812096,
+      "y": -2614271758.331489,
+      "z": -140136.025793,
+      "starmap": "StarMapObject.Stanton2c_IndyMiner_BensonMining",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Bountiful Harvest Hydroponics",
+      "x": -18930481987.26359,
+      "y": -2610251032.4934793,
+      "z": -274246.351881,
+      "starmap": "StarMapObject.Stanton2b_IndyFarmer_BountifulHarvest",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Brio's Breaker Yard",
+      "x": -18930716513.071327,
+      "y": -2610319718.656389,
+      "z": 173849.366891,
+      "starmap": "StarMapObject.Stanton2b_JunkSite_BriosBreakerYard",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Bud's Growery",
+      "x": 22436110942.544876,
+      "y": 37290194105.7969,
+      "z": 115270.872745,
+      "starmap": "StarMapObject.Stanton4c_IndyFarm_BudsGrowery",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "CRU-L1 Ambitious Dream Station",
+      "x": -17068753721.355608,
+      "y": -2399482272.9430733,
+      "z": -20044.224620763922,
+      "starmap": "StarMapObject.RR_CRU_L1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "CRU-L4 Shallow Fields Station",
+      "x": -7173768306.542123,
+      "y": -17750056492.47937,
+      "z": -2174784.168140132,
+      "starmap": "StarMapObject.RR_CRU_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "CRU-L5 Beautiful Glen Station",
+      "x": -11785012209.16769,
+      "y": 15091235755.635984,
+      "z": -2796440.785984267,
+      "starmap": "StarMapObject.RR_CRU_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Deakins Research",
+      "x": -19022685211.887695,
+      "y": -2614206431.3058763,
+      "z": 13277.538731,
+      "starmap": "StarMapObject.Stanton2c_RayariHydro_DeakinsResearch",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Devlin Scrap & Salvage",
+      "x": 22436075655.795883,
+      "y": 37290577556.55173,
+      "z": 25984.633517,
+      "starmap": "StarMapObject.Stanton4c_Junksite_DelvinScrapAndSalvage",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Dunboro",
+      "x": 22461349363.2347,
+      "y": 37186423266.846275,
+      "z": 11154.501159,
+      "starmap": "StarMapObject.Stanton4_Dunboro",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Everus Harbor",
+      "x": 12849949350.6875,
+      "y": -903464.4375,
+      "z": 496489.0625,
+      "starmap": "StarMapObject.RR_HUR_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Frostbite",
+      "x": 22462624872.41913,
+      "y": 37186507303.82282,
+      "z": -361447.888067,
+      "starmap": "StarMapObject.Stanton4_Frostbite",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Gallete Family Farms",
+      "x": -18987700590.313118,
+      "y": -2708902943.875081,
+      "z": 220041.097737,
+      "starmap": "StarMapObject.Stanton2a_IndyFarmer_GalleteFamily",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Anderson",
+      "x": 12905730686.345882,
+      "y": 41135771.383034006,
+      "z": 206879.087475,
+      "starmap": "StarMapObject.Stanton1b_HurdynMining_HDMSAnderson",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Bezdek",
+      "x": 12892700044.249031,
+      "y": -31710826.492302,
+      "z": 251505.151902,
+      "starmap": "StarMapObject.Stanton1a_HurdynMining_HDMSBezdek",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Edmond",
+      "x": 12850172612.873583,
+      "y": -730502.066139,
+      "z": 620924.440594,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSEdmond",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Hadley",
+      "x": 12851083259.617704,
+      "y": -583971.055696,
+      "z": -518485.462709,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSHadley",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Hahn",
+      "x": 12792538975.776962,
+      "y": -74756797.48343201,
+      "z": 95247.266076,
+      "starmap": "StarMapObject.Stanton1c_HurdynMining_HDMSHahn",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Lathan",
+      "x": 12893012501.567974,
+      "y": -31442443.044386003,
+      "z": 55843.181685,
+      "starmap": "StarMapObject.Stanton1a_HurdynMining_HDMSLathan",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Norgaard",
+      "x": 12905616064.523312,
+      "y": 41150868.734238006,
+      "z": 132097.595094,
+      "starmap": "StarMapObject.Stanton1b_HurdynMining_HDMSNorgaard",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Oparei",
+      "x": 12849900967.009779,
+      "y": -72590.748724,
+      "z": -828070.672939,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSOparei",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Perlman",
+      "x": 12792545663.384417,
+      "y": -74176659.38293801,
+      "z": -116687.783422,
+      "starmap": "StarMapObject.Stanton1c_HurdynMining_HDMSPerlman",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Pinewood",
+      "x": 12851442656.995773,
+      "y": 90029.273051,
+      "z": 149896.296232,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSPinewood",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Ryder",
+      "x": 12830018841.60614,
+      "y": 114650227.21985699,
+      "z": 73709.290517,
+      "starmap": "StarMapObject.Stanton1d_HurdynMining_HDMSRyder",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Stanhope",
+      "x": 12849808484.922792,
+      "y": 198312.645122,
+      "z": 735120.829169,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSStanhope",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Thedus",
+      "x": 12850900414.550844,
+      "y": 891524.914059,
+      "z": 101509.036393,
+      "starmap": "StarMapObject.Stanton1_HurdynMining_HDMSThedus",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HDMS-Woodruff",
+      "x": 12830309507.80775,
+      "y": 115133269.68359,
+      "z": 210466.567686,
+      "starmap": "StarMapObject.Stanton1d_HurdynMining_HDMSWoodruff",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HUR-L1 Green Glade Station",
+      "x": 11561412555.753656,
+      "y": -262923.20307,
+      "z": -484614.27223299997,
+      "starmap": "StarMapObject.RR_HUR_L1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HUR-L2 Faithful Dream Station",
+      "x": 14139635583.044806,
+      "y": -1967277.639212439,
+      "z": -527794.260616351,
+      "starmap": "StarMapObject.RR_HUR_L2",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HUR-L3 Thundering Express Station",
+      "x": -12844743551.306984,
+      "y": -1554386.717189435,
+      "z": 1335043.0217556537,
+      "starmap": "StarMapObject.RR_HUR_L3",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HUR-L4 Melodic Fields Station",
+      "x": 6427627577.116347,
+      "y": 11124766832.216436,
+      "z": 666283.6312175051,
+      "starmap": "StarMapObject.RR_HUR_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "HUR-L5 High Course Station",
+      "x": 6425723013.355791,
+      "y": -11128362130.50447,
+      "z": -842034.7959288693,
+      "starmap": "StarMapObject.RR_HUR_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Hickes Research",
+      "x": -18987607849.176247,
+      "y": -2708996569.998123,
+      "z": -260315.952851,
+      "starmap": "StarMapObject.Stanton2a_RayariHydro_HickesResearch",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Humboldt Mines",
+      "x": 18703612482.271862,
+      "y": -22121843952.38168,
+      "z": -112544.821399,
+      "starmap": "StarMapObject.Stanton3a_IndyMine_HumboldtMines",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Jumptown",
+      "x": -18930459100.42009,
+      "y": -2609916049.8639584,
+      "z": -147633.537765,
+      "starmap": "StarMapObject.Stanton2c_DrugLab_Jumptown",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Kudre Ore",
+      "x": -18930392922.380646,
+      "y": -2610335858.792934,
+      "z": -184862.263018,
+      "starmap": "StarMapObject.Stanton2b_IndyMiner_KudreOre",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Lorville",
+      "x": 12850128103.83473,
+      "y": -752434.615701,
+      "z": 572120.273853,
+      "starmap": "StarMapObject.Stanton1_Lorville",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Loveridge Mineral Reserve",
+      "x": 18703788971.06759,
+      "y": -22121521967.374832,
+      "z": 24939.872495,
+      "starmap": "StarMapObject.Stanton3a_IndyMine_LoveridgeReserve",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "MIC-L1 Shallow Frontier Station",
+      "x": 20215827268.888092,
+      "y": 33467069517.837925,
+      "z": -943.2008828393882,
+      "starmap": "StarMapObject.RR_MIC_L1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "MIC-L2 Long Forest Station",
+      "x": 24713774897.740803,
+      "y": 40912934444.47705,
+      "z": -10634826.699255988,
+      "starmap": "StarMapObject.RR_MIC_L2",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "MIC-L3 Endless Odyssey Station",
+      "x": -22452218251.9082,
+      "y": -37179923023.00019,
+      "z": -10590410.52450916,
+      "starmap": "StarMapObject.RR_MIC_L3",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "MIC-L4 Red Crossroads Station",
+      "x": -20968720663.277767,
+      "y": 38056058357.456764,
+      "z": -11799274.780178793,
+      "starmap": "StarMapObject.RR_MIC_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "MIC-L5 Modern Icarus Station",
+      "x": 43448559856.67166,
+      "y": -857708037.0784544,
+      "z": -7824371.169867326,
+      "starmap": "StarMapObject.RR_MIC_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "NT-999-XX",
+      "x": -19023122457.554348,
+      "y": -2614070139.8138733,
+      "z": 224324.64136,
+      "starmap": "StarMapObject.Stanton2c_Stash_Unknown_001",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "NT-999-XXII",
+      "x": -19023122457.554348,
+      "y": -2614070139.8138733,
+      "z": 224324.64136,
+      "starmap": "StarMapObject.Stanton2c_Stash_Unknown_001",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "New Babbage",
+      "x": 22462605975.476906,
+      "y": 37186164329.143265,
+      "z": 743654.685314,
+      "starmap": "StarMapObject.Stanton4_NewBabbage",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Nuen Waste Management",
+      "x": -18930558482.796074,
+      "y": -2609865424.568373,
+      "z": 25478.399755,
+      "starmap": "StarMapObject.Stanton2b_Stash_NuenWasteManagement",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Orison",
+      "x": -18956880483.059193,
+      "y": -2665823193.5330234,
+      "z": 5282237.225567,
+      "starmap": "StarMapObject.Stanton2_Orison",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Outpost 54",
+      "x": 22462198818.894268,
+      "y": 37185759444.213326,
+      "z": -994362.778214,
+      "starmap": "StarMapObject.Stanton4_Stash_Outpost54",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Paradise Cove",
+      "x": 18379729285.277042,
+      "y": -22000684679.223866,
+      "z": 162334.817229,
+      "starmap": "StarMapObject.Stanton3a_DrugLab_ParadiseCove",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Picker's Field",
+      "x": 12849777326.785019,
+      "y": 262265.674173,
+      "z": -686080.061535,
+      "starmap": "StarMapObject.Stanton1_PickersField",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Port Tressler",
+      "x": 22462646723.530945,
+      "y": 37186290817.84713,
+      "z": 808831.762531,
+      "starmap": "StarMapObject.RR_MIC_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Private Property",
+      "x": -18987513370.29521,
+      "y": -2709183424.690687,
+      "z": 167078.469877,
+      "starmap": "StarMapObject.Stanton2a_Stash_Unknown_001",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Pyro Gateway (Stanton)",
+      "x": 3310491639.802189,
+      "y": -27979408221.456882,
+      "z": -2676285679.0,
+      "starmap": "StarMapObject.JumpPoint_Stanton_Pyro",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rappel",
+      "x": 12850810045.127275,
+      "y": -661889.742397,
+      "z": 663889.093977,
+      "starmap": "StarMapObject.Stanton1_Rappel",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Raven's Roost",
+      "x": 22462441156.079376,
+      "y": 37185669370.99062,
+      "z": 932645.25482,
+      "starmap": "StarMapObject.Stanton4a_DrugLab_RavensRoost",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rayari Anvik Research Outpost",
+      "x": 22525616564.388622,
+      "y": 37202521456.3169,
+      "z": 84723.877576,
+      "starmap": "StarMapObject.Stanton4a_RayariHydro_Anvik",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rayari Cantwell Research Outpost",
+      "x": 22447225109.615246,
+      "y": 37280685133.7071,
+      "z": 142842.297229,
+      "starmap": "StarMapObject.Stanton4b_RayariHydro_Cantwell",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rayari Deltana Research Outpost",
+      "x": 22461391342.503784,
+      "y": 37185096666.03534,
+      "z": 316681.366334,
+      "starmap": "StarMapObject.Stanton4_RayariHydro_Deltana",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rayari Kaltag Research Outpost",
+      "x": 22526006463.734886,
+      "y": 37202655511.399796,
+      "z": -124485.412183,
+      "starmap": "StarMapObject.Stanton4a_RayariHydro_Kaltag",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Rayari McGrath Research Outpost",
+      "x": 22447116380.302612,
+      "y": 37280384141.92514,
+      "z": -18785.980507,
+      "starmap": "StarMapObject.Stanton4b_RayariHydro_McGarth",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Reclamation & Disposal Orinth",
+      "x": 12850458295.763449,
+      "y": -794237.216741,
+      "z": 607701.139709,
+      "starmap": "StarMapObject.Stanton1_JunkSite_ReclamationAndDisposalOrinth",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Samson & Son's Salvage Center",
+      "x": 18379606709.831802,
+      "y": -22000187712.82889,
+      "z": 19230.105734,
+      "starmap": "StarMapObject.Stanton3b_JunkSite_SamsonSonsSalvageCenter",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Seraphim Station",
+      "x": -18956299901.798214,
+      "y": -2666344206.7232704,
+      "z": 5565883.231907,
+      "starmap": "StarMapObject.RR_CRU_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shady Glen",
+      "x": 18379628687.41272,
+      "y": -22000197782.73065,
+      "z": 87534.217163,
+      "starmap": "StarMapObject.Stanton3b_IndyFarm_ShadyGlenFarms",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SAL-2",
+      "x": 18703757807.38505,
+      "y": -22121703753.134045,
+      "z": 156667.8916,
+      "starmap": "StarMapObject.Stanton3a_Shubin_SAL2",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SAL-5",
+      "x": 18703705241.5723,
+      "y": -22121571772.88707,
+      "z": 185820.579425,
+      "starmap": "StarMapObject.Stanton3a_Shubin_SAL5",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SCD-1",
+      "x": -18930413514.36279,
+      "y": -2610308346.967502,
+      "z": 221253.34404,
+      "starmap": "StarMapObject.Stanton2b_ShubinMining_SCD1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SM0-10",
+      "x": 22462170728.61854,
+      "y": 37184794108.94471,
+      "z": 298799.440766,
+      "starmap": "StarMapObject.Stanton4_Shubin_SM0_10",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SM0-13",
+      "x": 22461912433.839996,
+      "y": 37184763656.493904,
+      "z": 97767.182049,
+      "starmap": "StarMapObject.Stanton4_Shubin_SM0_13",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SM0-18",
+      "x": 22463005462.59668,
+      "y": 37185355423.148155,
+      "z": 43836.862656,
+      "starmap": "StarMapObject.Stanton4_Shubin_SM0_18",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SM0-22",
+      "x": 22462109551.033733,
+      "y": 37184922374.138824,
+      "z": 568174.190108,
+      "starmap": "StarMapObject.Stanton4_Shubin_SM0_22",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SMCa-6",
+      "x": 22525851263.081974,
+      "y": 37202882687.90001,
+      "z": 24935.519649,
+      "starmap": "StarMapObject.Stanton4a_Shubin_SMCa_6",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Shubin Mining Facility SMCa-8",
+      "x": 22525961362.5329,
+      "y": 37202818237.25622,
+      "z": -58400.32741,
+      "starmap": "StarMapObject.Stanton4a_Shubin_SMCa_8",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Terra Gateway (Stanton)",
+      "x": 51118221616.90332,
+      "y": -5269981303.113817,
+      "z": -4339551619.0,
+      "starmap": "StarMapObject.JumpPoint_Stanton_Terra",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Terra Mills HydroFarm",
+      "x": -18987510982.321774,
+      "y": -2708981960.026134,
+      "z": 239024.369118,
+      "starmap": "StarMapObject.Stanton2a_TerraMillsHydro_HydroFarm",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "The Necropolis",
+      "x": 22462148895.20864,
+      "y": 37185582879.59269,
+      "z": 985651.018458,
+      "starmap": "StarMapObject.Stanton4_Stash_TheNecropolis",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "The Orphanage",
+      "x": 18703515181.48589,
+      "y": -22121557649.606583,
+      "z": 182182.046452,
+      "starmap": "StarMapObject.Stanton3a_Stash_TheOrphanage",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Tram & Myers Mining",
+      "x": -18987852283.277554,
+      "y": -2709007264.336514,
+      "z": -98700.233272,
+      "starmap": "StarMapObject.Stanton2a_IndyMiner_TramMyers",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Weeping Cove",
+      "x": 12850001690.220549,
+      "y": -202816.335427,
+      "z": 866880.872573,
+      "starmap": "StarMapObject.Stanton1_WeepingCove",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Zephyr",
+      "x": 12850565252.996412,
+      "y": -133661.614184,
+      "z": 986694.257507,
+      "starmap": "StarMapObject.Stanton1_Zephyr",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Aberdeen",
+      "x": 12905757636.431002,
+      "y": 40955550.560376,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1b",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "ArcCorp",
+      "x": 18587664739.85602,
+      "y": -22151916920.3126,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton3",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Arial",
+      "x": 12892673308.86082,
+      "y": -31476128.840109,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1a",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Calliope",
+      "x": 22525801196.722363,
+      "y": 37202649250.64891,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4a",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Cellin",
+      "x": -18987611119.23337,
+      "y": -2709009660.70514,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2a",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Clio",
+      "x": 22447442284.459534,
+      "y": 37280469855.28469,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4b",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Crusader",
+      "x": -18962176000.0,
+      "y": -2664959999.999996,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Daymar",
+      "x": -18930539539.53483,
+      "y": -2610158765.498556,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2b",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Euterpe",
+      "x": 22436060769.268513,
+      "y": 37290366364.981026,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4c",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Hurston",
+      "x": 12850457093.0,
+      "y": 0.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Ita",
+      "x": 12830194715.812735,
+      "y": 114913608.600053,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1d",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Lyria",
+      "x": 18703607171.55599,
+      "y": -22121650133.86418,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton3a",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Magda",
+      "x": 12792686359.418285,
+      "y": -74464580.982047,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1c",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "MicroTech",
+      "x": 22462085252.484795,
+      "y": 37185744964.8301,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Wala",
+      "x": 18379649309.867424,
+      "y": -22000466768.038277,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton3b",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "planetOrMoon",
+      "uexName": "Yela",
+      "x": -19022916798.927376,
+      "y": -2613996151.998472,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2c",
+      "match": "exact"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp",
+      "x": 18587664739.85602,
+      "y": -22151916920.3126,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton3",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp Lagrange Point 1",
+      "x": 16729134637.384644,
+      "y": -19937006924.891357,
+      "z": 8076.625,
+      "starmap": "StarMapObject.Stanton3_L1",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp Lagrange Point 2",
+      "x": 20446718503.390137,
+      "y": -24367450990.706055,
+      "z": 8076.625,
+      "starmap": "StarMapObject.Stanton3_L2",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp Lagrange Point 3",
+      "x": -25043446883.50293,
+      "y": 14458841787.628052,
+      "z": 8076.625,
+      "starmap": "StarMapObject.Stanton3_L3",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp Lagrange Point 4",
+      "x": 28478354915.65576,
+      "y": 5021502482.911743,
+      "z": 8076.625,
+      "starmap": "StarMapObject.Stanton3_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "ArcCorp Lagrange Point 5",
+      "x": -9890422516.169678,
+      "y": -27173732225.140015,
+      "z": 8076.625,
+      "starmap": "StarMapObject.Stanton3_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Crusader",
+      "x": -18962176000.0,
+      "y": -2664959999.999996,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Crusader Lagrange Point 1",
+      "x": -17065957375.999998,
+      "y": -2398463999.999994,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2_L1",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Crusader Lagrange Point 4",
+      "x": -7173168639.999996,
+      "y": -17754204160.000004,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Crusader Lagrange Point 5",
+      "x": -11789008988.260246,
+      "y": 15089246106.763807,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston",
+      "x": 12850457093.0,
+      "y": 0.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston Lagrange Point 1",
+      "x": 11565411328.0,
+      "y": 0.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1_L1",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston Lagrange Point 2",
+      "x": 14135502848.0,
+      "y": 0.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1_L2",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston Lagrange Point 3",
+      "x": -12850457600.0,
+      "y": -1123.422729,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1_L3",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston Lagrange Point 4",
+      "x": 6425228288.0,
+      "y": 11128823808.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Hurston Lagrange Point 5",
+      "x": 6425227776.0,
+      "y": -11128823808.0,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton1_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "MicroTech",
+      "x": 22462085252.484795,
+      "y": 37185744964.8301,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Pyro Gateway (Stanton system)",
+      "x": 3310491639.802189,
+      "y": -27979408221.456882,
+      "z": -2676285679.0,
+      "starmap": "StarMapObject.JumpPoint_Stanton_Pyro",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "Terra Gateway (Stanton system)",
+      "x": 51118221616.90332,
+      "y": -5269981303.113817,
+      "z": -4339551619.0,
+      "starmap": "StarMapObject.JumpPoint_Stanton_Terra",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "microTech Lagrange Point 1",
+      "x": 20215824238.186035,
+      "y": 33467065007.614746,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4_L1",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "microTech Lagrange Point 2",
+      "x": 24708827153.475586,
+      "y": 40905202459.222755,
+      "z": -0.050088,
+      "starmap": "StarMapObject.Stanton4_L2",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "microTech Lagrange Point 3",
+      "x": -22457170265.786125,
+      "y": -37187612395.6401,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4_L3",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "microTech Lagrange Point 4",
+      "x": -20971933230.165882,
+      "y": 38045504032.01936,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "orbit",
+      "uexName": "microTech Lagrange Point 5",
+      "x": 43435204288.21857,
+      "y": -851406955.90843,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton4_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Arid Reach",
+      "x": 9198410877.015762,
+      "y": 5311267744.566891,
+      "z": -92750.374668,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_s_trdpst_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Ashland",
+      "x": 42296606681.00438,
+      "y": -7508659828.084339,
+      "z": 265629.541865,
+      "starmap": "StarMapObject.Pyro5a_Outpost_col_m_trdpst_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Blackrock Exchange",
+      "x": -52336731329.147514,
+      "y": -43918036886.72484,
+      "z": -31481.893465,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_s_trdpst_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Bueno Ravine",
+      "x": -8900641166.130352,
+      "y": -15417499203.701294,
+      "z": -57520.632084,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_m_mng_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Bullock's Reach",
+      "x": -52336249629.29081,
+      "y": -43918218412.69672,
+      "z": -93112.5625,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_s_frm_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Canard View",
+      "x": -52336719517.25613,
+      "y": -43918048691.44216,
+      "z": -102070.138758,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_m_trdpst_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Carver's Ridge",
+      "x": -8900616258.409298,
+      "y": -15417487752.232645,
+      "z": -48106.482573,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_s_mng_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Chawla's Beach",
+      "x": 42614206918.97057,
+      "y": -7273113044.330512,
+      "z": 189412.479765,
+      "starmap": "StarMapObject.Pyro4_Outpost_col_m_scrp_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Checkmate Station",
+      "x": 1833362390.019977,
+      "y": 10434543320.869617,
+      "z": 2570930.841284,
+      "starmap": "StarMapObject.RR_P2_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Dinger's Depot",
+      "x": 42614546165.26548,
+      "y": -7273183014.717681,
+      "z": 267272.288696,
+      "starmap": "StarMapObject.Pyro4_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Dudley & Daughters",
+      "x": 23342575877.755306,
+      "y": -64225960280.02989,
+      "z": -10765064.143322,
+      "starmap": "StarMapObject.RR_P6_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Endgame",
+      "x": 48296754635.74633,
+      "y": 48291979195.72477,
+      "z": 2735552.171102,
+      "starmap": "StarMapObject.RR_P6_L3",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Fallow Field",
+      "x": 42614520334.90412,
+      "y": -7273203700.560071,
+      "z": 262249.667636,
+      "starmap": "StarMapObject.Pyro4_Outpost_col_m_trdpst_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Feo Canyon Depot",
+      "x": 42402818430.92581,
+      "y": -7498732254.450501,
+      "z": 81621.686807,
+      "starmap": "StarMapObject.Pyro5d_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Frigid Knot",
+      "x": -8900581800.985285,
+      "y": -15417101983.994484,
+      "z": -342910.010608,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_s_tsrpst_indy_002",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Gaslight",
+      "x": 46494448944.91938,
+      "y": -8190926212.562624,
+      "z": 17665446.105198,
+      "starmap": "StarMapObject.RR_P5_L2",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Goner's Deal",
+      "x": 42614556792.61686,
+      "y": -7273179159.64573,
+      "z": 265305.414976,
+      "starmap": "StarMapObject.Pyro4_Outpost_col_s_trdpst_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Gray Gardens Depot",
+      "x": 1719646986.100393,
+      "y": -8091859973.2357435,
+      "z": -101323.01277,
+      "starmap": "StarMapObject.Pyro1_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Jackson's Swap",
+      "x": 9198800311.717115,
+      "y": 5310500634.709372,
+      "z": -272467.223889,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_m_trdp_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Kabir's Post",
+      "x": 42296743348.6167,
+      "y": -7508286316.898287,
+      "z": 108786.853475,
+      "starmap": "StarMapObject.Pyro5a_Outpost_col_s_trdpst_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Kinder Plots",
+      "x": -52336776286.47191,
+      "y": -43918175963.15171,
+      "z": -115526.495668,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_s_frm_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Last Landings",
+      "x": -52336804142.38755,
+      "y": -43918240543.90625,
+      "z": -7854.439822,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_m_scrp_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Megumi Refueling",
+      "x": -59145570654.22604,
+      "y": 34145522707.318462,
+      "z": 12705743.427003,
+      "starmap": "StarMapObject.RR_P6_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Narena's Rest",
+      "x": -8901207950.05631,
+      "y": -15417002896.2801,
+      "z": -11780.327947,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_m_hmstd_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Nyx Gateway (Pyro)",
+      "x": 32994001580.849922,
+      "y": -38151692230.54096,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Pyro_Nyx",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Orbituary",
+      "x": -8900432615.040003,
+      "y": -15417844552.575254,
+      "z": 226043.640625,
+      "starmap": "StarMapObject.RR_P3_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Ostler's Claim",
+      "x": 9198926641.479586,
+      "y": 5310692057.529628,
+      "z": -136103.973164,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_s_mng_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Patch City",
+      "x": 11445282814.891651,
+      "y": 13622341259.20288,
+      "z": 2752554.224023,
+      "starmap": "StarMapObject.RR_P3_L3",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Prophet's Peak",
+      "x": 42263566231.23191,
+      "y": -7355986773.051652,
+      "z": 154695.129033,
+      "starmap": "StarMapObject.Pyro5c_Outpost_col_m_hmstd_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Prospect Depot",
+      "x": -8900649639.397465,
+      "y": -15417504049.359966,
+      "z": -45328.559091,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Rat's Nest",
+      "x": 3732645628.287643,
+      "y": -42766913617.569916,
+      "z": 18513515.236622,
+      "starmap": "StarMapObject.RR_P5_L5",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Rod's Fuel 'N Supplies",
+      "x": 14664316072.490164,
+      "y": 40338624603.51494,
+      "z": -9518769.19755,
+      "starmap": "StarMapObject.RR_P5_L4",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Rough Landing",
+      "x": -52336718331.45731,
+      "y": -43918416628.460434,
+      "z": 77972.606658,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_s_trdpst_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Ruin Station",
+      "x": -52336834868.99303,
+      "y": -43917925431.95215,
+      "z": -100477.857041,
+      "starmap": "StarMapObject.RR_P6_LEO",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Rustville",
+      "x": 1719831469.741281,
+      "y": -8092299589.5607,
+      "z": 170820.204183,
+      "starmap": "StarMapObject.Pyro1_Outpost_col_m_scrp_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Sacren's Plot",
+      "x": 42614215579.06247,
+      "y": -7273124923.757171,
+      "z": 194621.1888,
+      "starmap": "StarMapObject.Pyro4_Outpost_col_m_trdpst_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Scarper's Turn",
+      "x": -52336801847.07112,
+      "y": -43918188534.99925,
+      "z": 249.415673,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_m_frm_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Seer's Canyon",
+      "x": 42216831419.65104,
+      "y": -7425848127.167816,
+      "z": -119605.389702,
+      "starmap": "StarMapObject.Pyro5b_Outpost_col_m_scrp_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Shepherd's Rest",
+      "x": -8900783030.11479,
+      "y": -15416765829.285278,
+      "z": -202126.326212,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_m_frm_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Slowburn Depot",
+      "x": 9198278114.326471,
+      "y": 5310708072.533131,
+      "z": 509790.117938,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Stag's Rut",
+      "x": 1719643854.9842849,
+      "y": -8091873750.286217,
+      "z": -103639.219527,
+      "starmap": "StarMapObject.Pyro1_Outpost_col_s_mng_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Stanton Gateway (Pyro)",
+      "x": -37609204291.13937,
+      "y": 37435781484.436775,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Pyro_Stanton",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Starlight Service Station",
+      "x": -7756636101.2095585,
+      "y": -14008864142.502598,
+      "z": 1357701.060931,
+      "starmap": "StarMapObject.RR_P3_L1",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Sunset Mesa",
+      "x": 9198790736.149548,
+      "y": 5310483748.38485,
+      "z": -269591.417313,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_m_scrp_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "The Golden Riviera",
+      "x": -8901196933.41506,
+      "y": -15416972500.373259,
+      "z": 5799.239484,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_m_trdpst_otlw_006",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "The Yard",
+      "x": -8900468610.927538,
+      "y": -15416937006.30173,
+      "z": 132065.861482,
+      "starmap": "StarMapObject.pyro3_outpost_col_s_frm_otlw_002",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Watcher's Depot",
+      "x": -52336697565.60086,
+      "y": -43918426839.13794,
+      "z": 103144.250861,
+      "starmap": "StarMapObject.Pyro6_Outpost_col_xs_dpt_otlw_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Windfall",
+      "x": -8900682674.05306,
+      "y": -15417519398.476786,
+      "z": -12215.341634,
+      "starmap": "StarMapObject.Pyro3_Outpost_col_s_scrp_otlw_002",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "location",
+      "uexName": "Yang's Place",
+      "x": 9198878681.370693,
+      "y": 5310621841.445952,
+      "z": -229886.1434,
+      "starmap": "StarMapObject.Pyro2_Outpost_col_s_mng_indy_001",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Adir",
+      "x": 42263800416.26546,
+      "y": -7355657928.487138,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5c",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Bloom",
+      "x": -8900812464.602503,
+      "y": -15417125828.262754,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro3",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Fairo",
+      "x": 42403147014.11114,
+      "y": -7498534198.338449,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5d",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Ignis",
+      "x": 42296899150.63396,
+      "y": -7508634261.811099,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5a",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Monox",
+      "x": 9198417196.350693,
+      "y": 5310746464.426752,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro2",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Pyro I",
+      "x": 1720027320.817066,
+      "y": -8091980530.089989,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro1",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Pyro IV",
+      "x": 42614452006.5518,
+      "y": -7273027174.254219,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro4",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Pyro V",
+      "x": 42285288387.06547,
+      "y": -7454572828.421713,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Terminus",
+      "x": -52336519522.54081,
+      "y": -43918227841.00922,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro6",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "planetOrMoon",
+      "uexName": "Vatra",
+      "x": 42216747434.77965,
+      "y": -7426185291.82689,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5b",
+      "match": "exact"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Bloom",
+      "x": -8900812464.602503,
+      "y": -15417125828.262754,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro3",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Bloom Lagrange Point 1",
+      "x": -7767541295.172004,
+      "y": -14013114687.226347,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro3_L1",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Bloom Lagrange Point 3",
+      "x": 11443001610.363113,
+      "y": 13637238703.16215,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro3_L3",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Monox",
+      "x": 9198417196.350693,
+      "y": 5310746464.426752,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro2",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Monox Lagrange Point 4",
+      "x": 1844386069.102793,
+      "y": 10460084411.855837,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro2_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Nyx Gateway (Pyro system)",
+      "x": 32994001580.849922,
+      "y": -38151692230.54096,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Pyro_Nyx",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro I",
+      "x": 1720027320.817066,
+      "y": -8091980530.089989,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro1",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro IV",
+      "x": 42614452006.5518,
+      "y": -7273027174.254219,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro4",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro V",
+      "x": 42285288387.06547,
+      "y": -7454572828.421713,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro V Lagrange Point 2",
+      "x": 46513574526.11613,
+      "y": -8201358903.310153,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5_L2",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro V Lagrange Point 4",
+      "x": 14685416672.267092,
+      "y": 40347900080.962906,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro V Lagrange Point 5",
+      "x": 3742466609.837677,
+      "y": -42773928701.69839,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro5_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro VI Lagrange Point 3",
+      "x": 48311253892.7527,
+      "y": 48311302760.784515,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro6_L3",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro VI Lagrange Point 4",
+      "x": 23368016468.87643,
+      "y": -64202027674.97029,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro6_L4",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Pyro VI Lagrange Point 5",
+      "x": -59169086143.87455,
+      "y": 34161126286.04532,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro6_L5",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Stanton Gateway (Pyro system)",
+      "x": -37609204291.13937,
+      "y": 37435781484.436775,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Pyro_Stanton",
+      "match": "alias"
+    },
+    {
+      "system": "Pyro",
+      "kind": "orbit",
+      "uexName": "Terminus",
+      "x": -52336519522.54081,
+      "y": -43918227841.00922,
+      "z": 0.0,
+      "starmap": "StarMapObject.Pyro6",
+      "match": "alias"
+    },
+    {
+      "system": "Nyx",
+      "kind": "location",
+      "uexName": "Pyro Gateway (Nyx)",
+      "x": -12000043844.931711,
+      "y": 20784584131.46289,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Nyx_Pyro",
+      "match": "alias"
+    },
+    {
+      "system": "Nyx",
+      "kind": "orbit",
+      "uexName": "Pyro Gateway (Nyx system)",
+      "x": -12000043844.931711,
+      "y": 20784584131.46289,
+      "z": 0.0,
+      "starmap": "StarMapObject.JumpPoint_Nyx_Pyro",
+      "match": "alias"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Green Imperial Housing Exchange",
+      "x": -19022916798.927376,
+      "y": -2613996151.998472,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2c",
+      "match": "parent"
+    },
+    {
+      "system": "Stanton",
+      "kind": "location",
+      "uexName": "Port Olisar",
+      "x": -18962176000.0,
+      "y": -2664959999.999996,
+      "z": 0.0,
+      "starmap": "StarMapObject.Stanton2",
+      "match": "parent"
+    }
+  ]
+}

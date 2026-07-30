@@ -236,7 +236,7 @@
                         <TextBlock Text="INSTALLED MODULES" FontFamily="{StaticResource UiFont}" FontWeight="Bold"
                                    FontSize="8.5" Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
                         <Border HorizontalAlignment="Right" BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1" Padding="6,1">
-                            <TextBlock Text="09" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
+                            <TextBlock Text="10" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
                         </Border>
                     </Grid>
 
@@ -363,6 +363,19 @@
                                             Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentDimBrush}" BorderThickness="1" Visibility="Collapsed">
                                         <TextBlock x:Name="NavHaulBadge" Text="" FontFamily="{StaticResource MonoFont}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                     </Border>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavTrade" Tag="trade" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="trade" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Trade" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="COMMODITIES" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </Grid>
                             </RadioButton>
 
@@ -510,6 +523,9 @@
 
                 <!-- ── MISSION GUIDES PAGE (built in code - Views/GuidesPage.cs) ── -->
                 <Grid x:Name="PageGuides" Visibility="Collapsed"/>
+
+                <!-- ── TRADE PAGE (built in code - Views/TradePage.cs) ── -->
+                <Grid x:Name="PageTrade" Visibility="Collapsed"/>
 
                 <Grid x:Name="PagePlanner" Visibility="Collapsed"/>
                 <Grid x:Name="PageGridStudio" Visibility="Collapsed"/>

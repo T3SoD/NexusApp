@@ -100,11 +100,13 @@ public sealed class MarketDataService : IDisposable
     private const string RefinedPricesEndpoint = "commodities_prices";
     private const string YieldsEndpoint = "refineries_yields";
     private const string TerminalsEndpoint = "terminals";
+    private const string CommoditiesPricesAllEndpoint = "commodities_prices_all";
 
     private readonly SettingsService _settings;
     private readonly IMarketDataTransport _transport;
     private readonly string _snapshotPath;
     private readonly bool _demo;
+    private readonly Func<bool>? _isForegroundRelevant;
 
     // Cancelled by Dispose. Every cycle links its own deadline source to this one, so shutting
     // the service down also unwinds a cycle that is in flight.
@@ -135,18 +137,20 @@ public sealed class MarketDataService : IDisposable
     // subscribers marshal with Dispatcher.Invoke themselves (the UpdateService.Changed contract).
     public event Action? Changed;
 
-    public MarketDataService(SettingsService settings)
+    public MarketDataService(SettingsService settings, Func<bool>? isForegroundRelevant = null)
         : this(settings, new HttpMarketTransport(),
-               Path.Combine(AppPaths.Root, "cache", "uex_snapshot.json"), AppPaths.IsDemoProfile)
+               Path.Combine(AppPaths.Root, "cache", "uex_snapshot.json"), AppPaths.IsDemoProfile,
+               isForegroundRelevant)
     { }
 
     internal MarketDataService(SettingsService settings, IMarketDataTransport transport, string snapshotPath,
-                               bool isDemoProfile)
+                               bool isDemoProfile, Func<bool>? isForegroundRelevant = null)
     {
         _settings = settings;
         _transport = transport;
         _snapshotPath = snapshotPath;
         _demo = isDemoProfile;
+        _isForegroundRelevant = isForegroundRelevant;
     }
 
     // Pure gate for the automatic path: consent must be an explicit yes, the demo profile is
@@ -211,6 +215,17 @@ public sealed class MarketDataService : IDisposable
     public void MaybeAutoRefresh()
     {
         if (_disposed) return;
+        // Trading tab (2026-07-29): no background polling while neither Nexus nor Star Citizen
+        // has focus. Reuses the existing foreground facility (App.IsForegroundRelevant) rather
+        // than a new one; null (no func given, e.g. every pre-#trading-tab construction site and
+        // every existing test) means "always relevant," so this is a no-op change for callers
+        // that never opt in.
+        if (_isForegroundRelevant is not null && !_isForegroundRelevant())
+        {
+            Logger.Info($"{Tag} market auto refresh skipped: Nexus/Star Citizen not in the foreground");
+            return;
+        }
+
         // Read the snapshot once: it can be swapped by a cycle finishing on another thread.
         var snap = _snapshot;
         if (!ShouldFetch(_settings.Current.MarketDataEnabled, _demo,
@@ -343,7 +358,27 @@ public sealed class MarketDataService : IDisposable
         await FetchPricesByIdAsync(RefinedPricesEndpoint, "refined", RefinedIdsFor(next.Commodities.Rows),
                                    next.RefinedPrices, d => next.RefinedPrices = d, utcNow, cycle, ct).ConfigureAwait(false);
 
-        // 4. Reference data, on its own much slower clock.
+        // 4. Trade tab: every commodity at every terminal, one bulk call (this endpoint IS the
+        //    bulk shape already, so there is no per-id fan-out like the refined leg above). Same
+        //    hourly cadence as the refined leg; MaxResponseBytes (8 MB) already comfortably
+        //    covers the ~1.05 MB this endpoint returns (2,595 rows, confirmed live capture).
+        (body, ms) = await FetchAsync(CommoditiesPricesAllEndpoint, BaseUrl + CommoditiesPricesAllEndpoint, cycle, ct).ConfigureAwait(false);
+        if (body is not null && RequireArray(body, CommoditiesPricesAllEndpoint, cycle))
+        {
+            var tradeRows = MarketParse.ParseTradePriceRows(body, out var tradeSkipped);
+            LogRows(CommoditiesPricesAllEndpoint, tradeRows.Count, tradeSkipped, body, ms);
+            if (tradeRows.Count > 0)
+            {
+                next.TradePrices = new MarketDataset<TradePriceRow> { FetchedUtc = utcNow, Rows = tradeRows };
+                cycle.Refreshed++;
+            }
+            else
+            {
+                KeptOnEmpty(CommoditiesPricesAllEndpoint);
+            }
+        }
+
+        // 5. Reference data, on its own much slower clock.
         if (utcNow - next.Yields.FetchedUtc >= ReferenceInterval)
         {
             (body, ms) = await FetchAsync(YieldsEndpoint, BaseUrl + YieldsEndpoint, cycle, ct).ConfigureAwait(false);
@@ -545,6 +580,7 @@ public sealed class MarketDataService : IDisposable
         Commodities = CopyDataset(previous?.Commodities),
         RawPrices = CopyDataset(previous?.RawPrices),
         RefinedPrices = CopyDataset(previous?.RefinedPrices),
+        TradePrices = CopyDataset(previous?.TradePrices),
         Yields = CopyDataset(previous?.Yields),
         Terminals = CopyDataset(previous?.Terminals),
     };

@@ -28,6 +28,11 @@ public partial class App : Application
     // Server/shard tracker (shared Game.log tail, always on; rolling history persisted to settings).
     public static ShardTracker Shards { get; private set; } = null!;
 
+    // Trading tab: last-known-location timeline (shared Game.log tail, always on). Sparse by
+    // nature - see LocationTracker's own doc comment. Not persisted (rebuilt from the current
+    // Game.log's replay on every start, same rationale as Shards).
+    public static LocationTracker Locations { get; private set; } = null!;
+
     // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
     public static ContractOcrService ContractOcr { get; private set; } = null!;
     public static ContractScanner ContractScan { get; private set; } = null!;
@@ -39,6 +44,10 @@ public partial class App : Application
     // Live UEX market data (the hourly fetch cycle + in-memory snapshot). Created right after
     // Update so the consent gate and throttle read real values; inert in the demo profile.
     public static MarketDataService Market { get; private set; } = null!;
+
+    // Dark SCT (SC Trade Tools) second-source cache. Inert unless Settings.Current.SctDataEnabled
+    // is true (owner-only Admin toggle, Task 9) - Start() itself checks the flag first.
+    public static SctMarketService Sct { get; private set; } = null!;
 
     // The app version that ran LAST session (null on fresh installs), captured before this
     // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
@@ -245,8 +254,19 @@ public partial class App : Application
 
         // Market data service: loads any snapshot already on disk and kicks an auto refresh if
         // the consent toggle and the hourly throttle allow it. Inert in the demo profile.
-        Market = new MarketDataService(Settings);
+        // Foreground-gated (2026-07-29, trading tab): reuses the existing foreground facility so
+        // the hourly cycle (now including the bulk trading-tab price pull) does not poll while
+        // neither Nexus nor Star Citizen has focus.
+        Market = new MarketDataService(Settings, () => App.IsForegroundRelevant);
         Market.Start();
+
+        // Dark SCT cache: fully inert unless SctDataEnabled is on (Start() checks it first).
+        // Constructed unconditionally so the Settings/Admin toggle always has a live instance to
+        // call into, exactly like Market above. Foreground-gated (2026-07-30, trading tab
+        // cadence): the 6h auto-refresh reuses the same foreground facility as Market so it does
+        // not poll while neither Nexus nor Star Citizen has focus.
+        Sct = new SctMarketService(Settings, () => App.IsForegroundRelevant);
+        Sct.Start();
 
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
         // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before
@@ -305,6 +325,7 @@ public partial class App : Application
             list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
             GameLogFeed,
             channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
+        Locations = new LocationTracker(GameLogFeed);
 
         // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
         // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and
@@ -420,10 +441,12 @@ public partial class App : Application
         ContractOcr?.Dispose();
         Hauls?.Dispose();
         Shards?.Dispose();
+        Locations?.Dispose();
         GameLog?.Dispose();
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();
         Market?.Dispose();
+        Sct?.Dispose();
         Data?.Dispose();
         // Portable self-swap handoff: spawn the NEW exe as the very LAST action, after every
         // settings and database write above has finished, so the two instances never overlap

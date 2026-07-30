@@ -15,9 +15,10 @@ namespace NexusApp.Services;
 /// [CARGO] (Cargo Planner, Grid Studio, cargo review sign-off - the sanctioned tag for every
 /// cargo/grid-studio surface, replacing any stray [UI] on that domain), [HAUL] (cargo hauling
 /// tracker), [CONTRACT] (contract OCR scanner), [SHARD] (server/shard tracker), [UPDATE]
-/// (auto-update service), [GameLog] (Game.log session tracking/blueprint import), and [LOC]
-/// (global.ini localization mapping). A new feature should reuse an existing tag for its domain
-/// rather than inventing another one-off.
+/// (auto-update service), [GameLog] (Game.log session tracking/blueprint import), [LOC]
+/// (global.ini localization mapping), and [WHERE] (LocationTracker's last-known-location signal -
+/// NOT [LOC], which is already Game.log localization mapping and would collide in meaning). A new
+/// feature should reuse an existing tag for its domain rather than inventing another one-off.
 /// </summary>
 public static class Logger
 {

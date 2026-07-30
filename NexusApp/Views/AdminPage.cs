@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,6 +31,8 @@ public sealed class AdminPage : UserControl
     private TextBlock _previewBannerText = null!;
     private TextBlock _previewState = null!;
     private TextBlock _demoState = null!;
+    private Hud.ToggleSwitch _sctToggle = null!;
+    private TextBlock _sctState = null!;
     private int _activeIndex = -1;
 
     public AdminPage(Action openLogMonitor, Action openAppLogMonitor)
@@ -521,6 +524,56 @@ public sealed class AdminPage : UserControl
         demo.Children.Add(demoButtons);
         stack.Children.Add(Section("DEMO PROFILE", demo));
 
+        // Data tools card: the SCT (SC Trade Tools) second-source flag. Graduated (2026-07-30) to a
+        // real Settings consent row now that the SCT maintainer has approved in-app use of their
+        // endpoints - this card stays too, as the owner's one-shot fetch tool, reading/writing the
+        // same AppSettings.SctDataEnabled field Settings does.
+        var data = new StackPanel();
+        data.Children.Add(new TextBlock
+        {
+            Text = "SCT second source: crowdsourced price listings from SC Trade Tools, used only "
+                 + "to corroborate UEX prices on the trading tab. Off by default and fully inert "
+                 + "while off - no network call, no data load. Also a Settings consent row now; "
+                 + "this card is an owner convenience for a one-shot fetch. Turning this on "
+                 + "immediately kicks one fetch so you can see it working.",
+            FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
+        });
+        _sctState = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"),
+            Margin = new Thickness(0, 0, 0, 10),
+        };
+        data.Children.Add(_sctState);
+        _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
+        {
+            OnToggled = on =>
+            {
+                App.Settings.Current.SctDataEnabled = on;
+                App.Settings.Save();
+                Logger.Info($"[UI] SCT dark flag {(on ? "on" : "off")}");
+                if (on)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try { await App.Sct.RefreshAsync(manual: true); }
+                        catch (Exception ex) { Logger.Error("[UI] admin: SCT fetch failed", ex); }
+                    });
+                }
+                RefreshToolsState();
+            },
+        };
+        var dataRow = new StackPanel { Orientation = Orientation.Horizontal };
+        dataRow.Children.Add(new TextBlock
+        {
+            Text = "SCT second source", FontFamily = Hud.Font("UiFont"), FontSize = 12.5,
+            Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+        });
+        dataRow.Children.Add(_sctToggle);
+        data.Children.Add(dataRow);
+        stack.Children.Add(Section("DATA TOOLS", data));
+
         // Folders card.
         var folders = new StackPanel { Orientation = Orientation.Horizontal };
         folders.Children.Add(Btn("Open data folder", () => OpenFolder(AppPaths.Root)));
@@ -542,6 +595,10 @@ public sealed class AdminPage : UserControl
         _demoState.Text = DemoProfile.IsSeeded(AppPaths.DemoRoot)
             ? "Demo profile: seeded (relaunches resume its session state)."
             : "Demo profile: not seeded yet (created on first launch).";
+        _sctToggle.SetOnSilently(App.Settings.Current.SctDataEnabled);
+        _sctState.Text = App.Settings.Current.SctDataEnabled
+            ? "SCT: on (also a Settings consent row)"
+            : "SCT: off (fully inert - no network call, no data load)";
     }
 
     private void OnLaunchDemo()

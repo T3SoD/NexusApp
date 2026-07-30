@@ -324,6 +324,7 @@ public partial class MainWindow : Window
         PageNetwork.Visibility    = page == "network"    ? Visibility.Visible : Visibility.Collapsed;
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
         PageGuides.Visibility     = page == "guides"     ? Visibility.Visible : Visibility.Collapsed;
+        PageTrade.Visibility      = page == "trade"      ? Visibility.Visible : Visibility.Collapsed;
         PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
         PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
         PageAdmin.Visibility      = page == "admin"      ? Visibility.Visible : Visibility.Collapsed;
@@ -337,6 +338,7 @@ public partial class MainWindow : Window
         NavNetwork.IsChecked  = page == "network";
         NavHauling.IsChecked  = page == "hauling";
         NavGuides.IsChecked   = page == "guides";
+        NavTrade.IsChecked    = page == "trade";
         NavPlanner.IsChecked  = page == "planner";
         NavGridStudio.IsChecked = page == "gridstudio";
         NavAdmin.IsChecked    = page == "admin";
@@ -358,6 +360,7 @@ public partial class MainWindow : Window
             "network"    => "Nexus - Blueprint Network",
             "hauling"    => "Nexus - Cargo Hauling",
             "guides"     => "Nexus - Mission Guides",
+            "trade"      => "Nexus - Trade",
             "planner"    => "Nexus - Cargo Planner",
             "gridstudio" => "Nexus - Grid Studio",
             "admin"      => "Nexus - Admin",
@@ -374,6 +377,7 @@ public partial class MainWindow : Window
         if (page == "network") InitNetworkPage();
         if (page == "hauling") InitHaulingPage();
         if (page == "guides") InitGuidesPage();
+        if (page == "trade") InitTradePage();
         if (page == "planner") InitPlannerPage();
         if (page == "gridstudio") InitGridStudioPage();
         if (page == "admin") InitAdminPage();
@@ -391,6 +395,7 @@ public partial class MainWindow : Window
             "network"    => PageNetwork,
             "hauling"    => PageHauling,
             "guides"     => PageGuides,
+            "trade"      => PageTrade,
             "admin"      => PageAdmin,
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
@@ -413,7 +418,7 @@ public partial class MainWindow : Window
     {
         if (MarketConsentHost == null) return;
 
-        var show = _activePage is "scan" or "reference" or "workorders"
+        var show = _activePage is "scan" or "reference" or "workorders" or "trade"
                    && MarketNotice.ShouldShowConsent(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile);
         if (!show)
         {
@@ -438,6 +443,10 @@ public partial class MainWindow : Window
             RefreshMarketConsent();
             RefreshCodexPrices();
             RefreshMarketPill();   // the pill appears the moment the feature is turned on
+            // Same fan-out reason as RefreshCodexPrices below: answering "Turn on" while standing on
+            // TRADE has to repaint that page too, or all three of its flows keep showing the
+            // "Turn on live market data..." message until the fetch's Changed lands.
+            if (_activePage == "trade") _tradePage?.Refresh();
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>
@@ -514,6 +523,7 @@ public partial class MainWindow : Window
         if (NavNetwork.IsChecked == true)  return NavNetwork;
         if (NavHauling.IsChecked == true)  return NavHauling;
         if (NavGuides.IsChecked == true)   return NavGuides;
+        if (NavTrade.IsChecked == true)    return NavTrade;
         if (NavPlanner.IsChecked == true)  return NavPlanner;
         if (NavGridStudio.IsChecked == true) return NavGridStudio;
         if (NavAdmin.IsChecked == true)    return NavAdmin;
@@ -803,6 +813,17 @@ public partial class MainWindow : Window
             PageGuides.Children.Add(_guidesPage);
         }
         _guidesPage.Activate();
+    }
+
+    private TradePage? _tradePage;
+    private void InitTradePage()
+    {
+        if (_tradePage == null)
+        {
+            _tradePage = new TradePage();
+            PageTrade.Children.Add(_tradePage);
+        }
+        _tradePage.Refresh();
     }
 
     private CargoPlannerPage? _plannerPage;
