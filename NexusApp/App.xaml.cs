@@ -211,13 +211,25 @@ public partial class App : Application
         if (!_singleInstance.TryAcquirePrimary())
         {
             Logger.Info("[WIN] another instance is running, activating it and exiting");
-            // Signal and exit regardless of whether the primary is actually listening yet (a
-            // razor-thin startup race): this instance's job is done either way - if the race is
-            // lost, the primary simply doesn't restore itself that one time, it does not hang here.
+            // Signal regardless of whether the primary is actually listening yet (a razor-thin
+            // startup race): this instance's job is done either way - if the race is lost, the
+            // primary simply doesn't restore itself that one time, it does not hang here.
             _singleInstance.SignalPrimary();
             _singleInstance.Dispose();
-            Shutdown();
-            return;
+            // Environment.Exit, NOT Shutdown()/return: live-tested and disproven that Shutdown()
+            // suppresses the StartupUri window. WPF's DoStartup calls OnStartup (this override,
+            // which never reaches base.OnStartup on this path) and then unconditionally proceeds to
+            // build the StartupUri window regardless of whether Shutdown() was called from inside
+            // OnStartup - Shutdown() only short-circuits the LATER "keep running" checks (last
+            // window closed / main window closed), it does not cancel a startup already in
+            // progress. The result was MainWindow's ctor running against services that were never
+            // initialized on this path (Settings, Data, etc. all still null), throwing and hitting
+            // the crash dialog instead of exiting quietly. Environment.Exit(0) is the same hard-exit
+            // already used by CrashGuard's terminal paths, which document the same bypass-OnExit
+            // tradeoff: correct here too, since this instance owns no services or resources yet for
+            // OnExit to clean up. Logger.Write is a synchronous File.AppendAllText under a lock (see
+            // Logger.cs), not buffered, so the line above is already on disk before Exit runs.
+            Environment.Exit(0);
         }
         _singleInstance.StartActivationListener(() =>
         {
