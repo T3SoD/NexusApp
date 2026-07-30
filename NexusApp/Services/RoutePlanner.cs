@@ -14,7 +14,11 @@ public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
 // ANYWHERE) only restricts which terminals the BUY leg may come from; the sell leg and the
 // ranking math are identical either way (spec: "Same math either way; FROM HERE only restricts
-// the buy-terminal set").
+// the buy-terminal set"). originTerminalIds is null ONLY for ANYWHERE (every terminal's buy legs
+// are eligible); FROM HERE always passes a non-null set, EMPTY when the origin could not be
+// resolved to any terminal. An empty set restricts the buy leg to NOTHING, not to "unrestricted" -
+// treating an unresolved origin as ANYWHERE would silently show cross-map routes while FROM HERE
+// stays lit (spec Decision 6: "every listed route is purchasable where the player stands").
 public static class RoutePlanner
 {
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
@@ -35,8 +39,10 @@ public static class RoutePlanner
                 lists = (new List<TradePriceRow>(), new List<TradePriceRow>());
                 byCommodity[row.CommodityId] = lists;
             }
-            if (row.Buy > 0 && (originTerminalIds is null || originTerminalIds.Count == 0
-                                 || originTerminalIds.Contains(row.TerminalId)))
+            // null = ANYWHERE (unrestricted). Non-null EMPTY = FROM HERE with an unresolved
+            // origin - Contains() on an empty set is always false, so no terminal qualifies as a
+            // buy leg rather than silently falling back to every terminal's.
+            if (row.Buy > 0 && (originTerminalIds is null || originTerminalIds.Contains(row.TerminalId)))
                 lists.Buys.Add(row);
             if (row.Sell > 0) lists.Sells.Add(row);
         }

@@ -132,16 +132,33 @@ public sealed partial class TradePage
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
         var ship = CurrentShip();
         var originIds = App.Settings.Current.TradeAnchorFromHere ? OriginTerminalIds(snap.Terminals.Rows) : null;
+        // FROM HERE with an origin that resolved to zero terminals (no live location, no manual
+        // pick, or nothing matched either): originIds is non-null but empty, which RoutePlanner
+        // now restricts to zero buy candidates rather than silently falling back to ANYWHERE (see
+        // RoutePlanner.Rank's doc comment / spec Decision 6). That case gets its own empty-state
+        // message below instead of the generic "no routes buy from here" one, since here the
+        // problem is an unknown origin, not a real absence of routes.
+        bool originUnknown = App.Settings.Current.TradeAnchorFromHere && originIds is { Count: 0 };
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25);
 
         if (routes.Count == 0)
         {
+            string message;
+            if (originUnknown)
+            {
+                message = "Origin unknown - pick a manual origin above, or switch to ANYWHERE.";
+                Logger.Info("[UI] Trade planner run: 0 routes, origin unknown");
+            }
+            else
+            {
+                message = App.Settings.Current.TradeAnchorFromHere
+                    ? "No routes buy from here right now. Try ANYWHERE, or a wider scope."
+                    : "No routes match the current scope and budget.";
+            }
             PlannerHost.Children.Add(new TextBlock
             {
-                Text = App.Settings.Current.TradeAnchorFromHere
-                    ? "No routes buy from here right now. Try ANYWHERE, or a wider scope."
-                    : "No routes match the current scope and budget.",
+                Text = message,
                 FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush"),
             });
             return;

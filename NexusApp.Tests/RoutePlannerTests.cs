@@ -102,7 +102,7 @@ public class RoutePlannerTests
     }
 
     [Fact]
-    public void Rank_NullOrEmptyOriginSet_MeansAnywhere()
+    public void Rank_NullOriginSet_MeansAnywhere()
     {
         var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
         var rows = new List<TradePriceRow>
@@ -112,7 +112,24 @@ public class RoutePlannerTests
         };
 
         Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10));
-        Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, new HashSet<int>(), "ALL", 10));
+    }
+
+    // A non-null EMPTY origin set means FROM HERE could not resolve the player's origin to any
+    // terminal - it must restrict the buy leg to nothing, not silently fall back to ANYWHERE
+    // (spec Decision 6: "every listed route is purchasable where the player stands"; escalated
+    // finding: the prior "empty means anywhere" behavior let FROM HERE stay lit while showing
+    // cross-map routes on first run, before any origin is known).
+    [Fact]
+    public void Rank_EmptyOriginSet_RestrictsToNothing()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 50),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 50),
+        };
+
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, new HashSet<int>(), "ALL", 10));
     }
 
     [Fact]
