@@ -197,9 +197,13 @@ public sealed partial class TradePage
 
         if (buyers.Count == 0) { _sellResults.Children.Add(new TextBlock { Text = $"No buyers found for {picked.CommodityName} in this scope.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
+        // Origin terminal for the distance tag (owner's ask, 2026-07-30): resolved once per rebuild
+        // from the same originId the ranking itself already used, not a second origin lookup.
+        MarketTerminal? originTerm = originId is { } oid && terminals.TryGetValue(oid, out var ot) ? ot : null;
+
         for (int i = 0; i < buyers.Count; i++)
         {
-            var row = BuildBuyerRow(buyers[i], qty, terminals);
+            var row = BuildBuyerRow(buyers[i], qty, terminals, originTerm);
             CascadeIn(row, i);
             _sellResults.Children.Add(row);
         }
@@ -299,8 +303,8 @@ public sealed partial class TradePage
         return false;
     }
 
-    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals)
-        => WrapBuyerRow(BuildBuyerRowContent(b, qty, terminals, out var chevron, out var detailHost), chevron, detailHost,
+    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals, MarketTerminal? originTerm)
+        => WrapBuyerRow(BuildBuyerRowContent(b, qty, terminals, originTerm, out var chevron, out var detailHost), chevron, detailHost,
                         b.Row.TerminalName, sctOnly: false);
 
     // SCT-only row: a listing SCT has at a terminal UEX has no row for at all. Same row chrome,
@@ -336,11 +340,17 @@ public sealed partial class TradePage
         return wrapper;
     }
 
-    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals, out Path chevron, out Border detailHost)
+    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals, MarketTerminal? originTerm, out Path chevron, out Border detailHost)
     {
-        string? system = terminals.TryGetValue(b.Row.TerminalId, out var term) ? term.System : null;
+        terminals.TryGetValue(b.Row.TerminalId, out var term);
+        string? system = term?.System;
+        // Owner's ask, 2026-07-30 (decorating beyond the approved mock): the real gigameter
+        // distance from the current origin to this buyer, only when both resolve on the starmap
+        // in the same system - DistanceMeters already encodes both the resolution and the
+        // same-system gate, so this is a single call, not a duplicated check.
+        double? distanceMeters = _starmap.DistanceMeters(originTerm, term);
         return BuildBuyerRowCore(b.Row.TerminalName, system, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
-            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), out chevron, out detailHost);
+            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), distanceMeters, out chevron, out detailHost);
     }
 
     // Tier omitted (never a placeholder): SctOnlyBuyers only ever returns listings at stations
@@ -356,7 +366,9 @@ public sealed partial class TradePage
         var badge = CorroborationBadge(SctOnlyReconciled(s));
         // system: null - SCT-only listings have no UEX terminal id to resolve a System from
         // (BuildSctOnlyBuyerRowContent's doc comment above), so the tag is correctly omitted.
-        return BuildBuyerRowCore(s.Location, null, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, out chevron, out detailHost);
+        // distanceMeters: null, always - same reason, and the spec is explicit that SCT-only rows
+        // never carry a distance tag (they have no UEX terminal to resolve a starmap position from).
+        return BuildBuyerRowCore(s.Location, null, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, null, out chevron, out detailHost);
     }
 
     // Shared buyer-row layout: real UEX buyers (SellLookup.Buyer) and SCT-only listings both
@@ -364,7 +376,8 @@ public sealed partial class TradePage
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
     private UIElement BuildBuyerRowCore(string terminalName, string? system, double price, ProximityTier? tier, int demandScu,
-        DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, out Path chevron, out Border detailHost)
+        DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, double? distanceMeters,
+        out Path chevron, out Border detailHost)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -380,6 +393,7 @@ public sealed partial class TradePage
         if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(0, 0, 10, 1); top.Children.Add(tag); }
         top.Children.Add(new TextBlock { Text = $"{price:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
         if (tier is { } t) top.Children.Add(TierChip(t));
+        if (distanceMeters is { } dm && DistanceTag(StarmapCatalog.FormatGm(dm)) is { } distTag) top.Children.Add(distTag);
         if (badge is not null) { badge.Margin = new Thickness(8, 0, 0, 0); top.Children.Add(badge); }
         left.Children.Add(top);
 

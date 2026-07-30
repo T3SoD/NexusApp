@@ -351,9 +351,23 @@ public sealed partial class TradePage
         grid.RowDefinitions.Add(new RowDefinition());
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+        // Terminal lookups for both legs, resolved once and reused below both for the System tags
+        // and for the optional distance tag next to the tier chip (never a second linear scan).
+        terminals.TryGetValue(r.BuyRow.TerminalId, out var buyTerm);
+        terminals.TryGetValue(r.SellRow.TerminalId, out var sellTerm);
+
         var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         head.Children.Add(new TextBlock { Text = r.BuyRow.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
         head.Children.Add(TierChip(r.Tier));
+        // Owner's ask, 2026-07-30 (decorating beyond the approved mock): the real gigameter
+        // distance between the buy and sell legs, only when both resolve on the starmap in the
+        // same system - DistanceMeters already encodes both the resolution and the same-system
+        // gate, so this is a single call, not a duplicated check.
+        if (_starmap.DistanceMeters(buyTerm, sellTerm) is { } routeDistanceM
+            && DistanceTag(StarmapCatalog.FormatGm(routeDistanceM)) is { } routeDistTag)
+        {
+            head.Children.Add(routeDistTag);
+        }
         Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
         grid.Children.Add(head);
 
@@ -375,10 +389,10 @@ public sealed partial class TradePage
         Grid.SetRow(profit, 0); Grid.SetRowSpan(profit, 2); Grid.SetColumn(profit, 1);
         grid.Children.Add(profit);
 
-        // System tags for both legs, resolved from the terminal lookup RebuildPlanner built once
-        // this rebuild (dictionary read per row, not a linear scan of Terminals.Rows).
-        string? buySystem = terminals.TryGetValue(r.BuyRow.TerminalId, out var buyTerm) ? buyTerm.System : null;
-        string? sellSystem = terminals.TryGetValue(r.SellRow.TerminalId, out var sellTerm) ? sellTerm.System : null;
+        // System tags for both legs, reusing the terminal lookups resolved above (dictionary read
+        // per row, not a linear scan of Terminals.Rows).
+        string? buySystem = buyTerm?.System;
+        string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));

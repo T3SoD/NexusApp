@@ -66,6 +66,10 @@ public sealed partial class TradePage : UserControl
     private TextBlock _sctAgeValue = null!;
     private Ellipse _sctPillDot = null!;
 
+    // Datamined starmap positions (owner's ask, 2026-07-30), shared by the Planner and Sell flows'
+    // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
+    private readonly StarmapCatalog _starmap = StarmapCatalog.LoadEmbedded();
+
     public TradePage()
     {
         _underlineBrush = new SolidColorBrush(Hud.Col("AccentColor"));
@@ -335,6 +339,26 @@ public sealed partial class TradePage : UserControl
         return new TextBlock
         {
             Text = system.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+            Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+    }
+
+    // Distance tag (owner's ask, 2026-07-30, decorating beyond the approved mock): a dim gigameter
+    // readout naming the real straight-line distance between a route's two legs (or the origin and
+    // a buyer), shown only when StarmapCatalog resolved both ends in the same system. Same dim/
+    // small/no-chrome geometry as SystemTag right above, but a SIBLING helper rather than a shared
+    // one - SystemTag's ToUpperInvariant would turn "Gm" into "GM", which is not the unit's real
+    // casing, so this keeps the formatted text exactly as StarmapCatalog.FormatGm produced it.
+    // Absent (never a placeholder or dash) for null/whitespace - every non-resolving path (either
+    // terminal missing, either side unresolved on the starmap, or a cross-system pair) already
+    // stops before this is even called.
+    internal static FrameworkElement? DistanceTag(string? formatted)
+    {
+        if (string.IsNullOrWhiteSpace(formatted)) return null;
+        return new TextBlock
+        {
+            Text = formatted, FontFamily = Hud.Font("UiFont"), FontSize = 9,
             FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
             Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
         };
