@@ -141,7 +141,6 @@ public sealed partial class TradePage : UserControl
 
     // Task 12/13/14 replace these three bodies outright (interim stub, same pattern as the
     // env-autofollow plan's Task 4/5 "swap the interim expression").
-    private void RebuildPlanner() { }
     private void RebuildSell() { }
     private void RebuildPrices() { }
 

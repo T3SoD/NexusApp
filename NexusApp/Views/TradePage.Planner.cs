@@ -1,0 +1,375 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
+using NexusApp.Services;
+using NexusApp.Services.Cargo;
+using NexusApp.Models.Cargo;
+
+namespace NexusApp.Views;
+
+// Trip-coverage bar tier/fill math (mock tripTier/tripFillPct, index.html:572,579). Pure, so it is
+// unit tested directly rather than only through the row it renders inside.
+internal static class TradeBarMath
+{
+    public static string Tier(int n, int tripQty) =>
+        n >= tripQty ? "ok" : n >= tripQty / 2.0 ? "amber" : "danger";
+
+    public static double FillFraction(int n, int tripQty) =>
+        tripQty > 0 ? Math.Min(1.0, n / (double)tripQty) : 1.0;
+
+    public static Brush Color(string tier) => tier switch
+    {
+        "ok"     => Hud.Br("OkBrush"),
+        "amber"  => Hud.Br("AccentBrush"),
+        _        => Hud.Br("DangerBrush"),
+    };
+}
+
+public sealed partial class TradePage
+{
+    private ComboBox _shipCombo = null!;
+    private TextBox _budgetBox = null!;
+    private Border _fromHerePill = null!;
+    private Border _anywherePill = null!;
+    private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
+    private int _plannerExpanded = -1;
+
+    // Session-typed budget (ASSUMED not in the fixed AppSettings contract - see task-12 brief's
+    // "NOTE on a second small assumption": AppSettings has no TradeBudget field, so this holds the
+    // value in memory only; it resets each session, which does not affect anything else in this file.
+    private string _budgetText = "";
+
+    private ShipCargoDef CurrentShip() =>
+        _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
+
+    private double? CurrentBudget()
+    {
+        var digits = new string((_budgetBox?.Text ?? "").Where(char.IsDigit).ToArray());
+        return digits.Length > 0 && double.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : null;
+    }
+
+    private void RebuildPlanner()
+    {
+        if (!EnsureMarketConsent(PlannerHost)) return;
+        PlannerHost.Children.Clear();
+        _plannerExpanded = -1;
+
+        var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
+
+        var shipGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        shipGrp.Children.Add(FieldLabel("Ship"));
+        _shipCombo = new ComboBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusComboBox"), MinWidth = 200,
+            ItemsSource = _shipCatalog.Ships.Select(s => $"{s.DisplayName} - {s.TotalScu} SCU").ToList(),
+        };
+        int shipIdx = _shipCatalog.Ships.ToList().FindIndex(s => s.Id == App.Settings.Current.TradeShipId);
+        _shipCombo.SelectedIndex = shipIdx >= 0 ? shipIdx : 0;
+        _shipCombo.SelectionChanged += (_, _) =>
+        {
+            var ship = _shipCatalog.Ships.ElementAt(_shipCombo.SelectedIndex);
+            App.Settings.Current.TradeShipId = ship.Id;
+            App.Settings.Save();
+            Logger.Info($"[UI] Trade planner: ship {ship.Id}");
+            RebuildPlanner();
+        };
+        shipGrp.Children.Add(_shipCombo);
+        inputRow.Children.Add(shipGrp);
+
+        var budgetGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        budgetGrp.Children.Add(FieldLabel("Budget (optional)"));
+        _budgetBox = new TextBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusTextBox"), FontFamily = Hud.Font("MonoFont"),
+            Width = 150, Text = _budgetText,
+        };
+        _budgetBox.LostFocus += (_, _) =>
+        {
+            if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetAnchor/SetScope: no-op blur never logs or rebuilds
+            _budgetText = _budgetBox.Text;
+            Logger.Info("[UI] Trade planner: budget updated");
+            RebuildPlanner();
+        };
+        budgetGrp.Children.Add(_budgetBox);
+        inputRow.Children.Add(budgetGrp);
+
+        var anchorGrp = new StackPanel();
+        anchorGrp.Children.Add(FieldLabel("Routes"));
+        var anchorRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _fromHerePill = ScopePill($"FROM HERE ({OriginLabel})");
+        _anywherePill = ScopePill("ANYWHERE");
+        _fromHerePill.MouseLeftButtonUp += (_, _) => SetAnchor(true);
+        _anywherePill.MouseLeftButtonUp += (_, _) => SetAnchor(false);
+        anchorRow.Children.Add(_fromHerePill);
+        anchorRow.Children.Add(_anywherePill);
+        anchorGrp.Children.Add(anchorRow);
+        inputRow.Children.Add(anchorGrp);
+
+        PlannerHost.Children.Add(inputRow);
+        RefreshAnchorPills();
+
+        PlannerHost.Children.Add(new TextBlock
+        {
+            Text = "Ranked by what a trip really pays with your ship and budget, not raw margin. Bars show trip coverage.",   // mock:857, verbatim
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
+        });
+
+        var snap = App.Market.Snapshot;
+        if (snap is null || snap.TradePrices.Rows.Count == 0)
+        {
+            PlannerHost.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
+            return;
+        }
+
+        var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
+        var ship = CurrentShip();
+        var originIds = App.Settings.Current.TradeAnchorFromHere ? OriginTerminalIds(snap.Terminals.Rows) : null;
+        var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
+            CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25);
+
+        if (routes.Count == 0)
+        {
+            PlannerHost.Children.Add(new TextBlock
+            {
+                Text = App.Settings.Current.TradeAnchorFromHere
+                    ? "No routes buy from here right now. Try ANYWHERE, or a wider scope."
+                    : "No routes match the current scope and budget.",
+                FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush"),
+            });
+            return;
+        }
+
+        for (int i = 0; i < routes.Count; i++)
+        {
+            var row = BuildRouteRow(routes[i], i, ship);
+            CascadeIn(row, i);
+            PlannerHost.Children.Add(row);
+        }
+
+        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, anchor {(App.Settings.Current.TradeAnchorFromHere ? "FROM HERE" : "ANYWHERE")}");
+    }
+
+    private void SetAnchor(bool fromHere)
+    {
+        if (App.Settings.Current.TradeAnchorFromHere == fromHere) return;
+        App.Settings.Current.TradeAnchorFromHere = fromHere;
+        App.Settings.Save();
+        Logger.Info($"[UI] Trade planner anchor: {(fromHere ? "FROM HERE" : "ANYWHERE")}");
+        RebuildPlanner();
+    }
+
+    private void RefreshAnchorPills()
+    {
+        bool fromHere = App.Settings.Current.TradeAnchorFromHere;
+        SetPillOn(_fromHerePill, fromHere);
+        SetPillOn(_anywherePill, !fromHere);
+    }
+
+    private static void SetPillOn(Border pill, bool on)
+    {
+        var text = (TextBlock)pill.Child;
+        text.Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
+        pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
+        pill.Background = on ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush");
+    }
+
+    private static TextBlock FieldLabel(string text) => new()
+    {
+        Text = text.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+        Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 6),
+    };
+
+    // Serve-stale-with-age (house rule): a snapshot that has never fetched shows the neutral empty
+    // state; one that has fetched but currently has zero rows (e.g. mid-refresh) still shows its age.
+    private static TextBlock EmptyOrStaleNote(DateTime? fetchedUtc) => new()
+    {
+        Text = fetchedUtc is null || fetchedUtc.Value == default
+            ? "No trade price data yet. It refreshes about once an hour while Nexus is open."
+            : $"No trade routes to show right now (data from {MarketNotice.FormatAge(DateTime.UtcNow - fetchedUtc!.Value)}).",
+        FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush"),
+    };
+
+    // Trip-coverage bar: track 6px, radius 3, fill glow blur6/.5 (mock:657-661, .legBarTrack/.legBarFill).
+    private static UIElement TripBar(double frac, Brush color, string tooltip)
+    {
+        var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(((SolidColorBrush)color).Color) { Opacity = 0.12 }, ToolTip = tooltip };
+        var fill = new Border
+        {
+            Height = 6, CornerRadius = new CornerRadius(3), Background = color, HorizontalAlignment = HorizontalAlignment.Left,
+            Effect = new DropShadowEffect { Color = ((SolidColorBrush)color).Color, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5 },
+        };
+        var host = new Grid();
+        host.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.0001, frac), GridUnitType.Star) });
+        host.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.0001, 1 - frac), GridUnitType.Star) });
+        Grid.SetColumn(fill, 0);
+        var grid = new Grid();
+        grid.Children.Add(track);
+        host.Children.Add(fill);
+        grid.Children.Add(host);
+        return grid;
+    }
+
+    // 16x16 chevron, rotates 0/90 on expand. Mock uses a framer spring (EXPAND_SPRING) - FLAGGED
+    // DEVIATION per this section's brief: the app has no physics-spring expander anywhere
+    // (confirmed: every existing expander, SettingsPage.RevealPane included, is cubic-bezier Reveal
+    // over a fixed ms duration), so this uses Motion.Reveal over Motion.DrillMs instead.
+    private static Path ChevronGlyph() => new()
+    {
+        Width = 12, Height = 12, Data = Geometry.Parse("M5,3 L11,8 L5,13"),   // mock:538-539
+        Stroke = Hud.Br("FgDimBrush"), StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round,
+        StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent,
+        Stretch = Stretch.Uniform, RenderTransformOrigin = new Point(0.5, 0.5),
+    };
+
+    private static void SetChevronOpen(Path chevron, bool open)
+    {
+        var rt = chevron.RenderTransform as RotateTransform ?? new RotateTransform();
+        chevron.RenderTransform = rt;
+        double target = open ? 90 : 0;
+        if (Motion.Reduced) { rt.Angle = target; return; }
+        rt.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(Motion.DrillMs)) { EasingFunction = Motion.Reveal });
+    }
+
+    private FrameworkElement BuildRouteRow(TradeRoute r, int index, ShipCargoDef ship)
+    {
+        var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, out var chevron, out var detailHost),
+            out var cardFrame, out _, chamfer: 8, padding: new Thickness(16, 13, 18, 13));
+        frame.Children.Add(PositionChevron(chevron));
+        var host = new Border { Cursor = Cursors.Hand, Child = frame, Margin = new Thickness(0, 0, 0, 10) };
+        host.MouseLeftButtonUp += (_, _) =>
+        {
+            bool nowOpen = _plannerExpanded != index;
+            _plannerExpanded = nowOpen ? index : -1;
+            detailHost.Visibility = nowOpen ? Visibility.Visible : Visibility.Collapsed;
+            SetChevronOpen(chevron, nowOpen);
+        };
+        return host;
+    }
+
+    private static Grid PositionChevron(Path chevron)
+    {
+        var grid = new Grid { IsHitTestVisible = false };
+        grid.Children.Add(new Border { Child = chevron, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        return grid;
+    }
+
+    private UIElement BuildRouteRowContent(TradeRoute r, int index, ShipCargoDef ship, out Path chevron, out Border detailHost)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        head.Children.Add(new TextBlock { Text = r.BuyRow.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        head.Children.Add(TierChip(r.Tier));
+        Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
+        grid.Children.Add(head);
+
+        var profit = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        profit.Children.Add(new TextBlock { Text = "PROFIT / TRIP", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
+        var profitRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        profitRow.Children.Add(new TextBlock
+        {
+            Text = r.Net.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 22,
+            Foreground = Hud.Br("AccentBrush"),
+            Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 },   // mock:236
+        });
+        profitRow.Children.Add(new TextBlock { Text = " aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(4, 0, 0, 3) });
+        profit.Children.Add(profitRow);
+        profit.Children.Add(new TextBlock
+        {
+            Text = $"{r.TripQty:n0} SCU trip - after fees", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right,
+        });
+        Grid.SetRow(profit, 0); Grid.SetRowSpan(profit, 2); Grid.SetColumn(profit, 1);
+        grid.Children.Add(profit);
+
+        var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));
+        legs.Children.Add(new Path
+        {
+            Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
+            StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+            Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
+        });
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc));
+        Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
+        grid.Children.Add(legs);
+
+        bool fits = TradeMath.BoxFits(r.BuyRow.ContainerSizes, ship.MaxContainerScu);   // RoutePlanner already
+                                                                                          // filters incompatible pairs, so this is always true for a
+                                                                                          // returned row - kept explicit rather than assumed silently.
+        detailHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(0, 12, 0, 0), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0) };
+        var detail = new StackPanel();
+        var fitLine = new StackPanel { Orientation = Orientation.Horizontal };
+        fitLine.Children.Add(new Path { Data = Geometry.Parse("M5,13 L10,18 L19,6"), Width = 15, Height = 15, Stroke = Hud.Br("OkBrush"), StrokeThickness = 1.7, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent, Margin = new Thickness(0, 0, 8, 0) });
+        fitLine.Children.Add(new TextBlock { Text = fits ? $"Box size OK for {ship.DisplayName} ({ship.MaxContainerScu} SCU crates)" : "Container size mismatch for this ship", FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush") });
+        detail.Children.Add(fitLine);
+        detail.Children.Add(new TextBlock { Text = $"Trip size {r.TripQty:n0} SCU = smallest of: {string.Join(", ", r.TripParts)}", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 9, 0, 0) });
+        var feeLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 9, 0, 0) };
+        feeLine.Children.Add(FeePart("Gross", r.Gross, Hud.Br("FgBrush")));
+        if (r.Gross - r.Net != 0) feeLine.Children.Add(FeePart("Fees", r.Gross - r.Net, Hud.Br("FgBrush")));
+        feeLine.Children.Add(FeePart("Net profit/trip", r.Net, Hud.Br("AccentBrush")));
+        detail.Children.Add(feeLine);
+        detailHost.Child = detail;
+        Grid.SetRow(detailHost, 2); Grid.SetColumnSpan(detailHost, 2);
+        grid.Children.Add(detailHost);
+
+        chevron = ChevronGlyph();
+        return grid;
+    }
+
+    private static StackPanel FeePart(string label, double value, Brush valueColor)
+    {
+        var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 20, 0) };
+        p.Children.Add(new TextBlock { Text = $"{label}: ", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush") });
+        p.Children.Add(new TextBlock { Text = $"{value:n0} aUEC", FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = valueColor });
+        return p;
+    }
+
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc)
+    {
+        var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
+        leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition());
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = terminalName };
+        Grid.SetColumn(name, 0); top.Children.Add(name);
+        var priceRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        priceRow.Children.Add(new TextBlock { Text = price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush") });
+        priceRow.Children.Add(new TextBlock { Text = "/SCU", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(3, 0, 0, 0) });
+        Grid.SetColumn(priceRow, 1); top.Children.Add(priceRow);
+        leg.Children.Add(top);
+
+        string tier = TradeBarMath.Tier(qty, tripQty);
+        var barRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
+        var bar = new Grid { Width = 90 };
+        bar.Children.Add(TripBar(TradeBarMath.FillFraction(qty, tripQty), TradeBarMath.Color(tier),
+            $"This bar shows how much of your trip the {(qtyLabel == "STOCK" ? "stock" : "demand")} covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
+        barRow.Children.Add(bar);
+        barRow.Children.Add(new TextBlock { Text = $"{qtyLabel} {qty:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0) });
+        leg.Children.Add(barRow);
+
+        var age = DateTime.UtcNow - modifiedUtc;
+        // FreshChip always appends " ago" itself, so this strips that suffix from FormatAge's
+        // "Xm/Xh/Xd ago" shapes before handing it over. FormatAge's "just now" case (age < 1 minute)
+        // has no " ago" to strip - passing it through as-is would render "just now ago", so that one
+        // case gets its own short unit fragment instead, matching FreshChip's "number+unit" contract.
+        var rawAge = MarketNotice.FormatAge(age);
+        var chipAge = rawAge.EndsWith(" ago", StringComparison.Ordinal) ? rawAge[..^4] : "<1m";
+        leg.Children.Add(FreshChip(chipAge, age.TotalHours >= 24));
+        return leg;
+    }
+}
