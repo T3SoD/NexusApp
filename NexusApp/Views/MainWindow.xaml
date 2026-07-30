@@ -370,7 +370,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <views:AnimatedDockIcon IconKey="network" Width="28" Height="28"/>
+                                        <views:AnimatedDockIcon IconKey="trade" Width="28" Height="28"/>
                                     </views:ChamferPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Trade" Style="{StaticResource DockTileName}"/>
