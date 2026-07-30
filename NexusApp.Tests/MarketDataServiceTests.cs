@@ -105,18 +105,28 @@ public class MarketDataServiceTests : IDisposable
             $"\"price_sell_avg_week\":{r.sell},\"game_version\":\"4.9.1\",\"date_modified\":1750000000," +
             $"\"terminal_name\":\"Terminal {r.terminal}\"}}")) + "]}";
 
+    private const string TradePricesAllBody = """
+        {"status":"ok","data":[
+          {"id_terminal":400,"id_commodity":11,"price_buy":0,"price_sell":8500,
+           "scu_buy":0,"scu_sell_stock":1200,"status_buy":0,"status_sell":3,
+           "container_sizes":"1,2,4,8,16,24,32","date_modified":1750000000,
+           "terminal_name":"Trade Terminal 400","commodity_name":"Bexalite"}
+        ],"message":""}
+        """;
+
     private static void SeedAll(FakeTransport t)
     {
         t.Responses[Url("game_versions")] = GameVersionsBody;
         t.Responses[Url("commodities")] = CommoditiesBody;
         t.Responses[RefinedUrl(11)] = PricesBody((200, 11, 500));
         t.Responses[RefinedUrl(21)] = PricesBody((201, 21, 600));
+        t.Responses[Url("commodities_prices_all")] = TradePricesAllBody;
         t.Responses[Url("refineries_yields")] = YieldsBody;
         t.Responses[Url("terminals")] = TerminalsBody;
     }
 
     private (MarketDataService svc, FakeTransport t, SettingsService settings, string snapshotPath) Make(
-        bool? enabled = true, bool demo = false)
+        bool? enabled = true, bool demo = false, Func<bool>? isForegroundRelevant = null)
     {
         var t = new FakeTransport();
         var dir = Path.Combine(Path.GetTempPath(), "nexus-market-svc-test-" + Path.GetRandomFileName());
@@ -125,7 +135,7 @@ public class MarketDataServiceTests : IDisposable
         var settings = new SettingsService(Path.Combine(dir, "settings.json"));
         settings.Current.MarketDataEnabled = enabled;
         var snapshotPath = Path.Combine(dir, "cache", "uex_snapshot.json");
-        return (new MarketDataService(settings, t, snapshotPath, demo), t, settings, snapshotPath);
+        return (new MarketDataService(settings, t, snapshotPath, demo, isForegroundRelevant), t, settings, snapshotPath);
     }
 
     // Relative to now, never a fixed calendar date: a hardcoded stamp would silently change
@@ -166,6 +176,14 @@ public class MarketDataServiceTests : IDisposable
             {
                 new(900, 11, 111, 111, "4.8.0", stamp, "Old refinery 11"),
                 new(901, 21, 222, 222, "4.8.0", stamp, "Old refinery 21"),
+            },
+        },
+        TradePrices = new MarketDataset<TradePriceRow>
+        {
+            FetchedUtc = stamp,
+            Rows = new List<TradePriceRow>
+            {
+                new(950, 11, 0, 8500, 0, 1200, 0, 3, "1,2,4,8,16,24,32", stamp, "Old trade terminal 11", "Bexalite"),
             },
         },
         Yields = new MarketDataset<MarketYieldRow> { FetchedUtc = referenceStamp ?? stamp },
@@ -255,7 +273,12 @@ public class MarketDataServiceTests : IDisposable
         // The refined leg asks for the two resolved parent ids and nothing else.
         Assert.Equal(1, t.CountOf(RefinedUrl(11)));
         Assert.Equal(1, t.CountOf(RefinedUrl(21)));
-        Assert.Equal(2, t.Requested.Count(u => u.StartsWith(Url("commodities_prices"), StringComparison.Ordinal)));
+        Assert.Equal(2, t.Requested.Count(u => u.StartsWith(Url("commodities_prices?"), StringComparison.Ordinal)));
+        // The bulk trading-tab endpoint is a separate, single call, not folded into that count.
+        Assert.Equal(1, t.CountOf(Url("commodities_prices_all")));
+        Assert.Single(snap.TradePrices.Rows);
+        Assert.Equal(11, snap.TradePrices.Rows[0].CommodityId);
+        Assert.NotEqual(default, snap.TradePrices.FetchedUtc);
         Assert.Contains(snap.RefinedPrices.Rows, r => r.CommodityId == 11 && r.TerminalId == 200);
         Assert.Contains(snap.RefinedPrices.Rows, r => r.CommodityId == 21 && r.TerminalId == 201);
 
@@ -550,7 +573,7 @@ public class MarketDataServiceTests : IDisposable
         svc.Dispose();     // cancels the cycle while it sits on the second refined request
         await cycle;
 
-        var refinedRequests = t.Requested.Where(u => u.StartsWith(Url("commodities_prices"), StringComparison.Ordinal)).ToList();
+        var refinedRequests = t.Requested.Where(u => u.StartsWith(Url("commodities_prices?"), StringComparison.Ordinal)).ToList();
         Assert.Equal(2, refinedRequests.Count);
         var completedId = refinedRequests[0].EndsWith("=11", StringComparison.Ordinal) ? 11 : 21;
         var cancelledId = completedId == 11 ? 21 : 11;
@@ -601,5 +624,115 @@ public class MarketDataServiceTests : IDisposable
         svc.MaybeAutoRefresh();
 
         Assert.Empty(t.Requested);
+    }
+
+    // ── (i) Foreground gating ──────────────────────────────────────────────────
+
+    [Fact]
+    public void MaybeAutoRefresh_ForegroundNotRelevant_MakesNoRequests()
+    {
+        var (svc, t, _, _) = Make(isForegroundRelevant: () => false);
+        SeedAll(t);
+
+        svc.MaybeAutoRefresh();
+
+        Assert.Empty(t.Requested);
+        Assert.Null(svc.Snapshot);
+    }
+
+    [Fact]
+    public void MaybeAutoRefresh_ForegroundRelevant_RunsNormally()
+    {
+        var (svc, t, _, _) = Make(isForegroundRelevant: () => true);
+        SeedAll(t);
+
+        svc.MaybeAutoRefresh();
+
+        // MaybeAutoRefresh is fire-and-forget (Task.Run), so the request only lands on the
+        // pool thread some time after this call returns; a bounded spin-wait replaces a flaky
+        // instantaneous check.
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public void MaybeAutoRefresh_NoForegroundFuncGiven_DefaultsToAlwaysRelevant()
+    {
+        var (svc, t, _, _) = Make();   // no isForegroundRelevant passed: every pre-existing caller's behavior
+        SeedAll(t);
+
+        svc.MaybeAutoRefresh();
+
+        // Same fire-and-forget timing note as above.
+        Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));
+    }
+
+    // The manual path (a "Refresh now" action) is not gated by foreground relevance, matching
+    // the existing "manual ignores the consent toggle too" precedent.
+    [Fact]
+    public async Task Refresh_ManualWithForegroundNotRelevant_StillRuns()
+    {
+        var (svc, t, _, _) = Make(isForegroundRelevant: () => false);
+        SeedAll(t);
+
+        await svc.RefreshAsync(manual: true);
+
+        Assert.NotEmpty(t.Requested);
+        Assert.NotNull(svc.Snapshot);
+    }
+
+    // ── (j) TradePrices bulk fetch ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task Refresh_TradePrices_ParsesBulkEndpointIntoDataset()
+    {
+        var (svc, t, _, _) = Make();
+        SeedAll(t);
+
+        await svc.RefreshAsync(manual: true);
+
+        var row = Assert.Single(svc.Snapshot!.TradePrices.Rows);
+        Assert.Equal(400, row.TerminalId);
+        Assert.Equal(11, row.CommodityId);
+        Assert.Equal(8500, row.Sell);
+        Assert.NotEqual(default, svc.Snapshot.TradePrices.FetchedUtc);
+    }
+
+    [Fact]
+    public async Task Refresh_TradePricesEndpointFails_KeepsPreviousRowsAndStamp()
+    {
+        var (svc, t, _, snapshotPath) = Make();
+        var previousStamp = OldStamp;
+        MarketSnapshotFile.Save(snapshotPath, PreviousSnapshot(previousStamp));
+        svc.LoadSnapshotFromDisk();
+
+        SeedAll(t);
+        t.Responses[Url("commodities_prices_all")] = "<html>502</html>";
+
+        await svc.RefreshAsync(manual: true);
+
+        var snap = svc.Snapshot!;
+        Assert.Single(snap.TradePrices.Rows);
+        Assert.Equal(950, snap.TradePrices.Rows[0].TerminalId);   // the OLD row, not replaced
+        Assert.Equal(previousStamp, snap.TradePrices.FetchedUtc);
+        Assert.NotNull(svc.LastError);
+    }
+
+    [Fact]
+    public async Task Refresh_TradePricesEmptyButValid_KeepsPreviousRowsWithoutAnError()
+    {
+        var (svc, t, _, snapshotPath) = Make();
+        var previousStamp = OldStamp;
+        MarketSnapshotFile.Save(snapshotPath, PreviousSnapshot(previousStamp));
+        svc.LoadSnapshotFromDisk();
+
+        SeedAll(t);
+        t.Responses[Url("commodities_prices_all")] = """{"status":"ok","data":[]}""";
+
+        await svc.RefreshAsync(manual: true);
+
+        var snap = svc.Snapshot!;
+        Assert.Single(snap.TradePrices.Rows);
+        Assert.Equal(previousStamp, snap.TradePrices.FetchedUtc);
+        Assert.Null(svc.LastError);
     }
 }

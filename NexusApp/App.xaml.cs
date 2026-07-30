@@ -245,7 +245,10 @@ public partial class App : Application
 
         // Market data service: loads any snapshot already on disk and kicks an auto refresh if
         // the consent toggle and the hourly throttle allow it. Inert in the demo profile.
-        Market = new MarketDataService(Settings);
+        // Foreground-gated (2026-07-29, trading tab): reuses the existing foreground facility so
+        // the hourly cycle (now including the bulk trading-tab price pull) does not poll while
+        // neither Nexus nor Star Citizen has focus.
+        Market = new MarketDataService(Settings, () => App.IsForegroundRelevant);
         Market.Start();
 
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
