@@ -154,6 +154,8 @@ public sealed partial class TradePage
             return;
         }
 
+        // Terminal lookup, built once per rebuild: TerminalId -> MarketTerminal. Reused below both
+        // for origin resolution and for each route's System tags (Buy/Sell legs).
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
         var ship = CurrentShip();
         var originIds = App.Settings.Current.TradeAnchorFromHere ? OriginTerminalIds(snap.Terminals.Rows) : null;
@@ -191,7 +193,7 @@ public sealed partial class TradePage
 
         for (int i = 0; i < routes.Count; i++)
         {
-            var row = BuildRouteRow(routes[i], i, ship);
+            var row = BuildRouteRow(routes[i], i, ship, terminals);
             CascadeIn(row, i);
             _plannerResults.Children.Add(row);
         }
@@ -317,9 +319,9 @@ public sealed partial class TradePage
             new DoubleAnimation(target, TimeSpan.FromMilliseconds(Motion.DrillMs)) { EasingFunction = Motion.Reveal });
     }
 
-    private FrameworkElement BuildRouteRow(TradeRoute r, int index, ShipCargoDef ship)
+    private FrameworkElement BuildRouteRow(TradeRoute r, int index, ShipCargoDef ship, Dictionary<int, MarketTerminal> terminals)
     {
-        var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, out var chevron, out var detailHost),
+        var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, terminals, out var chevron, out var detailHost),
             out var cardFrame, out _, chamfer: 8, padding: new Thickness(16, 13, 18, 13));
         frame.Children.Add(PositionChevron(chevron));
         var host = new Border { Cursor = Cursors.Hand, Child = frame, Margin = new Thickness(0, 0, 0, 10) };
@@ -340,7 +342,7 @@ public sealed partial class TradePage
         return grid;
     }
 
-    private UIElement BuildRouteRowContent(TradeRoute r, int index, ShipCargoDef ship, out Path chevron, out Border detailHost)
+    private UIElement BuildRouteRowContent(TradeRoute r, int index, ShipCargoDef ship, Dictionary<int, MarketTerminal> terminals, out Path chevron, out Border detailHost)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -373,15 +375,20 @@ public sealed partial class TradePage
         Grid.SetRow(profit, 0); Grid.SetRowSpan(profit, 2); Grid.SetColumn(profit, 1);
         grid.Children.Add(profit);
 
+        // System tags for both legs, resolved from the terminal lookup RebuildPlanner built once
+        // this rebuild (dictionary read per row, not a linear scan of Terminals.Rows).
+        string? buySystem = terminals.TryGetValue(r.BuyRow.TerminalId, out var buyTerm) ? buyTerm.System : null;
+        string? sellSystem = terminals.TryGetValue(r.SellRow.TerminalId, out var sellTerm) ? sellTerm.System : null;
+
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
@@ -436,19 +443,28 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc)
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition());
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // name keeps TextTrimming.CharacterEllipsis as its own direct Grid-cell child (deliberately
+        // NOT wrapped into a StackPanel with the tag): a horizontal StackPanel measures its children
+        // with infinite available width in the stack direction, which defeats CharacterEllipsis -
+        // this leg is the one site on the page that relies on that trimming for long terminal
+        // names, so the tag gets its own Auto column instead, immediately after the name's Star
+        // column. That preserves the exact trimming guarantee this site was built with while still
+        // placing the tag right after the name, inline, in the same row.
         var name = new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = terminalName };
         Grid.SetColumn(name, 0); top.Children.Add(name);
+        if (SystemTag(system) is { } tag) { Grid.SetColumn(tag, 1); top.Children.Add(tag); }
         var priceRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         priceRow.Children.Add(new TextBlock { Text = price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush") });
         priceRow.Children.Add(new TextBlock { Text = "/SCU", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(3, 0, 0, 0) });
-        Grid.SetColumn(priceRow, 1); top.Children.Add(priceRow);
+        Grid.SetColumn(priceRow, 2); top.Children.Add(priceRow);
         leg.Children.Add(top);
 
         string tier = TradeBarMath.Tier(qty, tripQty);

@@ -115,6 +115,10 @@ public sealed partial class TradePage
             return;
         }
 
+        // Terminal lookup, built once per rebuild: TerminalId -> MarketTerminal, so each row's
+        // System tag is a dictionary read rather than a linear scan of Terminals.Rows.
+        var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
+
         var uexRows = snap.TradePrices.Rows
             .Where(r => string.Equals(r.CommodityName, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -153,7 +157,7 @@ public sealed partial class TradePage
 
         for (int i = 0; i < top.Count; i++)
         {
-            var row = BuildPriceRow(top[i], cols);
+            var row = BuildPriceRow(top[i], cols, terminals);
             CascadeIn(row, i);
             _pricesResults.Children.Add(row);
         }
@@ -196,7 +200,8 @@ public sealed partial class TradePage
         chip.Background = on ? Hud.Br("AccentFaintBrush") : Brushes.Transparent;
     }
 
-    private FrameworkElement BuildPriceRow(PriceRowItem item, System.Collections.Generic.List<ColumnDefinition> colTemplate)
+    private FrameworkElement BuildPriceRow(PriceRowItem item, System.Collections.Generic.List<ColumnDefinition> colTemplate,
+        System.Collections.Generic.Dictionary<int, MarketTerminal> terminals)
     {
         var grid = new Grid();
         foreach (var c in colTemplate) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = c.Width });
@@ -204,8 +209,15 @@ public sealed partial class TradePage
 
         if (item.Uex is { } r)
         {
-            var term = new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(term, col++); grid.Children.Add(term);
+            // Terminal name lives directly in a Grid cell (the Star column), not a StackPanel, so
+            // name+tag are wrapped in a horizontal StackPanel within that same cell (house idiom,
+            // matches the SCT-only branch's termPanel below) - this column is the widest of the row
+            // and carries no trimming, so the tag never wraps or clips.
+            var termPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            termPanel.Children.Add(new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
+            string? system = terminals.TryGetValue(r.TerminalId, out var termInfo) ? termInfo.System : null;
+            if (SystemTag(system) is { } tag) termPanel.Children.Add(tag);
+            Grid.SetColumn(termPanel, col++); grid.Children.Add(termPanel);
 
             var sell = new TextBlock { Text = r.Sell.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(sell, col++); grid.Children.Add(sell);

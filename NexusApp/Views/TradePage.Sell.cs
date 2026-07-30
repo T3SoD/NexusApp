@@ -184,6 +184,8 @@ public sealed partial class TradePage
         int qty = SellQty;
         if (qty <= 0) { _sellResults.Children.Add(new TextBlock { Text = "Enter a quantity to rank buyers.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
+        // Terminal lookup, built once per rebuild: TerminalId -> MarketTerminal. Reused below both
+        // for origin resolution and for each ranked buyer row's System tag.
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
         var originIds = OriginTerminalIds(snap.Terminals.Rows);
         // SellLookup takes ONE optional origin, not a set. Every terminal of one location shares the
@@ -197,7 +199,7 @@ public sealed partial class TradePage
 
         for (int i = 0; i < buyers.Count; i++)
         {
-            var row = BuildBuyerRow(buyers[i], qty);
+            var row = BuildBuyerRow(buyers[i], qty, terminals);
             CascadeIn(row, i);
             _sellResults.Children.Add(row);
         }
@@ -297,8 +299,8 @@ public sealed partial class TradePage
         return false;
     }
 
-    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty)
-        => WrapBuyerRow(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost), chevron, detailHost,
+    private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals)
+        => WrapBuyerRow(BuildBuyerRowContent(b, qty, terminals, out var chevron, out var detailHost), chevron, detailHost,
                         b.Row.TerminalName, sctOnly: false);
 
     // SCT-only row: a listing SCT has at a terminal UEX has no row for at all. Same row chrome,
@@ -334,9 +336,12 @@ public sealed partial class TradePage
         return wrapper;
     }
 
-    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, out Path chevron, out Border detailHost) =>
-        BuildBuyerRowCore(b.Row.TerminalName, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
+    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals, out Path chevron, out Border detailHost)
+    {
+        string? system = terminals.TryGetValue(b.Row.TerminalId, out var term) ? term.System : null;
+        return BuildBuyerRowCore(b.Row.TerminalName, system, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
             b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), out chevron, out detailHost);
+    }
 
     // Tier omitted (never a placeholder): SctOnlyBuyers only ever returns listings at stations
     // with NO UEX terminal id at all - both CommodityId and RawId null in the map, which is
@@ -349,14 +354,16 @@ public sealed partial class TradePage
     {
         double effectiveValue = Math.Min(qty, s.Quantity) * s.Price;
         var badge = CorroborationBadge(SctOnlyReconciled(s));
-        return BuildBuyerRowCore(s.Location, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, out chevron, out detailHost);
+        // system: null - SCT-only listings have no UEX terminal id to resolve a System from
+        // (BuildSctOnlyBuyerRowContent's doc comment above), so the tag is correctly omitted.
+        return BuildBuyerRowCore(s.Location, null, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, out chevron, out detailHost);
     }
 
     // Shared buyer-row layout: real UEX buyers (SellLookup.Buyer) and SCT-only listings both
     // render through this one builder so the row chrome lives once. tier is null for SCT-only
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
-    private UIElement BuildBuyerRowCore(string terminalName, double price, ProximityTier? tier, int demandScu,
+    private UIElement BuildBuyerRowCore(string terminalName, string? system, double price, ProximityTier? tier, int demandScu,
         DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, out Path chevron, out Border detailHost)
     {
         var grid = new Grid();
@@ -366,8 +373,11 @@ public sealed partial class TradePage
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var left = new StackPanel();
+        // top is already a horizontal StackPanel (the house idiom's "same horizontal container"
+        // case) - the tag slots in right after the terminal name, before price/tier/badge.
         var top = new StackPanel { Orientation = Orientation.Horizontal };
         top.Children.Add(new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(0, 0, 10, 1); top.Children.Add(tag); }
         top.Children.Add(new TextBlock { Text = $"{price:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
         if (tier is { } t) top.Children.Add(TierChip(t));
         if (badge is not null) { badge.Margin = new Thickness(8, 0, 0, 0); top.Children.Add(badge); }

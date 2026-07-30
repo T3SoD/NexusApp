@@ -322,6 +322,22 @@ public sealed partial class TradePage : UserControl
         return raw.EndsWith(" ago", StringComparison.Ordinal) ? raw[..^4] : "<1m";
     }
 
+    // System tag (owner's live-pass ask, 2026-07-30): a dim, small, uppercase suffix naming which
+    // star system (Stanton/Pyro/Nyx) a terminal is in, so ALL-scope rows stay unambiguous. NOT a
+    // chip - no border/background, matches the eyebrow/dim-label idiom used elsewhere on this page
+    // (e.g. the BUY AT / SELL AT eyebrows, HeaderCell). Absent (never a placeholder or dash) for
+    // null/whitespace System - SCT-only rows have no UEX terminal id to resolve one from.
+    internal static FrameworkElement? SystemTag(string? system)
+    {
+        if (string.IsNullOrWhiteSpace(system)) return null;
+        return new TextBlock
+        {
+            Text = system.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+            Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+    }
+
     // ── Tab strip (ported from SettingsPage.cs:133-173, 3 tabs, no right-docked danger tab) ──
     private void BuildStrip()
     {
