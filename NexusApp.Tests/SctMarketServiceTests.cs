@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using NexusApp.Services;
@@ -23,13 +24,33 @@ public class SctMarketServiceTests : IDisposable
         public Dictionary<string, string> Responses { get; } = new();
         public List<string> Requested { get; } = new();
 
-        public Task<string> GetStringAsync(string url, int maxBytes, CancellationToken ct)
+        // Parking: a request for GateUrl waits until Gate is completed OR the cycle token is
+        // cancelled - the same idiom as MarketDataServiceTests.FakeTransport, needed here to make
+        // "Dispose cancels a refresh parked mid-request" deterministic without a sleep.
+        public string? GateUrl { get; set; }
+        public TaskCompletionSource<bool> Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // How long a parked request lingers AFTER cancellation before it actually throws,
+        // simulating a real unwind that takes measurable time. Without this, cancelling and
+        // NOT waiting (the bug the drain fixes) is indistinguishable from cancelling and
+        // waiting, because the fake would unwind instantly either way.
+        public TimeSpan CancelUnwindDelay { get; set; } = TimeSpan.Zero;
+
+        public async Task<string> GetStringAsync(string url, int maxBytes, CancellationToken ct)
         {
             Requested.Add(url);
+            if (GateUrl is not null && url == GateUrl)
+            {
+                var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using (ct.Register(() => cancelled.TrySetResult(true)))
+                    await Task.WhenAny(Gate.Task, cancelled.Task).ConfigureAwait(false);
+                if (CancelUnwindDelay > TimeSpan.Zero)
+                    await Task.Delay(CancelUnwindDelay).ConfigureAwait(false);   // no ct: models real unwind latency
+            }
             ct.ThrowIfCancellationRequested();
             if (!Responses.TryGetValue(url, out var body))
                 throw new HttpRequestException("404 (Not Found)", null, System.Net.HttpStatusCode.NotFound);
-            return Task.FromResult(body);
+            return body;
         }
     }
 
@@ -146,6 +167,42 @@ public class SctMarketServiceTests : IDisposable
         await svc.RefreshAsync(manual: true, NowUtc);
 
         Assert.Equal(2, t.Requested.Count);   // page 0, then the empty page 1 that ends the loop
+    }
+
+    // Cancelling alone is not enough: a cancelled page loop still falls through and writes the
+    // snapshot file on its way out, and that write must not race whatever runs right after
+    // Dispose returns (App.OnExit calls Market.Dispose() then Sct.Dispose() in that order). The
+    // fake's CancelUnwindDelay makes the unwind take measurable wall-clock time, so this proves
+    // Dispose() itself blocks for it rather than cancelling and returning immediately (a plain
+    // "does the refresh eventually finish" assertion would pass either way, since cancellation
+    // alone lets the refresh finish on its own shortly after Dispose returns).
+    [Fact]
+    public async Task Dispose_BlocksUntilTheInFlightRefreshFinishesUnwinding()
+    {
+        var dir = Directory.CreateTempSubdirectory("nexus-sct-test").FullName;
+        _tempDirs.Add(dir);
+        var settings = new SettingsService(Path.Combine(dir, "settings.json"));
+        settings.Current.SctDataEnabled = true;
+        var snapshotPath = Path.Combine(dir, "sct_snapshot.json");
+        var unwindDelay = TimeSpan.FromMilliseconds(300);
+        var t = new FakeSctTransport { GateUrl = PageUrl(0), CancelUnwindDelay = unwindDelay };
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        var svc = new SctMarketService(settings, t, snapshotPath);
+
+        var refresh = svc.RefreshAsync(manual: true, NowUtc);
+        Assert.False(refresh.IsCompleted);   // parked mid-request on page 0
+
+        var sw = Stopwatch.StartNew();
+        svc.Dispose();
+        sw.Stop();
+
+        Assert.True(sw.Elapsed >= unwindDelay - TimeSpan.FromMilliseconds(50),
+            $"Dispose returned after {sw.Elapsed.TotalMilliseconds:0}ms, expected to block for close to {unwindDelay.TotalMilliseconds:0}ms");
+        Assert.True(refresh.IsCompleted);
+        Assert.True(File.Exists(snapshotPath));
+        Assert.False(svc.FetchInProgress);
+        await refresh;
     }
 
     // --- Architect resolution 1: the UI-facing read surface (SnapshotFetchedUtc, Changed, Find,

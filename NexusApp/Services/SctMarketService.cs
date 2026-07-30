@@ -84,6 +84,10 @@ public sealed class SctMarketService : IDisposable
     private readonly CancellationTokenSource _life = new();
 
     private int _busy;
+    // Completes when the in-flight refresh has finished its snapshot-file write; null when idle.
+    // Dispose waits on it so a refresh cannot write the snapshot file after App.OnExit has moved
+    // on (the same MarketDataService._cycleDone contract).
+    private volatile TaskCompletionSource<bool>? _cycleDone;
     private volatile SctSnapshot? _snapshot;
 
     // Cached once, lazily, and only from a code path already gated by the flag check (never
@@ -149,6 +153,10 @@ public sealed class SctMarketService : IDisposable
         if (_settings.Current.SctDataEnabled != true) return;   // every public entry point checks first
         if (Interlocked.Exchange(ref _busy, 1) != 0) return;    // single-flight
 
+        // Published before any await so a Dispose racing this call always finds the cycle it
+        // needs to wait for. Completed in the finally below, never faulted.
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _cycleDone = done;
         try
         {
             Logger.Info($"{Tag} sct refresh started ({(manual ? "manual" : "auto")})");
@@ -213,6 +221,10 @@ public sealed class SctMarketService : IDisposable
         finally
         {
             Interlocked.Exchange(ref _busy, 0);
+            // Last: Dispose waits on this, and the snapshot file write above is finished by the
+            // time it completes.
+            _cycleDone = null;
+            done.TrySetResult(true);
         }
     }
 
@@ -315,10 +327,29 @@ public sealed class SctMarketService : IDisposable
         return built;
     }
 
+    // How long Dispose waits for a cancelled refresh to finish unwinding (same bound and
+    // rationale as MarketDataService.DisposeDrainTimeout: long enough for an aborted request to
+    // throw and the snapshot save to complete, short enough that shutdown never visibly stalls).
+    private static readonly TimeSpan DisposeDrainTimeout = TimeSpan.FromSeconds(3);
+
     public void Dispose()
     {
+        var pending = _cycleDone?.Task;   // captured BEFORE the cancel, which may clear the field
+        // Cancels the in-flight refresh through its linked source. _life is deliberately NOT
+        // disposed: that refresh still holds a token derived from it (MarketDataService's own
+        // Dispose rationale - see its comment for the full reasoning).
         try { _life.Cancel(); } catch { /* best effort */ }
-        _life.Dispose();
+
+        // Then WAIT for it. Cancelling alone is not enough: the refresh still writes the snapshot
+        // file on its way out (even a cancelled page loop falls through to the save), and that
+        // write must not race whatever runs after App.OnExit calls this. Bounded, because a
+        // subscriber that blocks inside Changed must not be able to hang shutdown.
+        try
+        {
+            if (pending is not null && !pending.Wait(DisposeDrainTimeout))
+                Logger.Error($"{Tag} sct refresh did not stop within {DisposeDrainTimeout.TotalSeconds:0}s; leaving it to finish");
+        }
+        catch (Exception ex) { Logger.Error($"{Tag} sct refresh did not stop cleanly: {ex.Message}"); }
     }
 
     // The reverse-lookup pair Find/SctOnlyBuyers need, computed once from the embedded map and
