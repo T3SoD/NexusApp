@@ -28,6 +28,11 @@ public partial class App : Application
     // Server/shard tracker (shared Game.log tail, always on; rolling history persisted to settings).
     public static ShardTracker Shards { get; private set; } = null!;
 
+    // Trading tab: last-known-location timeline (shared Game.log tail, always on). Sparse by
+    // nature - see LocationTracker's own doc comment. Not persisted (rebuilt from the current
+    // Game.log's replay on every start, same rationale as Shards).
+    public static LocationTracker Locations { get; private set; } = null!;
+
     // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
     public static ContractOcrService ContractOcr { get; private set; } = null!;
     public static ContractScanner ContractScan { get; private set; } = null!;
@@ -318,6 +323,7 @@ public partial class App : Application
             list => { Settings.Current.RecentShards = list.ToList(); Settings.Save(); },
             GameLogFeed,
             channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
+        Locations = new LocationTracker(GameLogFeed);
 
         // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
         // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and
@@ -433,6 +439,7 @@ public partial class App : Application
         ContractOcr?.Dispose();
         Hauls?.Dispose();
         Shards?.Dispose();
+        Locations?.Dispose();
         GameLog?.Dispose();
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();
