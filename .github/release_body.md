@@ -3,7 +3,7 @@
 Both downloads are self-contained, because Nexus includes the .NET runtime. Both downloads:
 - need **no admin rights**
 - store settings and work orders on your computer
-- run offline unless you turn on optional online features (update checks, live market prices)
+- run offline unless you turn on optional online features (update checks, live market and trading data)
 
 Select the download that you want.
 
@@ -61,6 +61,7 @@ Run Nexus directly. Nexus needs no installation.
 - **Mission Guides** - zoomable maps and tactical guides, with the executive hangar countdown
 - **In-game overlay** - six tabs float over the game; ghost mode collapses the overlay to a slim icon rail
 - **Live market prices (optional)** - refined sell prices from UEX community data, off by default
+- **Commodity Trading (optional)** - a TRADE tab with a capacity-aware route planner, a sell lookup, and a sortable price browser on UEX community data, with an optional SC Trade Tools cross-check; both off by default
 - **Update checks (optional)** - opt in once; the portable can install updates itself
 
 ---

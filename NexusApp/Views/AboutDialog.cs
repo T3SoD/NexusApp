@@ -13,6 +13,17 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.12.0  -  Jul 30, 2026",
+        [
+            "New TRADE tab - plan commodity runs three ways: a route planner that ranks what a trip really pays with your ship and budget, a sell lookup that ranks buyers for the cargo you are carrying, and a sortable price browser; built on UEX community data behind the same market-data consent as prices",
+            "Trade rows carry trip-coverage bars (green covers your full trip, amber at least half, red under half), proximity tiers, star-system tags, and real distances in gigameters read from the game's own map data",
+            "Your in-game position feeds the planner - FROM HERE ranks only routes you can start from where you stand, ANYWHERE is one click away, and one click fills the sell lookup from your latest completed refinery work order",
+            "Optional SC Trade Tools cross-check, off by default - a Settings toggle compares UEX prices against SC Trade Tools community listings, marks agreeing rows CORROBORATED and conflicts SOURCES DISAGREE, and surfaces SCT-only buyers, refreshing about every six hours",
+            "The price browser shows the game's real inventory levels (OUT OF STOCK through MAX INVENTORY), and the UEX and SCT pills carry a freshness light - green under a day old, amber older, red before the first data arrives",
+            "Nexus now follows the game channel you actually launch - LIVE, HOTFIX, or PTU - switching automatically, tagging sessions and shards with their channel, and keeping blueprint recording to installs you have approved",
+            "Launching Nexus while it is already running brings the existing window back to the front instead of opening a second copy",
+            "The TRADE tab gets its own balance-scale dock icon, and typed text, open menus, and expanded rows now survive the hourly market refresh",
+        ]),
         ("App  6.11.0  -  Jul 28, 2026",
         [
             "Import owned blueprints from SCMDB - the Blueprint Library's new Import from SCMDB reads an SCMDB export file, previews exactly which blueprints will be marked owned, and applies only when you confirm",
