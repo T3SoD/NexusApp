@@ -139,11 +139,6 @@ public sealed partial class TradePage : UserControl
         return false;
     }
 
-    // Task 14 replaces this body outright (interim stub, same pattern as the env-autofollow
-    // plan's Task 4/5 "swap the interim expression" - RebuildPlanner/RebuildSell were already
-    // swapped in by Tasks 12/13, each in its own partial-class file).
-    private void RebuildPrices() { }
-
     // ── CascadeIn: hand-duplicated per page by house convention (confirmed: NOT a shared Hud
     // helper; CommandPage.cs:170 and MainWindow.Codex.cs:1366 each keep their own copy on purpose).
     // TradePage keeps exactly one copy here since Tasks 12-14 share this one partial class. ──
