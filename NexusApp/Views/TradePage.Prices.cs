@@ -43,7 +43,11 @@ public sealed partial class TradePage
 
         _pricesInputs = new StackPanel();
 
-        var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16) };
+        // Owner's live-pass ask (2026-07-30, round 3): the CONTROL itself must anchor to the pane's
+        // left edge, under the ORIGIN pill. An explicit-Width child of a vertical StackPanel keeps
+        // its default Stretch alignment and is therefore CENTERED in the available width - the
+        // Planner/Sell inputs dodge this only because they live in horizontal rows. Pin it Left.
+        var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16), HorizontalAlignment = HorizontalAlignment.Left };
         pickerGrp.Children.Add(FieldLabel("Commodity"));
         // Left-aligned text (owner's live-pass ask, 2026-07-30, item 3): fixed at this usage site
         // only, NOT in the shared NexusComboBox style (GameTheme.xaml) - other pages depend on that
