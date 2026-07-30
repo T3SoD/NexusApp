@@ -49,14 +49,15 @@ internal sealed class HttpSctTransport : ISctTransport
     }
 }
 
-// The dark SCT (SC Trade Tools) crowdsource-listings cache. FULLY INERT while
+// The SCT (SC Trade Tools) crowdsource-listings cache. FULLY INERT while
 // AppSettings.SctDataEnabled is false: every public entry point (Start, RefreshAsync,
 // SnapshotFetchedUtc, Find, SctOnlyBuyers) checks the flag FIRST and returns null/empty/no-ops
 // before touching the network, the embedded map, or disk - live-checked on every call, not just
 // "never populated while off," so flipping the flag off after data was already cached hides it
-// again immediately. Owner-only Admin-tab surface (Task 9) until the SCT maintainer conversation
-// about free-endpoint app use lands - see docs/superpowers/specs/2026-07-29-trade-api-recon-uex.md
-// open items.
+// again immediately. Graduated (2026-07-30) from an owner-only Admin-tab flag to a real Settings
+// consent row, now that the SCT maintainer has approved in-app use of their endpoints - the Admin
+// card keeps its own toggle too, as a one-shot fetch tool for the owner. See
+// docs/superpowers/specs/2026-07-29-trade-api-recon-uex.md for the original recon.
 public sealed class SctMarketService : IDisposable
 {
     public const string Tag = "[NET]";

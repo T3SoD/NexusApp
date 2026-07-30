@@ -157,9 +157,11 @@ public class AppSettings
     // ANYWHERE (false) lifts that restriction. Same ranking math either way.
     public bool TradeAnchorFromHere { get; set; } = true;
 
-    // Dark flag: SC Trade Tools corroboration data, owner-only Admin-tab surface until the SCT
-    // maintainer approves in-app use of their endpoints. Off means SctMarketService never makes a
-    // network call at all. Default off.
+    // SC Trade Tools corroboration data. Graduated (2026-07-30) from an owner-only Admin-tab flag
+    // to a real Settings consent row, now that the maintainer has approved in-app use of their
+    // endpoints; the Admin card keeps its own toggle too, as a one-shot fetch tool for the owner -
+    // both surfaces read/write this same field. Off means SctMarketService never makes a network
+    // call at all. Default off.
     public bool SctDataEnabled { get; set; }
 }
 

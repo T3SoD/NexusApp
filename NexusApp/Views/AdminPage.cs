@@ -524,16 +524,18 @@ public sealed class AdminPage : UserControl
         demo.Children.Add(demoButtons);
         stack.Children.Add(Section("DEMO PROFILE", demo));
 
-        // Data tools card: the dark SCT (SC Trade Tools) second-source flag. Owner-only, and
-        // deliberately NOT on the Settings page (spec: graduates there only after the SCT
-        // maintainer conversation lands - docs/superpowers/specs/2026-07-29-trade-api-recon-uex.md).
+        // Data tools card: the SCT (SC Trade Tools) second-source flag. Graduated (2026-07-30) to a
+        // real Settings consent row now that the SCT maintainer has approved in-app use of their
+        // endpoints - this card stays too, as the owner's one-shot fetch tool, reading/writing the
+        // same AppSettings.SctDataEnabled field Settings does.
         var data = new StackPanel();
         data.Children.Add(new TextBlock
         {
-            Text = "SCT second source (dark until maintainer OK): crowdsourced price listings from "
-                 + "SC Trade Tools, used only to corroborate UEX prices on the trading tab. Off by "
-                 + "default and fully inert while off - no network call, no data load. Turning this "
-                 + "on immediately kicks one fetch so you can see it working.",
+            Text = "SCT second source: crowdsourced price listings from SC Trade Tools, used only "
+                 + "to corroborate UEX prices on the trading tab. Off by default and fully inert "
+                 + "while off - no network call, no data load. Also a Settings consent row now; "
+                 + "this card is an owner convenience for a one-shot fetch. Turning this on "
+                 + "immediately kicks one fetch so you can see it working.",
             FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
         });
@@ -595,7 +597,7 @@ public sealed class AdminPage : UserControl
             : "Demo profile: not seeded yet (created on first launch).";
         _sctToggle.SetOnSilently(App.Settings.Current.SctDataEnabled);
         _sctState.Text = App.Settings.Current.SctDataEnabled
-            ? "SCT: on (dark - Admin-only, not yet a Settings consent row)"
+            ? "SCT: on (also a Settings consent row)"
             : "SCT: off (fully inert - no network call, no data load)";
     }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -64,6 +65,7 @@ public sealed class SettingsPage : UserControl
     private Hud.ToggleSwitch? _marketToggle;
     private Button? _marketRefreshBtn;
     private TextBlock? _marketStatusText;
+    private Hud.ToggleSwitch? _sctToggle;
 
     // Overlay ghost mode toggle (INTERFACE). Held so it can be re-synced when ghost mode is
     // changed elsewhere (the ghost rail's own flyout switch) instead of only seeding once here.
@@ -636,6 +638,35 @@ public sealed class SettingsPage : UserControl
                 },
             };
 
+            // SC Trade Tools cross-check: graduated from the owner-only Admin flag to a real
+            // Settings consent row (2026-07-30, the maintainer cleared the gate) - directly
+            // adjacent to the market data toggle above, same section, same house chrome. Both
+            // surfaces read/write the same AppSettings.SctDataEnabled field; the Admin card keeps
+            // its own toggle as a one-shot fetch tool for the owner.
+            _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
+            {
+                OnToggled = on =>
+                {
+                    App.Settings.Current.SctDataEnabled = on;
+                    App.Settings.Save();
+                    Logger.Info("[UI] Toggle: SCT cross-check " + (on ? "on" : "off"));
+                    if (on)
+                    {
+                        // Same start/fetch path the Admin card uses (AdminPage.cs's own SCT
+                        // toggle), so the layer goes live immediately - no restart needed.
+                        _ = Task.Run(async () =>
+                        {
+                            try { await App.Sct.RefreshAsync(manual: true); }
+                            catch (Exception ex) { Logger.Error("[UI] settings: SCT fetch failed", ex); }
+                        });
+                    }
+                    // Off needs no teardown call: every public entry point on SctMarketService
+                    // (Start, RefreshAsync, SnapshotFetchedUtc, Find, SctOnlyBuyers) checks the
+                    // flag first and self-gates, live, on every call - the setting write above is
+                    // the whole story.
+                },
+            };
+
             _marketRefreshBtn = GhostButton(MarketNotice.RefreshNow);
             _marketRefreshBtn.Click += (_, _) =>
             {
@@ -669,6 +700,11 @@ public sealed class SettingsPage : UserControl
                 SettingRow(MarketNotice.SettingsToggleTitle,
                     MarketNotice.SettingsToggleDesc,
                     _marketToggle, last: false),
+                SettingRow("SC Trade Tools cross-check",
+                    "Cross-checks UEX prices against SC Trade Tools, a second community-run price " +
+                    "source, and marks matching rows CORROBORATED or SOURCES DISAGREE. Free public " +
+                    "endpoints. Off by default.",
+                    _sctToggle, last: false),
                 SettingRow("Refresh now",
                     "Fetch the latest sell prices from UEX right now, regardless of the hourly " +
                     "schedule. Prices can go stale (and keep their visible age) when UEX stops " +

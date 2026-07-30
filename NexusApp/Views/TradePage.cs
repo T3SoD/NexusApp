@@ -61,8 +61,10 @@ public sealed partial class TradePage : UserControl
     private static readonly string[] Scopes = { "ALL", "STANTON", "PYRO", "NYX" };   // mock:1116
     private Border _uexPill = null!;
     private TextBlock _uexAgeValue = null!;
+    private Ellipse _uexPillDot = null!;
     private Border _sctAgePill = null!;
     private TextBlock _sctAgeValue = null!;
+    private Ellipse _sctPillDot = null!;
 
     public TradePage()
     {
@@ -457,11 +459,11 @@ public sealed partial class TradePage : UserControl
         }
         row.Children.Add(Sep());
 
-        _uexPill = BuildPill("UEX", out _uexAgeValue);
+        _uexPill = BuildPill("UEX", out _uexAgeValue, out _uexPillDot);
         _uexPill.ToolTip = "";   // set live in RefreshContextRow (age changes the tooltip text)
         row.Children.Add(_uexPill);
 
-        _sctAgePill = BuildPill("SCT", out _sctAgeValue);
+        _sctAgePill = BuildPill("SCT", out _sctAgeValue, out _sctPillDot);
         _sctAgePill.Margin = new Thickness(8, 0, 0, 0);
         _sctAgePill.Visibility = Visibility.Collapsed;   // Task 11 also owns this pill's absence rule
         row.Children.Add(_sctAgePill);
@@ -479,9 +481,20 @@ public sealed partial class TradePage : UserControl
 
     // Status-strip pill chrome, reused verbatim (MainWindow.xaml:110-146 / mock:145-149): padding
     // 9,3,11,3, radius 4, Bg2Nav fill, 1px NavBorder line, dot 7x7, label mono 9 bold dim, value mono 10.
-    private static Border BuildPill(string label, out TextBlock valueText)
+    // The dot (owner's live-pass ask, 2026-07-30, item 4: a freshness LED before the label) is the
+    // same 7x7 Ellipse construction MainWindow's own top-strip pills use (MainWindow.xaml e.g.
+    // SessionDot/BlueprintDot/ShardDot: Width=7 Height=7, Margin 0,0,7,0, VerticalAlignment=Center) -
+    // built once here and dressed live by SetFreshnessDot below, never animated (static fill; the
+    // ORIGIN live dot stays the only breathing LED on this page).
+    private static Border BuildPill(string label, out TextBlock valueText, out Ellipse dot)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        dot = new Ellipse
+        {
+            Width = 7, Height = 7, Fill = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        row.Children.Add(dot);
         row.Children.Add(new TextBlock
         {
             Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
@@ -495,6 +508,17 @@ public sealed partial class TradePage : UserControl
             CornerRadius = new CornerRadius(4), Padding = new Thickness(9, 3, 11, 3), Margin = new Thickness(0, 0, 0, 0),
             Child = row, VerticalAlignment = VerticalAlignment.Center,
         };
+    }
+
+    // Freshness LED color rule (item 4), consistent with FreshChip's existing 24h staleness cutoff:
+    // OkBrush under 24h, AccentBrush (amber) at/after 24h, DangerBrush when the pill is rendered but
+    // there is no data at all yet (age is null - consent on, nothing fetched). Static fill only,
+    // called fresh on every RefreshContextRow/RefreshSctAgePill pass.
+    private static void SetFreshnessDot(Ellipse dot, TimeSpan? age)
+    {
+        dot.Fill = age is null ? Hud.Br("DangerBrush")
+            : age.Value.TotalHours >= 24 ? Hud.Br("AccentBrush")
+            : Hud.Br("OkBrush");
     }
 
     private static Border ScopePill(string label)
@@ -709,23 +733,37 @@ public sealed partial class TradePage : UserControl
         }
 
         var snapForAge = App.Market.Snapshot;
-        _uexAgeValue.Text = snapForAge is null ? "no data" : MarketNotice.FormatAge(DateTime.UtcNow - snapForAge.TradePrices.FetchedUtc);
-        _uexPill.ToolTip = $"UEX: community price feed, last updated {_uexAgeValue.Text}.";   // mock:1120
+        TimeSpan? uexAge = snapForAge is null ? null : DateTime.UtcNow - snapForAge.TradePrices.FetchedUtc;
+        _uexAgeValue.Text = uexAge is null ? "no data" : MarketNotice.FormatAge(uexAge.Value);
+        // mock:1120 base sentence, extended with the LED rule (item 4: "extend each pill's existing
+        // tooltip ... stating the rule in one sentence").
+        _uexPill.ToolTip = $"UEX: community price feed, last updated {_uexAgeValue.Text}. " +
+                           "LED: green under 24h, amber older, red no data.";
+        SetFreshnessDot(_uexPillDot, uexAge);
 
         RefreshSctAgePill();
     }
 
-    // SCT age pill: ONLY when SctDataEnabled (owner-only dark flag) AND an SCT snapshot exists -
-    // absent otherwise, never a placeholder (mock manifest: "Nothing renders as a placeholder while
-    // off - it is absent, not gray", index.html:1161-1163). ASSUMED SctMarketService surface - see
-    // this section's gap #1 note; App.Sct/.SnapshotFetchedUtc/.Changed are not in the fixed contract.
+    // SCT age pill: shown whenever SctDataEnabled is on (item 1's graduation, 2026-07-30) - this
+    // used to ALSO require a snapshot to already exist, which hid the pill entirely during the gap
+    // between turning the flag on and the first fetch landing. That gap is now a real state instead
+    // (LED red, value "no data" - the same shape the UEX pill's own no-data state already uses), so
+    // the pill's only absence rule left is the flag itself: no pill at all while SctDataEnabled is
+    // off (mock manifest: "Nothing renders as a placeholder while off - it is absent, not gray",
+    // index.html:1161-1163 - "off" here is the flag, not "no data yet"). The LED only exists inside
+    // a rendered pill, so there is still zero SCT trace on this row while the flag is off.
     private void RefreshSctAgePill()
     {
-        bool show = App.Settings.Current.SctDataEnabled && App.Sct.SnapshotFetchedUtc is DateTime;
+        bool show = App.Settings.Current.SctDataEnabled;
         _sctAgePill.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) return;
-        var age = DateTime.UtcNow - App.Sct.SnapshotFetchedUtc!.Value;
-        _sctAgeValue.Text = MarketNotice.FormatAge(age);
-        _sctAgePill.ToolTip = $"SCT: SC Trade Tools, a secondary price source, last updated {_sctAgeValue.Text}.";   // mock:1127
+
+        var fetchedUtc = App.Sct.SnapshotFetchedUtc;
+        TimeSpan? age = fetchedUtc is null ? null : DateTime.UtcNow - fetchedUtc.Value;
+        _sctAgeValue.Text = age is null ? "no data" : MarketNotice.FormatAge(age.Value);
+        // mock:1127 base sentence, extended with the LED rule (item 4).
+        _sctAgePill.ToolTip = $"SCT: SC Trade Tools, a secondary price source, last updated {_sctAgeValue.Text}. " +
+                              "LED: green under 24h, amber older, red no data.";
+        SetFreshnessDot(_sctPillDot, age);
     }
 }

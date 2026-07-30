@@ -3,23 +3,30 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using NexusApp.Services;
 
 namespace NexusApp.Views;
 
 public sealed partial class TradePage
 {
-    // One row's data source: exactly one of Uex/Sct is populated. Lets SCT-only listings merge
-    // into the same sell-descending order as UEX rows (mock LARANITE_ROWS comment, index.html:
-    // 629-630) without forcing an SctListing into a fake TradePriceRow.
-    private readonly record struct PriceRowItem(double SellValue, TradePriceRow? Uex, SctListing? Sct);
+    // PriceRowItem (exactly one of Uex/Sct populated per row) now lives in Services/PriceSort.cs,
+    // alongside the sort helper itself - moved out of this class (owner live-pass ask, 2026-07-30,
+    // item 2) so PriceSort.SortRows and its unit tests can build rows without a WPF UserControl.
 
     private ComboBox _pricesCommodityCombo = null!;
     private readonly bool[] _priceCols = { true, true, true, false };   // STOCK, STATUS, AGE, +WEEK AVG - session only, not persisted (task brief: "persist nothing new")
     private static readonly string[] PriceColLabels = { "STOCK", "STATUS", "AGE", "+WEEK AVG" };
     private string? _pricesSelectedCommodity;
+
+    // Sort state (owner live-pass ask, 2026-07-30, item 2): session-only, not persisted - same
+    // reasoning as _priceCols above. Default Sell descending is the pre-existing behavior, with
+    // the Sell header visually marked active from first paint.
+    private PriceSortColumn _pricesSortColumn = PriceSortColumn.Sell;
+    private bool _pricesSortDescending = true;
 
     // Input area (commodity ComboBox + the four column-toggle chips) built ONCE, results the only
     // thing rebuilt - same reasoning as the other two flows. The chips' visuals and the ComboBox's
@@ -38,7 +45,20 @@ public sealed partial class TradePage
 
         var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16) };
         pickerGrp.Children.Add(FieldLabel("Commodity"));
-        _pricesCommodityCombo = new ComboBox { Style = (Style)Application.Current.FindResource("NexusComboBox") };
+        // Left-aligned text (owner's live-pass ask, 2026-07-30, item 3): fixed at this usage site
+        // only, NOT in the shared NexusComboBox style (GameTheme.xaml) - other pages depend on that
+        // style's current look. HorizontalContentAlignment is set for completeness, but the actual
+        // fix is ItemTemplate: ComboBox mirrors ItemTemplate into SelectionBoxItemTemplate
+        // automatically (core ComboBox behavior, independent of which ControlTemplate is applied),
+        // and NexusComboBox's own closed-box ContentPresenter already binds its ContentTemplate to
+        // SelectionBoxItemTemplate - so one small left-aligned TextBlock template fixes both the
+        // closed box and the open dropdown items at once, without touching GameTheme.xaml.
+        _pricesCommodityCombo = new ComboBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusComboBox"),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            ItemTemplate = LeftAlignedComboItemTemplate,
+        };
         _pricesCommodityCombo.SelectionChanged += (_, _) =>
         {
             if (_suppressPricesSelection) return;
@@ -130,10 +150,13 @@ public sealed partial class TradePage
             ? App.Sct.SctOnlyBuyers(uexRows[0].CommodityId).ToList()
             : new List<SctListing>();
 
-        var merged = uexRows.Select(r => new PriceRowItem(r.Sell, r, null))
-            .Concat(sctOnly.Select(s => new PriceRowItem(s.Price, null, s)))
-            .OrderByDescending(m => m.SellValue)
-            .ToList();
+        // The top-50 display cap applies AFTER sorting (unchanged rule) - PriceSort.SortRows sorts
+        // the FULL merged list first, Take(50) below only trims what renders.
+        var merged = PriceSort.SortRows(
+            uexRows.Select(r => new PriceRowItem(r.Sell, r, null))
+                .Concat(sctOnly.Select(s => new PriceRowItem(s.Price, null, s)))
+                .ToList(),
+            _pricesSortColumn, _pricesSortDescending);
         int totalTerminals = merged.Count;   // includes the SCT-only rows only when they render (sctOnly is empty while dark)
         var top = merged.Take(50).ToList();   // spartan by default; codex row idiom, house rule against clutter on price surfaces
 
@@ -146,13 +169,13 @@ public sealed partial class TradePage
         var header = new Grid { Margin = new Thickness(12, 0, 12, 5) };
         foreach (var c in cols) header.ColumnDefinitions.Add(new ColumnDefinition { Width = c.Width });
         int col = 0;
-        header.Children.Add(HeaderCell("Terminal", col++, false));
-        header.Children.Add(HeaderCell("Sell (/SCU)", col++, true));
-        header.Children.Add(HeaderCell("Buy (/SCU)", col++, true));
-        if (_priceCols[0]) header.Children.Add(HeaderCell("Stock", col++, true));
-        if (_priceCols[1]) header.Children.Add(HeaderCell("Status", col++, true));
-        if (_priceCols[2]) header.Children.Add(HeaderCell("Age", col++, true));
-        if (_priceCols[3]) header.Children.Add(HeaderCell("Week avg (sell)", col++, true));
+        header.Children.Add(HeaderCell("Terminal", col++, false));   // Terminal stays unsortable
+        header.Children.Add(SortableHeaderCell("Sell (/SCU)", col++, PriceSortColumn.Sell));
+        header.Children.Add(SortableHeaderCell("Buy (/SCU)", col++, PriceSortColumn.Buy));
+        if (_priceCols[0]) header.Children.Add(SortableHeaderCell("Stock", col++, PriceSortColumn.Stock));
+        if (_priceCols[1]) header.Children.Add(SortableHeaderCell("Status", col++, PriceSortColumn.Status));
+        if (_priceCols[2]) header.Children.Add(SortableHeaderCell("Age", col++, PriceSortColumn.Age));
+        if (_priceCols[3]) header.Children.Add(HeaderCell("Week avg (sell)", col++, true));   // not in the sortable set
         _pricesResults.Children.Add(header);
 
         for (int i = 0; i < top.Count; i++)
@@ -177,6 +200,67 @@ public sealed partial class TradePage
         var tb = new TextBlock { Text = text.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left };
         Grid.SetColumn(tb, column);
         return tb;
+    }
+
+    // Click-to-sort header (owner's live-pass ask, 2026-07-30, item 2): SELL/BUY/STOCK/STATUS/AGE
+    // only - Terminal and Week avg stay plain HeaderCells above, never wrapped by this. Click an
+    // inactive header: sort by that column, descending first. Click the already-active header:
+    // flip direction. The chevron only appears on the active header; inactive headers show nothing.
+    private FrameworkElement SortableHeaderCell(string text, int column, PriceSortColumn key)
+    {
+        bool active = _pricesSortColumn == key;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(new TextBlock
+        {
+            Text = text.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+        });
+        if (active) row.Children.Add(SortChevron(_pricesSortDescending));
+
+        var host = new Border
+        {
+            Background = Brushes.Transparent, Cursor = Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Right, Child = row,
+        };
+        host.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_pricesSortColumn == key) _pricesSortDescending = !_pricesSortDescending;
+            else { _pricesSortColumn = key; _pricesSortDescending = true; }
+            // ALL CAPS column name, matching this file's existing [UI] Trade log idiom (column
+            // toggles, scope, flow - PriceColLabels/TradeFlows.Ids/Scopes are all upper already).
+            Logger.Info($"[UI] Trade prices: sort {key.ToString().ToUpperInvariant()} {(_pricesSortDescending ? "desc" : "asc")}");
+            RebuildPrices();
+        };
+        Grid.SetColumn(host, column);
+        return host;
+    }
+
+    // Small rotated Path, the same house chevron idiom as ChevronGlyph/SetChevronOpen
+    // (TradePage.Planner.cs) - not a unicode arrow, not an emoji. Reuses that method's exact glyph
+    // data at a smaller size so it reads as the same visual language, rotated to point down
+    // (descending) or up (ascending) instead of ChevronGlyph's closed/open 0/90.
+    private static Path SortChevron(bool descending) => new()
+    {
+        Width = 8, Height = 8, Data = Geometry.Parse("M5,3 L11,8 L5,13"),
+        Stroke = Hud.Br("FgDimBrush"), StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round,
+        StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent,
+        Stretch = Stretch.Uniform, RenderTransformOrigin = new Point(0.5, 0.5),
+        Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+        RenderTransform = new RotateTransform(descending ? 90 : -90),
+    };
+
+    // ItemTemplate for the commodity ComboBox's left-alignment fix (item 3 above): a plain
+    // left-aligned TextBlock bound directly to the item (a string) via an empty Binding path.
+    // Static/shared - stateless, so one instance safely serves every rebuild.
+    private static readonly DataTemplate LeftAlignedComboItemTemplate = BuildLeftAlignedComboItemTemplate();
+
+    private static DataTemplate BuildLeftAlignedComboItemTemplate()
+    {
+        var factory = new FrameworkElementFactory(typeof(TextBlock));
+        factory.SetBinding(TextBlock.TextProperty, new Binding());
+        factory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        factory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        return new DataTemplate { VisualTree = factory };
     }
 
     private static Border ColumnToggleChip(string label, bool on)
