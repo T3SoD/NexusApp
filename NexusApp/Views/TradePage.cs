@@ -159,6 +159,66 @@ public sealed partial class TradePage : UserControl
             new DoubleAnimation(riseInPx, 0, TimeSpan.FromMilliseconds(durMs)) { BeginTime = begin, EasingFunction = ease });
     }
 
+    // ── SCT corroboration (Task 15) ───────────────────────────────────────────────────────────
+    // Real, id-based lookup surface (SctMarketService.Find/SctOnlyBuyers): TradePriceRow already
+    // carries both TerminalId/CommodityId, so this needs no name-based resolution. The outer flag
+    // check is kept even though Find/SctOnlyBuyers both self-gate on SctDataEnabled - "zero UI
+    // trace while dark" is checked live at every call site, not assumed from the service alone.
+    private static SctListing? FindSctListing(TradePriceRow row, string side) =>
+        App.Settings.Current.SctDataEnabled ? App.Sct.Find(row.TerminalId, row.CommodityId, side) : null;
+
+    internal static ReconciledPrice? Reconcile(TradePriceRow row, string side) =>
+        PriceReconciler.Reconcile(row, side, FindSctListing(row, side), DateTime.UtcNow);
+
+    // Fade+scale-in 150ms SlideOut easing, reduced-motion instant (mock BADGE_MS=150, index.html:458).
+    // Shared by CorroborationBadge (badges, scale 0.8, mock:942-957) and the planner's corrline
+    // (scale 0.96, mock:802-804) so the one animation idiom lives once instead of twice.
+    private static void FadeScaleIn(FrameworkElement el, double fromScale)
+    {
+        if (Motion.Reduced) { el.Opacity = 1; return; }
+        el.Opacity = 0;
+        var st = new ScaleTransform(fromScale, fromScale);
+        el.RenderTransform = st;
+        el.RenderTransformOrigin = new Point(0.5, 0.5);
+        var dur = TimeSpan.FromMilliseconds(150);
+        el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = Motion.SlideOut });
+        st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(fromScale, 1, dur) { EasingFunction = Motion.SlideOut });
+        st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(fromScale, 1, dur) { EasingFunction = Motion.SlideOut });
+    }
+
+    // Corroboration badge: absent entirely for UexOnly (the common/dark case) - TradeBadges.Text
+    // returning null is the single source of truth for that, so this never needs its own state
+    // check. Colors: Corroborated = ok fill/border/dot (mock:311), Disagree = amber chip (mock:312),
+    // SctOnly = transparent fill + dim outline (mock:313 wants a dashed border; WPF has no cheap
+    // dashed CornerRadius border primitive, so a solid dim outline is the closest faithful
+    // approximation - recorded deviation, unchanged from the brief).
+    internal static FrameworkElement? CorroborationBadge(ReconciledPrice? reconciled)
+    {
+        if (reconciled is not { } r) return null;
+        var text = TradeBadges.Text(r.State, r.DisagreePct);
+        if (text is null) return null;   // UexOnly
+
+        var (bg, border, fg) = r.State switch
+        {
+            PriceSourceState.Corroborated => (new SolidColorBrush(Color.FromArgb(0x1F, 0x66, 0xE6, 0xA6)), new SolidColorBrush(Color.FromArgb(0x66, 0x66, 0xE6, 0xA6)), Hud.Br("OkBrush")),
+            PriceSourceState.Disagree     => (Hud.Br("AccentFaintBrush"), Hud.Br("AccentStrongBrush"), Hud.Br("AccentBrush")),
+            _                             => ((Brush)Brushes.Transparent, Hud.Br("BorderBrush"), Hud.Br("FgDimBrush")),   // SctOnly
+        };
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        if (r.State == PriceSourceState.Corroborated)
+            content.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = fg, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
+        content.Children.Add(new TextBlock { Text = text, FontFamily = Hud.Font("MonoFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = fg });
+
+        var badge = new Border
+        {
+            Background = bg, BorderBrush = border, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Child = content,
+            ToolTip = TradeBadges.Tooltip(r.State, r.DisagreePct),
+        };
+        FadeScaleIn(badge, 0.8);
+        return badge;
+    }
+
     // ── Small shared chip builders (Tasks 12-14 call these) ──────────────────────────────────
 
     // Proximity tier chip: mono 9 bold dim, 1px line-strong border, radius 3, padding 2,7,2,7 -

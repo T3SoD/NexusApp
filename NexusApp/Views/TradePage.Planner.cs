@@ -246,6 +246,20 @@ public sealed partial class TradePage
         Stretch = Stretch.Uniform, RenderTransformOrigin = new Point(0.5, 0.5),
     };
 
+    // Cheap house-glyph equivalent of the mock's Ico.dots() "two sources agreeing" icon
+    // (nexus-design-lab/trading-tab/index.html:526-530: two filled circles joined by a short
+    // line): a small Ellipse-Border-Ellipse trio, ok-green, sized to sit inline with the corrline
+    // text. Recorded deviation - not a literal SVG port, this app has no vector-icon primitive.
+    private static UIElement CorroborationDotsGlyph()
+    {
+        var ok = Hud.Br("OkBrush");
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = ok, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(new Border { Width = 5, Height = 1.6, Background = ok, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = ok, VerticalAlignment = VerticalAlignment.Center });
+        return row;
+    }
+
     private static void SetChevronOpen(Path chevron, bool open)
     {
         var rt = chevron.RenderTransform as RotateTransform ?? new RotateTransform();
@@ -339,6 +353,26 @@ public sealed partial class TradePage
         if (r.Gross - r.Net != 0) feeLine.Children.Add(FeePart("Fees", r.Gross - r.Net, Hud.Br("FgBrush")));
         feeLine.Children.Add(FeePart("Net profit/trip", r.Net, Hud.Br("AccentBrush")));
         detail.Children.Add(feeLine);
+
+        // Corroboration narration: only when BOTH legs reconcile to Corroborated (mock:802,
+        // gate `sct && r.corrob` - the planner's only corroboration surface, no head badge here
+        // per the mock, which shows nothing in the row head for RouteRow).
+        var buyRec = Reconcile(r.BuyRow, "buy");
+        var sellRec = Reconcile(r.SellRow, "sell");
+        if (buyRec?.State == PriceSourceState.Corroborated && sellRec?.State == PriceSourceState.Corroborated)
+        {
+            var corrLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 9, 0, 0) };
+            corrLine.Children.Add(CorroborationDotsGlyph());
+            corrLine.Children.Add(new TextBlock
+            {
+                Text = "Corroborated by SC Trade Tools - both legs within 3% agreement, under 48h",
+                FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("OkBrush"),
+                Margin = new Thickness(6, 0, 0, 0),
+            });
+            FadeScaleIn(corrLine, 0.96);   // mock:803, scale 0.96 (not the badge's 0.8)
+            detail.Children.Add(corrLine);
+        }
+
         detailHost.Child = detail;
         Grid.SetRow(detailHost, 2); Grid.SetColumnSpan(detailHost, 2);
         grid.Children.Add(detailHost);

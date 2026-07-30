@@ -11,6 +11,11 @@ namespace NexusApp.Views;
 
 public sealed partial class TradePage
 {
+    // One row's data source: exactly one of Uex/Sct is populated. Lets SCT-only listings merge
+    // into the same sell-descending order as UEX rows (mock LARANITE_ROWS comment, index.html:
+    // 629-630) without forcing an SctListing into a fake TradePriceRow.
+    private readonly record struct PriceRowItem(double SellValue, TradePriceRow? Uex, SctListing? Sct);
+
     private ComboBox _pricesCommodityCombo = null!;
     private readonly bool[] _priceCols = { true, true, true, false };   // STOCK, STATUS, AGE, +WEEK AVG - session only, not persisted (task brief: "persist nothing new")
     private readonly Border[] _priceColChips = new Border[4];
@@ -72,12 +77,23 @@ public sealed partial class TradePage
             return;
         }
 
-        var rows = snap.TradePrices.Rows
+        var uexRows = snap.TradePrices.Rows
             .Where(r => string.Equals(r.CommodityName, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(r => r.Sell)
             .ToList();
-        int totalTerminals = rows.Count;
-        var top = rows.Take(50).ToList();   // spartan by default; codex row idiom, house rule against clutter on price surfaces
+
+        // SCT-only rows for the selected commodity, merged into the same list (never a separate
+        // section). App.Sct.SctOnlyBuyers self-gates on SctDataEnabled; the outer check here keeps
+        // this call site's own trace at zero while dark, same as the Sell flow.
+        var sctOnly = App.Settings.Current.SctDataEnabled && uexRows.Count > 0
+            ? App.Sct.SctOnlyBuyers(uexRows[0].CommodityId).ToList()
+            : new List<SctListing>();
+
+        var merged = uexRows.Select(r => new PriceRowItem(r.Sell, r, null))
+            .Concat(sctOnly.Select(s => new PriceRowItem(s.Price, null, s)))
+            .OrderByDescending(m => m.SellValue)
+            .ToList();
+        int totalTerminals = merged.Count;   // includes the SCT-only rows only when they render (sctOnly is empty while dark)
+        var top = merged.Take(50).ToList();   // spartan by default; codex row idiom, house rule against clutter on price surfaces
 
         var cols = new System.Collections.Generic.List<ColumnDefinition> { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = new GridLength(100) }, new() { Width = new GridLength(100) } };
         if (_priceCols[0]) cols.Add(new ColumnDefinition { Width = new GridLength(100) });
@@ -110,7 +126,8 @@ public sealed partial class TradePage
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
         });
 
-        Logger.Info($"[UI] Trade prices run: {totalTerminals} terminals, commodity {_pricesSelectedCommodity}, showing {top.Count}");
+        string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
+        Logger.Info($"[UI] Trade prices run: {totalTerminals} terminals, commodity {_pricesSelectedCommodity}, showing {top.Count}{sctSuffix}");
     }
 
     private static TextBlock HeaderCell(string text, int column, bool right)
@@ -131,50 +148,92 @@ public sealed partial class TradePage
         };
     }
 
-    private FrameworkElement BuildPriceRow(TradePriceRow r, System.Collections.Generic.List<ColumnDefinition> colTemplate)
+    private FrameworkElement BuildPriceRow(PriceRowItem item, System.Collections.Generic.List<ColumnDefinition> colTemplate)
     {
         var grid = new Grid();
         foreach (var c in colTemplate) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = c.Width });
         int col = 0;
 
-        var term = new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(term, col++); grid.Children.Add(term);
+        if (item.Uex is { } r)
+        {
+            var term = new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(term, col++); grid.Children.Add(term);
 
-        var sell = new TextBlock { Text = r.Sell.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(sell, col++); grid.Children.Add(sell);
+            var sell = new TextBlock { Text = r.Sell.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(sell, col++); grid.Children.Add(sell);
 
-        var buy = new TextBlock { Text = r.Buy.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("CyanBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(buy, col++); grid.Children.Add(buy);
+            var buy = new TextBlock { Text = r.Buy.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("CyanBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(buy, col++); grid.Children.Add(buy);
 
-        bool outOfStock = r.BuyStockScu == 0;
-        if (_priceCols[0])
-        {
-            var stock = new TextBlock { Text = $"{r.BuyStockScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(stock, col++); grid.Children.Add(stock);
+            bool outOfStock = r.BuyStockScu == 0;
+            if (_priceCols[0])
+            {
+                var stock = new TextBlock { Text = $"{r.BuyStockScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(stock, col++); grid.Children.Add(stock);
+            }
+            if (_priceCols[1])
+            {
+                // Label from the real UEX inventory-state code (TradeFlows.BuyStatusLabel), not a
+                // binary derived-from-stock guess (task-14 review finding 1). Color rule unchanged:
+                // still keyed off BuyStockScu == 0, only the text source changed.
+                var status = new TextBlock { Text = TradeFlows.BuyStatusLabel(r.StatusBuy), FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(status, col++); grid.Children.Add(status);
+            }
+            if (_priceCols[2])
+            {
+                var age = DateTime.UtcNow - r.ModifiedUtc;
+                var ageText = new TextBlock { Text = MarketNotice.FormatAge(age), FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = age.TotalHours >= 24 ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(ageText, col++); grid.Children.Add(ageText);
+            }
+            if (_priceCols[3])
+            {
+                // Week-average sell is not part of the TradePriceRow contract (no SellAvgWeek field on
+                // this record, unlike the legacy MarketPriceRow); show the instant sell price with a
+                // note rather than fabricate an average. Flagged: revisit if a week-avg field is added.
+                var wk = new TextBlock { Text = $"{r.Sell:n0}*", FontFamily = Hud.Font("MonoFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, ToolTip = "No week-average field on this data source yet; showing the instant price." };
+                Grid.SetColumn(wk, col++); grid.Children.Add(wk);
+            }
         }
-        if (_priceCols[1])
+        else
         {
-            // Label from the real UEX inventory-state code (TradeFlows.BuyStatusLabel), not a
-            // binary derived-from-stock guess (task-14 review finding 1). Color rule unchanged:
-            // still keyed off BuyStockScu == 0, only the text source changed.
-            var status = new TextBlock { Text = TradeFlows.BuyStatusLabel(r.StatusBuy), FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = outOfStock ? Hud.Br("DangerBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(status, col++); grid.Children.Add(status);
-        }
-        if (_priceCols[2])
-        {
-            var age = DateTime.UtcNow - r.ModifiedUtc;
-            var ageText = new TextBlock { Text = MarketNotice.FormatAge(age), FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = age.TotalHours >= 24 ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(ageText, col++); grid.Children.Add(ageText);
-        }
-        if (_priceCols[3])
-        {
-            // Week-average sell is not part of the TradePriceRow contract (no SellAvgWeek field on
-            // this record, unlike the legacy MarketPriceRow); show the instant sell price with a
-            // note rather than fabricate an average. Flagged: revisit if a week-avg field is added.
-            var wk = new TextBlock { Text = $"{r.Sell:n0}*", FontFamily = Hud.Font("MonoFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, ToolTip = "No week-average field on this data source yet; showing the instant price." };
-            Grid.SetColumn(wk, col++); grid.Children.Add(wk);
+            // SCT-only row (mock index.html:1024-1030): terminal name + inline badge, sell = the
+            // SCT price, everything else UEX has no equivalent for is a plain dash - never
+            // danger-colored (no stock/status data exists to judge "out of stock" from).
+            var s = item.Sct!;
+            var termPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            termPanel.Children.Add(new TextBlock { Text = s.Location, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
+            // Reuses CorroborationBadge with a synthesized SctOnly ReconciledPrice - the same
+            // shape PriceReconciler.Reconcile itself returns for the SCT-only case.
+            if (CorroborationBadge(new ReconciledPrice(s.Price, PriceSourceState.SctOnly, 0, default, s.TimestampUtc)) is { } sctBadge)
+            {
+                sctBadge.Margin = new Thickness(8, 0, 0, 0);
+                termPanel.Children.Add(sctBadge);
+            }
+            Grid.SetColumn(termPanel, col++); grid.Children.Add(termPanel);
+
+            var sell = new TextBlock { Text = s.Price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(sell, col++); grid.Children.Add(sell);
+
+            var buy = DashCell(13);
+            Grid.SetColumn(buy, col++); grid.Children.Add(buy);
+
+            if (_priceCols[0]) { var stock = DashCell(12); Grid.SetColumn(stock, col++); grid.Children.Add(stock); }
+            if (_priceCols[1]) { var status = DashCell(10); Grid.SetColumn(status, col++); grid.Children.Add(status); }
+            if (_priceCols[2])
+            {
+                var age = DateTime.UtcNow - s.TimestampUtc;
+                var ageText = new TextBlock { Text = MarketNotice.FormatAge(age), FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = age.TotalHours >= 24 ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(ageText, col++); grid.Children.Add(ageText);
+            }
+            if (_priceCols[3]) { var wk = DashCell(11); Grid.SetColumn(wk, col++); grid.Children.Add(wk); }   // no week-avg source for SCT-only either
         }
 
         return Hud.RowCard(grid, marginBottom: 8);
     }
+
+    private static TextBlock DashCell(double fontSize) => new()
+    {
+        Text = "-", FontFamily = Hud.Font("MonoFont"), FontSize = fontSize, Foreground = Hud.Br("FgDimBrush"),
+        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+    };
 }

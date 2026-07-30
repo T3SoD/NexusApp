@@ -123,7 +123,24 @@ public sealed partial class TradePage
             SellHost.Children.Add(row);
         }
 
-        Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}");
+        // SCT-only rows: listings SCT has at mapped terminals where UEX has no matching row at
+        // all (SctMarketService.SctOnlyBuyers). Always appended AFTER the ranked buyer list, never
+        // merged into the ranking (mock:887-890) - and only when there is a ranked list to append
+        // after (a zero-buyer commodity keeps the existing "no buyers" empty state above, rather
+        // than growing a second, disconnected empty-state branch for this narrow case).
+        var sctOnly = App.Settings.Current.SctDataEnabled
+            ? App.Sct.SctOnlyBuyers(picked.CommodityId).ToList()
+            : new List<SctListing>();
+        for (int i = 0; i < sctOnly.Count; i++)
+        {
+            int idx = buyers.Count + i;
+            var row = BuildSctOnlyBuyerRow(sctOnly[i], idx, qty);
+            CascadeIn(row, idx);
+            SellHost.Children.Add(row);
+        }
+
+        string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
+        Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}{sctSuffix}");
     }
 
     // Search-first picker: filters the full commodity list against the box's live text (case-
@@ -192,22 +209,55 @@ public sealed partial class TradePage
     }
 
     private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int index, int qty)
+        => WrapBuyerRow(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost), chevron, detailHost, index, sctOnly: false);
+
+    // SCT-only row: a listing SCT has at a terminal UEX has no row for at all. Same row chrome,
+    // de-emphasized (mock .buyerRow.sctonly, index.html:286/935: opacity 0.82 + the frame's
+    // stroke swapped to the "line-strong" token instead of the normal one).
+    private FrameworkElement BuildSctOnlyBuyerRow(SctListing s, int index, int qty)
+        => WrapBuyerRow(BuildSctOnlyBuyerRowContent(s, qty, out var chevron, out var detailHost), chevron, detailHost, index, sctOnly: true);
+
+    private FrameworkElement WrapBuyerRow(UIElement content, Path chevron, Border detailHost, int index, bool sctOnly)
     {
-        var frame = Hud.CardFrame(BuildBuyerRowContent(b, qty, out var chevron, out var detailHost),
-            out _, out _, chamfer: 8, padding: new Thickness(18, 13, 18, 13));
-        frame.Children.Add(PositionChevron(chevron));
-        var host = new Border { Cursor = Cursors.Hand, Child = frame, Margin = new Thickness(0, 0, 0, 10) };
-        host.MouseLeftButtonUp += (_, _) =>
+        var host = Hud.CardFrame(content, out var framePath, out _, chamfer: 8, padding: new Thickness(18, 13, 18, 13));
+        if (sctOnly) framePath.Stroke = Hud.Br("BorderBrush");   // mock:935, stroke=lineStrong for sctOnly rows
+        host.Children.Add(PositionChevron(chevron));
+        var wrapper = new Border { Cursor = Cursors.Hand, Child = host, Margin = new Thickness(0, 0, 0, 10) };
+        if (sctOnly) wrapper.Opacity = 0.82;   // mock:286, single-source de-emphasis
+        wrapper.MouseLeftButtonUp += (_, _) =>
         {
             bool nowOpen = _sellExpanded != index;
             _sellExpanded = nowOpen ? index : -1;
             detailHost.Visibility = nowOpen ? Visibility.Visible : Visibility.Collapsed;
             SetChevronOpen(chevron, nowOpen);
         };
-        return host;
+        return wrapper;
     }
 
-    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, out Path chevron, out Border detailHost)
+    private UIElement BuildBuyerRowContent(SellLookup.Buyer b, int qty, out Path chevron, out Border detailHost) =>
+        BuildBuyerRowCore(b.Row.TerminalName, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
+            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), out chevron, out detailHost);
+
+    // Tier omitted (never a placeholder): SctOnlyBuyers only ever returns listings at stations
+    // with NO UEX terminal id at all - both CommodityId and RawId null in the map, which is
+    // exactly what qualifies them as "SCT-only" in the first place (SctMarketService.
+    // SctOnlyBuyers doc comment). There is no UEX terminal to resolve a ProximityTiers.Derive
+    // pair against, so this is not a reachability shortcut, it is genuinely unresolvable for
+    // these rows. The mock's sample data (CROSS-SYSTEM) is invented demo flavor, not derived from
+    // any real resolution path.
+    private UIElement BuildSctOnlyBuyerRowContent(SctListing s, int qty, out Path chevron, out Border detailHost)
+    {
+        double effectiveValue = Math.Min(qty, s.Quantity) * s.Price;
+        var badge = CorroborationBadge(new ReconciledPrice(s.Price, PriceSourceState.SctOnly, 0, default, s.TimestampUtc));
+        return BuildBuyerRowCore(s.Location, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, out chevron, out detailHost);
+    }
+
+    // Shared buyer-row layout: real UEX buyers (SellLookup.Buyer) and SCT-only listings both
+    // render through this one builder so the row chrome lives once. tier is null for SCT-only
+    // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
+    // returned for the caller's reconciled/synthesized state, or null to render none.
+    private UIElement BuildBuyerRowCore(string terminalName, double price, ProximityTier? tier, int demandScu,
+        DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, out Path chevron, out Border detailHost)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -217,19 +267,20 @@ public sealed partial class TradePage
 
         var left = new StackPanel();
         var top = new StackPanel { Orientation = Orientation.Horizontal };
-        top.Children.Add(new TextBlock { Text = b.Row.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
-        top.Children.Add(new TextBlock { Text = $"{b.Row.Sell:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
-        top.Children.Add(TierChip(b.Tier));
+        top.Children.Add(new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        top.Children.Add(new TextBlock { Text = $"{price:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
+        if (tier is { } t) top.Children.Add(TierChip(t));
+        if (badge is not null) { badge.Margin = new Thickness(8, 0, 0, 0); top.Children.Add(badge); }
         left.Children.Add(top);
 
         var meta = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
         var bar = new Grid { Width = 90 };
-        string tier = TradeBarMath.Tier(b.Row.SellDemandScu, qty);
-        bar.Children.Add(TripBar(TradeBarMath.FillFraction(b.Row.SellDemandScu, qty), TradeBarMath.Color(tier),
+        string barTier = TradeBarMath.Tier(demandScu, qty);
+        bar.Children.Add(TripBar(TradeBarMath.FillFraction(demandScu, qty), TradeBarMath.Color(barTier),
             "This bar shows how much of your trip the demand covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
         meta.Children.Add(bar);
-        meta.Children.Add(new TextBlock { Text = $"DEMAND {b.Row.SellDemandScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 8, 0) });
-        var age = DateTime.UtcNow - b.Row.ModifiedUtc;
+        meta.Children.Add(new TextBlock { Text = $"DEMAND {demandScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 8, 0) });
+        var age = DateTime.UtcNow - priceUtc;
         // Same "strip trailing ' ago', fall back to '<1m'" idiom as Planner.BuildLeg
         // (TradePage.Planner.cs): FreshChip always appends " ago" itself, and FormatAge's "just
         // now" shape (age < 1 minute) has none to strip - a naive Replace(" ago","") would render
@@ -244,13 +295,13 @@ public sealed partial class TradePage
         var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
         right.Children.Add(new TextBlock { Text = "EFFECTIVE VALUE", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
         var valRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        valRow.Children.Add(new TextBlock { Text = b.EffectiveValue.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 21, Foreground = Hud.Br("AccentBrush"), Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 } });
+        valRow.Children.Add(new TextBlock { Text = effectiveValue.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 21, Foreground = Hud.Br("AccentBrush"), Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 } });
         valRow.Children.Add(new TextBlock { Text = " aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(4, 0, 0, 3) });
         right.Children.Add(valRow);
         // Sublabel per architect resolution: "for your {qty} SCU" plus ", capped by demand {n}"
         // ONLY when demand is strictly less than qty (never at demand == qty - that is full,
         // uncapped coverage).
-        string sub = $"for your {qty:n0} SCU" + (b.Row.SellDemandScu < qty ? $", capped by demand {b.Row.SellDemandScu:n0}" : "");
+        string sub = $"for your {qty:n0} SCU" + (demandScu < qty ? $", capped by demand {demandScu:n0}" : "");
         right.Children.Add(new TextBlock { Text = sub, FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
         right.ToolTip = "Price times sellable quantity, capped by the buyer's demand.";   // mock:971, verbatim
         Grid.SetColumn(right, 1); Grid.SetRowSpan(right, 2); Grid.SetRow(right, 0);
@@ -259,7 +310,7 @@ public sealed partial class TradePage
         detailHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(0, 10, 0, 0), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0) };
         detailHost.Child = new TextBlock
         {
-            Text = $"Effective value = min({qty:n0}, demand {b.Row.SellDemandScu:n0}) SCU x {b.Row.Sell:n0} aUEC/SCU = {b.EffectiveValue:n0} aUEC",   // mock:979, verbatim format
+            Text = $"Effective value = min({qty:n0}, demand {demandScu:n0}) SCU x {price:n0} aUEC/SCU = {effectiveValue:n0} aUEC",   // mock:979, verbatim format
             FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
         };
         Grid.SetRow(detailHost, 1); Grid.SetColumnSpan(detailHost, 2);
