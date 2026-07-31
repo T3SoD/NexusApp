@@ -440,14 +440,14 @@ public sealed partial class TradePage
         string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
@@ -502,7 +502,7 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc)
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
@@ -539,6 +539,10 @@ public sealed partial class TradePage
             $"This bar shows how much of your trip the {(qtyLabel == "STOCK" ? "stock" : "demand")} covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
         barRow.Children.Add(bar);
         barRow.Children.Add(new TextBlock { Text = $"{qtyLabel} {qty:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0) });
+        // Max container size (task 2): AccentBrush warning when this leg's biggest box is smaller
+        // than the ship's best - the trip needs smaller crates than the ship could otherwise carry.
+        var legMaxScu = TradeMath.MaxContainerScu(containerSizes);
+        if (MaxContainerChip(legMaxScu, warning: legMaxScu is { } m && m < shipMaxContainerScu) is { } maxChip) barRow.Children.Add(maxChip);
         leg.Children.Add(barRow);
 
         var age = DateTime.UtcNow - modifiedUtc;

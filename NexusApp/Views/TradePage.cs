@@ -364,6 +364,26 @@ public sealed partial class TradePage : UserControl
         };
     }
 
+    // Max container size tag (task 2, container-size ground truth): a dim readout naming the
+    // largest crate a terminal's container_sizes list offers (TradeMath.MaxContainerScu), same
+    // dim/small/no-chrome geometry as DistanceTag right above - a SIBLING helper, not shared,
+    // since this one uses MonoFont to match the numeric STOCK/DEMAND readouts it sits beside on
+    // the sell and planner rows, where DistanceTag's Gm figure uses UiFont. Absent (never a
+    // placeholder or dash) when maxScu is null - callers pass TradeMath.MaxContainerScu's result
+    // straight through. warning tints AccentBrush instead of the default dim: the planner-leg case
+    // where the terminal's biggest box is smaller than the ship's best; the sell flow has no ship
+    // context and never passes true.
+    internal static FrameworkElement? MaxContainerChip(int? maxScu, bool warning = false)
+    {
+        if (maxScu is not { } n) return null;
+        return new TextBlock
+        {
+            Text = $"MAX {n} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = warning ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"),
+            Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+    }
+
     // ── Tab strip (ported from SettingsPage.cs:133-173, 3 tabs, no right-docked danger tab) ──
     private void BuildStrip()
     {

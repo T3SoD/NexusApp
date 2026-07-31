@@ -102,4 +102,28 @@ public class TradeMathTests
     {
         Assert.False(TradeMath.BoxFits("0,-4", 32));
     }
+
+    // --- MaxContainerScu ----------------------------------------------------
+
+    [Theory]
+    [InlineData("1,2,4,8,16", 16)]     // ascending list, ground-truth shape
+    [InlineData("8,16", 16)]
+    [InlineData("16", 16)]             // single token
+    [InlineData("", null)]             // empty string occurs on real rows
+    [InlineData("   ", null)]          // whitespace-only
+    [InlineData("garbage", null)]      // non-numeric, never throws
+    public void MaxContainerScu_ParsesTheLargestToken(string sizes, int? expected) =>
+        Assert.Equal(expected, TradeMath.MaxContainerScu(sizes));
+
+    [Fact]
+    public void MaxContainerScu_GarbageTokensIgnored_ValidTokensStillCount()
+    {
+        Assert.Equal(8, TradeMath.MaxContainerScu("abc,,8,xyz"));
+    }
+
+    [Fact]
+    public void MaxContainerScu_ZeroOrNegativeSizeToken_Ignored()
+    {
+        Assert.Null(TradeMath.MaxContainerScu("0,-4"));
+    }
 }
