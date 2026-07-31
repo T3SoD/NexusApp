@@ -349,4 +349,95 @@ public class RoutePlannerTests
             Assert.Equal(defaultRoutes[i].TripParts, explicitAnyRoutes[i].TripParts);
         }
     }
+
+    // Rank mode (task 7): PROFIT (default) orders by raw Net descending, unchanged from before this
+    // task. PROFIT PER SCU re-orders by Net/TripQty descending, so a high-margin small-qty route
+    // (worth more per unit of the ship's limited cargo) outranks a high-net bulk route whose margin
+    // is thin once spread across a much bigger trip.
+    [Fact]
+    public void Rank_ProfitPerScu_OutranksHighMarginSmallQtyOverHighNetBulk()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"), [3] = Term(3, "Stanton"), [4] = Term(4, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            // Route A: net 20,000 over a 100 SCU trip = 200 aUEC/SCU.
+            Row(1, 10, buy: 100, sell: 0, buyStock: 100),
+            Row(2, 10, buy: 0, sell: 300, sellDemand: 100),
+            // Route B: net 5,000 over a 10 SCU trip = 500 aUEC/SCU - smaller net, bigger margin.
+            Row(3, 20, buy: 100, sell: 0, buyStock: 10),
+            Row(4, 20, buy: 0, sell: 600, sellDemand: 10),
+        };
+
+        var byProfit = RoutePlanner.Rank(rows, terminals, shipScu: 1000, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, rankMode: RankMode.Profit);
+        Assert.Equal(20000, byProfit[0].Net);   // route A leads under raw Net
+
+        var byPerScu = RoutePlanner.Rank(rows, terminals, shipScu: 1000, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, rankMode: RankMode.ProfitPerScu);
+        Assert.Equal(5000, byPerScu[0].Net);    // route B leads under PROFIT PER SCU
+        Assert.Equal(10, byPerScu[0].TripQty);
+    }
+
+    // A zero-TripQty route (nobody can actually run it once) is the lowest possible per-SCU value
+    // (0) as well as tying for the lowest possible Net contribution among profitable routes, so it
+    // sinks to the bottom of the list under either ranking mode.
+    [Fact]
+    public void Rank_ZeroTripQtyRoute_SinksToTheBottomUnderBothModes()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"),
+            [3] = Term(3, "Stanton"), [4] = Term(4, "Stanton"),
+            [5] = Term(5, "Stanton"), [6] = Term(6, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 10, buy: 100, sell: 0, buyStock: 100),
+            Row(2, 10, buy: 0, sell: 300, sellDemand: 100),   // net 20,000
+            Row(3, 20, buy: 100, sell: 0, buyStock: 10),
+            Row(4, 20, buy: 0, sell: 600, sellDemand: 10),    // net 5,000
+            Row(5, 30, buy: 100, sell: 0, buyStock: 0),       // zero stock -> tripQty always 0
+            Row(6, 30, buy: 0, sell: 900, sellDemand: 100),   // net 0
+        };
+
+        var byProfit = RoutePlanner.Rank(rows, terminals, shipScu: 1000, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, rankMode: RankMode.Profit);
+        Assert.Equal(0, byProfit[^1].TripQty);
+
+        var byPerScu = RoutePlanner.Rank(rows, terminals, shipScu: 1000, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, rankMode: RankMode.ProfitPerScu);
+        Assert.Equal(0, byPerScu[^1].TripQty);
+    }
+
+    [Fact]
+    public void Rank_DefaultRankMode_MatchesExplicitProfitOnRealFixtureData()
+    {
+        var rows = MarketParse.ParseTradePriceRows(TradePricesFixture.LoadSampleJson(), out _)
+            .Where(r => r.CommodityId == 47).ToList();
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [rows.Single(r => r.TerminalName == "HDMS-Lathan").TerminalId] = Term(33, "Stanton", "Lyria"),
+            [rows.Single(r => r.TerminalName == "TDD Area 18").TerminalId] = Term(12, "Stanton", "Area 18"),
+        };
+
+        var defaultRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10);
+        var explicitProfitRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, rankMode: RankMode.Profit);
+
+        Assert.Equal(defaultRoutes.Count, explicitProfitRoutes.Count);
+        for (int i = 0; i < defaultRoutes.Count; i++)
+        {
+            Assert.Equal(defaultRoutes[i].BuyRow, explicitProfitRoutes[i].BuyRow);
+            Assert.Equal(defaultRoutes[i].SellRow, explicitProfitRoutes[i].SellRow);
+            Assert.Equal(defaultRoutes[i].TripQty, explicitProfitRoutes[i].TripQty);
+            Assert.Equal(defaultRoutes[i].Gross, explicitProfitRoutes[i].Gross);
+            Assert.Equal(defaultRoutes[i].Net, explicitProfitRoutes[i].Net);
+            Assert.Equal(defaultRoutes[i].Tier, explicitProfitRoutes[i].Tier);
+            Assert.Equal(defaultRoutes[i].TripParts, explicitProfitRoutes[i].TripParts);
+        }
+    }
 }

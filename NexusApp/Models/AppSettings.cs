@@ -165,6 +165,12 @@ public class AppSettings
     // worth. Stored as the exact pill label, same convention as TradeScope.
     public string TradeStockFilter { get; set; } = "ANY";
 
+    // Route planner rank mode pill (PROFIT / PROFIT PER SCU, task 7). PROFIT (default) orders by
+    // raw net/trip, byte-identical to the planner's original ordering; PROFIT PER SCU re-ranks by
+    // net/tripQty, surfacing high-margin small-qty routes over high-net bulk ones. Stored as the
+    // exact pill label, same convention as TradeStockFilter.
+    public string TradeRankMode { get; set; } = "PROFIT";
+
     // FROM HERE (true, default) restricts the route planner's buy legs to the current origin;
     // ANYWHERE (false) lifts that restriction. Same ranking math either way.
     public bool TradeAnchorFromHere { get; set; } = true;

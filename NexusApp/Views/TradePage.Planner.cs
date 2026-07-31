@@ -42,6 +42,8 @@ public sealed partial class TradePage
     private Border _stockAnyPill = null!;
     private Border _stockCoversTripPill = null!;
     private Border _stockCoversTwoTripsPill = null!;
+    private Border _rankProfitPill = null!;
+    private Border _rankProfitPerScuPill = null!;
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
@@ -204,6 +206,21 @@ public sealed partial class TradePage
         stockFilterGrp.Children.Add(stockFilterRow);
         inputRow.Children.Add(stockFilterGrp);
 
+        // Rank mode (task 7): same pill idiom as Coverage above - PROFIT (default) orders by raw
+        // net/trip; PROFIT PER SCU re-ranks by net/tripQty, surfacing high-margin small-qty routes
+        // over high-net bulk ones (RoutePlanner.RankMode).
+        var rankModeGrp = new StackPanel();
+        rankModeGrp.Children.Add(FieldLabel("Rank by"));
+        var rankModeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _rankProfitPill = ScopePill("PROFIT");
+        _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
+        _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
+        _rankProfitPerScuPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerScu);
+        rankModeRow.Children.Add(_rankProfitPill);
+        rankModeRow.Children.Add(_rankProfitPerScuPill);
+        rankModeGrp.Children.Add(rankModeRow);
+        inputRow.Children.Add(rankModeGrp);
+
         _plannerInputs.Children.Add(inputRow);
 
         _plannerInputs.Children.Add(new TextBlock
@@ -225,6 +242,7 @@ public sealed partial class TradePage
         _plannerExpanded = -1;
         RefreshAnchorPills();
         RefreshStockFilterPills();
+        RefreshRankModePills();
 
         var snap = App.Market.Snapshot;
         RefreshDestCombo(snap);
@@ -255,7 +273,8 @@ public sealed partial class TradePage
         var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
-            ParseStockFilter(App.Settings.Current.TradeStockFilter), destIds);
+            ParseStockFilter(App.Settings.Current.TradeStockFilter), destIds,
+            ParseRankMode(App.Settings.Current.TradeRankMode));
 
         if (routes.Count == 0)
         {
@@ -343,6 +362,39 @@ public sealed partial class TradePage
         "COVERS TRIP" => StockFilter.CoversTrip,
         "COVERS 2X" => StockFilter.CoversTwoTrips,
         _ => StockFilter.Any,
+    };
+
+    // Same no-op-on-unchanged guard as SetStockFilter: a click on the pill that is already active
+    // never logs or rebuilds.
+    private void SetRankMode(RankMode mode)
+    {
+        var label = RankModeLabel(mode);
+        if (App.Settings.Current.TradeRankMode == label) return;
+        App.Settings.Current.TradeRankMode = label;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: rank mode {label}");
+        RebuildPlanner();
+    }
+
+    private void RefreshRankModePills()
+    {
+        var active = ParseRankMode(App.Settings.Current.TradeRankMode);
+        SetPillOn(_rankProfitPill, active == RankMode.Profit);
+        SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
+    }
+
+    private static string RankModeLabel(RankMode mode) => mode switch
+    {
+        RankMode.ProfitPerScu => "PROFIT PER SCU",
+        _ => "PROFIT",
+    };
+
+    // Any stored value that isn't a recognized label (corrupt settings.json, a future rollback)
+    // falls back to Profit - the planner's original ordering, same fail-open idiom as ParseStockFilter.
+    private static RankMode ParseRankMode(string? value) => value switch
+    {
+        "PROFIT PER SCU" => RankMode.ProfitPerScu,
+        _ => RankMode.Profit,
     };
 
     // Re-validate on every rebuild, same rule as the Prices flow's RefreshPricesCommodityBox: an
@@ -575,6 +627,13 @@ public sealed partial class TradePage
         {
             head.Children.Add(routeDistTag);
         }
+        // Rank mode (task 7): only while RANK BY is set to PROFIT PER SCU, name the per-SCU figure
+        // routes are actually being sorted by - otherwise the ranking looks arbitrary next to the
+        // PROFIT / TRIP headline, which always shows raw Net regardless of rank mode.
+        if (ParseRankMode(App.Settings.Current.TradeRankMode) == RankMode.ProfitPerScu)
+        {
+            head.Children.Add(RankPerScuTag(r.Net, r.TripQty));
+        }
         Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
         grid.Children.Add(head);
 
@@ -654,6 +713,21 @@ public sealed partial class TradePage
 
         chevron = ChevronGlyph();
         return grid;
+    }
+
+    // Per-route aUEC/SCU tag (task 7): only rendered while RANK BY is PROFIT PER SCU, naming the
+    // exact figure that mode is sorting by. Same dim/small/no-chrome geometry as MaxContainerChip/
+    // DistanceTag (TradePage.cs) - MonoFont like MaxContainerChip since this is a numeric rate
+    // sitting beside other numerals, not a proper-noun label like DistanceTag's Gm readout.
+    private static FrameworkElement RankPerScuTag(double net, int tripQty)
+    {
+        double n = tripQty > 0 ? Math.Round(net / tripQty) : 0;
+        return new TextBlock
+        {
+            Text = $"{n.ToString("n0", CultureInfo.InvariantCulture)} aUEC/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+            Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+        };
     }
 
     private static StackPanel FeePart(string label, double value, Brush valueColor)

@@ -16,6 +16,13 @@ public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int
 // be run back-to-back without a fresh scan in between.
 public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 
+// Route planner ranking mode (task 7). Profit (default) orders by raw Net descending, byte-
+// identical to the planner's original behavior. ProfitPerScu re-orders by Net/TripQty descending
+// (ties broken by Net descending), surfacing high-margin small-qty routes that a raw-net sort
+// buries under high-net bulk hauls; a zero-TripQty route (nobody can actually run it) sorts to
+// the bottom under either mode, since 0 is the lowest per-SCU value any route can have.
+public enum RankMode { Profit, ProfitPerScu }
+
 // Pairs a Buy>0 row with a Sell>0 row of the same commodity, at two DIFFERENT terminals (a
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
 // ANYWHERE) only restricts which terminals the BUY leg may come from; the sell leg and the
@@ -31,12 +38,17 @@ public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 // is untouched), non-null restricts sell legs to that set, non-null EMPTY means the DESTINATION
 // picker's name could not be resolved to a terminal and must yield zero sell legs rather than
 // silently falling back to ANY - same reasoning as the origin's empty-set case above.
+//
+// rankMode (task 7) only changes the final ordering, never which pairs qualify as routes - it is
+// applied after every filter above (scope, box fit, stock coverage, origin/destination) has
+// already run, same as the pre-existing Net-descending sort it replaces for ProfitPerScu. Default
+// parameter (Profit) so every pre-existing call site's ordering is untouched.
 public static class RoutePlanner
 {
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int shipScu, int shipMaxBox, double? budget,
         IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any,
-        IReadOnlySet<int>? destTerminalIds = null)
+        IReadOnlySet<int>? destTerminalIds = null, RankMode rankMode = RankMode.Profit)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -86,7 +98,10 @@ public static class RoutePlanner
             }
         }
 
-        return result.OrderByDescending(r => r.Net).Take(take).ToList();
+        return (rankMode == RankMode.ProfitPerScu
+                ? result.OrderByDescending(r => r.TripQty > 0 ? r.Net / r.TripQty : 0).ThenByDescending(r => r.Net)
+                : result.OrderByDescending(r => r.Net))
+            .Take(take).ToList();
     }
 
     // Applied per pair, inside the pairing loop, before the take cutoff - a route that fails
