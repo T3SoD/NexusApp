@@ -244,6 +244,7 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2.5e6);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.minDistance = 0.4; controls.maxDistance = 3.2e5;
+controls.zoomSpeed = 2.2;   // tuned value, live smoke test - default 1.0 felt too slow per wheel notch
 
 // static starfield, seeded PRNG for a stable render
 (function starfield(){ let a=1337>>>0;              /* mulberry32, stable screenshots */
@@ -302,7 +303,7 @@ function buildSystem(){
     sysGroup.add(sp); pins.set(o.id,{sprite:sp, ticks:[], obj:o});
   });
   // orbit rings: planets around star, moons around parent planet
-  const ringMat=new THREE.LineBasicMaterial({color:0x7FE9E0, transparent:true, opacity:0.10});
+  const ringMat=new THREE.LineBasicMaterial({color:0x7FE9E0, transparent:true, opacity:0.24});  // tuned visual value, live smoke test
   const mkRing=(cx,cz,cy,r)=>{ const pts=[]; for(let i=0;i<=180;i++){ const a=i/180*Math.PI*2;
       pts.push(new THREE.Vector3(cx+r*Math.cos(a), cy, cz+r*Math.sin(a))); }
     const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), ringMat);

@@ -130,6 +130,28 @@ public sealed class MapCatalog
     private static string NameKey(string system, string name) => string.Concat(system, KeySep, name);
     private static string AliasKey(string system, string kind, string name) => string.Concat(system, KeySep, kind, KeySep, name);
 
+    // Location search (MAP tab search box). Covers every system in the catalog - there is no
+    // "active system" concept here, that gating belongs to the caller (MapPage), never this pure
+    // seam. Case-insensitive substring match; a name that STARTS WITH the query ranks above a name
+    // that merely contains it elsewhere (a search for "Ever" surfaces "Everus Harbor" ahead of, say,
+    // "Nevermind"). Ties within the same rank break shorter-name-first, then ordinal name order, so
+    // results are stable and deterministic run to run. Empty/whitespace query (including null) and a
+    // non-positive limit both resolve to an empty list rather than the full catalog or an exception -
+    // never throws.
+    public IReadOnlyList<MapObject> Search(string query, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(query) || limit <= 0) return Array.Empty<MapObject>();
+
+        string q = query.Trim();
+        return _objects
+            .Where(o => o.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+            .OrderBy(o => o.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(o => o.Name.Length)
+            .ThenBy(o => o.Name, StringComparer.Ordinal)
+            .Take(limit)
+            .ToList();
+    }
+
     public MapObject? ById(int id) => _byId.TryGetValue(id, out var o) ? o : null;
 
     public MapObject? ByName(string system, string name)

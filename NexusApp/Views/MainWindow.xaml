@@ -267,6 +267,19 @@
                                 </Grid>
                             </RadioButton>
 
+                            <RadioButton x:Name="NavMap" Tag="map" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="map" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Starmap" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="NAVIGATION" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </RadioButton>
+
                             <RadioButton x:Name="NavGuides" Tag="guides" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -375,19 +388,6 @@
                                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
                                         <TextBlock Text="Trade" Style="{StaticResource DockTileName}"/>
                                         <TextBlock Text="COMMODITIES" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </RadioButton>
-
-                            <RadioButton x:Name="NavMap" Tag="map" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
-                                        <views:AnimatedDockIcon IconKey="map" Width="28" Height="28"/>
-                                    </views:ChamferPanel>
-                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                                        <TextBlock Text="Starmap" Style="{StaticResource DockTileName}"/>
-                                        <TextBlock Text="NAVIGATION" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </RadioButton>

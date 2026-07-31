@@ -67,6 +67,13 @@ public sealed class MapPage : UserControl
     private readonly Dictionary<string, Border> _systemPills = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LayerRowUi> _layerRows = new(StringComparer.OrdinalIgnoreCase);
 
+    // Location search (all three systems) - shape mirrors TradePage.Sell.cs's commodity picker:
+    // chrome built once, a suppression flag guards programmatic text writes, one commit choke point.
+    private TextBox _searchBox = null!;
+    private StackPanel _searchGrp = null!;   // the search box plus its results list, built once
+    private Border? _searchResultsMenu;
+    private bool _suppressSearchText;
+
     private TextBlock _hintText = null!;
     private TextBlock _emptyText = null!;
     private StackPanel _selectedContent = null!;
@@ -459,6 +466,7 @@ public sealed class MapPage : UserControl
     private Border BuildSidePanel()
     {
         var stack = new StackPanel();
+        stack.Children.Add(BuildSearchZone());
         stack.Children.Add(BuildSystemZone());
         stack.Children.Add(BuildLayersZone());
         stack.Children.Add(BuildSelectionZone());
@@ -511,6 +519,119 @@ public sealed class MapPage : UserControl
         return row;
     }
 
+    // ── SEARCH zone ──
+
+    // Location search covering all three systems (design decision c) - MapCatalog.Search itself has
+    // no notion of "current system", so a result can and does name a system other than the one
+    // currently shown; each row carries its own dim system tag so a cross-system hit is obvious
+    // before it is clicked. Shape mirrors TradePage.Sell.cs's commodity picker: chrome built once,
+    // results rebuilt on every keystroke, a suppression flag around programmatic text writes, and a
+    // single commit choke point (CommitSearchResult) with its own CloseSearchResults() teardown.
+    private const int SearchResultLimit = 8;
+
+    private UIElement BuildSearchZone()
+    {
+        _searchGrp = new StackPanel();
+
+        _searchBox = new TextBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusTextBox"),
+            Tag = "Search all systems...",
+            ToolTip = "Search Stanton, Pyro and Nyx by name",
+        };
+        // Typing is ordinary text entry (fine); no key handler is ever attached here or anywhere in
+        // this zone - NexusApp is mouse-driven by design, a result row commits only on click.
+        _searchBox.TextChanged += (_, _) => { if (!_suppressSearchText) ShowSearchResults(); };
+        _searchGrp.Children.Add(_searchBox);
+
+        return Zone("SEARCH", _searchGrp);
+    }
+
+    // Rebuilt on every keystroke against MapCatalog.Search's case-insensitive, prefix-ranked match -
+    // same search-first shape as TradePage.Sell.cs's ShowCommodityPicker. Guards the empty/no-result
+    // state itself: an empty box or an all-miss query removes any prior list rather than rendering
+    // an empty results box.
+    private void ShowSearchResults()
+    {
+        CloseSearchResults();
+
+        var query = _searchBox.Text ?? "";
+        var matches = _catalog.Search(query, SearchResultLimit);
+        if (matches.Count == 0) return;
+
+        var list = new StackPanel();
+        foreach (var m in matches)
+            list.Children.Add(BuildSearchResultRow(m, query));
+
+        _searchResultsMenu = new Border
+        {
+            Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 4, 0, 0),   // radius/gap match this page's own info boxes (_distRow, _measureOutRow)
+            Child = list,
+        };
+        _searchGrp.Children.Add(_searchResultsMenu);
+    }
+
+    // Row content: name, a dim type label (same idiom as the SELECTION zone's _kindText), and a dim
+    // system tag (TradePage.SystemTag - the codebase's one existing "dim system suffix" idiom,
+    // reused rather than inventing a second one).
+    private Border BuildSearchResultRow(MapObject obj, string query)
+    {
+        var top = new StackPanel { Orientation = Orientation.Horizontal };
+        top.Children.Add(new TextBlock
+        {
+            Text = obj.Name, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"),
+        });
+        if (TradePage.SystemTag(obj.System) is { } tag) top.Children.Add(tag);
+
+        var rowStack = new StackPanel();
+        rowStack.Children.Add(top);
+        rowStack.Children.Add(new TextBlock
+        {
+            Text = obj.Type.Replace('_', ' ').ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9.5,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
+        });
+
+        var item = new Border { Padding = new Thickness(10, 8, 10, 8), Cursor = Cursors.Hand, Child = rowStack };
+        item.MouseEnter += (_, _) => item.Background = Hud.Br("AccentFaintBrush");
+        item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+        item.MouseLeftButtonUp += (_, _) => CommitSearchResult(obj, query);
+        return item;
+    }
+
+    private void CloseSearchResults()
+    {
+        if (_searchResultsMenu is null) return;
+        _searchGrp.Children.Remove(_searchResultsMenu);
+        _searchResultsMenu = null;
+    }
+
+    /// <summary>The one commit path (design decisions a/c): when the pick lives in another system,
+    /// switch FIRST via the page's existing SwitchSystem - that keeps init resend/state clearing to
+    /// the one implementation, rather than duplicating it here - THEN select and fly the camera
+    /// through the exact same internal calls a pin double-click already uses (OnPinDoubleClicked:
+    /// Select then FocusOn), so a search pick is indistinguishable from double-clicking that pin.</summary>
+    private void CommitSearchResult(MapObject obj, string query)
+    {
+        if (!string.Equals(obj.System, _system, StringComparison.OrdinalIgnoreCase))
+            SwitchSystem(obj.System);
+
+        Select(obj.Id);
+        FocusOn(obj.Id);
+
+        Logger.Info($"[UI] map: search \"{query}\" -> {obj.Name} ({obj.System})");
+
+        ClearSearchQuery();
+    }
+
+    private void ClearSearchQuery()
+    {
+        _suppressSearchText = true;
+        try { _searchBox.Text = ""; }
+        finally { _suppressSearchText = false; }
+        CloseSearchResults();
+    }
+
     // ── SYSTEM zone ──
 
     private UIElement BuildSystemZone()
@@ -558,6 +679,13 @@ public sealed class MapPage : UserControl
             bool on = IsActiveSystem(sys);
             text.Foreground = on ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
             pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
+            // M-2 fix: Background was never restyled here, only Foreground/BorderBrush. The hover
+            // handlers below only touch Background while a pill is INACTIVE (the active pill's gold
+            // look is meant to win over hover), so nothing else ever put a deactivated pill's
+            // Background back to neutral - it stayed whatever the last hover pass left it as (often
+            // AccentFaintBrush, amber-tinted) until a later MouseEnter/MouseLeave on that same pill
+            // recomputed it. Matches TradePage.RefreshScopePills, which sets Background here too.
+            pill.Background = on ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush");
         }
     }
 

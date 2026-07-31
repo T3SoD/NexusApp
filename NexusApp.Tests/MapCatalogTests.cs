@@ -173,4 +173,78 @@ public class MapCatalogTests
     [InlineData(0.0, "<0.1 Gm")]                  // zero: floor literal
     public void FormatGm_MatchesSpecBuckets(double meters, string expected)
         => Assert.Equal(expected, MapCatalog.FormatGm(meters));
+
+    // ── Search (location search box, MAP tab side panel) ──
+
+    [Fact]
+    public void Search_PrefixMatch_RanksAboveMidStringMatch()
+    {
+        // "Everus Harbor" (Stanton) starts with "Ever"; "Nevermind" (Stanton) only contains "ever"
+        // mid-string (N-ever-mind). The prefix hit must rank strictly above the substring hit.
+        var results = Catalog.Search("Ever", 10);
+        Assert.Contains(results, o => o.Name == "Everus Harbor");
+        Assert.Contains(results, o => o.Name == "Nevermind");
+
+        int everusIdx = IndexOfName(results, "Everus Harbor");
+        int nevermindIdx = IndexOfName(results, "Nevermind");
+        Assert.True(everusIdx < nevermindIdx, "prefix match (Everus Harbor) must rank above the mid-string match (Nevermind)");
+    }
+
+    [Fact]
+    public void Search_IsCaseInsensitive()
+    {
+        var results = Catalog.Search("everus harbor", 10);
+        Assert.Contains(results, o => o.Name == "Everus Harbor");
+    }
+
+    [Fact]
+    public void Search_RespectsLimit()
+    {
+        // "a" matches a large fraction of the 963-object catalog - limit must still cap the result set.
+        var results = Catalog.Search("a", 5);
+        Assert.True(results.Count <= 5);
+    }
+
+    [Fact]
+    public void Search_EmptyQuery_ReturnsEmpty()
+    {
+        Assert.Empty(Catalog.Search("", 10));
+    }
+
+    [Fact]
+    public void Search_WhitespaceQuery_ReturnsEmpty()
+    {
+        Assert.Empty(Catalog.Search("   ", 10));
+    }
+
+    [Fact]
+    public void Search_CrossSystemHit_IsReturned()
+    {
+        // "Ruin Station" lives in Pyro. The catalog's own Search has no notion of an "active system" -
+        // that gating belongs to the caller (MapPage), not this pure seam - so a Pyro-only query must
+        // resolve regardless of whatever system a caller happens to be looking at.
+        var results = Catalog.Search("Ruin", 10);
+        var hit = Assert.Single(results);
+        Assert.Equal("Ruin Station", hit.Name);
+        Assert.Equal("Pyro", hit.System);
+    }
+
+    [Fact]
+    public void Search_NoMatch_ReturnsEmpty()
+    {
+        Assert.Empty(Catalog.Search("zzznomatchzzz", 10));
+    }
+
+    [Fact]
+    public void Search_NeverThrows_OnNullQuery()
+    {
+        Assert.Empty(Catalog.Search(null!, 10));
+    }
+
+    private static int IndexOfName(IReadOnlyList<MapObject> results, string name)
+    {
+        for (int i = 0; i < results.Count; i++)
+            if (results[i].Name == name) return i;
+        return -1;
+    }
 }
