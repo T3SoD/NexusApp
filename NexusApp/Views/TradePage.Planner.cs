@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using NexusApp.Services;
 using NexusApp.Services.Cargo;
 using NexusApp.Models.Cargo;
@@ -110,8 +111,45 @@ public sealed partial class TradePage
     // Reentrancy guard for the budget box's live TextChanged re-rank below, same pattern as the
     // Sell tab's quantity box (TradePage.Sell.cs, _inQtyLiveRerank) - RebuildPlanner never writes
     // back to _budgetBox.Text itself, so nothing today re-enters this handler, but the guard is
-    // cheap insurance against a future write-back (or IME composition) looping back in.
+    // cheap insurance against a future write-back (or IME composition) looping back in. Now
+    // guards the DEBOUNCED call (see _budgetDebounceTimer below), not an immediate one.
     private bool _inBudgetLiveRerank;
+
+    // Debounce for the live re-rank (the owner's live-lag report, 2026-07-31): RoutePlanner.Rank
+    // bucketizes the WHOLE TradePrices row set (~2,600 rows in a live snapshot) and pairs every
+    // buy against every sell PER COMMODITY, then RebuildPlanner rebuilds up to 25 WPF route rows
+    // - firing that on every single keystroke stutters at typing speed. Same DispatcherTimer
+    // idiom as ExecHangarStatusLine.cs (a single reused timer, never recreated per event): each
+    // TextChanged restarts the timer instead of rebuilding immediately, so only the keystroke
+    // that ends a quiet BudgetDebounceMs window actually triggers RebuildPlanner. Built lazily on
+    // first use (BuildPlannerChrome only ever runs once, so "lazily" and "once" are the same
+    // thing here) rather than in the ctor, matching this file's existing lazy-field style.
+    // Internal (not private) so NexusApp.Tests can assert the interval constant directly - the
+    // timer wiring itself is WPF dispatcher plumbing and not unit-testable (same documented
+    // precedent as ExecHangarStatusLine's own 1-second ticker), so the interval value is the one
+    // piece of this that a test can pin.
+    internal const int BudgetDebounceMs = 250;
+    private DispatcherTimer? _budgetDebounceTimer;
+
+    // Built once (called only from the `??=` in the TextChanged handler above), then reused for
+    // every later keystroke - a fresh DispatcherTimer per keystroke would be its own small waste
+    // on top of the exact problem this exists to avoid. The Tick handler stops the timer before
+    // doing anything else, same as ExecHangarStatusLine's own Tick pattern of never leaving a
+    // timer running past the work it exists to gate, then defers to RebuildPlanner through the
+    // same reentrancy guard the immediate call used to use directly.
+    private DispatcherTimer MakeBudgetDebounceTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BudgetDebounceMs) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_inBudgetLiveRerank) return;
+            _inBudgetLiveRerank = true;
+            try { RebuildPlanner(); }
+            finally { _inBudgetLiveRerank = false; }
+        };
+        return timer;
+    }
 
     private ShipCargoDef CurrentShip() =>
         _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
@@ -162,6 +200,11 @@ public sealed partial class TradePage
         };
         _budgetBox.LostFocus += (_, _) =>
         {
+            // Cancel any pending debounced re-rank BEFORE the no-op guard below: a blur always
+            // applies immediately from here on down, so a tick that lands after this handler
+            // returns would just re-run RebuildPlanner a second time for nothing. Unconditional
+            // and cheap (Stop() on an idle timer is a no-op), so it runs even on a no-op blur.
+            _budgetDebounceTimer?.Stop();
             if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetDemandFilter/SetScope: no-op blur never logs or rebuilds
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
@@ -176,12 +219,19 @@ public sealed partial class TradePage
         // CurrentBudget already reads _budgetBox.Text directly (not _budgetText), so a rebuild here
         // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
         // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
+        //
+        // DEBOUNCED (the owner's live-lag report, 2026-07-31 - see _budgetDebounceTimer's own comment
+        // above for the cost this avoids): every keystroke restarts the one shared timer instead
+        // of rebuilding right away; only the Tick, after BudgetDebounceMs of quiet typing, calls
+        // RebuildPlanner. The reentrancy guard (_inBudgetLiveRerank) moves down into the Tick
+        // handler with it, unchanged in purpose - it still exists purely as insurance against a
+        // future write-back or IME composition re-entering the rebuild, not because anything here
+        // re-enters it today.
         _budgetBox.TextChanged += (_, _) =>
         {
-            if (_inBudgetLiveRerank) return;
-            _inBudgetLiveRerank = true;
-            try { RebuildPlanner(); }
-            finally { _inBudgetLiveRerank = false; }
+            _budgetDebounceTimer ??= MakeBudgetDebounceTimer();
+            _budgetDebounceTimer.Stop();
+            _budgetDebounceTimer.Start();
         };
         budgetGrp.Children.Add(_budgetBox);
         topRow.Children.Add(budgetGrp);
