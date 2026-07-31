@@ -152,6 +152,73 @@ public sealed class MapCatalog
             .ToList();
     }
 
+    // Raw Game.log token -> (system, MapObject.Name) for the two gateway stations whose in-game
+    // display name repeats across systems ("Pyro Gateway Station" names an object in BOTH Stanton
+    // and Nyx; "Stanton Gateway Station" names an object in BOTH Pyro and Nyx - see
+    // ResolvePlayerLocation). Only the raw token is unique enough to tell them apart, same reasoning
+    // as LocationAliases.UexLocationForToken, and this table deliberately mirrors that one's
+    // ground-every-entry discipline: every other gateway raw token (the Terra-side and Magnus-side
+    // tokens, which also display as "Stanton Gateway Station"/"Magnus Gateway Station") has no live
+    // system in starmap_map.json to point at (Terra and Magnus are not reachable systems - grep
+    // confirms no "Terra"/"Magnus" system and no "Magnus Gateway" object exist anywhere in the
+    // catalog) and is deliberately absent, so a miss falls through to null instead of guessing.
+    private static readonly IReadOnlyDictionary<string, (string System, string Name)> RawTokenGateways =
+        new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["RR_JP_StantonPyro"] = ("Stanton", "Pyro Gateway"),   // Stanton-side gate to Pyro
+            ["RR_JP_PyroStanton"] = ("Pyro", "Stanton Gateway"),   // Pyro-side gate to Stanton
+        };
+
+    // LocationTracker.LastKnownLocation display names that do not exact-match a MapObject.Name but
+    // are still unambiguous (exactly one system carries that object name) - see ResolvePlayerLocation.
+    // "Pyro Gateway Station"/"Stanton Gateway Station" are deliberately absent even though they are
+    // also near-misses: both target object names exist in more than one system, so aliasing them
+    // here by display name alone could mark the wrong system. Those two are resolved only through
+    // RawTokenGateways above, before this table is ever consulted.
+    private static readonly IReadOnlyDictionary<string, string> PlayerLocationAliases =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Area 18"] = "Area18",
+            ["Checkmate Station"] = "Checkmate",
+            ["Terra Gateway Station"] = "Terra Gateway",
+        };
+
+    // Resolves LocationTracker.LastKnownLocation (an alias-normalized DISPLAY name) plus its raw
+    // Game.log token to the MapObject it names, for the MAP tab's player marker. Never throws; a
+    // null/empty displayName with no raw-token hit, or a name with no resolution anywhere, returns
+    // null - callers must treat null as "no live location to show", never as an error or a guess.
+    //
+    // Resolution order:
+    //   1. RawTokenGateways - the only source that can tell the Pyro-side "Stanton Gateway Station"
+    //      from the Nyx-side one, since the display name repeats across systems.
+    //   2. Exact case-insensitive MapObject.Name match, searched across every system (35 of the 41
+    //      possible alias display names already hit this tier directly).
+    //   3. PlayerLocationAliases - the 3 near-misses proven unambiguous (a single system carries
+    //      that object name): Area 18, Checkmate Station, Terra Gateway Station.
+    //   4. null - includes "Magnus Gateway Station" (Magnus is not a live system) and any
+    //      unrecognized text.
+    public MapObject? ResolvePlayerLocation(string? displayName, string? rawToken)
+    {
+        if (!string.IsNullOrEmpty(rawToken) && RawTokenGateways.TryGetValue(rawToken, out var gw))
+        {
+            var byToken = ByName(gw.System, gw.Name);
+            if (byToken != null) return byToken;
+        }
+
+        if (string.IsNullOrEmpty(displayName)) return null;
+
+        foreach (var obj in _objects)
+            if (string.Equals(obj.Name, displayName, StringComparison.OrdinalIgnoreCase))
+                return obj;
+
+        if (PlayerLocationAliases.TryGetValue(displayName, out var aliasName))
+            foreach (var obj in _objects)
+                if (string.Equals(obj.Name, aliasName, StringComparison.OrdinalIgnoreCase))
+                    return obj;
+
+        return null;
+    }
+
     public MapObject? ById(int id) => _byId.TryGetValue(id, out var o) ? o : null;
 
     public MapObject? ByName(string system, string name)

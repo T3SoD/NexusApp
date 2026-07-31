@@ -247,4 +247,146 @@ public class MapCatalogTests
             if (results[i].Name == name) return i;
         return -1;
     }
+
+    // ── ResolvePlayerLocation (MAP tab player marker: LocationTracker.LastKnownLocation + its raw
+    // Game.log token -> the MapObject it names). Resolution order: raw-token gateway mapping first
+    // (the only source that can tell the Pyro-side "Stanton Gateway Station" from the Nyx-side one,
+    // since the display name repeats), then exact case-insensitive name match across every system,
+    // then the 3 non-ambiguous display-name aliases (Area 18, Checkmate Station, Terra Gateway
+    // Station), else null. Never throws. ──
+
+    [Fact]
+    public void ResolvePlayerLocation_PlainDirectNameHit_ReturnsMatchingObject()
+    {
+        // "Everus Harbor" is already an exact MapObject.Name (35-of-41 direct hits) - no raw token
+        // needed, no alias hop needed.
+        var obj = Catalog.ResolvePlayerLocation("Everus Harbor", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Everus Harbor", obj!.Name);
+        Assert.Equal("Stanton", obj.System);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_DirectNameHit_IsCaseInsensitive()
+    {
+        var obj = Catalog.ResolvePlayerLocation("everus harbor", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Everus Harbor", obj!.Name);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_AreaEighteenAlias_ResolvesToArea18LandingZone()
+    {
+        var obj = Catalog.ResolvePlayerLocation("Area 18", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Area18", obj!.Name);
+        Assert.Equal("Stanton", obj.System);
+        Assert.Equal("LandingZone", obj.Type);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_CheckmateStationAlias_ResolvesToPyroCheckmate()
+    {
+        var obj = Catalog.ResolvePlayerLocation("Checkmate Station", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Checkmate", obj!.Name);
+        Assert.Equal("Pyro", obj.System);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_TerraGatewayStationAlias_ResolvesToStantonTerraGateway()
+    {
+        // Terra Gateway exists only in Stanton (no Pyro/Nyx counterpart) - unambiguous, so this is
+        // a plain display-name alias, not a raw-token gateway entry.
+        var obj = Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Terra Gateway", obj!.Name);
+        Assert.Equal("Stanton", obj.System);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_MagnusGatewayStation_ReturnsNull_MagnusNotLive()
+    {
+        // No "Magnus" system and no "Magnus Gateway" object exist anywhere in starmap_map.json -
+        // must resolve to nothing gracefully, never guess.
+        Assert.Null(Catalog.ResolvePlayerLocation("Magnus Gateway Station", rawToken: null));
+        Assert.Null(Catalog.ResolvePlayerLocation("Magnus Gateway Station", "RR_JP_StantonMagnus"));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_GatewayRawTokens_ResolveToDifferentSystems()
+    {
+        // The two truly ambiguous gateway display names ("Pyro Gateway Station" / "Stanton Gateway
+        // Station" both exist as MapObject names in more than one system: Pyro Gateway lives in
+        // Stanton AND Nyx; Stanton Gateway lives in Pyro AND Nyx). Only the raw Game.log token
+        // (unique per physical gateway) can tell them apart - this is the core disambiguation proof.
+        var stantonSide = Catalog.ResolvePlayerLocation("Pyro Gateway Station", "RR_JP_StantonPyro");
+        var pyroSide = Catalog.ResolvePlayerLocation("Stanton Gateway Station", "RR_JP_PyroStanton");
+
+        Assert.NotNull(stantonSide);
+        Assert.NotNull(pyroSide);
+        Assert.Equal("Pyro Gateway", stantonSide!.Name);
+        Assert.Equal("Stanton", stantonSide.System);
+        Assert.Equal("Stanton Gateway", pyroSide!.Name);
+        Assert.Equal("Pyro", pyroSide.System);
+
+        // The whole point of the raw-token tier: these two resolve to DIFFERENT systems even though
+        // a naive display-name-only lookup could not tell them apart.
+        Assert.NotEqual(stantonSide.System, pyroSide.System);
+        Assert.NotEqual(stantonSide.Id, pyroSide.Id);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_AmbiguousGatewayDisplayName_WithoutRawToken_ReturnsNull()
+    {
+        // No raw token available (or an unrecognized one) for a display name that repeats across
+        // systems: never guess a system for the player - null, not a coin flip.
+        Assert.Null(Catalog.ResolvePlayerLocation("Pyro Gateway Station", rawToken: null));
+        Assert.Null(Catalog.ResolvePlayerLocation("Stanton Gateway Station", rawToken: null));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_UngroundedGatewayToken_SharingAmbiguousDisplayName_ReturnsNull()
+    {
+        // RR_JP_TerraStanton normalizes to "Stanton Gateway Station" too (same display text as the
+        // Pyro-side token), but it is physically in Terra - not a live system, no map object - so it
+        // must not be added to the raw-token map and must not fall back to guessing Pyro or Nyx.
+        Assert.Null(Catalog.ResolvePlayerLocation("Stanton Gateway Station", "RR_JP_TerraStanton"));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_NullDisplayNameAndRawToken_ReturnsNull()
+    {
+        Assert.Null(Catalog.ResolvePlayerLocation(null, null));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_EmptyDisplayName_ReturnsNull()
+    {
+        Assert.Null(Catalog.ResolvePlayerLocation("", null));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_UnknownName_ReturnsNull()
+    {
+        Assert.Null(Catalog.ResolvePlayerLocation("Nowhere At All", "RR_NOT_A_REAL_TOKEN"));
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_UnrecognizedRawToken_FallsThroughToNameMatch()
+    {
+        // An unrecognized raw token must not short-circuit resolution - the display name still gets
+        // its normal exact-match/alias chance.
+        var obj = Catalog.ResolvePlayerLocation("Everus Harbor", "RR_NOT_A_REAL_TOKEN");
+        Assert.NotNull(obj);
+        Assert.Equal("Everus Harbor", obj!.Name);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_OnMalformedCatalog_NeverThrows()
+    {
+        using var bad = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{ not json"));
+        var catalog = MapCatalog.Load(bad);
+        Assert.Null(catalog.ResolvePlayerLocation("Everus Harbor", "RR_JP_StantonPyro"));
+    }
 }

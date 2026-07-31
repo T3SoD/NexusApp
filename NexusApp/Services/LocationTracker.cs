@@ -43,6 +43,15 @@ public sealed class LocationTracker : IDisposable
     // fall back to their existing display-name matching when it is null.
     public string? LastKnownUexLocation { get; private set; }
 
+    // The raw Game.log token that produced LastKnownLocation (e.g. "RR_JP_StantonPyro"), retained
+    // alongside the normalized display name for the same reason LastKnownUexLocation is: some
+    // display names are not unique (three raw gateway tokens all display as "Stanton Gateway
+    // Station"), so a consumer that needs to disambiguate - the MAP tab's player marker, resolving
+    // through MapCatalog.ResolvePlayerLocation's raw-token gateway tier - reads this instead of
+    // guessing from LastKnownLocation alone. Null whenever LastKnownLocation itself is null (no
+    // signal ingested yet).
+    public string? LastKnownRawToken { get; private set; }
+
     public DateTime? LastSeenUtc { get; private set; }
     public event Action? Changed;
 
@@ -94,6 +103,7 @@ public sealed class LocationTracker : IDisposable
         bool moved = !string.Equals(LastKnownLocation, display, StringComparison.Ordinal);
         LastKnownLocation = display;
         LastKnownUexLocation = LocationAliases.UexLocationForToken(place);
+        LastKnownRawToken = place;
         LastSeenUtc = seenUtc;
         if (!moved) return;
         var suffix = string.Equals(display, place, StringComparison.Ordinal)

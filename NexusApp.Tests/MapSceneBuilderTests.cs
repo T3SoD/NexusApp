@@ -141,4 +141,41 @@ public class MapSceneBuilderTests
         var json = MapSceneBuilder.BuildSystemView();
         Assert.Equal("{\"type\":\"systemView\"}", json);
     }
+
+    // ── player marker (MAP tab, live Game.log location) ──
+
+    [Fact]
+    public void BuildInit_PlayerOmitted_SerializesPlayerAsNull()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", EmptyPins,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: true,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false);
+
+        Assert.Contains("\"player\":null", json);
+    }
+
+    [Fact]
+    public void BuildInit_PlayerProvided_SerializesPlayerValue()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", EmptyPins,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: true,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false,
+            player: 99);
+
+        Assert.Contains("\"player\":99", json);
+    }
+
+    [Fact]
+    public void BuildPlayerMarker_Null_SerializesIdAsNull()
+    {
+        var json = MapSceneBuilder.BuildPlayerMarker(null);
+        Assert.Equal("{\"type\":\"playerMarker\",\"id\":null}", json);
+    }
+
+    [Fact]
+    public void BuildPlayerMarker_WithId_SerializesIdValue()
+    {
+        var json = MapSceneBuilder.BuildPlayerMarker(543);
+        Assert.Equal("{\"type\":\"playerMarker\",\"id\":543}", json);
+    }
 }

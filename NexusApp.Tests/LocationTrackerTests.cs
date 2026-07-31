@@ -214,6 +214,46 @@ public class LocationTrackerTests
     // silent LastSeenUtc update that STILL raises Changed (the place did not change, but the
     // signal's age did, and the ORIGIN chip renders that age). Asserted here with a handler
     // attached so the raise itself is covered, not just the LastSeenUtc side effect.
+    // LastKnownRawToken (the MAP tab player marker, 2026-07-31): retains the raw Game.log token
+    // itself alongside the normalized display name, for the same reason LastKnownUexLocation does -
+    // MapCatalog.ResolvePlayerLocation needs the unique raw token to disambiguate a gateway display
+    // name that repeats across systems, and cannot safely reverse-derive it from the display name.
+
+    [Fact]
+    public void Ingest_LocationInventoryLine_SetsLastKnownRawToken()
+    {
+        var t = new LocationTracker(new GameLogFeed());
+        t.Ingest(E(LocationInventoryRequest));
+        Assert.Equal("New Babbage", t.LastKnownLocation);
+        Assert.Equal("Stanton4_NewBabbage", t.LastKnownRawToken);
+    }
+
+    [Fact]
+    public void Ingest_GatewayToken_SetsLastKnownRawToken_EvenThoughDisplayNameRepeats()
+    {
+        var t = new LocationTracker(new GameLogFeed());
+        t.Ingest(E(TerraGatewayReverseInventoryRequest));
+        Assert.Equal("Stanton Gateway Station", t.LastKnownLocation);
+        Assert.Equal("RR_JP_TerraStanton", t.LastKnownRawToken);
+    }
+
+    [Fact]
+    public void Ingest_JurisdictionLine_SetsLastKnownRawTokenToTheJurisdictionText()
+    {
+        // Jurisdiction lines have no separate raw-token concept from their place text - the "place"
+        // IS the raw signal for that ingest path, same as LastKnownLocation for a miss.
+        var t = new LocationTracker(new GameLogFeed());
+        t.Ingest(E(MicroTechJurisdiction));
+        Assert.Equal("microTech", t.LastKnownRawToken);
+    }
+
+    [Fact]
+    public void Ingest_NoSignalYet_LastKnownRawTokenIsNull()
+    {
+        var t = new LocationTracker(new GameLogFeed());
+        Assert.Null(t.LastKnownRawToken);
+    }
+
     [Fact]
     public void Ingest_InventoryTransitionLine_RaisesChanged()
     {

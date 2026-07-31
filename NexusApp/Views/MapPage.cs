@@ -61,6 +61,13 @@ public sealed class MapPage : UserControl
     private MarketSnapshot? _lastSnapshotRef;
     private bool _lastConsent;
 
+    // Player marker (design decisions a/b/c): resolved through MapCatalog.ResolvePlayerLocation from
+    // the live Game.log location, independent of _system - the whole point of the cross-system case
+    // is that this can name an object in a system the user is not currently looking at. Null means
+    // no live location resolves (LocationTracker has nothing yet, or it named something the map
+    // catalog cannot place - e.g. Magnus).
+    private MapObject? _playerLocation;
+
     private DispatcherTimer? _hangarTimer;
 
     // ── side panel element refs (built once, repainted live) ──
@@ -73,6 +80,12 @@ public sealed class MapPage : UserControl
     private StackPanel _searchGrp = null!;   // the search box plus its results list, built once
     private Border? _searchResultsMenu;
     private bool _suppressSearchText;
+
+    // ── LOCATION zone (player marker side panel) ──
+    private TextBlock _locEmptyText = null!;
+    private StackPanel _locContent = null!;
+    private StackPanel _locNameRow = null!;
+    private Border _jumpToMeBtn = null!;
 
     private TextBlock _hintText = null!;
     private TextBlock _emptyText = null!;
@@ -135,12 +148,19 @@ public sealed class MapPage : UserControl
         // with Activate() below so there is one implementation of the snapshot/consent delta check.
         App.Market.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshMarketDelta(); });
 
+        // Player marker: same permanent-subscription idiom as App.Market.Changed right above, one
+        // line up - a live Game.log location change while free-floating on the MAP tab must be
+        // just as visible as a market tick is. Never moves the camera on its own (design b/c); it
+        // only updates the resolved location and the side panel.
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlayerLocation(); });
+
         RefreshSystemPills();
         RefreshLayerCounts();
         RefreshSelectionZone();
         RefreshRouteZone();
         RefreshMeasureZone();
         UpdateHangarTimer();
+        RefreshPlayerLocation();   // resolve on load (design: opening the tab never auto-focuses, it only resolves+shows)
     }
 
     /// <summary>Called by MainWindow every time the dock activates this page.</summary>
@@ -148,6 +168,7 @@ public sealed class MapPage : UserControl
     {
         Logger.Info("[UI] map: tab open");
         RefreshMarketDelta();
+        RefreshPlayerLocation();   // catches a live location change that happened while this tab was hidden, same reasoning as RefreshMarketDelta above
     }
 
     /// <summary>The snapshot/consent delta check shared by Activate() (every dock re-entry) and the
@@ -252,7 +273,51 @@ public sealed class MapPage : UserControl
         _sceneReady = true;
         _scene.PostJson(MapSceneBuilder.BuildInit(_catalog, _system, _pins,
             _tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn,
-            _selection, _draft, _plannerIds, Motion.Reduced));
+            _selection, _draft, _plannerIds, Motion.Reduced, _playerLocation?.Id));
+    }
+
+    // ── player marker (design a/b/c) ──
+
+    /// <summary>Re-resolves the live Game.log location and, when it changed, pushes the marker to
+    /// the scene and refreshes the LOCATION zone. Called on load, on every system switch (via
+    /// SwitchSystem below), on every App.Locations.Changed tick while visible, and on tab
+    /// activation (Activate above) - the same "resolve at every point the answer could have moved"
+    /// contract RefreshMarketDelta already uses for market data. Never moves the camera (design b/c):
+    /// this only updates state and posts the marker id, exactly like SendInit's own player field -
+    /// the scene itself decides whether that id is a pin in the CURRENTLY active system (design c),
+    /// so this never needs to gate on _system before sending.</summary>
+    private void RefreshPlayerLocation()
+    {
+        var resolved = _catalog.ResolvePlayerLocation(App.Locations.LastKnownLocation, App.Locations.LastKnownRawToken);
+        bool changed = resolved?.Id != _playerLocation?.Id;
+        _playerLocation = resolved;
+
+        if (_sceneReady && changed)
+            _scene.PostJson(MapSceneBuilder.BuildPlayerMarker(resolved?.Id));
+
+        RefreshLocationZone();
+
+        if (!changed) return;
+        Logger.Info(resolved != null
+            ? $"[UI] map: player marker {resolved.Name} ({resolved.System})"
+            : "[UI] map: player marker cleared");
+    }
+
+    /// <summary>JUMP TO ME (design b): switches system first when the resolved location is not the
+    /// one currently shown - SwitchSystem's own re-click guard makes the same-system case a no-op -
+    /// then selects and flies exactly like a pin double-click (OnPinDoubleClicked) or a search pick
+    /// (CommitSearchResult) already do. One call sequence, reused a third time rather than
+    /// duplicated.</summary>
+    private void OnJumpToMe()
+    {
+        if (_playerLocation is not { } obj) return;
+
+        if (!string.Equals(obj.System, _system, StringComparison.OrdinalIgnoreCase))
+            SwitchSystem(obj.System);
+
+        Select(obj.Id);
+        FocusOn(obj.Id);
+        Logger.Info($"[UI] map: jump to me -> {obj.Name}");
     }
 
     private void OnPinClicked(int id) => Select(id);
@@ -324,6 +389,7 @@ public sealed class MapPage : UserControl
         RefreshSelectionZone();
         RefreshRouteZone();
         RefreshMeasureZone();
+        RefreshPlayerLocation();   // re-resolve on system switch (design: the LOCATION zone's same-vs-cross-system state depends on _system)
 
         Logger.Info($"[UI] map: system {sys}");
         if (hadDraft) Logger.Info("[UI] map: route draft cleared (system switch)");
@@ -468,6 +534,7 @@ public sealed class MapPage : UserControl
         var stack = new StackPanel();
         stack.Children.Add(BuildSearchZone());
         stack.Children.Add(BuildSystemZone());
+        stack.Children.Add(BuildLocationZone());
         stack.Children.Add(BuildLayersZone());
         stack.Children.Add(BuildSelectionZone());
         stack.Children.Add(BuildRouteZone());
@@ -687,6 +754,60 @@ public sealed class MapPage : UserControl
             // recomputed it. Matches TradePage.RefreshScopePills, which sets Background here too.
             pill.Background = on ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush");
         }
+    }
+
+    // ── LOCATION zone (player marker side panel, design b) ──
+
+    // Quiet-state text (design: "an honest quiet state ... never a guess") - no button, matches the
+    // house tone of _routeEmptyText/_emptyText right below it.
+    private UIElement BuildLocationZone()
+    {
+        var stack = new StackPanel();
+
+        _locEmptyText = new TextBlock
+        {
+            Text = "No live location.",
+            FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        stack.Children.Add(_locEmptyText);
+
+        var content = new StackPanel { Visibility = Visibility.Collapsed };
+        _locContent = content;
+
+        _locNameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(_locNameRow);
+
+        _jumpToMeBtn = BuildActButton("JUMP TO ME", ghost: false);
+        _jumpToMeBtn.Margin = new Thickness(0, 9, 0, 0);
+        _jumpToMeBtn.MouseLeftButtonUp += (_, _) => OnJumpToMe();
+        _jumpToMeBtn.Visibility = Visibility.Collapsed;
+        content.Children.Add(_jumpToMeBtn);
+
+        stack.Children.Add(content);
+        return Zone("LOCATION", stack);
+    }
+
+    // Same-system: name only (the marker is already visible in the current view - design b calls
+    // for JUMP TO ME specifically for the cross-system case). Cross-system: name + dim system tag +
+    // the button. Unresolved: the quiet state above, no button - never a guess.
+    private void RefreshLocationZone()
+    {
+        var obj = _playerLocation;
+        _locEmptyText.Visibility = obj == null ? Visibility.Visible : Visibility.Collapsed;
+        _locContent.Visibility = obj == null ? Visibility.Collapsed : Visibility.Visible;
+        if (obj == null) return;
+
+        bool crossSystem = !string.Equals(obj.System, _system, StringComparison.OrdinalIgnoreCase);
+
+        _locNameRow.Children.Clear();
+        _locNameRow.Children.Add(new TextBlock
+        {
+            Text = obj.Name, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"),
+        });
+        if (crossSystem && TradePage.SystemTag(obj.System) is { } tag) _locNameRow.Children.Add(tag);
+
+        _jumpToMeBtn.Visibility = crossSystem ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── LAYERS zone ──

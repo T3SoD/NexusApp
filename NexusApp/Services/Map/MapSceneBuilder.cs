@@ -29,7 +29,8 @@ public static class MapSceneBuilder
     // membership itself (see the page's own header comment).
     public static string BuildInit(MapCatalog catalog, string system, MapLayerPins pins,
         bool tradeOn, bool guidesOn, bool miningOn, bool hangarOn, bool asteroidsOn,
-        int? selection, IReadOnlyList<int> draft, IReadOnlyList<int> planner, bool reduced)
+        int? selection, IReadOnlyList<int> draft, IReadOnlyList<int> planner, bool reduced,
+        int? player = null)
     {
         var rows = catalog.Objects
             .Where(o => string.Equals(o.System, system, StringComparison.OrdinalIgnoreCase))
@@ -60,6 +61,7 @@ public static class MapSceneBuilder
             selection,
             draft,
             planner,
+            player,
         };
         return JsonSerializer.Serialize(payload);
     }
@@ -84,6 +86,15 @@ public static class MapSceneBuilder
 
     public static string BuildSystemView() =>
         JsonSerializer.Serialize(new { type = "systemView" });
+
+    // Standalone player-marker update (MAP tab: the live Game.log location resolved through
+    // MapCatalog.ResolvePlayerLocation), for a change that happens without a full init resend -
+    // same "id or null" shape as BuildSelect. A null id clears the marker; an id for an object not
+    // in the scene's currently active system is a safe no-op there (the page's own pins lookup
+    // handles that, same defensive pattern as focusObject/onSelect - see the page's own header
+    // comment), never an error here.
+    public static string BuildPlayerMarker(int? id) =>
+        JsonSerializer.Serialize(new { type = "playerMarker", id });
 
     // Pure leg/total distance math for a draft route (MapPage's ROUTE BUILDER zone uses this to
     // paint per-stop leg distances plus the running total): meters between each consecutive pair,

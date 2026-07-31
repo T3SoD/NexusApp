@@ -114,6 +114,14 @@
   .plabel.k-Outpost{color:rgba(127,233,224,0.62); font-size:9.5px}
   .plabel.sel{color:var(--gold)}
   .plabel.trade{color:var(--amber)}
+  /* player marker "YOU" tag: sits ABOVE the pin (a plain .plabel sits to its right), amber-filled
+     pill so it reads as "your position" at a glance and is never confused with the gold selection
+     ring or a normal cyan/amber name label. Two classes (.plabel.you) beat a bare .plabel on
+     specificity, so this wins over the base transform/color regardless of stylesheet order. */
+  .plabel.you{transform:translate(-50%,-100%) translateY(-8px); color:var(--on-accent);
+          background:var(--amber); font-family:var(--tech); font-size:9px; font-weight:800;
+          letter-spacing:0.1em; padding:2px 7px; border-radius:3px;
+          box-shadow:0 0 10px rgba(255,178,62,0.55); text-shadow:none}
   .breadcrumb{position:absolute; top:12px; left:14px; display:flex; align-items:center; gap:8px;
           font-family:var(--tech); font-size:11px; letter-spacing:0.1em; color:var(--dim);
           pointer-events:auto}
@@ -155,7 +163,7 @@ import {OrbitControls} from './OrbitControls.js';
 /* ==========================================================================
    Starmap scene page for the MAP tab, hosted in a WebView2 control.
      C# -> JS : init, layerToggle, select, focusObject, routeChanged,
-                plannerRoute, measureArm, systemView
+                plannerRoute, measureArm, systemView, playerMarker
      JS -> C# : ready, pinClick, pinDoubleClick, measureResult, log
    Every message is a single object distinguished by "type", posted as JSON
    (window.chrome.webview.postMessage). This page holds only what a message
@@ -212,6 +220,10 @@ const TEX = {
   nav: tex(g=>{ stroke(g,DIM,4); g.beginPath(); g.moveTo(-14,-10); g.lineTo(0,6);
     g.lineTo(14,-10); g.stroke(); }),
   selring: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.arc(0,0,42,0,7); g.stroke(); }),
+  // Player marker ring: amber (not gold - distinct from selring above), a wider double ring so its
+  // silhouette differs from every other tick even before the pulse animation kicks in.
+  playertick: tex(g=>{ stroke(g,AMBER,5); g.beginPath(); g.arc(0,0,50,0,7); g.stroke();
+    stroke(g,AMBER,2.5); g.beginPath(); g.arc(0,0,58,0,7); g.stroke(); }),
   tradetick: tex(g=>{ stroke(g,AMBER,5); g.beginPath(); g.arc(0,0,30,0,7); g.stroke(); }),
   guidetick: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.moveTo(0,-34); g.lineTo(34,0);
     g.lineTo(0,34); g.lineTo(-34,0); g.closePath(); g.stroke(); }),
@@ -266,6 +278,7 @@ const state = {
   selection:null, focusName:null,
   draft:[], planner:[],
   measure:{armed:false, first:null, result:null},
+  playerMarker:null,           // MapObject.Id the live Game.log location resolved to, or null
 };
 let BY_ID = new Map();
 let childrenOf = new Map();
@@ -275,6 +288,8 @@ let sysGroup=null, routeLine=null, plannerLine=null, measureLine=null;
 const pins=new Map();          // id -> {sprite, ticks:[], obj}
 let projected=[];              // per-frame screen projections
 let hoverId=null;              // ephemeral pointer-hover id, never sent to the host
+let playerTickSprite=null;     // the CURRENT player-marker ring sprite (a tick, per refreshTicks below) - kept here only so the render loop can pulse it every frame without waiting for the next refreshTicks pass
+let playerLabelEl=null;        // dedicated "YOU" DOM tag, NOT part of labelPool (that pool is reused every frame for object name labels)
 
 // subtree radius per object (for cluster expand thresholds), in scene units
 function calcSubRadius(o){ if(subRadius.has(o.id)) return subRadius.get(o.id);
@@ -332,18 +347,46 @@ function redrawPlanner(){
 }
 
 /* layer tick sprites attached around a pin */
+const PLAYER_TICK_BASE_SCALE = 2.6;    // bigger than every other tick (selring 2.1, hangtick 2.3) so it stands out even before the pulse
 function refreshTicks(){
+  playerTickSprite=null;    // reset before rebuilding; the loop below re-sets it if the marker's object is a pin in THIS system pass (design c: absent when the active system does not contain it)
   pins.forEach(({sprite,ticks,obj})=>{
     ticks.forEach(t=>sprite.remove(t)); ticks.length=0;
     const add=(map,scl)=>{ const t=new THREE.Sprite(new THREE.SpriteMaterial({map,
       sizeAttenuation:false, depthTest:false, transparent:true}));
-      t.scale.setScalar(scl); t.renderOrder=3; sprite.add(t); ticks.push(t); };
+      t.scale.setScalar(scl); t.renderOrder=3; sprite.add(t); ticks.push(t); return t; };
     if(state.layers.trade && obj.trade) add(TEX.tradetick, 1.6);
     if(state.layers.guides && obj.guide) add(TEX.guidetick, 2.0);
     if(state.layers.mining && obj.mine) add(TEX.minetick, 1.8);
     if(state.layers.hangar && obj.hangar) add(TEX.hangtick, 2.3);
     if(state.selection===obj.id) add(TEX.selring, 2.1);
+    if(state.playerMarker===obj.id) playerTickSprite = add(TEX.playertick, PLAYER_TICK_BASE_SCALE);
   });
+  refreshYouLabel();
+}
+
+/* "YOU" DOM tag: created/removed only when the marker gains/loses a pin in this system (cheap,
+   rare); its on-screen position is updated every render pass by youLabelPass() below, same
+   projection math as labelPass() uses for the name-label pool. */
+function refreshYouLabel(){
+  if(playerTickSprite && !playerLabelEl){
+    playerLabelEl=document.createElement('div'); playerLabelEl.className='plabel you';
+    playerLabelEl.textContent='YOU'; playerLabelEl.style.display='none';
+    labelsEl.appendChild(playerLabelEl);
+  } else if(!playerTickSprite && playerLabelEl){
+    playerLabelEl.remove(); playerLabelEl=null;
+  }
+}
+function youLabelPass(){
+  if(!playerLabelEl) return;
+  const rec=(state.playerMarker!=null)? pins.get(state.playerMarker):null;
+  if(!rec || !rec.sprite.visible){ playerLabelEl.style.display='none'; return; }
+  const w=renderer.domElement.clientWidth, h=renderer.domElement.clientHeight;
+  const v=new THREE.Vector3(rec.obj.x/MM, rec.obj.z/MM, -rec.obj.y/MM).project(camera);
+  if(v.z>1||v.x<-1.05||v.x>1.05||v.y<-1.05||v.y>1.05){ playerLabelEl.style.display='none'; return; }
+  playerLabelEl.style.display='block';
+  playerLabelEl.style.left=((v.x*0.5+0.5)*w)+'px';
+  playerLabelEl.style.top=((-v.y*0.5+0.5)*h)+'px';
 }
 
 /* cluster visibility: children hidden while parent collapsed */
@@ -544,7 +587,17 @@ function resize(){ const w=sceneEl.clientWidth, h=sceneEl.clientHeight;
 new ResizeObserver(resize).observe(sceneEl); resize();
 let frame=0;
 renderer.setAnimationLoop(()=>{ controls.update(); frame++;
-  if(frame%2===0){ clusterPass(); labelPass(); scalePass(); }
+  // Player marker pulse: cheap (one sprite's scale+opacity, no geometry/shader work), runs every
+  // frame the render loop already executes rather than adding a second timer. REDUCED holds it at
+  // a static ring - same reduced-motion contract every other animated element on this page honors
+  // (frameRadius's camera tween, AnimateKnobX's WPF-side twin).
+  if(playerTickSprite){
+    if(REDUCED){ playerTickSprite.scale.setScalar(PLAYER_TICK_BASE_SCALE); playerTickSprite.material.opacity=1; }
+    else{ const tsec=performance.now()/1000, pulse=(Math.sin(tsec*2.2)+1)/2;   // 0..1, ~2.2 rad/s, slow and steady
+      playerTickSprite.scale.setScalar(PLAYER_TICK_BASE_SCALE*(1+pulse*0.22));
+      playerTickSprite.material.opacity=0.55+pulse*0.45; }
+  }
+  if(frame%2===0){ clusterPass(); labelPass(); scalePass(); youLabelPass(); }
   renderer.render(scene,camera); });
 
 /* notice toast (system-change guard: routes and measurements are single-system) */
@@ -579,6 +632,7 @@ function applyInit(msg){
   state.focusName = null;
   state.draft = Array.isArray(msg.draft)? msg.draft.slice() : [];
   state.planner = Array.isArray(msg.planner)? msg.planner.slice() : [];
+  state.playerMarker = (msg.player==null)? null : msg.player;
   state.measure = {armed:false, first:null, result:null};
   document.getElementById('measurehint').style.display='none';
 
@@ -612,6 +666,12 @@ function onSelect(id){
   state.selection=nid;
   refreshTicks();
 }
+function onPlayerMarker(id){
+  const nid=(id==null)? null : id;
+  if(state.playerMarker===nid) return;   // unchanged is a no-op, same idiom as onSelect
+  state.playerMarker=nid;
+  refreshTicks();   // rebuilds every pin's ticks, including the player ring; also a no-op-safe clear when nid is not a pin in this system (design c)
+}
 function onRouteChanged(ids){
   state.draft = Array.isArray(ids)? ids : [];
   redrawRoute();
@@ -644,6 +704,7 @@ if (window.chrome && window.chrome.webview) {
         case 'plannerRoute': onPlannerRoute(d.ids); break;
         case 'measureArm': onMeasureArm(d.on); break;
         case 'systemView': systemView(); break;
+        case 'playerMarker': onPlayerMarker(d.id); break;
       }
     }
     catch(err){ console.error(err); post({type:'log', msg:'map render failed: '+String(err && err.stack || err)}); }
