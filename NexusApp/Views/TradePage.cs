@@ -653,12 +653,19 @@ public sealed partial class TradePage : UserControl
     }
 
     /// <summary>The terminal names the manual ORIGIN dropdown offers, in the order it offers
-    /// them.</summary>
-    private static List<string> TerminalNames()
+    /// them: only terminals that actually carry price data (live: 823 terminals -> 135 priced),
+    /// never the full raw /terminals list. Filters by TerminalId, never by name - the price
+    /// row's TerminalName and the Terminals row's Name are reported by different UEX endpoints
+    /// and their vocabularies differ for the same terminal (e.g. "CBD Lorville" vs "CBD -
+    /// Central Business District - Lorville"), so a name-based filter would silently drop or
+    /// duplicate real terminals. Internal static (not instance-dependent) so it is unit-testable
+    /// against a hand-built snapshot; null snapshot yields an empty list.</summary>
+    internal static List<string> TerminalNames(MarketSnapshot? snap)
     {
-        var snap = App.Market.Snapshot;
-        return snap?.Terminals.Rows.Select(t => t.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
-               ?? new List<string>();
+        if (snap is null) return new List<string>();
+        var priced = snap.TradePrices.Rows.Select(r => r.TerminalId).ToHashSet();
+        return snap.Terminals.Rows.Where(t => priced.Contains(t.Id)).Select(t => t.Name)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>The current manual ORIGIN pick, or null when there are genuinely no terminal names
@@ -666,7 +673,7 @@ public sealed partial class TradePage : UserControl
     /// after that the field owns the value, and a pick that drops out of a refreshed snapshot falls
     /// back to the first name (the same revalidation rule the price browser applies to its
     /// commodity) so the field and the dropdown can never disagree.</summary>
-    private string? ManualOrigin() => ManualOrigin(TerminalNames());
+    private string? ManualOrigin() => ManualOrigin(TerminalNames(App.Market.Snapshot));
 
     /// <inheritdoc cref="ManualOrigin()"/>
     /// <remarks>Overload for the dropdown itself, which resolves the pick against the very list it
@@ -761,7 +768,7 @@ public sealed partial class TradePage : UserControl
             // reads of a setting that only one of them has written yet. Selected BEFORE the handler
             // is attached (a seeded default is not a user pick and must not persist or re-log), and
             // the handler is what owns every later write.
-            var names = TerminalNames();
+            var names = TerminalNames(App.Market.Snapshot);
             _originCombo = new ComboBox
             {
                 Style = (Style)Application.Current.FindResource("NexusComboBox"),
