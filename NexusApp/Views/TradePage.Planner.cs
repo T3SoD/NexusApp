@@ -169,6 +169,14 @@ public sealed partial class TradePage
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25);
 
+        // Stale-pin rule (Task 8): a session-pinned route is identified by its (buy terminal, sell
+        // terminal, commodity) triple, not by object identity - this fresh `routes` list is a
+        // brand new set of TradeRoute instances every rebuild. A pin whose triple no longer exists
+        // in the fresh ranking must not survive it (the Sell-picker desync lesson: a stale
+        // selection surviving a snapshot refresh is worse than an honestly cleared one).
+        if (PinnedRoute is { } pinnedRoute && !RoutePlanner.PinSurvivesRefresh(pinnedRoute, routes))
+            PinRoute(null);
+
         if (routes.Count == 0)
         {
             string message;
@@ -227,6 +235,27 @@ public sealed partial class TradePage
         text.Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
         pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
         pill.Background = on ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush");
+    }
+
+    // PIN chip (Task 8): house chip geometry (mono-free, matches TierChip/ScopePill: 1px border,
+    // radius 3, padding 7,2,7,2 - TierChip's exact numbers), active state Gold like the tab strip's
+    // own active color (TabColor, TradePage.cs:412) rather than the amber AccentBrush every other
+    // toggle chip on this page uses - a pin is a session marker, not a filter, and reusing the tab
+    // strip's own "this is the one you're on" color keeps that distinction visible at a glance.
+    private static Border PinChip(bool active)
+    {
+        var text = new TextBlock
+        {
+            Text = "PIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush"),
+        };
+        return new Border
+        {
+            BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Cursor = Cursors.Hand,
+            Margin = new Thickness(8, 0, 0, 0), Child = text, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = active ? "Unpin this route." : "Pin this route so it stays here through a refresh.",
+        };
     }
 
     private static TextBlock FieldLabel(string text) => new()
@@ -391,6 +420,19 @@ public sealed partial class TradePage
         {
             head.Children.Add(routeDistTag);
         }
+        // PIN toggle (Task 8, MAP tab route pinning): active state check reuses the same
+        // PinSurvivesRefresh triple rule the stale-pin clear in RebuildPlanner already applies
+        // (fresh = this one row's route), so "is this row the pinned one" can never disagree with
+        // "did the pin survive this rebuild" - one rule, not two hand-written comparisons.
+        bool pinnedHere = PinnedRoute is { } pinnedForRow && RoutePlanner.PinSurvivesRefresh(pinnedForRow, new[] { r });
+        var pinChip = PinChip(pinnedHere);
+        pinChip.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;   // never bubble to the row host and toggle the expand band
+            PinRoute(r);
+            RebuildPlanner();
+        };
+        head.Children.Add(pinChip);
         Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
         grid.Children.Add(head);
 

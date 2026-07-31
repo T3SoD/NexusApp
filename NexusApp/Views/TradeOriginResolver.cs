@@ -38,4 +38,12 @@ internal static class TradeOriginResolver
                 t.Name.Contains(locationLabel, StringComparison.OrdinalIgnoreCase))
             .Select(t => t.Id).ToHashSet();
     }
+
+    // Reverse of TerminalIdForName: the MAP tab's "set planner origin here" action names a
+    // terminal by id (a starmap pin), and TradePage.PrefillPlannerOriginFromMap needs that
+    // terminal's display Name to seed the manual ORIGIN field with - the field this page has
+    // always kept as a name, never an id (TradePage.cs's _manualOriginName). Null when the id
+    // resolves to nothing (a stale pin from a snapshot that has since changed).
+    internal static string? OriginNameForTerminal(int terminalId, IReadOnlyList<MarketTerminal> terminals)
+        => terminals.FirstOrDefault(t => t.Id == terminalId)?.Name;
 }

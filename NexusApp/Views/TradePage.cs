@@ -790,4 +790,66 @@ public sealed partial class TradePage : UserControl
                               "LED: green under 24h, amber older, red no data.";
         SetFreshnessDot(_sctPillDot, age);
     }
+
+    // ── MAP tab hooks (Task 8, starmap MAP tab integration) ──────────────────────────────────
+    // Session-only pin (not persisted - a route pin is a "what I'm looking at right now" marker,
+    // not a saved preference; nothing in AppSettings' fixed contract has room for it either). The
+    // WPF wiring here (PinRoute, the row's PIN chip, PrefillPlannerOriginFromMap's field writes,
+    // ShowPricesForTerminal's tab switch) is not unit tested - constructing a real TradePage needs
+    // a live App/window context, too heavy for a unit test - but the stale-pin DECISION it depends
+    // on is: RoutePlanner.PinSurvivesRefresh (Services/RoutePlanner.cs), unit tested directly in
+    // NexusApp.Tests/TradePinnedRouteTests.cs.
+    private TradeRoute? _pinnedRoute;
+    internal TradeRoute? PinnedRoute => _pinnedRoute;
+    internal event Action? PinnedRouteChanged;
+
+    /// <summary>Toggles the session pin: pinning the already-pinned route unpins it (same-route
+    /// identity is RoutePlanner.PinSurvivesRefresh's own triple rule, reused here rather than a
+    /// second copy of it), pinning null clears with no-op-if-already-clear, and pinning any other
+    /// route replaces whatever was pinned before (one pin at a time). Always raises
+    /// PinnedRouteChanged on an actual change, never on a no-op.</summary>
+    internal void PinRoute(TradeRoute? r)
+    {
+        if (r is null) { ClearPin(); return; }
+        if (_pinnedRoute is { } current && RoutePlanner.PinSurvivesRefresh(current, new[] { r }))
+        {
+            ClearPin();
+            return;
+        }
+        _pinnedRoute = r;
+        Logger.Info("[UI] trade: route pinned");
+        PinnedRouteChanged?.Invoke();
+    }
+
+    /// <summary>The stale-pin path: RebuildPlanner calls this when the fresh ranking no longer
+    /// contains the pinned route's (buy terminal, sell terminal, commodity) triple. No-op when
+    /// nothing is pinned, so a rebuild that never had a pin never fires a spurious event.</summary>
+    private void ClearPin()
+    {
+        if (_pinnedRoute is null) return;
+        _pinnedRoute = null;
+        Logger.Info("[UI] trade: route unpinned");
+        PinnedRouteChanged?.Invoke();
+    }
+
+    /// <summary>Called when the user picks "set as planner origin" on a MAP tab terminal pin:
+    /// seeds the manual ORIGIN field from that terminal's name, switches to the Planner flow, and
+    /// reruns it against the new origin. A terminal id that does not resolve (a stale pin from a
+    /// snapshot that has since changed) is a silent no-op - never half-applies an origin change.</summary>
+    internal void PrefillPlannerOriginFromMap(int terminalId)
+    {
+        var terminals = App.Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>();
+        if (TradeOriginResolver.OriginNameForTerminal(terminalId, terminals) is not { } name) return;
+
+        _manualOriginName = name;
+        _manualOriginSeeded = true;
+        _originManualOverride = true;
+        App.Settings.Current.TradeOriginManual = name;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: origin prefilled from map ({name})");
+
+        SwitchTab(0);
+        RefreshContextRow();
+        RebuildPlanner();
+    }
 }

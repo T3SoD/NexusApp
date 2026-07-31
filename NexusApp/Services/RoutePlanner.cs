@@ -82,4 +82,17 @@ public static class RoutePlanner
         return !string.IsNullOrEmpty(terminal.System)
             && string.Equals(terminal.System, scope, StringComparison.OrdinalIgnoreCase);
     }
+
+    // The stale-pin rule (task-8, MAP tab route pinning): a pinned TradeRoute is identified by
+    // WHICH haul it names (buy terminal, sell terminal, commodity), not by object identity or its
+    // priced fields - Rank rebuilds a brand new TradeRoute instance, with a brand new TripParts
+    // array, on every call, even when nothing about the underlying haul actually changed. Pure and
+    // unit tested directly (task-8 brief): TradePage.RebuildPlanner calls this once per rebuild to
+    // decide whether a session-pinned route survives a fresh snapshot, and the row's own PIN chip
+    // reuses it (fresh = the single row's route) to decide its own active/inactive paint - one
+    // rule, one place, instead of two copies of the same three-field comparison drifting apart.
+    internal static bool PinSurvivesRefresh(TradeRoute pinned, IReadOnlyList<TradeRoute> fresh) =>
+        fresh.Any(r => r.BuyRow.TerminalId == pinned.BuyRow.TerminalId
+            && r.SellRow.TerminalId == pinned.SellRow.TerminalId
+            && r.BuyRow.CommodityId == pinned.BuyRow.CommodityId);
 }
