@@ -153,6 +153,12 @@ public class AppSettings
     // System-name scope filter pill (ALL / a specific star system name). Default ALL.
     public string TradeScope { get; set; } = "ALL";
 
+    // Route planner stock/demand coverage filter pill (ANY / COVERS TRIP / COVERS 2X). ANY applies
+    // no filter (default, byte-identical to the planner's original behavior); COVERS TRIP requires
+    // both legs to carry at least one full trip's worth of SCU; COVERS 2X requires two trips'
+    // worth. Stored as the exact pill label, same convention as TradeScope.
+    public string TradeStockFilter { get; set; } = "ANY";
+
     // FROM HERE (true, default) restricts the route planner's buy legs to the current origin;
     // ANYWHERE (false) lifts that restriction. Same ranking math either way.
     public bool TradeAnchorFromHere { get; set; } = true;

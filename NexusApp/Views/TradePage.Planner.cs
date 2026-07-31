@@ -39,6 +39,9 @@ public sealed partial class TradePage
     private TextBox _budgetBox = null!;
     private Border _fromHerePill = null!;
     private Border _anywherePill = null!;
+    private Border _stockAnyPill = null!;
+    private Border _stockCoversTripPill = null!;
+    private Border _stockCoversTwoTripsPill = null!;
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
@@ -148,6 +151,24 @@ public sealed partial class TradePage
         anchorGrp.Children.Add(anchorRow);
         inputRow.Children.Add(anchorGrp);
 
+        // Stock/demand coverage filter (task 5): same pill chrome as the anchor pills above, three
+        // mutually-exclusive states rather than two, using SetPillOn per pill (already shared with
+        // RefreshAnchorPills) so the highlighted-state visuals stay identical across both groups.
+        var stockFilterGrp = new StackPanel();
+        stockFilterGrp.Children.Add(FieldLabel("Coverage"));
+        var stockFilterRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _stockAnyPill = ScopePill("ANY");
+        _stockCoversTripPill = ScopePill("COVERS TRIP");
+        _stockCoversTwoTripsPill = ScopePill("COVERS 2X");
+        _stockAnyPill.MouseLeftButtonUp += (_, _) => SetStockFilter(StockFilter.Any);
+        _stockCoversTripPill.MouseLeftButtonUp += (_, _) => SetStockFilter(StockFilter.CoversTrip);
+        _stockCoversTwoTripsPill.MouseLeftButtonUp += (_, _) => SetStockFilter(StockFilter.CoversTwoTrips);
+        stockFilterRow.Children.Add(_stockAnyPill);
+        stockFilterRow.Children.Add(_stockCoversTripPill);
+        stockFilterRow.Children.Add(_stockCoversTwoTripsPill);
+        stockFilterGrp.Children.Add(stockFilterRow);
+        inputRow.Children.Add(stockFilterGrp);
+
         _plannerInputs.Children.Add(inputRow);
 
         _plannerInputs.Children.Add(new TextBlock
@@ -168,6 +189,7 @@ public sealed partial class TradePage
         _plannerResults.Children.Clear();
         _plannerExpanded = -1;
         RefreshAnchorPills();
+        RefreshStockFilterPills();
 
         var snap = App.Market.Snapshot;
         if (snap is null || snap.TradePrices.Rows.Count == 0)
@@ -189,7 +211,8 @@ public sealed partial class TradePage
         // problem is an unknown origin, not a real absence of routes.
         bool originUnknown = App.Settings.Current.TradeAnchorFromHere && originIds is { Count: 0 };
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
-            CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25);
+            CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
+            ParseStockFilter(App.Settings.Current.TradeStockFilter));
 
         if (routes.Count == 0)
         {
@@ -242,6 +265,42 @@ public sealed partial class TradePage
         SetPillOn(_fromHerePill, fromHere);
         SetPillOn(_anywherePill, !fromHere);
     }
+
+    // Same no-op-on-unchanged guard as SetAnchor: a click on the pill that is already active never
+    // logs or rebuilds.
+    private void SetStockFilter(StockFilter filter)
+    {
+        var label = StockFilterLabel(filter);
+        if (App.Settings.Current.TradeStockFilter == label) return;
+        App.Settings.Current.TradeStockFilter = label;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: stock filter {label}");
+        RebuildPlanner();
+    }
+
+    private void RefreshStockFilterPills()
+    {
+        var active = ParseStockFilter(App.Settings.Current.TradeStockFilter);
+        SetPillOn(_stockAnyPill, active == StockFilter.Any);
+        SetPillOn(_stockCoversTripPill, active == StockFilter.CoversTrip);
+        SetPillOn(_stockCoversTwoTripsPill, active == StockFilter.CoversTwoTrips);
+    }
+
+    private static string StockFilterLabel(StockFilter filter) => filter switch
+    {
+        StockFilter.CoversTrip => "COVERS TRIP",
+        StockFilter.CoversTwoTrips => "COVERS 2X",
+        _ => "ANY",
+    };
+
+    // Any stored value that isn't a recognized label (corrupt settings.json, a future rollback)
+    // falls back to Any - the same fail-open behavior the planner had before this filter existed.
+    private static StockFilter ParseStockFilter(string? value) => value switch
+    {
+        "COVERS TRIP" => StockFilter.CoversTrip,
+        "COVERS 2X" => StockFilter.CoversTwoTrips,
+        _ => StockFilter.Any,
+    };
 
     private static void SetPillOn(Border pill, bool on)
     {

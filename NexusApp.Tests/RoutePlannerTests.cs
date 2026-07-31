@@ -218,4 +218,67 @@ public class RoutePlannerTests
         Assert.Empty(RoutePlanner.Rank(new List<TradePriceRow>(), terminals, 100, 32, null, null, "ALL", 10));
         Assert.Empty(RoutePlanner.Rank(new List<TradePriceRow> { Row(1, 1, 10, 0) }, terminals, 100, 32, null, null, "ALL", 0));
     }
+
+    // Stock/demand coverage filter (task 5): applied per pair, inside the pairing loop, before the
+    // take cutoff - a route that fails coverage is skipped outright rather than merely ranked lower.
+    [Fact]
+    public void Rank_StockExactlyEqualsTripQty_PassesCoversTripButFailsCoversTwoTrips()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 50),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 50),
+        };
+
+        // shipScu 100, buyStock 50 => tripQty = min(100, 50) = 50, exactly matching both stock and demand.
+        var trip = Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTrip));
+        Assert.Equal(50, trip.TripQty);
+
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
+    }
+
+    [Fact]
+    public void Rank_ZeroStockPair_ExcludedUnderCoverageFiltersButKeptUnderAny()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 0),     // zero stock -> tripQty is always 0
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 100),
+        };
+
+        Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.Any));
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTrip));
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
+    }
+
+    [Fact]
+    public void Rank_DefaultStockFilter_MatchesExplicitAnyOnRealFixtureData()
+    {
+        var rows = MarketParse.ParseTradePriceRows(TradePricesFixture.LoadSampleJson(), out _)
+            .Where(r => r.CommodityId == 47).ToList();
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [rows.Single(r => r.TerminalName == "HDMS-Lathan").TerminalId] = Term(33, "Stanton", "Lyria"),
+            [rows.Single(r => r.TerminalName == "TDD Area 18").TerminalId] = Term(12, "Stanton", "Area 18"),
+        };
+
+        var defaultRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10);
+        var explicitAnyRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, stockFilter: StockFilter.Any);
+
+        Assert.Equal(defaultRoutes.Count, explicitAnyRoutes.Count);
+        for (int i = 0; i < defaultRoutes.Count; i++)
+        {
+            Assert.Equal(defaultRoutes[i].BuyRow, explicitAnyRoutes[i].BuyRow);
+            Assert.Equal(defaultRoutes[i].SellRow, explicitAnyRoutes[i].SellRow);
+            Assert.Equal(defaultRoutes[i].TripQty, explicitAnyRoutes[i].TripQty);
+            Assert.Equal(defaultRoutes[i].Gross, explicitAnyRoutes[i].Gross);
+            Assert.Equal(defaultRoutes[i].Net, explicitAnyRoutes[i].Net);
+            Assert.Equal(defaultRoutes[i].Tier, explicitAnyRoutes[i].Tier);
+            Assert.Equal(defaultRoutes[i].TripParts, explicitAnyRoutes[i].TripParts);
+        }
+    }
 }

@@ -10,6 +10,12 @@ namespace NexusApp.Services;
 public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int TripQty, double Gross,
     double Net, ProximityTier Tier, string[] TripParts);
 
+// Stock/demand coverage filter for the route planner (task 5). Any = no filter (default, the
+// planner's original behavior, byte-preserved). CoversTrip requires both legs to carry at least
+// one full trip's worth of SCU; CoversTwoTrips requires two trips' worth, so the shown route can
+// be run back-to-back without a fresh scan in between.
+public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
+
 // Pairs a Buy>0 row with a Sell>0 row of the same commodity, at two DIFFERENT terminals (a
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
 // ANYWHERE) only restricts which terminals the BUY leg may come from; the sell leg and the
@@ -23,7 +29,7 @@ public static class RoutePlanner
 {
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int shipScu, int shipMaxBox, double? budget,
-        IReadOnlySet<int>? originTerminalIds, string scope, int take)
+        IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -61,6 +67,7 @@ public static class RoutePlanner
 
                     var sellTerminal = terminals[sellRow.TerminalId];
                     var tripQty = TradeMath.TripQty(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
+                    if (!PassesStockFilter(stockFilter, tripQty, buyRow.BuyStockScu, sellRow.SellDemandScu)) continue;
                     var gross = tripQty * (sellRow.Sell - buyRow.Buy);
                     result.Add(new TradeRoute(buyRow, sellRow, tripQty, gross, gross,
                         ProximityTiers.Derive(buyTerminal, sellTerminal),
@@ -71,6 +78,19 @@ public static class RoutePlanner
 
         return result.OrderByDescending(r => r.Net).Take(take).ToList();
     }
+
+    // Applied per pair, inside the pairing loop, before the take cutoff - a route that fails
+    // coverage is skipped outright rather than merely ranked lower and then trimmed away by
+    // Take(). tripQty == 0 never passes CoversTrip/CoversTwoTrips: a route nobody can actually run
+    // once (ship capacity, stock, or budget already zeroed the trip) can't be said to "cover"
+    // anything, so it only ever surfaces under Any.
+    private static bool PassesStockFilter(StockFilter filter, int tripQty, int buyStockScu, int sellDemandScu) =>
+        filter switch
+        {
+            StockFilter.CoversTrip => tripQty > 0 && buyStockScu >= tripQty && sellDemandScu >= tripQty,
+            StockFilter.CoversTwoTrips => tripQty > 0 && buyStockScu >= 2 * tripQty && sellDemandScu >= 2 * tripQty,
+            _ => true,
+        };
 
     // "ALL" (case-insensitive) passes every terminal; anything else must match the terminal's
     // star system by name. A terminal with no recorded system is excluded once a specific scope
