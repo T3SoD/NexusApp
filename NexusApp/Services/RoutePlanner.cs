@@ -10,6 +10,22 @@ namespace NexusApp.Services;
 public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int TripQty, double Gross,
     double Net, ProximityTier Tier, string[] TripParts);
 
+// Demand-at-destination coverage filter for the route planner (task 5; resemantic task 10). Any =
+// no filter (default, the planner's original behavior, byte-preserved). CoversTrip requires the
+// SELL leg to carry at least one full trip's worth of demand; CoversTwoTrips requires two trips'
+// worth, so the shown route can be run back-to-back without a fresh scan in between. DEMAND ONLY:
+// the buy leg's stock is never independently checked here - TradeMath.TripQty already caps
+// tripQty at buyStockScu, so the buy side is self-limiting by construction (enum member names kept
+// from task 5 to avoid an unrelated cascade; the UI-facing pill labels are what actually renamed).
+public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
+
+// Route planner ranking mode (task 7). Profit (default) orders by raw Net descending, byte-
+// identical to the planner's original behavior. ProfitPerScu re-orders by Net/TripQty descending
+// (ties broken by Net descending), surfacing high-margin small-qty routes that a raw-net sort
+// buries under high-net bulk hauls; a zero-TripQty route (nobody can actually run it) sorts to
+// the bottom under either mode, since 0 is the lowest per-SCU value any route can have.
+public enum RankMode { Profit, ProfitPerScu }
+
 // Pairs a Buy>0 row with a Sell>0 row of the same commodity, at two DIFFERENT terminals (a
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
 // ANYWHERE) only restricts which terminals the BUY leg may come from; the sell leg and the
@@ -19,11 +35,23 @@ public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int
 // resolved to any terminal. An empty set restricts the buy leg to NOTHING, not to "unrestricted" -
 // treating an unresolved origin as ANYWHERE would silently show cross-map routes while FROM HERE
 // stays lit (spec Decision 6: "every listed route is purchasable where the player stands").
+//
+// destTerminalIds (task 6) is the exact same contract, mirrored onto the SELL leg: null = ANY (no
+// constraint, the planner's original behavior, default parameter so every pre-existing call site
+// is untouched), non-null restricts sell legs to that set, non-null EMPTY means the DESTINATION
+// picker's name could not be resolved to a terminal and must yield zero sell legs rather than
+// silently falling back to ANY - same reasoning as the origin's empty-set case above.
+//
+// rankMode (task 7) only changes the final ordering, never which pairs qualify as routes - it is
+// applied after every filter above (scope, box fit, stock coverage, origin/destination) has
+// already run, same as the pre-existing Net-descending sort it replaces for ProfitPerScu. Default
+// parameter (Profit) so every pre-existing call site's ordering is untouched.
 public static class RoutePlanner
 {
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int shipScu, int shipMaxBox, double? budget,
-        IReadOnlySet<int>? originTerminalIds, string scope, int take)
+        IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any,
+        IReadOnlySet<int>? destTerminalIds = null, RankMode rankMode = RankMode.Profit)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -44,7 +72,10 @@ public static class RoutePlanner
             // buy leg rather than silently falling back to every terminal's.
             if (row.Buy > 0 && (originTerminalIds is null || originTerminalIds.Contains(row.TerminalId)))
                 lists.Buys.Add(row);
-            if (row.Sell > 0) lists.Sells.Add(row);
+            // Same rule, sell leg: null = ANY destination, non-null EMPTY = an unresolved
+            // DESTINATION pick that must exclude every sell leg, not fall back to ANY.
+            if (row.Sell > 0 && (destTerminalIds is null || destTerminalIds.Contains(row.TerminalId)))
+                lists.Sells.Add(row);
         }
 
         foreach (var (buys, sells) in byCommodity.Values)
@@ -61,6 +92,7 @@ public static class RoutePlanner
 
                     var sellTerminal = terminals[sellRow.TerminalId];
                     var tripQty = TradeMath.TripQty(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
+                    if (!PassesStockFilter(stockFilter, tripQty, sellRow.SellDemandScu)) continue;
                     var gross = tripQty * (sellRow.Sell - buyRow.Buy);
                     result.Add(new TradeRoute(buyRow, sellRow, tripQty, gross, gross,
                         ProximityTiers.Derive(buyTerminal, sellTerminal),
@@ -69,8 +101,34 @@ public static class RoutePlanner
             }
         }
 
-        return result.OrderByDescending(r => r.Net).Take(take).ToList();
+        return (rankMode == RankMode.ProfitPerScu
+                ? result.OrderByDescending(r => r.TripQty > 0 ? r.Net / r.TripQty : 0).ThenByDescending(r => r.Net)
+                : result.OrderByDescending(r => r.Net))
+            .Take(take).ToList();
     }
+
+    // Applied per pair, inside the pairing loop, before the take cutoff - a route that fails
+    // coverage is skipped outright rather than merely ranked lower and then trimmed away by
+    // Take(). tripQty == 0 never passes CoversTrip/CoversTwoTrips: a route nobody can actually run
+    // once (ship capacity, stock, or budget already zeroed the trip) can't be said to "cover"
+    // anything, so it only ever surfaces under Any.
+    //
+    // DEMAND ONLY (task 10 resemantic): buyStockScu is deliberately NOT checked here anymore.
+    // tripQty is derived from buyStockScu via TradeMath.TripQty (tripQty = min(shipScu,
+    // buyStockScu, ...)), so tripQty can never exceed buyStockScu - the buy side is already
+    // self-limiting. That made the old CoversTrip check (buyStockScu >= tripQty) a tautology, but
+    // the old CoversTwoTrips check (buyStockScu >= 2*tripQty) was NOT: whenever stock was the
+    // binding constraint (the common case), tripQty == buyStockScu, so buyStockScu >= 2*tripQty
+    // reduced to buyStockScu >= 2*buyStockScu - only ever true for buyStockScu <= 0. CoversTwoTrips
+    // was therefore nearly unsatisfiable for any low-stock route under the old code; this is now a
+    // straight demand comparison instead.
+    private static bool PassesStockFilter(StockFilter filter, int tripQty, int sellDemandScu) =>
+        filter switch
+        {
+            StockFilter.CoversTrip => tripQty > 0 && sellDemandScu >= tripQty,
+            StockFilter.CoversTwoTrips => tripQty > 0 && sellDemandScu >= 2 * tripQty,
+            _ => true,
+        };
 
     // "ALL" (case-insensitive) passes every terminal; anything else must match the terminal's
     // star system by name. A terminal with no recorded system is excluded once a specific scope

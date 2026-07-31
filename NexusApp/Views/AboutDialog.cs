@@ -13,6 +13,16 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.12.1  -  Jul 31, 2026",
+        [
+            "The route planner has a ROUTE section - pick a starting location and a destination from the same list, with a LIVE button that snaps the start to where you are standing",
+            "New DEMAND AT DESTINATION filter - keep only routes where the buyer wants at least one full trip, or twice a full trip, so a stale listing is less likely to waste the run",
+            "New RANK BY toggle - rank routes by total profit, or by profit per SCU to surface high-margin runs that need only a small hold, with an aUEC/SCU tag on every row",
+            "Planner filters stay pinned in place while you scroll the results, and the budget re-ranks routes as you type instead of waiting for you to click away",
+            "Trade rows show the largest container size a terminal sells, and warn when it is smaller than your ship's best box",
+            "The origin picker lists only locations that actually trade, and the location chip now reads your in-game position by its real name",
+            "The UEX and SC Trade Tools freshness pills moved above the tab strip, where they stay visible on every trade view",
+        ]),
         ("App  6.12.0  -  Jul 30, 2026",
         [
             "New TRADE tab - plan commodity runs three ways: a route planner that ranks what a trip really pays with your ship and budget, a sell lookup that ranks buyers for the cargo you are carrying, and a sortable price browser; built on UEX community data behind the same market-data consent as prices",

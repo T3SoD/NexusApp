@@ -37,16 +37,52 @@ public sealed partial class TradePage
 {
     private ComboBox _shipCombo = null!;
     private TextBox _budgetBox = null!;
-    private Border _fromHerePill = null!;
-    private Border _anywherePill = null!;
+    private Border _demandAnyPill = null!;
+    private Border _demandMinPill = null!;
+    private Border _demandTwoXPill = null!;
+    private Border _rankProfitPill = null!;
+    private Border _rankProfitPerScuPill = null!;
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
-    // The input area (ship combo, budget box, anchor pills, caption) is built ONCE and only its
+    // STARTING LOCATION picker (task 10): replaces the old FROM HERE/ANYWHERE anchor pills
+    // entirely (SetAnchor/_fromHerePill/_anywherePill are gone). "ANY" is the literal first
+    // ComboBox item (= null originTerminalIds, old ANYWHERE); "LIVE - {location}" is present only
+    // when App.Locations.LastKnownLocation is non-null (old FROM HERE's live half); every other
+    // item is a priced terminal name (old FROM HERE's manual-pick half, now scoped to this one
+    // picker instead of the shared ORIGIN chip - see TradePage.cs's now display-only chip). The
+    // persisted value (AppSettings.TradeStartManual) is the raw KIND - "ANY", "LIVE", or the
+    // terminal name itself - never the combo's own display text, since the "LIVE - {location}"
+    // display string changes with the location while the kind does not. Same seed-once/revalidate-
+    // per-rebuild idiom as the DESTINATION picker below.
+    private const string AnyStart = "ANY";
+    private const string LiveStartPrefix = "LIVE - ";
+    private ComboBox _startCombo = null!;
+    private Border _startLiveBtn = null!;       // small pill button: selects LIVE when a session is live, else just logs
+    private List<string>? _startNames;          // the list currently bound to the ComboBox
+    private string? _startSelectedKind;          // "ANY" | "LIVE" | a terminal name; null only before the first seed
+    private bool _startSeeded;
+    private bool _suppressStartSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // DESTINATION picker (task 6): "ANY" is the literal first ComboBox item and the sentinel this
+    // page uses for "no constraint" - distinct from AppSettings.TradeDestManual, which persists
+    // null/"" for that same state (see RefreshDestCombo/DestTerminalIds). Built once in
+    // BuildPlannerChrome; the ComboBox's items and selection are updated in place on every rebuild
+    // via RefreshDestCombo, same idiom as the Prices flow's commodity picker
+    // (TradePage.Prices.cs, RefreshPricesCommodityBox). Moved into the ROUTE section (task 10),
+    // alongside Starting Location, out of its own standalone input group.
+    private const string AnyDestination = "ANY";
+    private ComboBox _destCombo = null!;
+    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY")
+    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed
+    private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as the STARTING LOCATION picker above
+    private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
     // Before this, every rebuild started with PlannerHost.Children.Clear(), so the budget box's own
     // LostFocus - which WPF raises synchronously inside the mouse handling of whatever the user just
-    // clicked - destroyed the ship combo and the anchor pills mid-click and ate that first click.
+    // clicked - destroyed the ship combo and the route pickers mid-click and ate that first click.
     // The same clear also wiped typed-but-unblurred text and collapsed expanded bands on every
     // hourly market tick.
     private StackPanel _plannerInputs = null!;
@@ -56,6 +92,12 @@ public sealed partial class TradePage
     // "NOTE on a second small assumption": AppSettings has no TradeBudget field, so this holds the
     // value in memory only; it resets each session, which does not affect anything else in this file.
     private string _budgetText = "";
+
+    // Reentrancy guard for the budget box's live TextChanged re-rank below, same pattern as the
+    // Sell tab's quantity box (TradePage.Sell.cs, _inQtyLiveRerank) - RebuildPlanner never writes
+    // back to _budgetBox.Text itself, so nothing today re-enters this handler, but the guard is
+    // cheap insurance against a future write-back (or IME composition) looping back in.
+    private bool _inBudgetLiveRerank;
 
     private ShipCargoDef CurrentShip() =>
         _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
@@ -75,7 +117,7 @@ public sealed partial class TradePage
 
         _plannerInputs = new StackPanel();
 
-        var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
+        var topRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
 
         var shipGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
         shipGrp.Children.Add(FieldLabel("Ship"));
@@ -95,9 +137,9 @@ public sealed partial class TradePage
             RebuildPlanner();
         };
         shipGrp.Children.Add(_shipCombo);
-        inputRow.Children.Add(shipGrp);
+        topRow.Children.Add(shipGrp);
 
-        var budgetGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        var budgetGrp = new StackPanel();
         budgetGrp.Children.Add(FieldLabel("Budget (optional)"));
         _budgetBox = new TextBox
         {
@@ -106,27 +148,124 @@ public sealed partial class TradePage
         };
         _budgetBox.LostFocus += (_, _) =>
         {
-            if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetAnchor/SetScope: no-op blur never logs or rebuilds
+            if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetDemandFilter/SetScope: no-op blur never logs or rebuilds
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
             RebuildPlanner();   // results only: the control the user just clicked is still alive
         };
+        // Live re-rank per keystroke, same fix as the Sell tab's quantity box (TradePage.Sell.cs,
+        // item C): budget used to apply only on blur, so nothing re-ranked until the user typed a
+        // budget AND clicked elsewhere. RebuildPlanner only ever clears/repopulates
+        // _plannerResults, never _plannerInputs (this box's own parent, built once - see this
+        // method's opening comment), so this can never recreate the box the user is typing into or
+        // steal its focus/caret. Deliberately leaves _budgetText and the log line alone:
+        // CurrentBudget already reads _budgetBox.Text directly (not _budgetText), so a rebuild here
+        // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
+        // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
+        _budgetBox.TextChanged += (_, _) =>
+        {
+            if (_inBudgetLiveRerank) return;
+            _inBudgetLiveRerank = true;
+            try { RebuildPlanner(); }
+            finally { _inBudgetLiveRerank = false; }
+        };
         budgetGrp.Children.Add(_budgetBox);
-        inputRow.Children.Add(budgetGrp);
+        topRow.Children.Add(budgetGrp);
 
-        var anchorGrp = new StackPanel();
-        anchorGrp.Children.Add(FieldLabel("Routes"));
-        var anchorRow = new StackPanel { Orientation = Orientation.Horizontal };
-        _fromHerePill = ScopePill($"FROM HERE ({OriginLabel})");
-        _anywherePill = ScopePill("ANYWHERE");
-        _fromHerePill.MouseLeftButtonUp += (_, _) => SetAnchor(true);
-        _anywherePill.MouseLeftButtonUp += (_, _) => SetAnchor(false);
-        anchorRow.Children.Add(_fromHerePill);
-        anchorRow.Children.Add(_anywherePill);
-        anchorGrp.Children.Add(anchorRow);
-        inputRow.Children.Add(anchorGrp);
+        _plannerInputs.Children.Add(topRow);
 
-        _plannerInputs.Children.Add(inputRow);
+        // ROUTE section (task 10): eyebrow header ("Route", the same FieldLabel idiom every other
+        // group on this page already uses for its own field label) over Starting Location (combo +
+        // LIVE button) side by side with the DESTINATION combo, moved in from its old standalone
+        // group. This StackPanel's own bottom margin is the "visual line break" separating the
+        // section from Ship/Budget above and Demand/Rank below - spacing, not a rule line, matching
+        // how every other gap on this page is already built.
+        var routeSection = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
+        routeSection.Children.Add(FieldLabel("Route"));
+        var routeRow = new WrapPanel { Orientation = Orientation.Horizontal };
+
+        var startGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        startGrp.Children.Add(FieldLabel("Starting Location"));
+        var startRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _startCombo = new ComboBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusComboBox"), MinWidth = 170,
+        };
+        _startCombo.SelectionChanged += (_, _) =>
+        {
+            if (_suppressStartSelection) return;
+            if (_startCombo.SelectedItem is not string display) return;
+            SetStart(StartKindForDisplay(display));
+        };
+        startRow.Children.Add(_startCombo);
+        _startLiveBtn = ScopePill("LIVE");
+        _startLiveBtn.Margin = new Thickness(8, 0, 0, 0);
+        _startLiveBtn.MouseLeftButtonUp += (_, _) => SetStartLive();
+        startRow.Children.Add(_startLiveBtn);
+        startGrp.Children.Add(startRow);
+        routeRow.Children.Add(startGrp);
+
+        // DESTINATION picker (task 6): a plain ComboBox, same idiom as the ORIGIN combo the
+        // context row used to have before task 10 made it display-only - "ANY" is always the first
+        // item, selecting it means no constraint.
+        var destGrp = new StackPanel();
+        destGrp.Children.Add(FieldLabel("Destination"));
+        _destCombo = new ComboBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusComboBox"), MinWidth = 160,
+        };
+        _destCombo.SelectionChanged += (_, _) =>
+        {
+            if (_suppressDestSelection) return;
+            if (_destCombo.SelectedItem is not string name) return;
+            _destSelectedName = name;
+            App.Settings.Current.TradeDestManual = name == AnyDestination ? null : name;
+            App.Settings.Save();
+            Logger.Info($"[UI] trade: destination {name}");
+            RebuildPlanner();
+        };
+        destGrp.Children.Add(_destCombo);
+        routeRow.Children.Add(destGrp);
+
+        routeSection.Children.Add(routeRow);
+        _plannerInputs.Children.Add(routeSection);
+
+        var bottomRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
+
+        // Demand-at-destination filter (task 5, resemantic task 10): same pill chrome as every
+        // other group on this page, three mutually-exclusive states, using SetPillOn per pill so
+        // the highlighted-state visuals stay identical across every pill group.
+        var demandFilterGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        demandFilterGrp.Children.Add(FieldLabel("Demand at Destination"));
+        var demandFilterRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _demandAnyPill = ScopePill("ANY");
+        _demandMinPill = ScopePill("MIN FOR TRIP");
+        _demandTwoXPill = ScopePill("2X FOR TRIP");
+        _demandAnyPill.MouseLeftButtonUp += (_, _) => SetDemandFilter(StockFilter.Any);
+        _demandMinPill.MouseLeftButtonUp += (_, _) => SetDemandFilter(StockFilter.CoversTrip);
+        _demandTwoXPill.MouseLeftButtonUp += (_, _) => SetDemandFilter(StockFilter.CoversTwoTrips);
+        demandFilterRow.Children.Add(_demandAnyPill);
+        demandFilterRow.Children.Add(_demandMinPill);
+        demandFilterRow.Children.Add(_demandTwoXPill);
+        demandFilterGrp.Children.Add(demandFilterRow);
+        bottomRow.Children.Add(demandFilterGrp);
+
+        // Rank mode (task 7): same pill idiom as Demand at Destination above - PROFIT (default)
+        // orders by raw net/trip; PROFIT PER SCU re-ranks by net/tripQty, surfacing high-margin
+        // small-qty routes over high-net bulk ones (RoutePlanner.RankMode).
+        var rankModeGrp = new StackPanel();
+        rankModeGrp.Children.Add(FieldLabel("Rank by"));
+        var rankModeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _rankProfitPill = ScopePill("PROFIT");
+        _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
+        _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
+        _rankProfitPerScuPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerScu);
+        rankModeRow.Children.Add(_rankProfitPill);
+        rankModeRow.Children.Add(_rankProfitPerScuPill);
+        rankModeGrp.Children.Add(rankModeRow);
+        bottomRow.Children.Add(rankModeGrp);
+
+        _plannerInputs.Children.Add(bottomRow);
 
         _plannerInputs.Children.Add(new TextBlock
         {
@@ -135,9 +274,33 @@ public sealed partial class TradePage
         });
 
         _plannerResults = new StackPanel();
+
+        // Anchored inputs (task 10): PlannerHost is a Grid (TradePage.cs) - Auto row for
+        // _plannerInputs (never scrolls) + Star row for a ScrollViewer around _plannerResults only,
+        // so ship/budget/route/demand/rank stay on screen while just the results list scrolls. The
+        // only pane built this way; Sell/Prices keep the single whole-pane ScrollViewer
+        // (TradePage.cs's WrapPane), since only the planner flow was asked to anchor its inputs.
+        PlannerHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        PlannerHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(_plannerInputs, 0);
         PlannerHost.Children.Add(_plannerInputs);
-        PlannerHost.Children.Add(_plannerResults);
+        var resultsScroll = new ScrollViewer
+        {
+            Content = _plannerResults,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetRow(resultsScroll, 1);
+        PlannerHost.Children.Add(resultsScroll);
     }
+
+    // "ANY" and "LIVE - {location}" are the only two combo items that do not literally name a
+    // terminal, so mapping the combo's own display text back to the persisted kind is a plain
+    // prefix/equality check rather than a second lookup table.
+    private static string StartKindForDisplay(string display) =>
+        display == AnyStart ? AnyStart :
+        display.StartsWith(LiveStartPrefix, StringComparison.Ordinal) ? "LIVE" :
+        display;
 
     private void RebuildPlanner()
     {
@@ -145,9 +308,19 @@ public sealed partial class TradePage
         if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
         _plannerResults.Children.Clear();
         _plannerExpanded = -1;
-        RefreshAnchorPills();
 
         var snap = App.Market.Snapshot;
+        RefreshStartCombo(snap);
+        RefreshDestCombo(snap);
+        RefreshDemandFilterPills();
+        RefreshRankModePills();
+
+        // Small dim note above the results list, only when the DESTINATION picker is actually
+        // constraining sell legs - covers both the empty-state and populated branches below, since
+        // both need the same explanation for why routes are narrowed (task 6).
+        bool destActive = _destSelectedName is not null && _destSelectedName != AnyDestination;
+        if (destActive) _plannerResults.Children.Add(DestinationActiveNote(_destSelectedName!));
+
         if (snap is null || snap.TradePrices.Rows.Count == 0)
         {
             _plannerResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
@@ -158,16 +331,22 @@ public sealed partial class TradePage
         // for origin resolution and for each route's System tags (Buy/Sell legs).
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
         var ship = CurrentShip();
-        var originIds = App.Settings.Current.TradeAnchorFromHere ? OriginTerminalIds(snap.Terminals.Rows) : null;
-        // FROM HERE with an origin that resolved to zero terminals (no live location, no manual
-        // pick, or nothing matched either): originIds is non-null but empty, which RoutePlanner
-        // now restricts to zero buy candidates rather than silently falling back to ANYWHERE (see
-        // RoutePlanner.Rank's doc comment / spec Decision 6). That case gets its own empty-state
-        // message below instead of the generic "no routes buy from here" one, since here the
-        // problem is an unknown origin, not a real absence of routes.
-        bool originUnknown = App.Settings.Current.TradeAnchorFromHere && originIds is { Count: 0 };
+        // Starting Location (task 10): TradeOriginResolver.StartTerminalIds is the one pure seam
+        // that turns the combo's persisted kind (ANY/LIVE/a terminal name) into the terminal id set
+        // RoutePlanner needs - null only for ANY; every other kind is non-null, EMPTY when it could
+        // not resolve (no live session for LIVE, an unrecognized name), which restricts the buy leg
+        // to zero rather than silently falling back to ANY (same contract DestTerminalIds already
+        // uses for the sell leg). That empty case gets its own message below instead of the generic
+        // "no routes buy from here" one, since here the problem is an unresolved start, not a real
+        // absence of routes.
+        var originIds = TradeOriginResolver.StartTerminalIds(App.Settings.Current.TradeStartManual,
+            App.Locations.LastKnownLocation, snap.Terminals.Rows);
+        bool originUnknown = originIds is { Count: 0 };
+        var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
-            CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25);
+            CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
+            ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
+            ParseRankMode(App.Settings.Current.TradeRankMode));
 
         // Stale-pin rule (Task 8): a session-pinned route is identified by its (buy terminal, sell
         // terminal, commodity) triple, not by object identity - this fresh `routes` list is a
@@ -182,13 +361,13 @@ public sealed partial class TradePage
             string message;
             if (originUnknown)
             {
-                message = "Origin unknown - pick a manual origin above, or switch to ANYWHERE.";
+                message = "Starting location unknown - pick one above, or set it to ANY.";
                 Logger.Info("[UI] Trade planner run: 0 routes, origin unknown");
             }
             else
             {
-                message = App.Settings.Current.TradeAnchorFromHere
-                    ? "No routes buy from here right now. Try ANYWHERE, or a wider scope."
+                message = originIds is not null
+                    ? "No routes buy from your starting location right now. Try ANY, or a wider scope."
                     : "No routes match the current scope and budget.";
             }
             _plannerResults.Children.Add(new TextBlock
@@ -206,28 +385,236 @@ public sealed partial class TradePage
             _plannerResults.Children.Add(row);
         }
 
-        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, anchor {(App.Settings.Current.TradeAnchorFromHere ? "FROM HERE" : "ANYWHERE")}");
+        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, start {App.Settings.Current.TradeStartManual ?? "LIVE"}, dest {_destSelectedName ?? AnyDestination}");
     }
 
-    private void SetAnchor(bool fromHere)
+    // Starting Location (task 10): mirrors SetDemandFilter's no-op-on-unchanged guard - a pick that
+    // matches the current kind never logs or rebuilds.
+    private void SetStart(string kind)
     {
-        if (App.Settings.Current.TradeAnchorFromHere == fromHere) return;
-        App.Settings.Current.TradeAnchorFromHere = fromHere;
+        if (_startSelectedKind == kind) return;
+        _startSelectedKind = kind;
+        App.Settings.Current.TradeStartManual = kind;
         App.Settings.Save();
-        Logger.Info($"[UI] Trade planner anchor: {(fromHere ? "FROM HERE" : "ANYWHERE")}");
+        Logger.Info($"[UI] trade: start {kind}");
         RebuildPlanner();
     }
 
-    private void RefreshAnchorPills()
+    // LIVE button: selects the LIVE item when a session is actually live. With no live session it
+    // does nothing to the selection - only logs - rather than picking a kind that would just
+    // resolve to the same empty/origin-unknown state the combo already shows.
+    private void SetStartLive()
     {
-        bool fromHere = App.Settings.Current.TradeAnchorFromHere;
-        // The pill is built once, so its label has to keep tracking OriginLabel here rather than at
-        // construction: the origin changes under it (a live location arriving, a manual pick, the
-        // Manual/Live links) and the pill must always name the origin the results were ranked from.
-        ((TextBlock)_fromHerePill.Child).Text = $"FROM HERE ({OriginLabel})";
-        SetPillOn(_fromHerePill, fromHere);
-        SetPillOn(_anywherePill, !fromHere);
+        if (App.Locations.LastKnownLocation is null)
+        {
+            Logger.Info("[UI] trade: start live unavailable");
+            return;
+        }
+        SetStart("LIVE");
     }
+
+    // Re-validate on every rebuild, same idiom as RefreshDestCombo: an hourly snapshot refresh can
+    // drop a previously picked terminal name, and the very first rebuild ever runs before any
+    // snapshot exists. Unlike the destination combo, "LIVE" is a KIND that survives even while its
+    // display item is temporarily absent (no live session right now) - the same way the old FROM
+    // HERE anchor stayed selected through a gap in live location data; only a terminal-name pick
+    // that drops out of the currently offered list falls back to ANY.
+    private void RefreshStartCombo(MarketSnapshot? snap)
+    {
+        string? liveLoc = App.Locations.LastKnownLocation;
+        var names = new List<string> { AnyStart };
+        if (liveLoc is not null) names.Add($"{LiveStartPrefix}{liveLoc}");
+        var terminalNames = TerminalNames(snap);
+        names.AddRange(terminalNames);
+
+        if (!_startSeeded)
+        {
+            _startSeeded = true;
+            var persisted = App.Settings.Current.TradeStartManual;
+            _startSelectedKind = persisted switch
+            {
+                AnyStart => AnyStart,
+                "LIVE" => "LIVE",
+                _ when !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) => persisted,
+                _ => "LIVE",   // fail-open: null/empty/unrecognized persisted values default to LIVE (old FROM HERE default)
+            };
+        }
+        else if (_startSelectedKind is null ||
+                 (_startSelectedKind != AnyStart && _startSelectedKind != "LIVE" && !terminalNames.Contains(_startSelectedKind)))
+        {
+            _startSelectedKind = AnyStart;
+        }
+
+        // The combo shows nothing selected while the kind is LIVE but no live item exists this
+        // render (no session) - an honest "nothing to show" beats highlighting ANY, which would
+        // read as "unrestricted" when the real state is "unresolved, waiting on a live location."
+        string? display = _startSelectedKind switch
+        {
+            "LIVE" => liveLoc is not null ? $"{LiveStartPrefix}{liveLoc}" : null,
+            _ => _startSelectedKind,
+        };
+
+        _suppressStartSelection = true;
+        try
+        {
+            if (_startNames is null || !_startNames.SequenceEqual(names, StringComparer.Ordinal))
+            {
+                _startNames = names;
+                _startCombo.ItemsSource = names;
+            }
+            if (!string.Equals(_startCombo.SelectedItem as string, display, StringComparison.Ordinal))
+                _startCombo.SelectedItem = display;
+        }
+        finally { _suppressStartSelection = false; }
+
+        bool liveSelected = _startSelectedKind == "LIVE" && liveLoc is not null;
+        SetPillOn(_startLiveBtn, liveSelected);
+        _startLiveBtn.Opacity = liveLoc is null ? 0.45 : 1.0;
+    }
+
+    // Demand-at-destination filter (task 5, resemantic task 10): DEMAND-ONLY. Buy stock already
+    // caps tripQty via TradeMath.TripQty (a route can never trip more than the terminal has to
+    // sell), so the buy side is self-limiting and no longer independently checked here - only
+    // RoutePlanner.PassesStockFilter's sellDemandScu comparison remains. Same no-op-on-unchanged
+    // guard as SetRankMode: a click on the pill that is already active never logs or rebuilds.
+    private void SetDemandFilter(StockFilter filter)
+    {
+        var persisted = DemandFilterPersistValue(filter);
+        if (App.Settings.Current.TradeStockFilter == persisted) return;
+        App.Settings.Current.TradeStockFilter = persisted;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: demand filter {DemandFilterPillText(filter)}");
+        RebuildPlanner();
+    }
+
+    private void RefreshDemandFilterPills()
+    {
+        var active = ParseDemandFilter(App.Settings.Current.TradeStockFilter);
+        SetPillOn(_demandAnyPill, active == StockFilter.Any);
+        SetPillOn(_demandMinPill, active == StockFilter.CoversTrip);
+        SetPillOn(_demandTwoXPill, active == StockFilter.CoversTwoTrips);
+    }
+
+    // Persisted setting values (task 10): short, and deliberately distinct from the pill's own
+    // display text below - "ANY"/"MIN"/"2X", not the longer "MIN FOR TRIP"/"2X FOR TRIP" a reader
+    // sees on screen.
+    private static string DemandFilterPersistValue(StockFilter filter) => filter switch
+    {
+        StockFilter.CoversTrip => "MIN",
+        StockFilter.CoversTwoTrips => "2X",
+        _ => "ANY",
+    };
+
+    private static string DemandFilterPillText(StockFilter filter) => filter switch
+    {
+        StockFilter.CoversTrip => "MIN FOR TRIP",
+        StockFilter.CoversTwoTrips => "2X FOR TRIP",
+        _ => "ANY",
+    };
+
+    // Fail-open: an unrecognized persisted value (corrupt settings.json, a future rollback) falls
+    // back to Any. Also accepts the pre-task-10 "COVERS TRIP"/"COVERS 2X" strings, so a
+    // settings.json written before this rename still resolves to the same tier instead of silently
+    // resetting to Any.
+    private static StockFilter ParseDemandFilter(string? value) => value switch
+    {
+        "MIN" or "COVERS TRIP" => StockFilter.CoversTrip,
+        "2X" or "COVERS 2X" => StockFilter.CoversTwoTrips,
+        _ => StockFilter.Any,
+    };
+
+    // Same no-op-on-unchanged guard as SetDemandFilter: a click on the pill that is already active
+    // never logs or rebuilds.
+    private void SetRankMode(RankMode mode)
+    {
+        var label = RankModeLabel(mode);
+        if (App.Settings.Current.TradeRankMode == label) return;
+        App.Settings.Current.TradeRankMode = label;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: rank mode {label}");
+        RebuildPlanner();
+    }
+
+    private void RefreshRankModePills()
+    {
+        var active = ParseRankMode(App.Settings.Current.TradeRankMode);
+        SetPillOn(_rankProfitPill, active == RankMode.Profit);
+        SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
+    }
+
+    private static string RankModeLabel(RankMode mode) => mode switch
+    {
+        RankMode.ProfitPerScu => "PROFIT PER SCU",
+        _ => "PROFIT",
+    };
+
+    // Any stored value that isn't a recognized label (corrupt settings.json, a future rollback)
+    // falls back to Profit - the planner's original ordering, same fail-open idiom as ParseDemandFilter.
+    private static RankMode ParseRankMode(string? value) => value switch
+    {
+        "PROFIT PER SCU" => RankMode.ProfitPerScu,
+        _ => RankMode.Profit,
+    };
+
+    // Re-validate on every rebuild, same rule as the Prices flow's RefreshPricesCommodityBox: an
+    // hourly snapshot refresh can drop the previously selected destination terminal (or the very
+    // first rebuild ever runs before any snapshot exists), and a one-time seed would leave the
+    // field stuck on a name no longer offered. First call ever seeds from the persisted
+    // TradeDestManual setting (null/"" falls back to ANY); every later call revalidates the
+    // CURRENT selection against the CURRENT terminal list instead of re-reading the setting, so a
+    // live user pick this session is never clobbered by what was last saved.
+    private void RefreshDestCombo(MarketSnapshot? snap)
+    {
+        var names = new List<string> { AnyDestination };
+        names.AddRange(TerminalNames(snap));
+
+        if (!_destSeeded)
+        {
+            _destSeeded = true;
+            var persisted = App.Settings.Current.TradeDestManual;
+            _destSelectedName = !string.IsNullOrEmpty(persisted) && names.Contains(persisted) ? persisted : AnyDestination;
+        }
+        else if (_destSelectedName is null || !names.Contains(_destSelectedName))
+        {
+            _destSelectedName = AnyDestination;
+        }
+
+        _suppressDestSelection = true;
+        try
+        {
+            if (_destNames is null || !_destNames.SequenceEqual(names, StringComparer.Ordinal))
+            {
+                _destNames = names;
+                _destCombo.ItemsSource = names;
+            }
+            if (!string.Equals(_destCombo.SelectedItem as string, _destSelectedName, StringComparison.Ordinal))
+                _destCombo.SelectedItem = _destSelectedName;
+        }
+        finally { _suppressDestSelection = false; }
+    }
+
+    // Resolves the DESTINATION combo's current pick to the terminal id set RoutePlanner needs.
+    // "ANY" (the default, and the literal first combo item) means no constraint - null, the same
+    // sentinel RoutePlanner already uses for "unrestricted" on the buy leg. A named terminal that
+    // fails to resolve (TerminalIdForName returns null - a stale persisted name no live terminal
+    // matches) yields an EMPTY set rather than falling back to ANY, mirroring OriginTerminalIds'
+    // contract: an unresolved constraint restricts to nothing, it never silently widens back out.
+    private IReadOnlySet<int>? DestTerminalIds(IReadOnlyList<MarketTerminal> terminals)
+    {
+        if (_destSelectedName is null || _destSelectedName == AnyDestination) return null;
+        return TradeOriginResolver.TerminalIdForName(_destSelectedName, terminals) is { } id
+            ? new HashSet<int> { id }
+            : new HashSet<int>();
+    }
+
+    // Small dim note (task 6, brief's "results header" fallback: no persistent header line exists
+    // in the planner results area to append onto, so this is a standalone TextBlock shown above the
+    // results list only while the DESTINATION picker is actively constraining sell legs).
+    private static TextBlock DestinationActiveNote(string name) => new()
+    {
+        Text = $"Routes ranked TO {name}.",
+        FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 10),
+    };
 
     private static void SetPillOn(Border pill, bool on)
     {
@@ -420,10 +807,18 @@ public sealed partial class TradePage
         {
             head.Children.Add(routeDistTag);
         }
+        // Rank mode (task 7): only while RANK BY is set to PROFIT PER SCU, name the per-SCU figure
+        // routes are actually being sorted by - otherwise the ranking looks arbitrary next to the
+        // PROFIT / TRIP headline, which always shows raw Net regardless of rank mode.
+        if (ParseRankMode(App.Settings.Current.TradeRankMode) == RankMode.ProfitPerScu)
+        {
+            head.Children.Add(RankPerScuTag(r.Net, r.TripQty));
+        }
         // PIN toggle (Task 8, MAP tab route pinning): active state check reuses the same
         // PinSurvivesRefresh triple rule the stale-pin clear in RebuildPlanner already applies
         // (fresh = this one row's route), so "is this row the pinned one" can never disagree with
         // "did the pin survive this rebuild" - one rule, not two hand-written comparisons.
+        // Last in the head row: the informational tags read together, the action sits at the end.
         bool pinnedHere = PinnedRoute is { } pinnedForRow && RoutePlanner.PinSurvivesRefresh(pinnedForRow, new[] { r });
         var pinChip = PinChip(pinnedHere);
         pinChip.MouseLeftButtonUp += (_, e) =>
@@ -460,14 +855,14 @@ public sealed partial class TradePage
         string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
@@ -514,6 +909,21 @@ public sealed partial class TradePage
         return grid;
     }
 
+    // Per-route aUEC/SCU tag (task 7): only rendered while RANK BY is PROFIT PER SCU, naming the
+    // exact figure that mode is sorting by. Same dim/small/no-chrome geometry as MaxContainerChip/
+    // DistanceTag (TradePage.cs) - MonoFont like MaxContainerChip since this is a numeric rate
+    // sitting beside other numerals, not a proper-noun label like DistanceTag's Gm readout.
+    private static FrameworkElement RankPerScuTag(double net, int tripQty)
+    {
+        double n = tripQty > 0 ? Math.Round(net / tripQty) : 0;
+        return new TextBlock
+        {
+            Text = $"{n.ToString("n0", CultureInfo.InvariantCulture)} aUEC/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+            Margin = new Thickness(6, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+    }
+
     private static StackPanel FeePart(string label, double value, Brush valueColor)
     {
         var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 20, 0) };
@@ -522,7 +932,7 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc)
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
@@ -559,6 +969,10 @@ public sealed partial class TradePage
             $"This bar shows how much of your trip the {(qtyLabel == "STOCK" ? "stock" : "demand")} covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
         barRow.Children.Add(bar);
         barRow.Children.Add(new TextBlock { Text = $"{qtyLabel} {qty:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0) });
+        // Max container size (task 2): AccentBrush warning when this leg's biggest box is smaller
+        // than the ship's best - the trip needs smaller crates than the ship could otherwise carry.
+        var legMaxScu = TradeMath.MaxContainerScu(containerSizes);
+        if (MaxContainerChip(legMaxScu, warning: legMaxScu is { } m && m < shipMaxContainerScu) is { } maxChip) barRow.Children.Add(maxChip);
         leg.Children.Add(barRow);
 
         var age = DateTime.UtcNow - modifiedUtc;

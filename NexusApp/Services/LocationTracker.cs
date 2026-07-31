@@ -69,13 +69,24 @@ public sealed class LocationTracker : IDisposable
     // (includeReplay: true above) - logging and raising on each would bury the App Log Monitor and
     // fan a rebuild out to every subscriber for a place that never changed. ShardTracker, the
     // sibling on this same feed, already logs and raises on transitions only.
+    //
+    // Normalized through LocationAliases BEFORE the change comparison and stored as the display
+    // name: this is the single choke point, so the pill, OriginLabel, and any resolver reading
+    // LastKnownLocation all inherit readable in-game names (e.g. "Stanton4_NewBabbage" ->
+    // "New Babbage"), and repeated raw variants of the same normalized place do not re-fire
+    // Changed. A miss (jurisdiction names like "microTech" are not in the table) passes through
+    // unchanged, matching prior behavior exactly.
     private void Apply(string place, DateTime seenUtc, string kind)
     {
-        bool moved = !string.Equals(LastKnownLocation, place, StringComparison.Ordinal);
-        LastKnownLocation = place;
+        var display = LocationAliases.Normalize(place);
+        bool moved = !string.Equals(LastKnownLocation, display, StringComparison.Ordinal);
+        LastKnownLocation = display;
         LastSeenUtc = seenUtc;
         if (!moved) return;
-        Logger.Info($"[WHERE] location updated: {place} (source: {kind})");
+        var suffix = string.Equals(display, place, StringComparison.Ordinal)
+            ? $"(source: {kind})"
+            : $"(raw {place}, source: {kind})";
+        Logger.Info($"[WHERE] location updated: {display} {suffix}");
         Changed?.Invoke();
     }
 
