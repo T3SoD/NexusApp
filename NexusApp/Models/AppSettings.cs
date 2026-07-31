@@ -148,7 +148,18 @@ public class AppSettings
     // Manual origin override (a terminal identity string) for when no live Game.log session is
     // running, or the player wants to plan from somewhere other than where they stand. "" = none
     // set; the planner falls back to whatever the live-location facility reports, if anything.
+    // DORMANT since task 10 (2026-07-31): the shared ORIGIN chip's manual dropdown that used to
+    // read/write this is gone (the chip is display-only now). Kept, unused, rather than deleted -
+    // removing a persisted settings field is a bigger, unrelated cleanup.
     public string TradeOriginManual { get; set; } = "";
+
+    // Route planner STARTING LOCATION picker (task 10, replaces the FROM HERE/ANYWHERE anchor
+    // pills entirely): "ANY" (no constraint, old ANYWHERE), "LIVE" (the live-session location, old
+    // FROM HERE's live half), or a terminal name (old FROM HERE's manual-pick half, now scoped to
+    // just this one planner-local picker instead of the shared ORIGIN chip). Default "LIVE"
+    // preserves the old FROM HERE default behavior. TradeOriginResolver.StartTerminalIds is the
+    // pure seam that resolves this to RoutePlanner's terminal id set.
+    public string? TradeStartManual { get; set; } = "LIVE";
 
     // Route planner DESTINATION picker (task 6): a terminal name restricting sell legs, mirroring
     // TradeOriginManual's persistence but for the sell side. Null (or "") = ANY, the planner's
@@ -159,10 +170,14 @@ public class AppSettings
     // System-name scope filter pill (ALL / a specific star system name). Default ALL.
     public string TradeScope { get; set; } = "ALL";
 
-    // Route planner stock/demand coverage filter pill (ANY / COVERS TRIP / COVERS 2X). ANY applies
-    // no filter (default, byte-identical to the planner's original behavior); COVERS TRIP requires
-    // both legs to carry at least one full trip's worth of SCU; COVERS 2X requires two trips'
-    // worth. Stored as the exact pill label, same convention as TradeScope.
+    // Route planner DEMAND AT DESTINATION coverage filter pill (task 5; resemantic task 10:
+    // ANY / MIN FOR TRIP / 2X FOR TRIP, demand-only - the buy leg's stock is no longer
+    // independently checked, since TradeMath.TripQty already caps tripQty at it). ANY applies no
+    // filter (default, byte-identical to the planner's original behavior); MIN requires the sell
+    // leg to carry at least one full trip's worth of demand; 2X requires two trips' worth. Persisted
+    // as the short "ANY"/"MIN"/"2X" values (distinct from the longer pill display text);
+    // TradePage.Planner.cs's ParseDemandFilter fail-opens the pre-task-10 "COVERS TRIP"/"COVERS 2X"
+    // strings to the same tiers.
     public string TradeStockFilter { get; set; } = "ANY";
 
     // Route planner rank mode pill (PROFIT / PROFIT PER SCU, task 7). PROFIT (default) orders by
@@ -173,6 +188,10 @@ public class AppSettings
 
     // FROM HERE (true, default) restricts the route planner's buy legs to the current origin;
     // ANYWHERE (false) lifts that restriction. Same ranking math either way.
+    // DORMANT since task 10 (2026-07-31): the route planner's Starting Location picker
+    // (TradeStartManual, above) replaced the FROM HERE/ANYWHERE anchor pills entirely. Kept,
+    // unused, rather than deleted - removing a persisted settings field is a bigger, unrelated
+    // cleanup.
     public bool TradeAnchorFromHere { get; set; } = true;
 
     // SC Trade Tools corroboration data. Graduated (2026-07-30) from an owner-only Admin-tab flag

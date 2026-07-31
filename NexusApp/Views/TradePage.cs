@@ -21,7 +21,10 @@ public sealed partial class TradePage : UserControl
     // ── Tab strip state (ported from SettingsPage.cs:34-46, 3 tabs, no danger tab, no pip) ──
     private readonly Border[] _tabButtons = new Border[3];
     private readonly TextBlock[] _tabLabels = new TextBlock[3];
-    private readonly ScrollViewer[] _panes = new ScrollViewer[3];
+    // Task 10: PlannerHost (index 0) owns its own internal Auto/Star scroll split for anchored
+    // inputs, so this is FrameworkElement, not ScrollViewer - Sell/Prices (indices 1-2) are still
+    // built by WrapPane and stay ScrollViewers underneath, just held through the wider type.
+    private readonly FrameworkElement[] _panes = new FrameworkElement[3];
     private readonly TranslateTransform _underlineT = new();
     private readonly SolidColorBrush _underlineBrush;
     private Grid _stripHost = null!;
@@ -32,31 +35,25 @@ public sealed partial class TradePage : UserControl
     private static readonly string[] TabLabels = { "Planner", "Sell", "Prices" };   // mock:1046-1050
 
     // ── Flow content hosts (empty here; Tasks 12-14 populate them via Rebuild*) ──
-    internal readonly StackPanel PlannerHost = new();
+    // PlannerHost is a Grid, not a StackPanel (task 10): TradePage.Planner.cs's BuildPlannerChrome
+    // gives it an Auto row (inputs) + Star row (a ScrollViewer around results only), so the
+    // planner's inputs stay anchored on screen while its results scroll. Sell/Prices are unchanged.
+    internal readonly Grid PlannerHost = new();
     internal readonly StackPanel SellHost = new();
     internal readonly StackPanel PricesHost = new();
 
     // ── Context row state (mock .ctxrow, index.html:1113-1131) ──
+    // ORIGIN chip (task 10): display-only. Shows the live session location (with the LIVE
+    // indicator) or "No session" - the manual dropdown/click-to-change path (the old _originCombo,
+    // _originManualOverride, _manualOriginName/_manualOriginSeeded, ManualOrigin()) is gone
+    // entirely; the route planner's own Starting Location picker (TradePage.Planner.cs) is now
+    // where a manual origin gets chosen, scoped to that one flow instead of shared page-wide state.
     private Border _originChip = null!;
     private Ellipse _originDot = null!;
     private TextBlock _originValue = null!;
-    private ComboBox? _originCombo;
     private bool _originDotLive;          // the dot is already wearing its live dressing (glow effect +
                                             // breathe loop): refreshes that STAY in live mode must not
                                             // re-allocate the effect or restart the loop from full opacity
-    private bool _originManualOverride;   // in-memory only: "manual override always available" (spec)
-                                            // without a persisted mode flag - not in the fixed contract
-
-    // Single source of truth for the manual ORIGIN pick. The dropdown's SelectedItem, OriginLabel
-    // and OriginTerminalIds ALL read this field, never AppSettings.TradeOriginManual directly, so
-    // the FROM HERE pill's text and the chip's selection are provably the same value from first
-    // paint. The persisted setting is READ exactly once (the first render that has a non-empty
-    // terminal list) and WRITTEN only from the dropdown's SelectionChanged - never from a render
-    // path. Before this, the combo's initializer picked a default without firing SelectionChanged,
-    // so the setting stayed "" while the chip showed a terminal, and re-clicking the same item
-    // (which raises no SelectionChanged) left the user stuck in the origin-unknown state.
-    private string? _manualOriginName;
-    private bool _manualOriginSeeded;
     private readonly Border[] _scopePills = new Border[4];
     private static readonly string[] Scopes = { "ALL", "STANTON", "PYRO", "NYX" };   // mock:1116
     private Border _uexPill = null!;
@@ -100,7 +97,11 @@ public sealed partial class TradePage : UserControl
         root.Children.Add(contextRow);
 
         var paneHost = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-        _panes[0] = WrapPane(PlannerHost);
+        // Planner (task 10, anchored inputs): PlannerHost owns its own internal Auto/Star split
+        // (built in TradePage.Planner.cs's BuildPlannerChrome) so its inputs stay pinned while only
+        // the results scroll - it is NOT wrapped in WrapPane like the other two flows, which still
+        // scroll whole-pane exactly as before.
+        _panes[0] = PlannerHost;
         _panes[1] = WrapPane(SellHost);
         _panes[2] = WrapPane(PricesHost);
         foreach (var pane in _panes) { pane.Visibility = Visibility.Collapsed; paneHost.Children.Add(pane); }
@@ -622,13 +623,12 @@ public sealed partial class TradePage : UserControl
         }
     }
 
-    // ORIGIN chip (mock index.html:691-716). Live state: cyan pulse dot + "{loc} - LIVE" mono cyan.
-    // Manual state: a themed NexusComboBox of terminal names (a deliberate simplification of the
-    // mock's hand-rolled popup trigger - the mock's own manifest already flags that popup as
-    // "composed, no shipped precedent"; a plain NexusComboBox reuses real shipped chrome instead of
-    // inventing a second one, "simplest solution first"). Which state shows is driven by whether a
-    // live location is currently known AND not manually overridden - "manual override always
-    // available" per the spec is the small ghost link built in RefreshContextRow.
+    // ORIGIN chip (mock index.html:691-716), display-only since task 10. Live state: cyan pulse
+    // dot + "{loc} - LIVE" mono cyan. No-session state: dim dot, "No session" text - there is no
+    // manual dropdown/click-to-change path anymore (that concept moved to the route planner's own
+    // Starting Location picker, TradePage.Planner.cs, scoped to that one flow instead of shared
+    // page-wide state). Which state shows is driven purely by whether a live location is currently
+    // known (App.Locations.LastKnownLocation).
     private Border BuildOriginChip()
     {
         _originDot = new Ellipse
@@ -668,59 +668,32 @@ public sealed partial class TradePage : UserControl
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>The current manual ORIGIN pick, or null when there are genuinely no terminal names
-    /// to pick from. Seeds itself from the persisted setting the first time a non-empty list exists;
-    /// after that the field owns the value, and a pick that drops out of a refreshed snapshot falls
-    /// back to the first name (the same revalidation rule the price browser applies to its
-    /// commodity) so the field and the dropdown can never disagree.</summary>
-    private string? ManualOrigin() => ManualOrigin(TerminalNames(App.Market.Snapshot));
-
-    /// <inheritdoc cref="ManualOrigin()"/>
-    /// <remarks>Overload for the dropdown itself, which resolves the pick against the very list it
-    /// binds as ItemsSource - one snapshot read, so the selection can never name something the list
-    /// does not contain.</remarks>
-    private string? ManualOrigin(List<string> names)
-    {
-        if (names.Count == 0) { _manualOriginName = null; return null; }
-        if (!_manualOriginSeeded)
-        {
-            _manualOriginSeeded = true;
-            var persisted = App.Settings.Current.TradeOriginManual;
-            _manualOriginName = names.Contains(persisted) ? persisted : names[0];
-        }
-        else if (_manualOriginName is null || !names.Contains(_manualOriginName))
-        {
-            _manualOriginName = names[0];
-        }
-        return _manualOriginName;
-    }
-
-    /// <summary>True origin display name for RoutePlanner/SellLookup's FROM HERE anchor: the live
-    /// location when known and not overridden, else the manual terminal pick (the field, never the
-    /// raw setting - see _manualOriginName).</summary>
-    internal string OriginLabel =>
-        (!_originManualOverride && App.Locations.LastKnownLocation is { } loc) ? loc : ManualOrigin() ?? "";
-
+    /// <summary>The SELL flow's origin, for SellLookup's proximity-tier math (task 10 scope
+    /// ripple, approved): live-only. The manual origin dropdown that used to back this when no
+    /// session was live is gone (the ORIGIN chip is display-only now; the route planner's own
+    /// Starting Location picker replaces it for the planner flow specifically). Empty, not a
+    /// guess, whenever no live location is known - the same honesty rule TradeOriginResolver
+    /// already applies to every other unresolved-origin case.</summary>
     internal IReadOnlySet<int> OriginTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
-        (!_originManualOverride && App.Locations.LastKnownLocation is { } loc)
+        App.Locations.LastKnownLocation is { } loc
             ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals)
-            : TradeOriginResolver.TerminalIdForName(ManualOrigin(), terminals) is { } id
-                ? new HashSet<int> { id } : new HashSet<int>();
+            : new HashSet<int>();
 
     private void RefreshContextRow()
     {
-        bool live = !_originManualOverride && App.Locations.LastKnownLocation is not null;
+        bool live = App.Locations.LastKnownLocation is not null;
         var content = (StackPanel)_originChip.Child;
         content.Children.Clear();
 
+        content.Children.Add(_originDot);
+        content.Children.Add(new TextBlock
+        {
+            Text = "ORIGIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
+        });
+
         if (live)
         {
-            content.Children.Add(_originDot);
-            content.Children.Add(new TextBlock
-            {
-                Text = "ORIGIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
-            });
             _originValue.Text = $"{App.Locations.LastKnownLocation} - LIVE";
             _originValue.Foreground = Hud.Br("CyanBrush");   // recolored cyan, not amber - CyanColor's own
                                                                 // stated role is "live data readouts" (mock:696-698)
@@ -744,60 +717,18 @@ public sealed partial class TradePage : UserControl
                 }
             }
             _originChip.ToolTip = "Auto-detected from your current session.";   // mock:703, verbatim
-
-            var manualLink = new TextBlock
-            {
-                Text = "Manual", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0), Cursor = Cursors.Hand,
-                TextDecorations = TextDecorations.Underline, VerticalAlignment = VerticalAlignment.Center,
-            };
-            manualLink.MouseLeftButtonUp += (_, _) => { _originManualOverride = true; RefreshContextRow(); RebuildPlanner(); RebuildSell(); };
-            content.Children.Add(manualLink);
         }
         else
         {
             if (_originDotLive) { _originDot.BeginAnimation(UIElement.OpacityProperty, null); _originDotLive = false; }
-            content.Children.Add(new TextBlock
-            {
-                Text = "ORIGIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
-                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
-            });
-            _originChip.ToolTip = null;
-            // ManualOrigin() is the same value OriginLabel/OriginTerminalIds read, so the chip's
-            // selection and the FROM HERE pill's text are the same string by construction - not two
-            // reads of a setting that only one of them has written yet. Selected BEFORE the handler
-            // is attached (a seeded default is not a user pick and must not persist or re-log), and
-            // the handler is what owns every later write.
-            var names = TerminalNames(App.Market.Snapshot);
-            _originCombo = new ComboBox
-            {
-                Style = (Style)Application.Current.FindResource("NexusComboBox"),
-                ItemsSource = names, MinWidth = 140,
-                SelectedItem = ManualOrigin(names),
-            };
-            _originCombo.SelectionChanged += (_, _) =>
-            {
-                if (_originCombo.SelectedItem is not string name) return;
-                _manualOriginName = name;
-                App.Settings.Current.TradeOriginManual = name;
-                App.Settings.Save();
-                Logger.Info($"[UI] Trade origin (manual): {name}");
-                RebuildPlanner();   // also retitles the FROM HERE pill in place (it tracks OriginLabel)
-                RebuildSell();
-            };
-            content.Children.Add(_originCombo);
-
-            if (App.Locations.LastKnownLocation is not null)
-            {
-                var liveLink = new TextBlock
-                {
-                    Text = "Live", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
-                    Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0), Cursor = Cursors.Hand,
-                    TextDecorations = TextDecorations.Underline, VerticalAlignment = VerticalAlignment.Center,
-                };
-                liveLink.MouseLeftButtonUp += (_, _) => { _originManualOverride = false; RefreshContextRow(); RebuildPlanner(); RebuildSell(); };
-                content.Children.Add(liveLink);
-            }
+            _originDot.Effect = null;
+            _originDot.Fill = Hud.Br("FgDimBrush");
+            // Display-only (task 10): the manual dropdown/click-to-change path is gone entirely -
+            // this chip only ever reports what the live session is, never a place to pick one.
+            _originValue.Text = "No session";
+            _originValue.Foreground = Hud.Br("FgDimBrush");
+            content.Children.Add(_originValue);
+            _originChip.ToolTip = "No active session detected.";
         }
 
         var snapForAge = App.Market.Snapshot;

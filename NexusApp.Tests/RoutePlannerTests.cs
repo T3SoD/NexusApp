@@ -219,10 +219,12 @@ public class RoutePlannerTests
         Assert.Empty(RoutePlanner.Rank(new List<TradePriceRow> { Row(1, 1, 10, 0) }, terminals, 100, 32, null, null, "ALL", 0));
     }
 
-    // Stock/demand coverage filter (task 5): applied per pair, inside the pairing loop, before the
-    // take cutoff - a route that fails coverage is skipped outright rather than merely ranked lower.
+    // Demand-at-destination coverage filter (task 5; resemantic task 10 to DEMAND ONLY - the buy
+    // leg's stock is no longer independently checked, only tripQty vs sellDemandScu). Applied per
+    // pair, inside the pairing loop, before the take cutoff - a route that fails coverage is
+    // skipped outright rather than merely ranked lower.
     [Fact]
-    public void Rank_StockExactlyEqualsTripQty_PassesCoversTripButFailsCoversTwoTrips()
+    public void Rank_DemandExactlyEqualsTripQty_PassesCoversTripButFailsCoversTwoTrips()
     {
         var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
         var rows = new List<TradePriceRow>
@@ -231,26 +233,52 @@ public class RoutePlannerTests
             Row(2, 47, buy: 0, sell: 200, sellDemand: 50),
         };
 
-        // shipScu 100, buyStock 50 => tripQty = min(100, 50) = 50, exactly matching both stock and demand.
+        // shipScu 100, buyStock 50 => tripQty = min(100, 50) = 50, exactly matching demand.
         var trip = Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTrip));
         Assert.Equal(50, trip.TripQty);
 
         Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
     }
 
+    // Task 10 resemantic: this used to be the "zero stock" case, but zero buy stock forces tripQty
+    // to 0 (TradeMath.TripQty), which failed the old coverage filters' shared `tripQty > 0` guard
+    // regardless of the stock check - it never actually exercised the buy-side comparison. Zero
+    // DEMAND with HEALTHY stock is what actually proves the demand side is still enforced.
     [Fact]
-    public void Rank_ZeroStockPair_ExcludedUnderCoverageFiltersButKeptUnderAny()
+    public void Rank_ZeroDemandPair_ExcludedUnderCoverageFiltersButKeptUnderAny()
     {
         var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
         var rows = new List<TradePriceRow>
         {
-            Row(1, 47, buy: 100, sell: 0, buyStock: 0),     // zero stock -> tripQty is always 0
-            Row(2, 47, buy: 0, sell: 200, sellDemand: 100),
+            Row(1, 47, buy: 100, sell: 0, buyStock: 100),   // healthy stock -> tripQty > 0
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 0),   // zero demand -> fails both coverage filters
         };
 
         Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.Any));
         Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTrip));
         Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
+    }
+
+    // Task 10's explicit new case: proves the buy leg's stock is no longer checked. buyStock (5) is
+    // low enough that the OLD CoversTwoTrips check (buyStockScu >= 2*tripQty, i.e. 5 >= 10) would
+    // have excluded this route - stock was the binding constraint, so tripQty == buyStockScu, and
+    // buyStockScu can never be >= 2*buyStockScu for a positive value. Demand (1000) comfortably
+    // covers both tiers regardless of how tight stock is, so both now pass.
+    [Fact]
+    public void Rank_LowStockHighDemand_PassesCoverageFilters_StockNoLongerChecked()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 5),       // low stock -> tripQty caps at 5
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 1000),  // demand comfortably covers many multiples of tripQty
+        };
+
+        var trip = Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTrip));
+        Assert.Equal(5, trip.TripQty);
+
+        var twoX = Assert.Single(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
+        Assert.Equal(5, twoX.TripQty);
     }
 
     // Destination constraint (task 6): mirror of the FROM HERE origin restriction, but for the sell

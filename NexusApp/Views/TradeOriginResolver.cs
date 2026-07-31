@@ -38,4 +38,21 @@ internal static class TradeOriginResolver
                 t.Name.Contains(locationLabel, StringComparison.OrdinalIgnoreCase))
             .Select(t => t.Id).ToHashSet();
     }
+
+    // Route planner STARTING LOCATION resolution (task 10): the one pure seam between the combo's
+    // persisted kind (AppSettings.TradeStartManual - "ANY", "LIVE", or a terminal name) and the
+    // terminal id set RoutePlanner needs, so RebuildPlanner's derivation is unit testable without a
+    // live TradePage/App context. "ANY" (also null/empty, fail-open for legacy/corrupt values)
+    // means no constraint - null, mirroring DestTerminalIds' contract for the destination side.
+    // "LIVE" resolves through TerminalIdsForLocation above (the same lookup the old FROM HERE
+    // anchor's live half used), honestly empty when no live location is known - never a guess.
+    // Any other value is a terminal name, resolved via TerminalIdForName - honestly empty when it
+    // fails to resolve, same contract as DestTerminalIds' unresolved-name case.
+    internal static IReadOnlySet<int>? StartTerminalIds(string? startManual, string? liveLocation, IReadOnlyList<MarketTerminal> terminals)
+    {
+        if (string.IsNullOrEmpty(startManual) || startManual == "ANY") return null;
+        if (startManual == "LIVE")
+            return string.IsNullOrEmpty(liveLocation) ? new HashSet<int>() : TerminalIdsForLocation(liveLocation, terminals);
+        return TerminalIdForName(startManual, terminals) is { } id ? new HashSet<int> { id } : new HashSet<int>();
+    }
 }

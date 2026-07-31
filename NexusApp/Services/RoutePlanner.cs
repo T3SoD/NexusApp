@@ -10,10 +10,13 @@ namespace NexusApp.Services;
 public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int TripQty, double Gross,
     double Net, ProximityTier Tier, string[] TripParts);
 
-// Stock/demand coverage filter for the route planner (task 5). Any = no filter (default, the
-// planner's original behavior, byte-preserved). CoversTrip requires both legs to carry at least
-// one full trip's worth of SCU; CoversTwoTrips requires two trips' worth, so the shown route can
-// be run back-to-back without a fresh scan in between.
+// Demand-at-destination coverage filter for the route planner (task 5; resemantic task 10). Any =
+// no filter (default, the planner's original behavior, byte-preserved). CoversTrip requires the
+// SELL leg to carry at least one full trip's worth of demand; CoversTwoTrips requires two trips'
+// worth, so the shown route can be run back-to-back without a fresh scan in between. DEMAND ONLY:
+// the buy leg's stock is never independently checked here - TradeMath.TripQty already caps
+// tripQty at buyStockScu, so the buy side is self-limiting by construction (enum member names kept
+// from task 5 to avoid an unrelated cascade; the UI-facing pill labels are what actually renamed).
 public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 
 // Route planner ranking mode (task 7). Profit (default) orders by raw Net descending, byte-
@@ -89,7 +92,7 @@ public static class RoutePlanner
 
                     var sellTerminal = terminals[sellRow.TerminalId];
                     var tripQty = TradeMath.TripQty(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
-                    if (!PassesStockFilter(stockFilter, tripQty, buyRow.BuyStockScu, sellRow.SellDemandScu)) continue;
+                    if (!PassesStockFilter(stockFilter, tripQty, sellRow.SellDemandScu)) continue;
                     var gross = tripQty * (sellRow.Sell - buyRow.Buy);
                     result.Add(new TradeRoute(buyRow, sellRow, tripQty, gross, gross,
                         ProximityTiers.Derive(buyTerminal, sellTerminal),
@@ -109,11 +112,21 @@ public static class RoutePlanner
     // Take(). tripQty == 0 never passes CoversTrip/CoversTwoTrips: a route nobody can actually run
     // once (ship capacity, stock, or budget already zeroed the trip) can't be said to "cover"
     // anything, so it only ever surfaces under Any.
-    private static bool PassesStockFilter(StockFilter filter, int tripQty, int buyStockScu, int sellDemandScu) =>
+    //
+    // DEMAND ONLY (task 10 resemantic): buyStockScu is deliberately NOT checked here anymore.
+    // tripQty is derived from buyStockScu via TradeMath.TripQty (tripQty = min(shipScu,
+    // buyStockScu, ...)), so tripQty can never exceed buyStockScu - the buy side is already
+    // self-limiting. That made the old CoversTrip check (buyStockScu >= tripQty) a tautology, but
+    // the old CoversTwoTrips check (buyStockScu >= 2*tripQty) was NOT: whenever stock was the
+    // binding constraint (the common case), tripQty == buyStockScu, so buyStockScu >= 2*tripQty
+    // reduced to buyStockScu >= 2*buyStockScu - only ever true for buyStockScu <= 0. CoversTwoTrips
+    // was therefore nearly unsatisfiable for any low-stock route under the old code; this is now a
+    // straight demand comparison instead.
+    private static bool PassesStockFilter(StockFilter filter, int tripQty, int sellDemandScu) =>
         filter switch
         {
-            StockFilter.CoversTrip => tripQty > 0 && buyStockScu >= tripQty && sellDemandScu >= tripQty,
-            StockFilter.CoversTwoTrips => tripQty > 0 && buyStockScu >= 2 * tripQty && sellDemandScu >= 2 * tripQty,
+            StockFilter.CoversTrip => tripQty > 0 && sellDemandScu >= tripQty,
+            StockFilter.CoversTwoTrips => tripQty > 0 && sellDemandScu >= 2 * tripQty,
             _ => true,
         };
 

@@ -56,4 +56,36 @@ public class TradeOriginResolverTests
         Assert.Empty(TradeOriginResolver.TerminalIdsForLocation(null, Terminals));
         Assert.Empty(TradeOriginResolver.TerminalIdsForLocation("", Terminals));
     }
+
+    // Route planner STARTING LOCATION seam (task 10): TradeOriginResolver.StartTerminalIds is what
+    // RebuildPlanner calls to turn the combo's persisted kind into RoutePlanner's terminal id set.
+    [Fact]
+    public void StartTerminalIds_Any_ReturnsNull()
+        => Assert.Null(TradeOriginResolver.StartTerminalIds("ANY", "Crusader", Terminals));
+
+    [Fact]
+    public void StartTerminalIds_NullOrEmpty_FailsOpenToNull_SameAsAny()
+    {
+        Assert.Null(TradeOriginResolver.StartTerminalIds(null, "Crusader", Terminals));
+        Assert.Null(TradeOriginResolver.StartTerminalIds("", "Crusader", Terminals));
+    }
+
+    [Fact]
+    public void StartTerminalIds_LiveWithResolvableLocation_ReturnsTheSet()
+    {
+        var ids = TradeOriginResolver.StartTerminalIds("LIVE", "Crusader", Terminals);
+        Assert.Equal(new HashSet<int> { 1, 2 }, ids);
+    }
+
+    [Fact]
+    public void StartTerminalIds_LiveWithNullLocation_ReturnsEmpty()
+        => Assert.Empty(TradeOriginResolver.StartTerminalIds("LIVE", null, Terminals)!);
+
+    [Fact]
+    public void StartTerminalIds_TerminalName_ReturnsSingleIdSet()
+        => Assert.Equal(new HashSet<int> { 3 }, TradeOriginResolver.StartTerminalIds("Everus Harbor", null, Terminals));
+
+    [Fact]
+    public void StartTerminalIds_UnknownName_ReturnsEmpty()
+        => Assert.Empty(TradeOriginResolver.StartTerminalIds("Nowhere Station", null, Terminals)!);
 }
