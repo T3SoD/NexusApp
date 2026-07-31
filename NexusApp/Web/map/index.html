@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexus Starmap</title>
+<link rel="icon" href="data:," />
+<style>
+  /* ============================================================================
+     MANIFEST NOTE (house convention, same as trading-tab / market-data): every
+     value is lifted from the app (source cited, P:/G:/M:/H:/SP: line refs) or
+     tagged INVENTED at first use. Sources:
+       NexusApp\Themes\Palette.Luxury.xaml   (P:line)
+       NexusApp\Themes\GameTheme.xaml        (G:line)
+       NexusApp\Views\Motion.cs              (M:line)
+       NexusApp\Views\Hud.cs                 (H:line)
+       NexusApp\Views\SettingsPage.cs        (SP:line)
+     Scene palette (pin glyph colors, halo alphas) is INVENTED for this surface,
+     derived only from the palette tokens below.
+     ========================================================================== */
+  :root{
+    --void:        #05070A;                       /* BgColor        P:11 */
+    --bg2:         #080C12;                       /* Bg2Color       P:12 */
+    --bg3:         #0E141C;                       /* Bg3Color       P:13 */
+    --page-bg:     #070A10;                       /* PageBgColor    P:22 */
+    --nav-bg:      #06090E;                       /* NavBgColor     P:21 */
+    --panel:       #0C1219;                       /* Bg2NavColor    P:23 */
+    --line-strong: rgba(127,233,224,0.200);       /* BorderColor    P:14 */
+    --line:        rgba(127,233,224,0.102);       /* NavBorderColor P:15 */
+    --fg:          #EAF1F6;                       /* FgColor        P:16 */
+    --dim:         #8693A0;                       /* FgDimColor     P:17 */
+    --amber:        #FFB23E;                      /* AccentColor       P:18 */
+    --amber-dim:    rgba(255,178,62,0.161);       /* AccentDimColor    P:19 */
+    --amber-faint:  rgba(255,178,62,0.122);       /* AccentFaintColor  P:28 */
+    --amber-strong: rgba(255,178,62,0.420);       /* AccentStrongColor P:32 */
+    --amber-hover:  #FFC766;                      /* AccentHoverColor  P:33 */
+    --on-accent:    #05070A;                      /* OnAccentColor     P:35 */
+    --gold:         #FFD089;                      /* GoldColor         P:20 */
+    --cyan:         #7FE9E0;                      /* CyanColor         P:38 */
+    --ok:           #66E6A6;                      /* OkColor           P:45 */
+    --danger:       #FF6B6B;                      /* DangerColor       P:48 */
+    --tech: system-ui, "Segoe UI", sans-serif;         /* UiFont G:77-79 */
+    --disp: system-ui, "Segoe UI", sans-serif;         /* DisplayFont G:80 */
+    --mono: ui-monospace, "Consolas", monospace;       /* MonoFont G:81 */
+    --settle:   cubic-bezier(0.16,0.8,0.3,1);          /* Motion.Settle M:30 */
+    --slideout: cubic-bezier(0.215,0.61,0.355,1);      /* Motion.SlideOut M:33 */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:var(--void); color:var(--fg); font-family:var(--tech);
+       -webkit-font-smoothing:antialiased; overflow:hidden}
+
+  /* the scene fills the whole page: the WPF host sizes the WebView2 control to the
+     MAP tab content area, so there is no side chrome drawn in this document */
+  .scene{position:fixed; inset:0; background:
+         radial-gradient(1100px 600px at 34% 22%, #0a0f16 0%, var(--void) 62%)}
+  .scene canvas{position:absolute; inset:0; width:100% !important; height:100% !important;
+                display:block; cursor:crosshair; z-index:0}
+  .labels,.breadcrumb,.scalebar,.measurehint,.notice{z-index:1}
+  .scene.hoverpin canvas{cursor:pointer}
+
+  /* in-scene HTML overlays, drawn by this page's own JS (not WPF) */
+  .labels{position:absolute; inset:0; overflow:hidden; pointer-events:none}
+  .plabel{position:absolute; transform:translate(10px,-50%); white-space:nowrap;
+          font-family:var(--tech); font-size:10.5px; font-weight:600; color:var(--cyan);
+          text-shadow:0 0 6px rgba(5,7,10,0.95), 0 1px 2px rgba(5,7,10,0.9);
+          letter-spacing:0.06em}
+  .plabel .badge{font-family:var(--mono); font-size:9px; color:var(--dim); margin-left:6px}
+  .plabel .lyr{display:inline-block; margin-left:6px; font-family:var(--mono); font-size:9px}
+  .plabel.k-Planet,.plabel.k-Star{font-family:var(--disp); font-size:13px; font-weight:700;
+          letter-spacing:0.12em; text-transform:uppercase}
+  .plabel.k-Moon{color:rgba(127,233,224,0.75); font-size:10px}
+  .plabel.k-Asteroid{color:var(--dim); font-size:9.5px}
+  .plabel.k-Outpost{color:rgba(127,233,224,0.62); font-size:9.5px}
+  .plabel.sel{color:var(--gold)}
+  .plabel.trade{color:var(--amber)}
+  .breadcrumb{position:absolute; top:12px; left:14px; display:flex; align-items:center; gap:8px;
+          font-family:var(--tech); font-size:11px; letter-spacing:0.1em; color:var(--dim);
+          pointer-events:auto}
+  .breadcrumb b{color:var(--fg); font-weight:600}
+  .breadcrumb button{background:var(--panel); border:1px solid var(--line); color:var(--cyan);
+          font-family:var(--tech); font-size:10px; font-weight:700; letter-spacing:0.08em;
+          padding:4px 10px; border-radius:3px; cursor:pointer}
+  .breadcrumb button:hover{border-color:var(--line-strong); color:var(--fg)}
+  .scalebar{position:absolute; left:14px; bottom:12px; font-family:var(--mono); font-size:9.5px;
+          color:var(--dim); pointer-events:none}
+  .scalebar .bar{height:2px; background:var(--cyan); box-shadow:0 0 7px rgba(127,233,224,0.8);
+          margin-bottom:4px; opacity:0.7}
+  .measurehint{position:absolute; top:12px; left:50%; transform:translateX(-50%);
+          background:var(--panel); border:1px solid var(--line-strong); color:var(--cyan);
+          font-family:var(--tech); font-size:10.5px; font-weight:700; letter-spacing:0.12em;
+          padding:6px 14px; border-radius:3px; pointer-events:none;
+          box-shadow:0 0 14px rgba(127,233,224,0.15)}
+  .notice{position:absolute; top:44px; left:50%; transform:translateX(-50%);
+          background:var(--panel); border:1px solid var(--amber-strong); color:var(--amber);
+          font-family:var(--tech); font-size:10.5px; font-weight:700; letter-spacing:0.1em;
+          padding:6px 14px; border-radius:3px; pointer-events:none;
+          box-shadow:0 0 14px rgba(255,178,62,0.15)}
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <div class="labels" id="labels"></div>
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="scalebar" id="scalebar"><div class="bar" style="width:90px"></div><span id="scaletxt"></span></div>
+  <div class="measurehint" id="measurehint" style="display:none"></div>
+  <div class="notice" id="notice" style="display:none"></div>
+</div>
+
+<script type="importmap">{"imports":{"three":"./three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from './OrbitControls.js';
+
+/* ==========================================================================
+   Starmap scene page for the MAP tab, hosted in a WebView2 control.
+     C# -> JS : init, layerToggle, select, focusObject, routeChanged,
+                plannerRoute, measureArm, systemView
+     JS -> C# : ready, pinClick, pinDoubleClick, measureResult, log
+   Every message is a single object distinguished by "type", posted as JSON
+   (window.chrome.webview.postMessage). This page holds only what a message
+   hands it: catalog rows from init, layer on/off flags, the selection id,
+   the draft and planner route id arrays, the measure-armed flag, and the
+   camera. It never derives trade/guide/mine/hangar membership; those
+   booleans arrive precomputed on each catalog row. Opened without a
+   webview host (plain file), the page renders the starfield and an empty
+   scene and stays inert.
+   ========================================================================== */
+function post(o){ if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(o)); }
+const log = (msg)=>{ post({type:'log', msg}); };
+
+/* ===================== constants ===================== */
+const MM = 1e6;                       // scene unit = 1,000 km (1 Mm); catalog coords arrive in meters
+const distM = (a,b)=>Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2);
+const fmtGm = (m)=>{ const gm=m/1e9;                       /* scale bar rounding rule */
+  if(gm>=10) return gm.toFixed(1)+' Gm';
+  if(gm>=0.1) return gm.toFixed(2)+' Gm';
+  return '<0.1 Gm'; };
+
+/* ===================== pin glyph textures (canvas, SVG-like vectors) ===================== */
+function tex(draw){ const c=document.createElement('canvas'); c.width=c.height=128;
+  const g=c.getContext('2d'); g.translate(64,64); draw(g);
+  const t=new THREE.CanvasTexture(c); t.anisotropy=2; return t; }
+const CYAN='#7FE9E0', DIM='rgba(127,233,224,0.55)', SLATE='#8693A0',
+      AMBER='#FFB23E', GOLD='#FFD089', RED='#FF6B6B', GREEN='#66E6A6';
+function stroke(g,col,w){ g.strokeStyle=col; g.lineWidth=w; g.shadowColor=col; g.shadowBlur=10; }
+const TEX = {
+  star: tex(g=>{ const r=g.createRadialGradient(0,0,4,0,0,60);
+    r.addColorStop(0,'rgba(255,240,214,1)'); r.addColorStop(0.25,'rgba(255,178,62,0.55)');
+    r.addColorStop(1,'rgba(255,178,62,0)'); g.fillStyle=r; g.fillRect(-64,-64,128,128); }),
+  planet: tex(g=>{ g.fillStyle=CYAN; g.shadowColor=CYAN; g.shadowBlur=14;
+    g.beginPath(); g.arc(0,0,17,0,7); g.fill();
+    stroke(g,'rgba(127,233,224,0.7)',3); g.beginPath(); g.arc(0,0,30,0,7); g.stroke(); }),
+  moon: tex(g=>{ g.fillStyle='rgba(127,233,224,0.85)'; g.shadowColor=CYAN; g.shadowBlur=8;
+    g.beginPath(); g.arc(0,0,12,0,7); g.fill(); }),
+  lz: tex(g=>{ stroke(g,CYAN,5); g.fillStyle='rgba(127,233,224,0.25)';
+    g.beginPath(); g.moveTo(0,-22); g.lineTo(22,0); g.lineTo(0,22); g.lineTo(-22,0);
+    g.closePath(); g.fill(); g.stroke(); }),
+  station: tex(g=>{ stroke(g,CYAN,4.5); g.beginPath(); g.moveTo(0,-18); g.lineTo(18,0);
+    g.lineTo(0,18); g.lineTo(-18,0); g.closePath(); g.stroke(); }),
+  outpost: tex(g=>{ stroke(g,DIM,4); g.beginPath(); g.moveTo(0,-16); g.lineTo(15,12);
+    g.lineTo(-15,12); g.closePath(); g.stroke(); }),
+  asteroid: tex(g=>{ g.fillStyle=SLATE; g.beginPath(); g.arc(0,0,7,0,7); g.fill(); }),
+  jump: tex(g=>{ stroke(g,CYAN,4); g.beginPath(); g.arc(0,0,16,0,7); g.stroke();
+    stroke(g,CYAN,3); g.beginPath(); g.arc(0,0,26,0.5,2.6); g.stroke();
+    g.beginPath(); g.arc(0,0,26,3.6,5.7); g.stroke(); }),
+  anomaly: tex(g=>{ stroke(g,GOLD,4); g.beginPath();
+    g.moveTo(-16,-16); g.lineTo(16,16); g.moveTo(16,-16); g.lineTo(-16,16); g.stroke(); }),
+  nav: tex(g=>{ stroke(g,DIM,4); g.beginPath(); g.moveTo(-14,-10); g.lineTo(0,6);
+    g.lineTo(14,-10); g.stroke(); }),
+  selring: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.arc(0,0,42,0,7); g.stroke(); }),
+  tradetick: tex(g=>{ stroke(g,AMBER,5); g.beginPath(); g.arc(0,0,30,0,7); g.stroke(); }),
+  guidetick: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.moveTo(0,-34); g.lineTo(34,0);
+    g.lineTo(0,34); g.lineTo(-34,0); g.closePath(); g.stroke(); }),
+  minetick: tex(g=>{ stroke(g,GREEN,5); g.beginPath(); g.arc(0,0,30,0.8,2.4); g.stroke();
+    g.beginPath(); g.arc(0,0,30,3.9,5.5); g.stroke(); }),
+  hangtick: tex(g=>{ stroke(g,RED,5); g.beginPath(); g.arc(0,0,36,0,7); g.stroke(); }),
+};
+const TYPE_TEX = (t)=>{
+  if(t==='Star') return {t:TEX.star, s:0.16, rank:0};
+  if(t==='Planet') return {t:TEX.planet, s:0.052, rank:1};
+  if(t==='Moon') return {t:TEX.moon, s:0.030, rank:3};
+  if(t==='LandingZone') return {t:TEX.lz, s:0.040, rank:2};
+  if(t.startsWith('Manmade')) return {t:TEX.station, s:0.034, rank:2};
+  if(t.startsWith('Outpost')) return {t:TEX.outpost, s:0.026, rank:4};
+  if(t.startsWith('Asteroid')) return {t:TEX.asteroid, s:0.016, rank:5};
+  if(t==='JumpPoint') return {t:TEX.jump, s:0.042, rank:1};
+  if(t==='Anomaly') return {t:TEX.anomaly, s:0.034, rank:2};
+  return {t:TEX.nav, s:0.026, rank:4};
+};
+
+/* ===================== scene bootstrap ===================== */
+let REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;   /* overridden by init.reduced once the host connects */
+const sceneEl = document.getElementById('scene');
+const labelsEl = document.getElementById('labels');
+const renderer = new THREE.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));      /* DPR cap - hull viewer precedent */
+sceneEl.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2.5e6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 0.4; controls.maxDistance = 3.2e5;
+
+// static starfield, seeded PRNG for a stable render
+(function starfield(){ let a=1337>>>0;              /* mulberry32, stable screenshots */
+  const rnd=()=>{ a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+  const n=1400, pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){ const th=rnd()*Math.PI*2, ph=Math.acos(2*rnd()-1), R=1.6e6;
+    pos[i*3]=R*Math.sin(ph)*Math.cos(th); pos[i*3+1]=R*Math.sin(ph)*Math.sin(th); pos[i*3+2]=R*Math.cos(ph); }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({color:0x3a4654, size:2.2, sizeAttenuation:false}))); })();
+
+/* ===================== scene state =====================
+   Everything below is either bridge-owned state (set only by inbound
+   messages) or transient rendering bookkeeping (hover id, pick cache,
+   tween token). Layer membership (trade/guide/mine/hangar) always comes
+   precomputed on the catalog row; this page never derives it. */
+const state = {
+  system:'', layers:{trade:false, guides:false, mining:false, hangar:false, asteroids:true},
+  selection:null, focusName:null,
+  draft:[], planner:[],
+  measure:{armed:false, first:null, result:null},
+};
+let BY_ID = new Map();
+let childrenOf = new Map();
+let subRadius = new Map();
+let catalogRows = [];
+let sysGroup=null, routeLine=null, plannerLine=null, measureLine=null;
+const pins=new Map();          // id -> {sprite, ticks:[], obj}
+let projected=[];              // per-frame screen projections
+let hoverId=null;              // ephemeral pointer-hover id, never sent to the host
+
+// subtree radius per object (for cluster expand thresholds), in scene units
+function calcSubRadius(o){ if(subRadius.has(o.id)) return subRadius.get(o.id);
+  let r = 0; (childrenOf.get(o.id)||[]).forEach(c=>{
+    r = Math.max(r, distM(o,c)/MM + calcSubRadius(c)); });
+  subRadius.set(o.id,r); return r; }
+
+function buildSystem(){
+  if(sysGroup){ scene.remove(sysGroup); sysGroup.traverse(o=>{
+    // Sprites share three's module-level plane geometry - never dispose it.
+    // Shared canvas textures in TEX stay alive by design; materials are per-object.
+    if(o.isSprite){ o.material.dispose(); }
+    else { if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }
+  }); }
+  routeLine=null; plannerLine=null; measureLine=null;
+  pins.clear();
+  sysGroup=new THREE.Group(); scene.add(sysGroup);
+  const rows=catalogRows;
+  const star=rows.find(r=>r.type==='Star');
+  rows.forEach(o=>{
+    const {t,s}=TYPE_TEX(o.type);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t, sizeAttenuation:false,
+      depthTest:false, transparent:true}));
+    sp.position.set(o.x/MM, o.z/MM, -o.y/MM);   // y-up scene; game xy plane -> xz
+    sp.scale.setScalar(s); sp.renderOrder=2;
+    sysGroup.add(sp); pins.set(o.id,{sprite:sp, ticks:[], obj:o});
+  });
+  // orbit rings: planets around star, moons around parent planet
+  const ringMat=new THREE.LineBasicMaterial({color:0x7FE9E0, transparent:true, opacity:0.10});
+  const mkRing=(cx,cz,cy,r)=>{ const pts=[]; for(let i=0;i<=180;i++){ const a=i/180*Math.PI*2;
+      pts.push(new THREE.Vector3(cx+r*Math.cos(a), cy, cz+r*Math.sin(a))); }
+    const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), ringMat);
+    l.renderOrder=0; sysGroup.add(l); };
+  rows.filter(r=>r.type==='Planet').forEach(p=>{
+    mkRing(0,0,p.z/MM, Math.hypot(p.x,p.y)/MM); });
+  rows.filter(r=>r.type==='Moon').forEach(m=>{ const p=BY_ID.get(m.parent);
+    if(p&&p.type==='Planet') mkRing(p.x/MM,-p.y/MM,m.z/MM, distM(p,m)/MM); });
+  redrawPlanner();
+  frameRadius((star? subRadius.get(star.id):45000)*1.12 || 45000, true);
+  refreshTicks();
+}
+
+/* committed TRADE planner route: solid dim amber, visible only with the Trade layer on */
+function redrawPlanner(){
+  if(!sysGroup) return;
+  if(plannerLine){ sysGroup.remove(plannerLine); plannerLine.geometry.dispose();
+    plannerLine.material.dispose(); plannerLine=null; }
+  const objs=state.planner.map(id=>BY_ID.get(id)).filter(Boolean);
+  if(objs.length>1 && state.layers.trade){
+    plannerLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      objs.map(o=>new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM))),
+      new THREE.LineBasicMaterial({color:0xFFB23E, transparent:true, opacity:0.45}));
+    plannerLine.renderOrder=1; sysGroup.add(plannerLine);
+  }
+}
+
+/* layer tick sprites attached around a pin */
+function refreshTicks(){
+  pins.forEach(({sprite,ticks,obj})=>{
+    ticks.forEach(t=>sprite.remove(t)); ticks.length=0;
+    const add=(map,scl)=>{ const t=new THREE.Sprite(new THREE.SpriteMaterial({map,
+      sizeAttenuation:false, depthTest:false, transparent:true}));
+      t.scale.setScalar(scl); t.renderOrder=3; sprite.add(t); ticks.push(t); };
+    if(state.layers.trade && obj.trade) add(TEX.tradetick, 1.6);
+    if(state.layers.guides && obj.guide) add(TEX.guidetick, 2.0);
+    if(state.layers.mining && obj.mine) add(TEX.minetick, 1.8);
+    if(state.layers.hangar && obj.hangar) add(TEX.hangtick, 2.3);
+    if(state.selection===obj.id) add(TEX.selring, 2.1);
+  });
+}
+
+/* cluster visibility: children hidden while parent collapsed */
+function clusterPass(){
+  const camPos=camera.position;
+  pins.forEach(rec=>{
+    const {sprite,obj}=rec;
+    // collapsed = hidden because an ancestor cluster is zoomed out;
+    // layer-hiding (asteroid toggle) is tracked separately so badges stay honest
+    let collapsed=false;
+    let p=obj.parent!=null? BY_ID.get(obj.parent):null;
+    while(p){
+      if(p.type==='Planet'||p.type==='Moon'){
+        const pr=subRadius.get(p.id)||0;
+        if(pr>0){ const d=camPos.distanceTo(new THREE.Vector3(p.x/MM,p.z/MM,-p.y/MM));
+          if(d > pr*7) { collapsed=true; break; } }
+      }
+      p=p.parent!=null? BY_ID.get(p.parent):null;
+    }
+    rec.collapsed=collapsed;
+    const layerHidden=obj.type.startsWith('Asteroid') && !state.layers.asteroids;
+    sprite.visible=!collapsed && !layerHidden;
+  });
+}
+function collapsedCounts(obj){ // badge data for a collapsed parent; honors the asteroid toggle
+  let n=0; const lyr={trade:0,guides:0,mining:0,hangar:0};
+  const walk=(o)=>{ (childrenOf.get(o.id)||[]).forEach(c=>{
+    if(c.type.startsWith('Asteroid') && !state.layers.asteroids) return;
+    n++;
+    if(c.trade) lyr.trade++; if(c.guide) lyr.guides++; if(c.mine) lyr.mining++;
+    if(c.hangar) lyr.hangar++; walk(c); }); };
+  walk(obj); return {n,lyr};
+}
+
+/* camera framing */
+let tween=null;
+function frameRadius(r, instant, target){
+  const tgt = target || new THREE.Vector3(0,0,0);
+  const dist = r/Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*1.12;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  if(dir.lengthSq()<0.5) dir.set(0.35,0.75,0.9).normalize();
+  const endPos = tgt.clone().add(dir.multiplyScalar(dist));
+  if(instant||REDUCED){ controls.target.copy(tgt); camera.position.copy(endPos); return; }
+  const sPos=camera.position.clone(), sTgt=controls.target.clone(), t0=performance.now();
+  const token={};                       /* token guard: a newer tween or a pointerdown cancels this one */
+  tween=token;
+  const ease=t=>1-Math.pow(1-t,3);                       /* settle-like cubic out */
+  (function step(){ if(tween!==token) return; const t=Math.min(1,(performance.now()-t0)/650), e=ease(t);
+    camera.position.lerpVectors(sPos,endPos,e); controls.target.lerpVectors(sTgt,tgt,e);
+    if(t<1) requestAnimationFrame(step); else tween=null; })();
+}
+renderer.domElement.addEventListener('pointerdown',()=>{ tween=null; });
+
+function focusObject(id){
+  const o=BY_ID.get(id); if(!o) return;
+  const r=Math.max((subRadius.get(id)||0)*1.25, 60);   /* frame dist ~3x subRadius, well under the 7x expand gate */
+  frameRadius(r, false, new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM));
+  state.focusName=o.name;
+  renderBreadcrumb();
+  log(`[UI] map: focus ${o.name}`);
+}
+
+function systemView(){
+  state.focusName=null;
+  const star=catalogRows.find(r=>r.type==='Star');
+  frameRadius(star? (subRadius.get(star.id)||45000)*1.12 : 45000);
+  renderBreadcrumb();
+  log('[UI] map: system view');
+}
+
+/* picking: screen-space nearest within 28px (no sprite raycast quirks) */
+function pick(ev){
+  const rect=renderer.domElement.getBoundingClientRect();
+  const mx=ev.clientX-rect.left, my=ev.clientY-rect.top;
+  const LIMIT=28*28; // 28px radius acceptance
+  let best=null, bestScore=Infinity;
+  projected.forEach(p=>{ const dx=p.sx-mx, dy=p.sy-my, d=dx*dx+dy*dy;
+    if(d>LIMIT) return;
+    const score=d+p.rank*120;          // important (low-rank) pins win ties
+    if(score<bestScore){ best=p; bestScore=score; } });
+  return best;
+}
+renderer.domElement.addEventListener('pointermove',ev=>{
+  const hit=pick(ev); hoverId=hit? hit.id:null;
+  sceneEl.classList.toggle('hoverpin', !!hit);
+});
+let lastClick={t:0,id:null};
+let downPos=null;
+renderer.domElement.addEventListener('pointerdown',ev=>{ downPos={x:ev.clientX,y:ev.clientY}; });
+renderer.domElement.addEventListener('click',ev=>{
+  if(downPos && Math.hypot(ev.clientX-downPos.x, ev.clientY-downPos.y)>5) return; // drag, not click
+  const hit=pick(ev); if(!hit) return;
+  if(state.measure.armed){                       // armed measure: every click is a measure pick, local only
+    const m=state.measure;
+    if(m.first==null){ m.first=hit.id;
+      document.getElementById('measurehint').textContent='MEASURE: SELECT SECOND POINT'; }
+    else if(m.first!==hit.id){
+      const a=BY_ID.get(m.first), b=BY_ID.get(hit.id);
+      m.result={a:m.first,b:hit.id}; m.armed=false; m.first=null;
+      document.getElementById('measurehint').style.display='none';
+      redrawMeasure();
+      post({type:'measureResult', a:m.result.a, b:m.result.b});   // ids only; the host computes the distance
+      log(`[UI] map: measure ${a.name} -> ${b.name}`);
+    }
+    return;
+  }
+  const now=performance.now();
+  if(lastClick.id===hit.id && now-lastClick.t<420){ lastClick={t:0,id:null}; post({type:'pinDoubleClick', id:hit.id}); return; }
+  lastClick={t:now,id:hit.id};
+  post({type:'pinClick', id:hit.id});
+});
+
+/* route + measure lines */
+function redrawRoute(){
+  if(!sysGroup) return;
+  if(routeLine){ sysGroup.remove(routeLine); routeLine.geometry.dispose(); routeLine=null; }
+  if(state.draft.length>1){
+    const pts=state.draft.map(id=>{ const o=BY_ID.get(id);
+      return new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM); });
+    routeLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineDashedMaterial({color:0xFFB23E, dashSize:180, gapSize:90,
+        transparent:true, opacity:0.85}));
+    routeLine.computeLineDistances(); routeLine.renderOrder=1; sysGroup.add(routeLine);
+  }
+}
+function redrawMeasure(){
+  if(!sysGroup) return;
+  if(measureLine){ sysGroup.remove(measureLine); measureLine.geometry.dispose(); measureLine=null; }
+  const m=state.measure;
+  if(m.result){ const a=BY_ID.get(m.result.a), b=BY_ID.get(m.result.b);
+    if(a && b){
+      measureLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(a.x/MM,a.z/MM,-a.y/MM), new THREE.Vector3(b.x/MM,b.z/MM,-b.y/MM)]),
+        new THREE.LineBasicMaterial({color:0x7FE9E0, transparent:true, opacity:0.9}));
+      measureLine.renderOrder=1; sysGroup.add(measureLine);
+    }
+  }
+}
+
+/* labels: project, prioritize, collide */
+const labelPool=[];
+for(let i=0;i<30;i++){ const d=document.createElement('div'); d.className='plabel';
+  d.style.display='none'; labelsEl.appendChild(d); labelPool.push(d); }
+function labelPass(){
+  const w=renderer.domElement.clientWidth, h=renderer.domElement.clientHeight;
+  const v=new THREE.Vector3();
+  projected=[];
+  pins.forEach(({sprite,obj})=>{
+    if(!sprite.visible) return;
+    v.set(obj.x/MM,obj.z/MM,-obj.y/MM).project(camera);
+    if(v.z>1||v.x<-1.05||v.x>1.05||v.y<-1.05||v.y>1.05) return;
+    projected.push({id:obj.id, obj, sx:(v.x*0.5+0.5)*w, sy:(-v.y*0.5+0.5)*h,
+      rank:TYPE_TEX(obj.type).rank});
+  });
+  // priority: selection, hover, layer-flagged, then rank then center distance
+  const score=p=>{ let s=p.rank*1000 + Math.hypot(p.sx-w/2,p.sy-h/2)*0.25;
+    if(p.id===state.selection) s-=1e6; if(p.id===hoverId) s-=9e5;
+    if(state.layers.guides&&p.obj.guide) s-=5e5;
+    if(state.layers.hangar&&p.obj.hangar) s-=5e5;
+    if(state.layers.trade&&p.obj.trade) s-=1200;
+    return s; };
+  const cands=[...projected].sort((a,b)=>score(a)-score(b)).slice(0,60);
+  const placed=[]; let li=0;
+  for(const p of cands){ if(li>=labelPool.length) break;
+    if(p.rank>1 && placed.some(q=>Math.abs(q.sx-p.sx)<110&&Math.abs(q.sy-p.sy)<16)) continue;  /* star+planets always label */
+    placed.push(p);
+    const el=labelPool[li++]; el.style.display='block';
+    el.style.left=p.sx+'px'; el.style.top=p.sy+'px';
+    el.className='plabel k-'+p.obj.type.split('_')[0]
+      +(p.id===state.selection?' sel':'')
+      +((state.layers.trade&&p.obj.trade)?' trade':'');
+    let html=p.obj.name;
+    if(p.obj.type==='Planet'||p.obj.type==='Moon'){
+      const anyChildCollapsed=(childrenOf.get(p.id)||[]).some(c=>pins.get(c.id)&&pins.get(c.id).collapsed);
+      if(anyChildCollapsed){ const {n,lyr}=collapsedCounts(p.obj);
+        if(n){ html+=`<span class="badge">+${n}</span>`;
+          if(state.layers.trade&&lyr.trade) html+=`<span class="lyr" style="color:#FFB23E">T${lyr.trade}</span>`;
+          if(state.layers.guides&&lyr.guides) html+=`<span class="lyr" style="color:#FFD089">G${lyr.guides}</span>`;
+          if(state.layers.mining&&lyr.mining) html+=`<span class="lyr" style="color:#66E6A6">M${lyr.mining}</span>`;
+          if(state.layers.hangar&&lyr.hangar) html+=`<span class="lyr" style="color:#FF6B6B">H</span>`; } }
+    }
+    el.innerHTML=html;
+  }
+  for(;li<labelPool.length;li++) labelPool[li].style.display='none';
+}
+
+/* scale bar */
+const scaletxt=document.getElementById('scaletxt');
+function scalePass(){
+  const d=camera.position.distanceTo(controls.target);
+  const mPerPx=d*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*2/renderer.domElement.clientHeight*MM;
+  const span=mPerPx*90;
+  scaletxt.textContent = span>=1e8? fmtGm(span)
+    : span>=1e6? Math.round(span/1e6)+' Mm'
+    : Math.max(1,Math.round(span/1e3))+' km';
+}
+
+/* resize + loop */
+function resize(){ const w=sceneEl.clientWidth, h=sceneEl.clientHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/(h||1); camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(sceneEl); resize();
+let frame=0;
+renderer.setAnimationLoop(()=>{ controls.update(); frame++;
+  if(frame%2===0){ clusterPass(); labelPass(); scalePass(); }
+  renderer.render(scene,camera); });
+
+/* notice toast (system-change guard: routes and measurements are single-system) */
+let noticeTimer=null;
+function showNotice(text){ const el=document.getElementById('notice');
+  el.textContent=text; el.style.display='block';
+  clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>{ el.style.display='none'; }, 2800); }
+
+/* breadcrumb (in-scene JS UI) */
+const bcEl=document.getElementById('breadcrumb');
+function renderBreadcrumb(){
+  if(!state.system){ bcEl.innerHTML=''; return; }
+  bcEl.innerHTML=`<b>${state.system.toUpperCase()}</b>`+(state.focusName?` <span>/</span> <b>${state.focusName.toUpperCase()}</b>`:'')
+    +(state.focusName?` <button id="bcback">SYSTEM VIEW</button>`:'');
+  const btn=document.getElementById('bcback');
+  if(btn) btn.onclick=systemView;
+}
+
+/* ===================== bridge: apply an init snapshot ===================== */
+function applyInit(msg){
+  const prevSystem=state.system;
+  const hadDraft=state.draft.length>0;
+  const hadMeasure=state.measure.armed||!!state.measure.result;
+  const isSystemChange=!!prevSystem && msg.system!==prevSystem;
+
+  state.system = msg.system || '';
+  REDUCED = !!msg.reduced;
+  const layers = msg.layers || {};
+  state.layers = { trade:!!layers.trade, guides:!!layers.guides,
+    mining:!!layers.mining, hangar:!!layers.hangar, asteroids:!!msg.asteroids };
+  state.selection = (msg.selection==null)? null : msg.selection;
+  state.focusName = null;
+  state.draft = Array.isArray(msg.draft)? msg.draft.slice() : [];
+  state.planner = Array.isArray(msg.planner)? msg.planner.slice() : [];
+  state.measure = {armed:false, first:null, result:null};
+  document.getElementById('measurehint').style.display='none';
+
+  catalogRows = Array.isArray(msg.catalog)? msg.catalog : [];
+  BY_ID = new Map(catalogRows.map(o=>[o.id,o]));
+  childrenOf = new Map();
+  catalogRows.forEach(o=>{ if(o.parent!=null){ if(!childrenOf.has(o.parent)) childrenOf.set(o.parent,[]);
+    childrenOf.get(o.parent).push(o); }});
+  subRadius = new Map();
+  catalogRows.forEach(calcSubRadius);
+
+  buildSystem();
+  redrawRoute();
+  redrawMeasure();
+  renderBreadcrumb();
+
+  log(`[UI] map: init ${state.system} (${catalogRows.length} objects)`);
+  if(isSystemChange && (hadDraft||hadMeasure)){                 /* routes and measurements stay within one system */
+    showNotice('ROUTES AND MEASUREMENTS STAY WITHIN ONE SYSTEM - DRAFT CLEARED');
+    if(hadDraft) log('[UI] map: route draft cleared (system switch)');
+    if(hadMeasure) log('[UI] map: measure cleared (system switch)');
+  }
+}
+
+function onLayerToggle(layer,on){
+  if(!layer || !(layer in state.layers)) return;
+  state.layers[layer]=!!on;
+  refreshTicks(); redrawPlanner();
+  log(`[UI] map: layer ${layer} ${on?'ON':'OFF'}`);
+}
+function onSelect(id){
+  const nid=(id==null)? null : id;
+  if(state.selection===nid) return;   // re-select is a no-op
+  state.selection=nid;
+  refreshTicks();
+  const o=nid!=null? BY_ID.get(nid) : null;
+  log(o? `[UI] map: select ${o.name}` : '[UI] map: select cleared');
+}
+function onRouteChanged(ids){
+  state.draft = Array.isArray(ids)? ids : [];
+  redrawRoute();
+}
+function onPlannerRoute(ids){
+  state.planner = Array.isArray(ids)? ids : [];
+  redrawPlanner();
+}
+function onMeasureArm(on){
+  const armed=!!on;
+  state.measure={armed, first:null, result:armed? null:state.measure.result};
+  const hint=document.getElementById('measurehint');
+  hint.style.display=armed?'block':'none';
+  if(armed) hint.textContent='MEASURE: SELECT FIRST POINT';
+  redrawMeasure();
+  log(`[UI] map: measure ${armed?'armed':'off'}`);
+}
+
+/* ===================== boot ===================== */
+renderBreadcrumb();
+if (window.chrome && window.chrome.webview) {
+  window.chrome.webview.addEventListener('message', e => {
+    try {
+      const d = e.data || {};
+      switch(d.type){
+        case 'init': applyInit(d); break;
+        case 'layerToggle': onLayerToggle(d.layer, d.on); break;
+        case 'select': onSelect(d.id); break;
+        case 'focusObject': focusObject(d.id); break;
+        case 'routeChanged': onRouteChanged(d.ids); break;
+        case 'plannerRoute': onPlannerRoute(d.ids); break;
+        case 'measureArm': onMeasureArm(d.on); break;
+        case 'systemView': systemView(); break;
+      }
+    }
+    catch(err){ console.error(err); post({type:'log', msg:'map render failed: '+String(err && err.stack || err)}); }
+  });
+}
+post({type:'ready'});
+</script>
+</body>
+</html>

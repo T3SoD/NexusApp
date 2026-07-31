@@ -81,6 +81,15 @@
     </Content>
   </ItemGroup>
 
+  <!-- Starmap MAP tab 3D scene (Three.js, vendored for offline) served to the WebView2 host. -->
+  <ItemGroup>
+    <None Remove="Web\map\**\*" />
+    <Content Include="Web\map\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\nexus_icon_classic.png" />
     <Resource Include="Assets\nexus_logo_classic.png" />
