@@ -86,8 +86,14 @@ public sealed partial class TradePage : UserControl
         root.Children.Add(header);
 
         BuildStrip();
-        Grid.SetRow(_stripHost, 1);
-        root.Children.Add(_stripHost);
+        var stripPills = BuildStripPills();   // must exist before BuildContextRow() below, whose trailing
+                                                // RefreshContextRow() call reads _uexPill/_sctAgePill
+        var stripRow = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(stripPills, Dock.Right);
+        stripRow.Children.Add(stripPills);
+        stripRow.Children.Add(_stripHost);   // fills the rest (left)
+        Grid.SetRow(stripRow, 1);
+        root.Children.Add(stripRow);
 
         var contextRow = BuildContextRow();
         Grid.SetRow(contextRow, 2);
@@ -407,6 +413,27 @@ public sealed partial class TradePage : UserControl
         _stripHost.Children.Add(_underline);
     }
 
+    // ── Data source pills, docked right of the tab strip (owner's ask, 2026-07-31: moved out of the
+    // context row so they read as strip chrome, not a row 2 filter) - built here so the fields exist
+    // before BuildContextRow()'s trailing RefreshContextRow()/RefreshSctAgePill() calls run. Moved
+    // verbatim out of BuildContextRow: same BuildPill() calls, same SCT margin, same Collapsed default.
+    // VerticalAlignment=Center on the wrapper so the LEDs line up with the tab labels.
+    private StackPanel BuildStripPills()
+    {
+        var pills = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+        _uexPill = BuildPill("UEX", out _uexAgeValue, out _uexPillDot);
+        _uexPill.ToolTip = "";   // set live in RefreshContextRow (age changes the tooltip text)
+        pills.Children.Add(_uexPill);
+
+        _sctAgePill = BuildPill("SCT", out _sctAgeValue, out _sctPillDot);
+        _sctAgePill.Margin = new Thickness(8, 0, 0, 0);
+        _sctAgePill.Visibility = Visibility.Collapsed;   // Task 11 also owns this pill's absence rule
+        pills.Children.Add(_sctAgePill);
+
+        return pills;
+    }
+
     private Border MakeTab(int index, string label)
     {
         var text = new TextBlock
@@ -501,16 +528,6 @@ public sealed partial class TradePage : UserControl
             _scopePills[i] = pill;
             row.Children.Add(pill);
         }
-        row.Children.Add(Sep());
-
-        _uexPill = BuildPill("UEX", out _uexAgeValue, out _uexPillDot);
-        _uexPill.ToolTip = "";   // set live in RefreshContextRow (age changes the tooltip text)
-        row.Children.Add(_uexPill);
-
-        _sctAgePill = BuildPill("SCT", out _sctAgeValue, out _sctPillDot);
-        _sctAgePill.Margin = new Thickness(8, 0, 0, 0);
-        _sctAgePill.Visibility = Visibility.Collapsed;   // Task 11 also owns this pill's absence rule
-        row.Children.Add(_sctAgePill);
 
         RefreshContextRow();
         RefreshScopePills();
