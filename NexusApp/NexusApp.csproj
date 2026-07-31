@@ -60,6 +60,8 @@
     <EmbeddedResource Include="Data\sct_uex_map.json" />
     <None Remove="Data\starmap_locations.json" />
     <EmbeddedResource Include="Data\starmap_locations.json" />
+    <None Remove="Data\location_aliases.json" />
+    <EmbeddedResource Include="Data\location_aliases.json" />
     <None Update="README.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>

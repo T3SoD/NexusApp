@@ -52,4 +52,22 @@ public static class TradeMath
         }
         return false;
     }
+
+    // The largest container size a terminal's container_sizes list offers, for the "MAX N SCU"
+    // chip. Same split discipline as BoxFits (comma-separated, trimmed, empty entries removed) -
+    // ground truth is an ascending list of positive SCU integers with no spaces
+    // ("1,2,4,8,16,24,32"), but this does not rely on that ordering, it tracks the true max seen.
+    // Null on empty/whitespace/all-garbage input, never throws - a chip with nothing to show is
+    // simply omitted by its caller, not rendered as a guess.
+    public static int? MaxContainerScu(string containerSizes)
+    {
+        if (string.IsNullOrWhiteSpace(containerSizes)) return null;
+        int? max = null;
+        foreach (var token in containerSizes.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(token, out var size) && size > 0 && (max is null || size > max))
+                max = size;
+        }
+        return max;
+    }
 }

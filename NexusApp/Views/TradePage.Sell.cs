@@ -371,7 +371,7 @@ public sealed partial class TradePage
         // same-system gate, so this is a single call, not a duplicated check.
         double? distanceMeters = _starmap.DistanceMeters(originTerm, term);
         return BuildBuyerRowCore(b.Row.TerminalName, system, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
-            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), distanceMeters, out chevron, out detailHost);
+            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), distanceMeters, b.Row.ContainerSizes, out chevron, out detailHost);
     }
 
     // Tier omitted (never a placeholder): SctOnlyBuyers only ever returns listings at stations
@@ -389,7 +389,9 @@ public sealed partial class TradePage
         // (BuildSctOnlyBuyerRowContent's doc comment above), so the tag is correctly omitted.
         // distanceMeters: null, always - same reason, and the spec is explicit that SCT-only rows
         // never carry a distance tag (they have no UEX terminal to resolve a starmap position from).
-        return BuildBuyerRowCore(s.Location, null, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, null, out chevron, out detailHost);
+        // containerSizes: null, always - SctListing carries no container-size data (it is not a
+        // UEX TradePriceRow), so the max-container chip is correctly omitted for these rows too.
+        return BuildBuyerRowCore(s.Location, null, s.Price, null, s.Quantity, s.TimestampUtc, effectiveValue, qty, badge, null, null, out chevron, out detailHost);
     }
 
     // Shared buyer-row layout: real UEX buyers (SellLookup.Buyer) and SCT-only listings both
@@ -397,7 +399,7 @@ public sealed partial class TradePage
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
     private UIElement BuildBuyerRowCore(string terminalName, string? system, double price, ProximityTier? tier, int demandScu,
-        DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, double? distanceMeters,
+        DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, double? distanceMeters, string? containerSizes,
         out Path chevron, out Border detailHost)
     {
         var grid = new Grid();
@@ -427,6 +429,9 @@ public sealed partial class TradePage
         meta.Children.Add(new TextBlock { Text = $"DEMAND {demandScu:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 8, 0) });
         var age = DateTime.UtcNow - priceUtc;
         meta.Children.Add(FreshChip(FreshChipAge(age), age.TotalHours >= 24));   // shared idiom, see FreshChipAge
+        // Max container size (task 2): the sell flow has no ship in scope here, so this is always
+        // the plain dim tag, never the AccentBrush warning tint - that only applies on planner legs.
+        if (MaxContainerChip(TradeMath.MaxContainerScu(containerSizes ?? "")) is { } maxChip) meta.Children.Add(maxChip);
         left.Children.Add(meta);
         Grid.SetColumn(left, 0); Grid.SetRow(left, 0);
         grid.Children.Add(left);

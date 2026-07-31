@@ -53,9 +53,12 @@ public class LocationTrackerTests
     [Fact]
     public void Ingest_LocationInventoryLine_SetsPreciseKey()
     {
+        // Stored value is normalized through LocationAliases (Task 8: in-game names for logged
+        // locations) - "Stanton4_NewBabbage" is the raw inventory key, "New Babbage" is the
+        // in-game display name it resolves to.
         var t = new LocationTracker(new GameLogFeed());
         t.Ingest(E(LocationInventoryRequest));
-        Assert.Equal("Stanton4_NewBabbage", t.LastKnownLocation);
+        Assert.Equal("New Babbage", t.LastKnownLocation);
     }
 
     [Fact]
@@ -70,10 +73,12 @@ public class LocationTrackerTests
     [Fact]
     public void Ingest_InventoryTransitionLine_DoesNotOverwritePriorPlace()
     {
+        // Normalized display name (see Ingest_LocationInventoryLine_SetsPreciseKey) - unchanged
+        // by the freshness-only transition line either way.
         var t = new LocationTracker(new GameLogFeed());
         t.Ingest(E(LocationInventoryRequest));           // sets LastKnownLocation
         t.Ingest(E(InventoryLocationTransition));        // freshness-only signal
-        Assert.Equal("Stanton4_NewBabbage", t.LastKnownLocation);   // unchanged
+        Assert.Equal("New Babbage", t.LastKnownLocation);   // unchanged
     }
 
     [Fact]
