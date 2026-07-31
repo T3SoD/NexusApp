@@ -7,14 +7,16 @@ namespace NexusApp.Tests;
 public class MapCatalogTests
 {
     // Load once per class (pattern: StarmapCatalogTests, CargoShipCatalogTests) - the embedded
-    // artifact is immutable within a test run, so 967 objects need not be parsed per test.
+    // artifact is immutable within a test run, so 963 objects need not be parsed per test.
     private static readonly MapCatalog Catalog = MapCatalog.LoadEmbedded();
 
     [Fact]
     public void LoadEmbedded_HasExpectedObjectCount()
     {
-        Assert.Equal(967, Catalog.Count);
-        Assert.Equal(967, Catalog.Objects.Count);
+        // 4 source placeholder records ("<= UNINITIALIZED =>", Stanton) were filtered out of the
+        // extractor's map artifact; ids 419/437/473/515 are gaps, not renumbered.
+        Assert.Equal(963, Catalog.Count);
+        Assert.Equal(963, Catalog.Objects.Count);
     }
 
     [Fact]

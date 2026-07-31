@@ -402,7 +402,6 @@ function focusObject(id){
   frameRadius(r, false, new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM));
   state.focusName=o.name;
   renderBreadcrumb();
-  log(`[UI] map: focus ${o.name} (${state.system})`);
 }
 
 function systemView(){
@@ -440,12 +439,10 @@ renderer.domElement.addEventListener('click',ev=>{
     if(m.first==null){ m.first=hit.id;
       document.getElementById('measurehint').textContent='MEASURE: SELECT SECOND POINT'; }
     else if(m.first!==hit.id){
-      const a=BY_ID.get(m.first), b=BY_ID.get(hit.id);
       m.result={a:m.first,b:hit.id}; m.armed=false; m.first=null;
       document.getElementById('measurehint').style.display='none';
       redrawMeasure();
       post({type:'measureResult', a:m.result.a, b:m.result.b});   // ids only; the host computes the distance
-      log(`[UI] map: measure ${a.name} -> ${b.name}`);
     }
     return;
   }
@@ -600,8 +597,6 @@ function applyInit(msg){
   log(`[UI] map: init ${state.system} (${catalogRows.length} objects)`);
   if(isSystemChange && (hadDraft||hadMeasure)){                 /* routes and measurements stay within one system */
     showNotice('ROUTES AND MEASUREMENTS STAY WITHIN ONE SYSTEM - DRAFT CLEARED');
-    if(hadDraft) log('[UI] map: route draft cleared (system switch)');
-    if(hadMeasure) log('[UI] map: measure cleared (system switch)');
   }
 }
 
@@ -609,15 +604,12 @@ function onLayerToggle(layer,on){
   if(!layer || !(layer in state.layers)) return;
   state.layers[layer]=!!on;
   refreshTicks(); redrawPlanner();
-  log(`[UI] map: layer ${layer} ${on?'ON':'OFF'}`);
 }
 function onSelect(id){
   const nid=(id==null)? null : id;
   if(state.selection===nid) return;   // re-select is a no-op
   state.selection=nid;
   refreshTicks();
-  const o=nid!=null? BY_ID.get(nid) : null;
-  log(o? `[UI] map: select ${o.name}` : '[UI] map: select cleared');
 }
 function onRouteChanged(ids){
   state.draft = Array.isArray(ids)? ids : [];
@@ -634,7 +626,6 @@ function onMeasureArm(on){
   hint.style.display=armed?'block':'none';
   if(armed) hint.textContent='MEASURE: SELECT FIRST POINT';
   redrawMeasure();
-  log(`[UI] map: measure ${armed?'armed':'off'}`);
 }
 
 /* ===================== boot ===================== */
