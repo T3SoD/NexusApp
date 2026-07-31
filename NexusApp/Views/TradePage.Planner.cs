@@ -57,6 +57,12 @@ public sealed partial class TradePage
     // value in memory only; it resets each session, which does not affect anything else in this file.
     private string _budgetText = "";
 
+    // Reentrancy guard for the budget box's live TextChanged re-rank below, same pattern as the
+    // Sell tab's quantity box (TradePage.Sell.cs, _inQtyLiveRerank) - RebuildPlanner never writes
+    // back to _budgetBox.Text itself, so nothing today re-enters this handler, but the guard is
+    // cheap insurance against a future write-back (or IME composition) looping back in.
+    private bool _inBudgetLiveRerank;
+
     private ShipCargoDef CurrentShip() =>
         _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
 
@@ -110,6 +116,22 @@ public sealed partial class TradePage
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
             RebuildPlanner();   // results only: the control the user just clicked is still alive
+        };
+        // Live re-rank per keystroke, same fix as the Sell tab's quantity box (TradePage.Sell.cs,
+        // item C): budget used to apply only on blur, so nothing re-ranked until the user typed a
+        // budget AND clicked elsewhere. RebuildPlanner only ever clears/repopulates
+        // _plannerResults, never _plannerInputs (this box's own parent, built once - see this
+        // method's opening comment), so this can never recreate the box the user is typing into or
+        // steal its focus/caret. Deliberately leaves _budgetText and the log line alone:
+        // CurrentBudget already reads _budgetBox.Text directly (not _budgetText), so a rebuild here
+        // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
+        // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
+        _budgetBox.TextChanged += (_, _) =>
+        {
+            if (_inBudgetLiveRerank) return;
+            _inBudgetLiveRerank = true;
+            try { RebuildPlanner(); }
+            finally { _inBudgetLiveRerank = false; }
         };
         budgetGrp.Children.Add(_budgetBox);
         inputRow.Children.Add(budgetGrp);
