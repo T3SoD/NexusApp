@@ -84,4 +84,26 @@ public static class MapSceneBuilder
 
     public static string BuildSystemView() =>
         JsonSerializer.Serialize(new { type = "systemView" });
+
+    // Pure leg/total distance math for a draft route (MapPage's ROUTE BUILDER zone uses this to
+    // paint per-stop leg distances plus the running total): meters between each consecutive pair,
+    // in catalog order. A single stop (or an empty draft) has no legs and a zero total. An id that
+    // fails to resolve in the catalog - or a same-system pair MapCatalog.DistanceMeters itself
+    // refuses - contributes 0 to that leg and to the total rather than throwing: the draft route
+    // degrades to an honest zero for that hop instead of crashing the panel. The returned Legs
+    // array is always ids.Count-1 long so callers can index it 1:1 against the draft's stop list.
+    internal static (double[] Legs, double Total) DraftLegs(IReadOnlyList<int> ids, MapCatalog catalog)
+    {
+        if (ids.Count < 2) return (Array.Empty<double>(), 0);
+
+        var legs = new double[ids.Count - 1];
+        double total = 0;
+        for (int i = 1; i < ids.Count; i++)
+        {
+            var d = catalog.DistanceMeters(catalog.ById(ids[i - 1]), catalog.ById(ids[i])) ?? 0;
+            legs[i - 1] = d;
+            total += d;
+        }
+        return (legs, total);
+    }
 }
