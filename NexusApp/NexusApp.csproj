@@ -90,6 +90,19 @@
     </Content>
   </ItemGroup>
 
+  <!-- Same Assets\Fonts TTFs, also copied loose so MapWebView's nexus.fonts virtual host mapping
+       (Task 5 fix round) can serve them to the starmap scene page's @font-face rules. Stays under
+       Assets\Fonts in every build/publish/portable layout, never promoted to the root. Embedding
+       below (Resource) is unaffected - WPF's own XAML FontFamily pack-URI lookups still resolve
+       from the assembly. -->
+  <ItemGroup>
+    <None Remove="Assets\Fonts\*.ttf" />
+    <Content Include="Assets\Fonts\*.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\nexus_icon_classic.png" />
     <Resource Include="Assets\nexus_logo_classic.png" />

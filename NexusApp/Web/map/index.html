@@ -17,7 +17,39 @@
        NexusApp\Views\SettingsPage.cs        (SP:line)
      Scene palette (pin glyph colors, halo alphas) is INVENTED for this surface,
      derived only from the palette tokens below.
+
+     Type faces load from nexus.fonts, a read-only virtual host the WPF shell maps
+     to its own Assets\Fonts (mirrors CargoWebView's nexus.hulls mapping) - the
+     exact TTFs the native chrome uses, so the scene reads as one surface with the
+     rest of the app. No network is ever touched. The --tech/--disp/--mono stacks
+     only name the custom faces under the html.nexus-fonts class, which the boot
+     script below adds solely when window.chrome.webview is present. The
+     @font-face rules are declared unconditionally, but browsers fetch a face
+     lazily, on first use, not at parse time, so with the class absent (a plain
+     file, or the standalone smoke test) nothing ever names those faces, nothing
+     ever requests them, and the page renders in the system fallback with no
+     fetch attempted, and so no console error.
      ========================================================================== */
+  @font-face{font-family:"Chakra Petch"; font-weight:400; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/ChakraPetch-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Chakra Petch"; font-weight:500; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/ChakraPetch-Medium.ttf") format("truetype")}
+  @font-face{font-family:"Chakra Petch"; font-weight:600; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/ChakraPetch-SemiBold.ttf") format("truetype")}
+  @font-face{font-family:"Chakra Petch"; font-weight:700; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/ChakraPetch-Bold.ttf") format("truetype")}
+  @font-face{font-family:"Rajdhani"; font-weight:500; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/Rajdhani-Medium.ttf") format("truetype")}
+  @font-face{font-family:"Rajdhani"; font-weight:600; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/Rajdhani-SemiBold.ttf") format("truetype")}
+  @font-face{font-family:"Rajdhani"; font-weight:700; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/Rajdhani-Bold.ttf") format("truetype")}
+  @font-face{font-family:"JetBrains Mono"; font-weight:400; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/JetBrainsMono-Regular.ttf") format("truetype")}
+  @font-face{font-family:"JetBrains Mono"; font-weight:500; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/JetBrainsMono-Medium.ttf") format("truetype")}
+  @font-face{font-family:"JetBrains Mono"; font-weight:700; font-style:normal; font-display:swap;
+    src:url("https://nexus.fonts/JetBrainsMono-Bold.ttf") format("truetype")}
   :root{
     --void:        #05070A;                       /* BgColor        P:11 */
     --bg2:         #080C12;                       /* Bg2Color       P:12 */
@@ -39,11 +71,19 @@
     --cyan:         #7FE9E0;                      /* CyanColor         P:38 */
     --ok:           #66E6A6;                      /* OkColor           P:45 */
     --danger:       #FF6B6B;                      /* DangerColor       P:48 */
-    --tech: system-ui, "Segoe UI", sans-serif;         /* UiFont G:77-79 */
-    --disp: system-ui, "Segoe UI", sans-serif;         /* DisplayFont G:80 */
-    --mono: ui-monospace, "Consolas", monospace;       /* MonoFont G:81 */
+    --tech: system-ui, "Segoe UI", sans-serif;         /* UiFont G:77-79, system fallback until nexus-fonts loads */
+    --disp: system-ui, "Segoe UI", sans-serif;         /* DisplayFont G:80, system fallback until nexus-fonts loads */
+    --mono: ui-monospace, "Consolas", monospace;       /* MonoFont G:81, system fallback until nexus-fonts loads */
     --settle:   cubic-bezier(0.16,0.8,0.3,1);          /* Motion.Settle M:30 */
     --slideout: cubic-bezier(0.215,0.61,0.355,1);      /* Motion.SlideOut M:33 */
+  }
+  /* Added by the boot script only when window.chrome.webview is present (real nexus.fonts host);
+     naming the faces here, instead of unconditionally above, is what keeps the @font-face fetches
+     above from ever firing on a standalone open - see the MANIFEST NOTE. */
+  html.nexus-fonts{
+    --tech: "Chakra Petch", system-ui, "Segoe UI", sans-serif;
+    --disp: "Rajdhani", system-ui, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "Consolas", monospace;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -128,6 +168,9 @@ import {OrbitControls} from './OrbitControls.js';
    ========================================================================== */
 function post(o){ if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(JSON.stringify(o)); }
 const log = (msg)=>{ post({type:'log', msg}); };
+// Only under a real webview host does the page name the bundled type faces (see the html.nexus-fonts
+// rule above); a standalone open never references them, so their @font-face fetches never fire.
+if (window.chrome && window.chrome.webview) document.documentElement.classList.add('nexus-fonts');
 
 /* ===================== constants ===================== */
 const MM = 1e6;                       // scene unit = 1,000 km (1 Mm); catalog coords arrive in meters
@@ -359,7 +402,7 @@ function focusObject(id){
   frameRadius(r, false, new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM));
   state.focusName=o.name;
   renderBreadcrumb();
-  log(`[UI] map: focus ${o.name}`);
+  log(`[UI] map: focus ${o.name} (${state.system})`);
 }
 
 function systemView(){

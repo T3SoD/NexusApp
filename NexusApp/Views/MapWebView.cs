@@ -9,9 +9,11 @@ namespace NexusApp.Views;
 
 // Hosts the starmap scene (Web/map/index.html, Three.js) in a WebView2, mirroring CargoWebView's
 // pattern exactly: C# stays the source of truth (catalog + layer state), the page renders it and
-// posts back selection/measure interactions as JSON. Fully offline - the scene assets are served
-// through a virtual host mapping, so no network is ever touched. Shares one CoreWebView2Environment
-// with the cargo 3D viewport via WebViewEnv (a second environment on the same user-data folder throws).
+// posts back selection/measure interactions as JSON. Fully offline - the scene assets and the app's
+// own bundled type faces (nexus.fonts, read-only, mirrors the nexus.hulls precedent in CargoWebView)
+// are served through virtual host mappings, so no network is ever touched. Shares one
+// CoreWebView2Environment with the cargo 3D viewport via WebViewEnv (a second environment on the
+// same user-data folder throws).
 public sealed class MapWebView : UserControl
 {
     private readonly WebView2 _web = new();
@@ -44,6 +46,11 @@ public sealed class MapWebView : UserControl
             var core = _web.CoreWebView2!;
             var siteFolder = Path.Combine(AppContext.BaseDirectory, "Web", "map");
             core.SetVirtualHostNameToFolderMapping("nexus.map", siteFolder, CoreWebView2HostResourceAccessKind.Allow);
+            // Same TTFs the WPF chrome uses (Assets\Fonts), served read-only so the scene page can
+            // @font-face the real type faces instead of falling back to system fonts. Precedent:
+            // CargoWebView's nexus.hulls mapping.
+            var fontsFolder = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+            core.SetVirtualHostNameToFolderMapping("nexus.fonts", fontsFolder, CoreWebView2HostResourceAccessKind.Allow);
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDevToolsEnabled = false;
@@ -107,9 +114,9 @@ public sealed class MapWebView : UserControl
     }
 
     // Pure allow decision for a WebView2 navigation target. Only the app's own local https virtual
-    // host (nexus.map, mapped in InitAsync) and the implicit initial about:blank are permitted;
-    // everything else (http downgrade, file:, javascript:, data:, external https, other hosts
-    // including nexus.cargo) is denied. Kept internal + static so it is unit-testable without
+    // hosts (nexus.map and nexus.fonts, both mapped in InitAsync) and the implicit initial about:blank
+    // are permitted; everything else (http downgrade, file:, javascript:, data:, external https, other
+    // hosts including nexus.cargo) is denied. Kept internal + static so it is unit-testable without
     // spinning up WebView2.
     internal static bool IsAllowedNavigation(string? uri)
     {
@@ -118,10 +125,11 @@ public sealed class MapWebView : UserControl
         if (string.Equals(uri, "about:blank", StringComparison.OrdinalIgnoreCase)) return true;
         if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
         // Scheme must be exactly https (blocks http downgrade, file:, javascript:, data:, etc.); host
-        // must be our own virtual host. Uri lowercases scheme/host already; the comparers are
+        // must be one of our own virtual hosts. Uri lowercases scheme/host already; the comparers are
         // belt-and-suspenders.
         if (!string.Equals(u.Scheme, "https", StringComparison.OrdinalIgnoreCase)) return false;
-        return string.Equals(u.Host, "nexus.map", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(u.Host, "nexus.map", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(u.Host, "nexus.fonts", StringComparison.OrdinalIgnoreCase);
     }
 
     // Push one JSON payload (init/update) to the scene. Queues until the page has navigated.

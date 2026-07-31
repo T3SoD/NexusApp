@@ -4,13 +4,15 @@ using Xunit;
 namespace NexusApp.Tests;
 
 // Pins the pure navigation-allow predicate that MapWebView uses to cancel any WebView2 navigation
-// off the app's own local virtual host (defense-in-depth for the offline starmap scene), plus the
-// pure JS-message parse-and-route decision (ParseMessage). Both are static and touch no
-// WPF/WebView2 state, so they are unit-tested directly. Shape mirrors Cargo\CargoWebViewNavigationTests.cs.
+// off the app's own local virtual hosts (defense-in-depth for the offline starmap scene and its
+// bundled type faces), plus the pure JS-message parse-and-route decision (ParseMessage). Both are
+// static and touch no WPF/WebView2 state, so they are unit-tested directly. Shape mirrors
+// Cargo\CargoWebViewNavigationTests.cs.
 public class MapWebViewNavigationTests
 {
     [Theory]
     [InlineData("https://nexus.map/index.html")]
+    [InlineData("https://nexus.fonts/ChakraPetch-Regular.ttf")]
     public void Allows_OwnVirtualHost(string uri) =>
         Assert.True(MapWebView.IsAllowedNavigation(uri));
 
@@ -20,9 +22,12 @@ public class MapWebViewNavigationTests
 
     [Theory]
     [InlineData("https://nexus.cargo/index.html")]     // another view's own host
+    [InlineData("https://nexus.hulls/drak-ironclad.bin")] // another view's own host
     [InlineData("http://nexus.map/")]                  // http downgrade
+    [InlineData("http://nexus.fonts/ChakraPetch-Regular.ttf")]  // http downgrade
     [InlineData("https://example.com/")]                // external https
     [InlineData("https://nexus.map.evil.com/x")]        // look-alike host
+    [InlineData("https://nexus.fonts.evil.com/x")]      // look-alike host
     [InlineData("javascript:alert(1)")]                 // script scheme
     [InlineData("data:text/html,<h1>x</h1>")]           // data scheme
     [InlineData("file:///C:/Windows/system32/")]        // local file scheme
@@ -35,6 +40,8 @@ public class MapWebViewNavigationTests
     [Theory]
     [InlineData("HTTPS://NEXUS.MAP/index.html")]
     [InlineData("Https://Nexus.Map/index.html")]
+    [InlineData("HTTPS://NEXUS.FONTS/Rajdhani-Bold.ttf")]
+    [InlineData("Https://Nexus.Fonts/Rajdhani-Bold.ttf")]
     public void Allows_HostAndSchemeCaseInsensitively(string uri) =>
         Assert.True(MapWebView.IsAllowedNavigation(uri));
 
