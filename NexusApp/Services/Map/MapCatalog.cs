@@ -18,11 +18,13 @@ public sealed record MapUexAlias(string Kind, string Name);
 public sealed record MapObject(int Id, string System, string Name, string Type,
     double X, double Y, double Z, int? Parent, IReadOnlyList<MapUexAlias> Uex);
 
-// Read-only catalog over the embedded full starmap object graph (Data/starmap_map.json),
-// extracted from the game's StarMap DataCore via sc-datamine/starbreaker. Distinct from
-// StarmapCatalog (Data/starmap_locations.json): that one is a flat, UEX-only position lookup used
-// by the trading tab's proximity tiers; this one carries every object with its parent/type/id so
-// the MAP tab can render the full system graph, not just UEX-recognized terminals.
+// Derived location data (Data/starmap_map.json): named objects for the three systems with
+// absolute star-relative positions in meters and UEX alias joins. Distinct from
+// StarmapCatalog (Data/starmap_locations.json, the trade distance embed): that one is a flat,
+// UEX-only position lookup used by the trading tab's proximity tiers; this catalog carries the
+// full object set, hierarchy, and alias pairs for the map surface. Positions are valid only
+// within a single system; two positions from different systems are never compared (jump-point
+// travel is not Euclidean).
 // Public-safe: derived positions and ids only, no bulk source data, no PII.
 public sealed class MapCatalog
 {
