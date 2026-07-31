@@ -52,6 +52,7 @@ public sealed class MapPage : UserControl
     private double? _prevDistanceMeters;
     private readonly List<int> _draft = new();
     private List<int> _plannerIds = new();
+    private (int Buy, int Sell)? _plannerPushed;   // M-1 idempotency guard: the terminal-id pair last pushed to the scene, so MainWindow re-pushing the same pin (or "no pin") on every MAP activation is a no-op
     private bool _measureArmed;
     private (string A, string B, double Meters)? _measureResult;
     private bool _sceneReady;
@@ -121,6 +122,12 @@ public sealed class MapPage : UserControl
         // timer's only lifecycle signal (precedent: GuidesPage.cs:71-77).
         IsVisibleChanged += (_, _) => UpdateHangarTimer();
 
+        // I-1: a live market tick while the user is free-floating on the MAP tab used to go
+        // unnoticed until they left and came back - house pattern for a permanent singleton
+        // subscription, TradePage.cs:117 (no unsubscription needed). Shares RefreshMarketDelta
+        // with Activate() below so there is one implementation of the snapshot/consent delta check.
+        App.Market.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshMarketDelta(); });
+
         RefreshSystemPills();
         RefreshLayerCounts();
         RefreshSelectionZone();
@@ -133,7 +140,17 @@ public sealed class MapPage : UserControl
     public void Activate()
     {
         Logger.Info("[UI] map: tab open");
+        RefreshMarketDelta();
+    }
 
+    /// <summary>The snapshot/consent delta check shared by Activate() (every dock re-entry) and the
+    /// ctor's App.Market.Changed subscription (I-1: every live market tick while this page is
+    /// visible). ONE implementation so the two callers cannot drift apart. Rebuilds trade pins and
+    /// re-sends init to the scene only when the market snapshot reference or the consent flag
+    /// actually moved; the trailing refreshes are cheap/idempotent and always run to pick up
+    /// anything else that changed while the page was off-screen.</summary>
+    private void RefreshMarketDelta()
+    {
         var snapshot = App.Market.Snapshot;
         var consent = App.Settings.Current.MarketDataEnabled == true;
         if (!ReferenceEquals(snapshot, _lastSnapshotRef) || consent != _lastConsent)
@@ -141,7 +158,18 @@ public sealed class MapPage : UserControl
             RebuildPins();
             _lastSnapshotRef = snapshot;
             _lastConsent = consent;
-            if (_sceneReady) SendInit();
+            RefreshRouteZone();   // M-4: pins rebuilt - the SEND gate depends on the draft's first stop still resolving to a terminal
+
+            if (_sceneReady)
+            {
+                // M-3: a resend outside SwitchSystem (which already clears measure) leaves the
+                // scene force-disarmed (applyInit always resets state.measure) while WPF's
+                // _measureArmed flag still thinks it is armed - resync before the resend so the
+                // MEASURE button does not show a dead "click two pins" state.
+                _measureArmed = false;
+                RefreshMeasureZone();
+                SendInit();
+            }
         }
 
         RefreshLayerCounts();
@@ -156,6 +184,10 @@ public sealed class MapPage : UserControl
 
     public void SetPlannerRoute(int buyTerminalId, int sellTerminalId)
     {
+        // M-1: MainWindow re-pushes the pinned route on every MAP activation - a same-pair push
+        // is a no-op, not a fresh scene post/log.
+        if (_plannerPushed is { } pushed && pushed.Buy == buyTerminalId && pushed.Sell == sellTerminalId) return;
+
         var buyObj = _catalog.ResolveTerminal(FindTerminal(buyTerminalId));
         var sellObj = _catalog.ResolveTerminal(FindTerminal(sellTerminalId));
         if (buyObj == null || sellObj == null)
@@ -166,13 +198,19 @@ public sealed class MapPage : UserControl
         }
 
         _plannerIds = new List<int> { buyObj.Id, sellObj.Id };
+        _plannerPushed = (buyTerminalId, sellTerminalId);
         _scene.PostJson(MapSceneBuilder.BuildPlanner(_plannerIds));
         Logger.Info($"[UI] map: planner route shown ({buyObj.Name} -> {sellObj.Name})");
     }
 
     public void ClearPlannerRoute()
     {
+        // M-1: MainWindow calls this on every MAP activation with no pin. Nothing shown means
+        // nothing to clear - skip the scene post and the log line.
+        if (_plannerIds.Count == 0 && _plannerPushed == null) return;
+
         _plannerIds = new List<int>();
+        _plannerPushed = null;
         _scene.PostJson(MapSceneBuilder.BuildPlanner(_plannerIds));
         Logger.Info("[UI] map: planner route cleared");
     }
@@ -337,9 +375,14 @@ public sealed class MapPage : UserControl
 
         var (_, total) = MapSceneBuilder.DraftLegs(_draft, _catalog);
         if (_pins.TradeTerminalsByObject.TryGetValue(_draft[0], out var terms) && terms.Count > 0)
+        {
             OpenPlannerRequested?.Invoke(terms[0]);
-
-        Logger.Info($"[UI] map: route send -> planner ({_draft.Count} stops, {MapCatalog.FormatGm(total)})");
+            Logger.Info($"[UI] map: route send -> planner ({_draft.Count} stops, {MapCatalog.FormatGm(total)})");
+        }
+        else
+        {
+            Logger.Info("[UI] map: route send skipped (no terminals for first stop)");
+        }
     }
 
     private void OnViewPrices()
@@ -995,7 +1038,13 @@ public sealed class MapPage : UserControl
 
         _legendRow.Visibility = _tradeOn ? Visibility.Visible : Visibility.Collapsed;
 
-        bool canSend = _draft.Count >= 2;
+        // M-4: SEND mirrors OnSendToPlanner's actual success condition (2+ stops AND the first
+        // stop still resolves to a live trade terminal). A pins rebuild - consent revoked, a fresh
+        // snapshot dropping a terminal - can pull that resolution out from under an already-built
+        // draft; the delta path (RefreshMarketDelta) re-runs this zone so the button reflects it.
+        bool firstStopHasTerminal = _draft.Count > 0
+            && _pins.TradeTerminalsByObject.TryGetValue(_draft[0], out var firstTerms) && firstTerms.Count > 0;
+        bool canSend = _draft.Count >= 2 && firstStopHasTerminal;
         _sendBtn.Background = canSend ? Hud.Br("AccentBrush") : Hud.Br("Bg3Brush");
         _sendBtn.Cursor = canSend ? Cursors.Hand : Cursors.Arrow;
         _sendBtn.IsHitTestVisible = canSend;

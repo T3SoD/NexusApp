@@ -409,7 +409,7 @@ function systemView(){
   const star=catalogRows.find(r=>r.type==='Star');
   frameRadius(star? (subRadius.get(star.id)||45000)*1.12 : 45000);
   renderBreadcrumb();
-  log('[UI] map: system view');
+  log('system view');
 }
 
 /* picking: screen-space nearest within 28px (no sprite raycast quirks) */
@@ -594,7 +594,7 @@ function applyInit(msg){
   redrawMeasure();
   renderBreadcrumb();
 
-  log(`[UI] map: init ${state.system} (${catalogRows.length} objects)`);
+  log(`init ${state.system} (${catalogRows.length} objects)`);
   if(isSystemChange && (hadDraft||hadMeasure)){                 /* routes and measurements stay within one system */
     showNotice('ROUTES AND MEASUREMENTS STAY WITHIN ONE SYSTEM - DRAFT CLEARED');
   }
