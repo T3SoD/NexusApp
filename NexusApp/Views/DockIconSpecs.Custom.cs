@@ -5,7 +5,8 @@ namespace NexusApp.Views;
 // re-running the picks gallery can never drop these entries.
 // Currently: "guides" (folded map, adopted from the approved Mission Guides mock); "trade"
 // (balance scale, adopted from the approved Trade dock icon mock, candidate 3 of 10 - see
-// nexus-design-lab/trade-icon/index.html).
+// nexus-design-lab/trade-icon/index.html); "map" (orbit ring with a planet dot and a pin
+// diamond above it, hand-authored for the starmap MAP tab - Task 10).
 public static class DockIconSpecsCustom
 {
     public const string Json = """
@@ -457,6 +458,106 @@ public static class DockIconSpecsCustom
      ],
      "ease": "back",
      "delay": 0.35
+    }
+   ]
+  }
+ },
+ "map": {
+  "view": [
+   -6,
+   -6,
+   36,
+   36
+  ],
+  "stroke": 1.5,
+  "parts": [
+   {
+    "id": "p0",
+    "el": "path",
+    "d": "M4,14 A 8,3.2 0 1,0 20,14 A 8,3.2 0 1,0 4,14"
+   },
+   {
+    "id": "p1",
+    "el": "circle",
+    "cx": 12,
+    "cy": 14,
+    "r": 2.4,
+    "fill": true
+   },
+   {
+    "id": "p2",
+    "el": "path",
+    "d": "M12,2.4 L14.6,5 L12,7.6 L9.4,5 Z"
+   }
+  ],
+  "hover": {
+   "duration": 0.22,
+   "ease": "easeOut",
+   "tracks": [
+    {
+     "part": "p0",
+     "scale": [
+      1,
+      1.06,
+      1
+     ],
+     "origin": [
+      12,
+      14
+     ]
+    },
+    {
+     "part": "p1",
+     "scale": [
+      1,
+      1.15,
+      1
+     ],
+     "origin": [
+      12,
+      14
+     ]
+    },
+    {
+     "part": "p2",
+     "scale": [
+      1,
+      1.1,
+      1
+     ],
+     "origin": [
+      12,
+      5
+     ]
+    }
+   ]
+  },
+  "selected": {
+   "duration": 0.55,
+   "ease": "settle",
+   "tracks": [
+    {
+     "part": "p0",
+     "draw": true,
+     "delay": 0.0
+    },
+    {
+     "part": "p2",
+     "draw": true,
+     "delay": 0.18
+    },
+    {
+     "part": "p1",
+     "scale": [
+      0,
+      1
+     ],
+     "origin": [
+      12,
+      14
+     ],
+     "ease": "back",
+     "delay": 0.32
     }
    ]
   }

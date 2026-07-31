@@ -325,6 +325,7 @@ public partial class MainWindow : Window
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
         PageGuides.Visibility     = page == "guides"     ? Visibility.Visible : Visibility.Collapsed;
         PageTrade.Visibility      = page == "trade"      ? Visibility.Visible : Visibility.Collapsed;
+        PageMap.Visibility        = page == "map"        ? Visibility.Visible : Visibility.Collapsed;
         PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
         PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
         PageAdmin.Visibility      = page == "admin"      ? Visibility.Visible : Visibility.Collapsed;
@@ -339,6 +340,7 @@ public partial class MainWindow : Window
         NavHauling.IsChecked  = page == "hauling";
         NavGuides.IsChecked   = page == "guides";
         NavTrade.IsChecked    = page == "trade";
+        NavMap.IsChecked      = page == "map";
         NavPlanner.IsChecked  = page == "planner";
         NavGridStudio.IsChecked = page == "gridstudio";
         NavAdmin.IsChecked    = page == "admin";
@@ -361,6 +363,7 @@ public partial class MainWindow : Window
             "hauling"    => "Nexus - Cargo Hauling",
             "guides"     => "Nexus - Mission Guides",
             "trade"      => "Nexus - Trade",
+            "map"        => "Nexus - Starmap",
             "planner"    => "Nexus - Cargo Planner",
             "gridstudio" => "Nexus - Grid Studio",
             "admin"      => "Nexus - Admin",
@@ -378,6 +381,7 @@ public partial class MainWindow : Window
         if (page == "hauling") InitHaulingPage();
         if (page == "guides") InitGuidesPage();
         if (page == "trade") InitTradePage();
+        if (page == "map") InitMapPage();
         if (page == "planner") InitPlannerPage();
         if (page == "gridstudio") InitGridStudioPage();
         if (page == "admin") InitAdminPage();
@@ -396,6 +400,7 @@ public partial class MainWindow : Window
             "hauling"    => PageHauling,
             "guides"     => PageGuides,
             "trade"      => PageTrade,
+            "map"        => PageMap,
             "admin"      => PageAdmin,
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
@@ -524,6 +529,7 @@ public partial class MainWindow : Window
         if (NavHauling.IsChecked == true)  return NavHauling;
         if (NavGuides.IsChecked == true)   return NavGuides;
         if (NavTrade.IsChecked == true)    return NavTrade;
+        if (NavMap.IsChecked == true)      return NavMap;
         if (NavPlanner.IsChecked == true)  return NavPlanner;
         if (NavGridStudio.IsChecked == true) return NavGridStudio;
         if (NavAdmin.IsChecked == true)    return NavAdmin;
@@ -822,8 +828,42 @@ public partial class MainWindow : Window
         {
             _tradePage = new TradePage();
             PageTrade.Children.Add(_tradePage);
+            // Pinned-route forwarding (Task 10): keep the map's planner-route overlay in sync
+            // with whatever TradePage has pinned, no matter which of the two pages the user is
+            // currently standing on. Subscribed once, here, at construction time.
+            _tradePage.PinnedRouteChanged += PushPinnedRouteToMap;
         }
         _tradePage.Refresh();
+    }
+
+    // Starmap (Task 10): lazy singleton like GuidesPage/TradePage, built once and re-activated
+    // on every visit. Cross-page jumps (guide/planner/prices) route through SetActivePage plus
+    // the target page's own Init*Page, the same path a dock click takes, so the target page
+    // exists and is freshly activated before the follow-up call lands on it.
+    private MapPage? _mapPage;
+    private void InitMapPage()
+    {
+        if (_mapPage == null)
+        {
+            _mapPage = new MapPage(_vm.AllResources);
+            _mapPage.OpenGuideRequested += id => { SetActivePage("guides"); InitGuidesPage(); _guidesPage?.ShowGuideById(id); };
+            _mapPage.OpenPlannerRequested += tid => { SetActivePage("trade"); InitTradePage(); _tradePage?.PrefillPlannerOriginFromMap(tid); };
+            _mapPage.OpenPricesRequested += tid => { SetActivePage("trade"); InitTradePage(); _tradePage?.ShowPricesForTerminal(tid); };
+            PageMap.Children.Add(_mapPage);
+        }
+        _mapPage.Activate();
+        PushPinnedRouteToMap();   // catches a route pinned on TradePage before the map page ever existed
+    }
+
+    // Reads TradePage's session pin and mirrors it onto the map's planner-route overlay. Either
+    // page can initialize first, so this is safe to call (and is called) before both exist: each
+    // side is null-guarded, and InitMapPage re-runs it on every visit to pick up a pre-existing
+    // pin the TradePage.PinnedRouteChanged subscription above missed while the map page was gone.
+    private void PushPinnedRouteToMap()
+    {
+        var route = _tradePage?.PinnedRoute;
+        if (route == null) _mapPage?.ClearPlannerRoute();
+        else _mapPage?.SetPlannerRoute(route.BuyRow.TerminalId, route.SellRow.TerminalId);
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -848,13 +888,14 @@ public partial class MainWindow : Window
         _gridStudioPage.OnShown();
     }
 
-    // Ends both embedded browser viewports (Cargo Planner + Grid Studio) so the portable
-    // self-swap can rename Web\cargo files without msedgewebview2 holding them open.
+    // Ends all embedded browser viewports (Cargo Planner + Grid Studio + Starmap) so the portable
+    // self-swap can rename Web\cargo and Web\map files without msedgewebview2 holding them open.
     public void ShutdownWebViewsForUpdate()
     {
         Logger.Info("[UPDATE] closing embedded browser views before the swap");
         _plannerPage?.ShutdownWebViewForUpdate();
         _gridStudioPage?.ShutdownWebViewForUpdate();
+        _mapPage?.ShutdownWebViewForUpdate();
     }
 
     private AdminPage? _adminPage;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -86,6 +87,27 @@ public sealed class GuidesPage : UserControl
     }
 
     // -- guide open / close ----------------------------------------------------------
+
+    /// <summary>Opens a guide by catalog id, called by MainWindow when the MAP tab's OPEN GUIDE
+    /// button fires (Task 10). Duplicates OpenGuide's open path rather than calling it directly:
+    /// that overload takes a click's DependencyObject for InteractionLog, which a programmatic
+    /// jump has none of. An id that no longer resolves (a stale pin) is a silent no-op with its
+    /// own log line, matching the map-tab callers' unresolved-id convention.</summary>
+    internal void ShowGuideById(string id)
+    {
+        var guide = GuideCatalog.All.FirstOrDefault(g => g.Id == id);
+        if (guide == null)
+        {
+            Logger.Info($"[UI] guide open miss: {id}");
+            return;
+        }
+
+        _openGuide = guide;
+        _listHost.Visibility = Visibility.Collapsed;
+        _viewer.Visibility = Visibility.Visible;
+        _viewer.Show(guide);
+        Logger.Info($"[UI] guide opened: {id} (map)");
+    }
 
     private void OpenGuide(GuideEntry guide, DependencyObject source)
     {
