@@ -249,14 +249,31 @@ public sealed partial class TradePage
     /// to the Prices flow and filters results down to that one terminal. Coexists with whatever
     /// commodity is already selected (both filters AND together, RebuildPrices' uexRows Where
     /// chain) - this does not touch _pricesSelectedCommodity, so a prior single-commodity browse
-    /// narrows further to "this commodity, at this terminal" rather than resetting.</summary>
+    /// narrows further to "this commodity, at this terminal" rather than resetting.
+    ///
+    /// A terminal id that does not resolve (stale pin from a snapshot that has since changed)
+    /// mirrors PrefillPlannerOriginFromMap's own no-op-on-null rule: the filter is never set at
+    /// all, only skipped - still switches to Prices (the user's click should land somewhere), but
+    /// leaves _pricesTerminalFilter untouched rather than setting it to an id nothing can resolve.
+    /// That matters here in a way it does not for the origin prefill: the dismiss chip
+    /// (TerminalFilterChip below) is the ONLY reset path for this field, and it only renders once
+    /// terminals.TryGetValue resolves the id (RebuildPrices) - an unresolved id would otherwise set
+    /// a filter with no chip to ever clear it, locking the flow onto an invisible, un-dismissable
+    /// filter for the rest of the session (review finding, task-8).</summary>
     internal void ShowPricesForTerminal(int terminalId)
     {
         var terminals = App.Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>();
         var name = TradeOriginResolver.OriginNameForTerminal(terminalId, terminals);
-        _pricesTerminalFilter = terminalId;
         SwitchTab(2);
-        Logger.Info($"[UI] trade: prices filtered from map{(name is not null ? $" ({name})" : "")}");
+        if (name is null)
+        {
+            Logger.Info("[UI] trade: prices filter skipped (terminal unresolved)");
+        }
+        else
+        {
+            _pricesTerminalFilter = terminalId;
+            Logger.Info($"[UI] trade: prices filtered from map ({name})");
+        }
         RebuildPrices();
     }
 
