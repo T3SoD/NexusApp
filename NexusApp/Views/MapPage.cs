@@ -167,12 +167,14 @@ public sealed class MapPage : UserControl
 
         _plannerIds = new List<int> { buyObj.Id, sellObj.Id };
         _scene.PostJson(MapSceneBuilder.BuildPlanner(_plannerIds));
+        Logger.Info($"[UI] map: planner route shown ({buyObj.Name} -> {sellObj.Name})");
     }
 
     public void ClearPlannerRoute()
     {
         _plannerIds = new List<int>();
         _scene.PostJson(MapSceneBuilder.BuildPlanner(_plannerIds));
+        Logger.Info("[UI] map: planner route cleared");
     }
 
     private MarketTerminal? FindTerminal(int id) =>
