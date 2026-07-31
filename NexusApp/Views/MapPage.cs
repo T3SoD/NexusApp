@@ -693,6 +693,7 @@ public sealed class MapPage : UserControl
 
     private sealed class LayerRowUi
     {
+        public Border Host = null!;
         public Ellipse Led = null!;
         public TextBlock Name = null!;
         public TextBlock Count = null!;
@@ -701,15 +702,53 @@ public sealed class MapPage : UserControl
         public TranslateTransform KnobT = null!;
     }
 
+    // Row visibility rule for a data layer (the owner live-use finding, 2026-07-31): a row with nothing
+    // in the active system just shows a 0, and toggling it does nothing - so it should not be there
+    // to toggle. TRADE is the one exception: a 0 there can mean "market data consent is off" or "no
+    // snapshot yet", which is a state the SELECTION zone's hint text ("Trade layer needs market data
+    // (Settings).") exists to explain - hiding the row in that state would make the hint unreachable.
+    // So TRADE stays visible whenever gated, even at count 0, and only hides once data is available
+    // and the count is genuinely zero for the system. Every other row (including ASTEROID CLUSTERS,
+    // which never actually hits zero - 96/158/70 across the three systems) uses the plain count rule
+    // with no special-casing. Pure function of count + the existing TradeGated flag (line 244) so it
+    // is unit-testable without the WPF tree - see MapPageLayerVisibilityTests.
+    internal static bool LayerRowVisible(string key, int countInSystem, bool tradeGated) =>
+        string.Equals(key, "trade", StringComparison.OrdinalIgnoreCase)
+            ? (tradeGated || countInSystem > 0)
+            : countInSystem > 0;
+
     private UIElement BuildLayersZone()
     {
         var stack = new StackPanel();
-        stack.Children.Add(BuildLayerRow("trade", "TRADE", sub: false));
-        stack.Children.Add(BuildLayerRow("guides", "GUIDES", sub: false));
-        stack.Children.Add(BuildLayerRow("mining", "MINING", sub: false));
-        stack.Children.Add(BuildLayerRow("hangar", "EXEC HANGAR", sub: false));
-        stack.Children.Add(BuildLayerRow("asteroids", "ASTEROID CLUSTERS", sub: true));
+        stack.Children.Add(BuildLayerRow("trade", "TRADE"));
+        stack.Children.Add(BuildLayerRow("guides", "GUIDES"));
+        stack.Children.Add(BuildLayerRow("mining", "MINING"));
+        stack.Children.Add(BuildLayerRow("hangar", "EXEC HANGAR"));
+        stack.Children.Add(BuildBaseMapDivider());
+        stack.Children.Add(BuildLayerRow("asteroids", "ASTEROID CLUSTERS"));
         return Zone("LAYERS", stack);
+    }
+
+    // Separates the always-on base map toggle from the four data layers above it (the owner live-use
+    // finding, 2026-07-31: ASTEROID CLUSTERS sitting last under an indent read as a child of EXEC
+    // HANGAR, not as "not a data layer"). Hairline reuses NavBorderBrush, the same house separator
+    // brush as this file's own Zone() bottom hairline (line 503-504) and the ROUTE BUILDER zone's
+    // TOTAL-row top divider (line 1108), and as TradePage's Sep() (TradePage.cs:538-542) - no new
+    // value invented. Caption style (UiFont 9.5 Bold FgDimBrush) matches _kindText, the dim caption
+    // that sits above the object name in the SELECTION zone (line 925).
+    private static UIElement BuildBaseMapDivider()
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+        stack.Children.Add(new Border
+        {
+            Height = 1, Background = Hud.Br("NavBorderBrush"), Margin = new Thickness(0, 0, 0, 8),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = "BASE MAP", FontFamily = Hud.Font("UiFont"), FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 4),
+        });
+        return stack;
     }
 
     private static Color LayerColor(string key) => key switch
@@ -721,7 +760,7 @@ public sealed class MapPage : UserControl
         _ => Hud.Col("FgDimColor"),   // asteroids: a display toggle, not a data layer - stays slate
     };
 
-    private UIElement BuildLayerRow(string key, string label, bool sub)
+    private UIElement BuildLayerRow(string key, string label)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -735,8 +774,8 @@ public sealed class MapPage : UserControl
 
         var name = new TextBlock
         {
-            Text = label, FontFamily = Hud.Font("UiFont"), FontWeight = sub ? FontWeights.SemiBold : FontWeights.Bold,
-            FontSize = sub ? 10 : 11.5, Foreground = Hud.Br("FgDimBrush"),
+            Text = label, FontFamily = Hud.Font("UiFont"), FontWeight = FontWeights.Bold,
+            FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 9, 0),
         };
         Grid.SetColumn(name, 1);
@@ -772,14 +811,13 @@ public sealed class MapPage : UserControl
         {
             Background = Brushes.Transparent, CornerRadius = new CornerRadius(3),
             Padding = new Thickness(2, 7, 2, 7), Cursor = Cursors.Hand,
-            Margin = new Thickness(sub ? 16 : 0, 0, 0, 0),
             Child = grid,
         };
         host.MouseEnter += (_, _) => host.Background = Hud.Br("AccentFaintBrush");
         host.MouseLeave += (_, _) => host.Background = Brushes.Transparent;
         host.MouseLeftButtonUp += (_, _) => ToggleLayer(key);
 
-        _layerRows[key] = new LayerRowUi { Led = led, Name = name, Count = count, SwTrack = swTrack, Knob = knob, KnobT = knobT };
+        _layerRows[key] = new LayerRowUi { Host = host, Led = led, Name = name, Count = count, SwTrack = swTrack, Knob = knob, KnobT = knobT };
         return host;
     }
 
@@ -823,11 +861,34 @@ public sealed class MapPage : UserControl
     {
         var rows = _catalog.Objects.Where(o => string.Equals(o.System, _system, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        _layerRows["trade"].Count.Text = rows.Count(o => _pins.TradeTerminalsByObject.ContainsKey(o.Id)).ToString();
-        _layerRows["guides"].Count.Text = rows.Count(o => _pins.GuideIdByObject.ContainsKey(o.Id)).ToString();
-        _layerRows["mining"].Count.Text = rows.Count(o => _pins.OresByObject.ContainsKey(o.Id)).ToString();
-        _layerRows["hangar"].Count.Text = rows.Count(o => _pins.HangarObjectId == o.Id).ToString();
-        _layerRows["asteroids"].Count.Text = rows.Count(o => o.Type.StartsWith("Asteroid", StringComparison.OrdinalIgnoreCase)).ToString();
+        int tradeCount = rows.Count(o => _pins.TradeTerminalsByObject.ContainsKey(o.Id));
+        int guidesCount = rows.Count(o => _pins.GuideIdByObject.ContainsKey(o.Id));
+        int miningCount = rows.Count(o => _pins.OresByObject.ContainsKey(o.Id));
+        int hangarCount = rows.Count(o => _pins.HangarObjectId == o.Id);
+        int asteroidsCount = rows.Count(o => o.Type.StartsWith("Asteroid", StringComparison.OrdinalIgnoreCase));
+
+        _layerRows["trade"].Count.Text = tradeCount.ToString();
+        _layerRows["guides"].Count.Text = guidesCount.ToString();
+        _layerRows["mining"].Count.Text = miningCount.ToString();
+        _layerRows["hangar"].Count.Text = hangarCount.ToString();
+        _layerRows["asteroids"].Count.Text = asteroidsCount.ToString();
+
+        // Row visibility (the owner live-use finding: EXEC HANGAR shows 0 in Stanton/Nyx and toggling it
+        // does nothing there). Recomputed here because RefreshLayerCounts is the one choke point all
+        // three callers already share - the ctor, SwitchSystem, and the market-data delta path
+        // (RefreshMarketDelta) - so there is no second place this can drift from. Only the row's
+        // Visibility changes; the on/off booleans (_tradeOn etc.) are never touched here, so a layer
+        // left ON while its row is hidden keeps that state and the row reappears ON when the user
+        // switches back to a system where it has data. No pin-suppression is needed to match: scene
+        // pins are already system-scoped upstream in MapSceneBuilder.BuildInit's own catalog filter
+        // (.Where(o => o.System == system) before the trade/guide/mine/hangar booleans are computed),
+        // so a hidden-but-on layer with zero objects in this system already has zero pins to draw.
+        bool gated = TradeGated;
+        _layerRows["trade"].Host.Visibility = LayerRowVisible("trade", tradeCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["guides"].Host.Visibility = LayerRowVisible("guides", guidesCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["mining"].Host.Visibility = LayerRowVisible("mining", miningCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["hangar"].Host.Visibility = LayerRowVisible("hangar", hangarCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["asteroids"].Host.Visibility = LayerRowVisible("asteroids", asteroidsCount, gated) ? Visibility.Visible : Visibility.Collapsed;
 
         RefreshLayerRowVisual("trade", _tradeOn);
         RefreshLayerRowVisual("guides", _guidesOn);

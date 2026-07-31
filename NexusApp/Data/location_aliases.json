@@ -47,6 +47,18 @@
     "Stanton3_Area18": "Area 18",
     "Stanton2_Orison": "Orison"
   },
+  "uexLocations": {
+    "RR_JP_StantonPyro": "Pyro Gateway (Stanton)",
+    "RR_JP_PyroStanton": "Stanton Gateway (Pyro)",
+    "RR_JP_StantonTerra": "Terra Gateway (Stanton)"
+  },
+  "uexLocationNotes": {
+    "_meta": "Raw-token to UEX Location string, kept separate from 'aliases' (raw-token to in-game DISPLAY name) because display names are not unique - three raw tokens above all display as 'Stanton Gateway Station', but only the raw token is unique enough to key an unambiguous UEX lookup. Every value here was confirmed against a live UEX snapshot: a terminal exists with that exact Location, and at least one of those terminals carries priced rows.",
+    "_gap_nyx": "known gap, not filled here: the live snapshot lists priced UEX Locations for Nyx gateways ('Nyx Gateway (Stanton)', 'Stanton Gateway (Nyx)', 'Nyx Gateway (Pyro)', 'Pyro Gateway (Nyx)'), but no raw Game.log token for a Nyx gateway has been captured yet, so no RR_JP_*Nyx* entry is invented here. Add one only after a real in-game capture, same standard as RR_JP_StantonPyro above.",
+    "RR_JP_StantonPyro": "verified live 2026-07-31: 22 terminals at this Location, 2 with priced rows",
+    "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows",
+    "RR_JP_StantonTerra": "verified live 2026-07-31: 21 terminals at this Location, 2 with priced rows"
+  },
   "notes": {
     "RR_JP_StantonPyro": "verified: real in-game example",
     "RR_JP_PyroStanton": "derived by naming convention (reverse leg of a bidirectional route confirmed in the shipped starmap trade embed); exact in-game inventory key not independently captured",

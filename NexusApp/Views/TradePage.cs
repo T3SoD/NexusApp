@@ -676,7 +676,7 @@ public sealed partial class TradePage : UserControl
     /// already applies to every other unresolved-origin case.</summary>
     internal IReadOnlySet<int> OriginTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
         App.Locations.LastKnownLocation is { } loc
-            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals)
+            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals, App.Locations.LastKnownUexLocation)
             : new HashSet<int>();
 
     private void RefreshContextRow()

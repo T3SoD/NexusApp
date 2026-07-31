@@ -206,8 +206,13 @@ public sealed partial class TradePage
         // instant the filter clears (mouse-only dismiss - a plain TextBlock click handler, same
         // idiom as the ORIGIN chip's Manual/Live links, TradePage.cs:704-711 - carries no keyboard
         // path at all: nothing here is a Tab stop or has a key binding).
+        // Location-first display (the owner's ask, 2026-07-31): filterTerm.Name is a raw MarketTerminal
+        // name (Shop-first), unlike the price rows' own TerminalName column below (TradePriceRow.
+        // TerminalName is a different UEX vocabulary - see BuildPriceRow's comment). Display only:
+        // _pricesTerminalFilter stores the terminal ID, never this label, so nothing here can leak
+        // a flipped name into filtering or persistence.
         if (_pricesTerminalFilter is { } filterTid && terminals.TryGetValue(filterTid, out var filterTerm))
-            _pricesResults.Children.Add(TerminalFilterChip(filterTerm.Name));
+            _pricesResults.Children.Add(TerminalFilterChip(TradeOriginResolver.LocationFirst(filterTerm.Name)));
 
         var cols = new System.Collections.Generic.List<ColumnDefinition> { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = new GridLength(100) }, new() { Width = new GridLength(100) } };
         if (_priceCols[0]) cols.Add(new ColumnDefinition { Width = new GridLength(100) });
@@ -414,6 +419,16 @@ public sealed partial class TradePage
             // name+tag are wrapped in a horizontal StackPanel within that same cell (house idiom,
             // matches the SCT-only branch's termPanel below) - this column is the widest of the row
             // and carries no trimming, so the tag never wraps or clips.
+            //
+            // Location-first display NOT applied here (the owner's ask, 2026-07-31 review): r.TerminalName
+            // is TradePriceRow.TerminalName, a DIFFERENT UEX vocabulary from MarketTerminal.Name -
+            // already documented in TradePage.cs's TerminalNames doc comment (e.g. "CBD Lorville" vs
+            // "CBD - Central Business District - Lorville" for the same terminal, verified against a
+            // real capture). TradeOriginResolver.LocationFirst's " - " split rule was verified only
+            // against MarketTerminal.Name; applying it here unverified risks mangling names that don't
+            // follow that vocabulary. Same reasoning applies to the Sell flow's buyer rows
+            // (TradePage.Sell.cs, BuildBuyerRowCore's terminalName param, fed from SellLookup.Buyer.
+            // Row.TerminalName) - left unchanged.
             var termPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             termPanel.Children.Add(new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
             string? system = terminals.TryGetValue(r.TerminalId, out var termInfo) ? termInfo.System : null;

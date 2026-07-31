@@ -398,6 +398,12 @@ public sealed partial class TradePage
     // render through this one builder so the row chrome lives once. tier is null for SCT-only
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
+    //
+    // Location-first display NOT applied to terminalName here (the owner's ask, 2026-07-31 review):
+    // callers feed this from TradePriceRow.TerminalName (BuildBuyerRowContent's b.Row.TerminalName)
+    // or an SCT Location string, both a different UEX vocabulary from MarketTerminal.Name that
+    // TradeOriginResolver.LocationFirst's " - " rule was verified against - see the same note on
+    // TradePage.Prices.cs's BuildPriceRow.
     private UIElement BuildBuyerRowCore(string terminalName, string? system, double price, ProximityTier? tier, int demandScu,
         DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, double? distanceMeters, string? containerSizes,
         out Path chevron, out Border detailHost)

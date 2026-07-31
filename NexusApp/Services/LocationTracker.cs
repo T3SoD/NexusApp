@@ -31,6 +31,18 @@ public sealed class LocationTracker : IDisposable
     }
 
     public string? LastKnownLocation { get; private set; }
+
+    // The UEX Location string for LastKnownLocation, when the raw token that produced it is one
+    // of the (currently gateway-only) tokens LocationAliases.UexLocationForToken recognizes - null
+    // for every other place, including the common case where LastKnownLocation is itself already
+    // a UEX-shaped Location string. LastKnownLocation cannot be reverse-mapped to a UEX Location
+    // safely: display names are not unique (three raw gateway tokens all display as "Stanton
+    // Gateway Station"), so this is resolved here, once, from the raw token Apply already has in
+    // scope, rather than asking a consumer to guess a UEX Location from the display name later.
+    // Consumers (TradeOriginResolver.TerminalIdsForLocation) treat this as a first-pass hint and
+    // fall back to their existing display-name matching when it is null.
+    public string? LastKnownUexLocation { get; private set; }
+
     public DateTime? LastSeenUtc { get; private set; }
     public event Action? Changed;
 
@@ -81,6 +93,7 @@ public sealed class LocationTracker : IDisposable
         var display = LocationAliases.Normalize(place);
         bool moved = !string.Equals(LastKnownLocation, display, StringComparison.Ordinal);
         LastKnownLocation = display;
+        LastKnownUexLocation = LocationAliases.UexLocationForToken(place);
         LastSeenUtc = seenUtc;
         if (!moved) return;
         var suffix = string.Equals(display, place, StringComparison.Ordinal)

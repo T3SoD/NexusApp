@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using NexusApp.Services;
 
@@ -20,13 +21,30 @@ internal static class TradeOriginResolver
     }
 
     // Live mode: every terminal whose Location or Name matches the tracked location counts as
-    // "at the origin". Exact case-insensitive match first; a substring fallback covers a raw
-    // Game.log location key that is more specific than the terminal's own Location field (e.g. a
-    // station slug that only appears inside a terminal's Name). Empty when nothing matches at all -
-    // an honest empty FROM HERE list beats a guessed one (spec: "never a bare number, never null
-    // ambiguity" - the same honesty rule applied to zero matches here).
-    public static IReadOnlySet<int> TerminalIdsForLocation(string? locationLabel, IReadOnlyList<MarketTerminal> terminals)
+    // "at the origin". uexLocation (LocationTracker.LastKnownUexLocation) is an optional first
+    // pass, tried before the exact/substring passes below: some in-game display names (e.g. "Pyro
+    // Gateway Station", from LocationAliases' RR_JP_StantonPyro) simply do not appear anywhere in
+    // UEX's own Location/Name vocabulary ("Pyro Gateway (Stanton)"), so no amount of exact or
+    // substring matching against locationLabel can ever connect them - the live planner silently
+    // produced zero routes at a real, correctly-identified gateway station until this was added.
+    // uexLocation is resolved from the raw Game.log token, never derived from locationLabel here,
+    // because in-game display names are not unique (three raw gateway tokens all display as
+    // "Stanton Gateway Station") and matching on the display name would risk resolving to a
+    // terminal in the wrong system. Falls through to exact, then substring, matching on
+    // locationLabel exactly as before whenever uexLocation is null or matches nothing - every
+    // existing non-gateway location (the other ~38 aliases, all of which already equal a real UEX
+    // Location string) is completely unaffected. Empty when nothing matches at all - an honest
+    // empty FROM HERE list beats a guessed one (spec: "never a bare number, never null ambiguity" -
+    // the same honesty rule applied to zero matches here).
+    public static IReadOnlySet<int> TerminalIdsForLocation(string? locationLabel, IReadOnlyList<MarketTerminal> terminals, string? uexLocation = null)
     {
+        if (!string.IsNullOrWhiteSpace(uexLocation))
+        {
+            var fromUex = terminals.Where(t =>
+                    string.Equals(t.Location, uexLocation, StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.Id).ToHashSet();
+            if (fromUex.Count > 0) return fromUex;
+        }
         if (string.IsNullOrWhiteSpace(locationLabel)) return new HashSet<int>();
         var exact = terminals.Where(t =>
                 string.Equals(t.Location, locationLabel, StringComparison.OrdinalIgnoreCase) ||
@@ -54,13 +72,46 @@ internal static class TradeOriginResolver
     // means no constraint - null, mirroring DestTerminalIds' contract for the destination side.
     // "LIVE" resolves through TerminalIdsForLocation above (the same lookup the old FROM HERE
     // anchor's live half used), honestly empty when no live location is known - never a guess.
-    // Any other value is a terminal name, resolved via TerminalIdForName - honestly empty when it
-    // fails to resolve, same contract as DestTerminalIds' unresolved-name case.
-    internal static IReadOnlySet<int>? StartTerminalIds(string? startManual, string? liveLocation, IReadOnlyList<MarketTerminal> terminals)
+    // liveUexLocation (LocationTracker.LastKnownUexLocation) is passed straight through as
+    // TerminalIdsForLocation's first-pass hint; see that method's doc comment for why it exists
+    // and why it is safe. Any other value is a terminal name, resolved via TerminalIdForName -
+    // honestly empty when it fails to resolve, same contract as DestTerminalIds' unresolved-name
+    // case.
+    internal static IReadOnlySet<int>? StartTerminalIds(string? startManual, string? liveLocation, IReadOnlyList<MarketTerminal> terminals, string? liveUexLocation = null)
     {
         if (string.IsNullOrEmpty(startManual) || startManual == "ANY") return null;
         if (startManual == "LIVE")
-            return string.IsNullOrEmpty(liveLocation) ? new HashSet<int>() : TerminalIdsForLocation(liveLocation, terminals);
+            return string.IsNullOrEmpty(liveLocation) ? new HashSet<int>() : TerminalIdsForLocation(liveLocation, terminals, liveUexLocation);
         return TerminalIdForName(startManual, terminals) is { } id ? new HashSet<int> { id } : new HashSet<int>();
+    }
+
+    // Location-first DISPLAY flip (the owner's ask, 2026-07-31): UEX terminal names are Shop-first
+    // ("Admin - ARC-L1", "Platinum Bay - Everus Harbor"), which clumps every station's admin
+    // office/trade hub under the same first letter in an alphabetical picker instead of grouping by
+    // where it actually is. Verified by the owner against the live snapshot: zero collisions across all
+    // 135 listed terminals (see LocationFirst_CollisionFreeOverFixture in
+    // TradeOriginResolverTests.cs for a fixture-backed regression check of that property).
+    //
+    // Pure DISPLAY transform - callers (TradePage.Planner.cs's RefreshStartCombo/RefreshDestCombo)
+    // must keep the REAL UEX name as the persisted/resolved value (AppSettings.TradeStartManual/
+    // TradeDestManual, TerminalIdForName, StartTerminalIds) and only show this method's return
+    // value on screen. Nothing in this method or its callers may feed a flipped string back into
+    // TerminalIdForName - that lookup only ever sees genuine UEX names, so a leaked flipped label
+    // would silently resolve to nothing (an empty terminal id set, not an exception).
+    //
+    // Rule: split on " - ". One segment (58 of the 135, e.g. "Ashland", "ArcCorp Mining Area 045")
+    // has no shop-vs-location split to make and is returned EXACTLY as given (not even trimmed -
+    // the rule only touches segments it actually rearranges). Two or more segments become
+    // "{last segment} - {first segment}", trimmed, dropping any middle segments - those are
+    // sub-location detail the flip does not attempt to preserve (e.g. "Admin - L19 Residences -
+    // Metro Center - Lorville" -> "Lorville - Admin"). Null/empty passes through unchanged; this
+    // never throws.
+    [return: NotNullIfNotNull(nameof(name))]
+    internal static string? LocationFirst(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        var parts = name.Split(" - ", StringSplitOptions.None);
+        if (parts.Length <= 1) return name;
+        return $"{parts[^1].Trim()} - {parts[0].Trim()}";
     }
 }

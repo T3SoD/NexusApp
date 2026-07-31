@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using NexusApp.Services;
@@ -64,6 +65,74 @@ public class LocationAliasesTests
     {
         Assert.Equal("", LocationAliases.Normalize(""));
         Assert.Null(LocationAliases.Normalize(null!));
+    }
+
+    // ---- UexLocationForToken (the owner's live gateway bug fix): raw-token to UEX Location string,
+    // a second table from Normalize's display-name one, keyed by raw token because display names
+    // are not unique - see LocationAliases.cs's doc comment on _uexLocations for why.
+
+    [Theory]
+    [InlineData("RR_JP_StantonPyro", "Pyro Gateway (Stanton)")]
+    [InlineData("RR_JP_PyroStanton", "Stanton Gateway (Pyro)")]
+    [InlineData("RR_JP_StantonTerra", "Terra Gateway (Stanton)")]
+    public void UexLocationForToken_GroundedGatewayToken_ReturnsUexLocationString(string token, string expected)
+        => Assert.Equal(expected, LocationAliases.UexLocationForToken(token));
+
+    [Fact]
+    public void UexLocationForToken_IsCaseInsensitive()
+        => Assert.Equal("Pyro Gateway (Stanton)", LocationAliases.UexLocationForToken("rr_jp_stantonpyro"));
+
+    // The ambiguity this table exists to avoid: RR_JP_PyroStanton and RR_JP_TerraStanton both
+    // Normalize to the SAME display name ("Stanton Gateway Station" - see
+    // Normalize_ReverseJumpPointGatewayToken_ReturnsStationName above), so a lookup keyed by
+    // display name could not tell them apart. RR_JP_TerraStanton has no live UEX terminal (Terra
+    // is not a reachable system) and is deliberately NOT in uexLocations, so it must resolve to
+    // null here rather than reusing RR_JP_PyroStanton's Location - proof the two tokens are never
+    // conflated even though Normalize maps them to the same text.
+    [Fact]
+    public void UexLocationForToken_AmbiguousDisplayName_DoesNotConflateDifferentTokens()
+    {
+        Assert.Equal("Stanton Gateway Station", LocationAliases.Normalize("RR_JP_PyroStanton"));
+        Assert.Equal("Stanton Gateway Station", LocationAliases.Normalize("RR_JP_TerraStanton"));
+
+        Assert.Equal("Stanton Gateway (Pyro)", LocationAliases.UexLocationForToken("RR_JP_PyroStanton"));
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_TerraStanton"));
+    }
+
+    [Theory]
+    [InlineData("microTech")]         // real jurisdiction text, never a gateway token
+    [InlineData("Stanton4_NewBabbage")] // has a display alias, but no UEX gateway mapping
+    [InlineData("RR_JP_StantonMagnus")] // gateway naming shape, but not live - deliberately excluded
+    [InlineData("Nowhere_RR_JP_FakeToken")]
+    public void UexLocationForToken_UnmappedToken_ReturnsNull(string token)
+        => Assert.Null(LocationAliases.UexLocationForToken(token));
+
+    [Fact]
+    public void UexLocationForToken_NullOrEmpty_ReturnsNull_NeverThrows()
+    {
+        Assert.Null(LocationAliases.UexLocationForToken(null));
+        Assert.Null(LocationAliases.UexLocationForToken(""));
+    }
+
+    // Canary (the owner's live gateway bug, 2026-07-31): every uexLocations VALUE committed in
+    // location_aliases.json must still name a real, currently-priced UEX terminal Location. This
+    // fixture is a snapshot of the real live-UEX Locations verified at the time these three
+    // mappings were added; if UEX ever renames one of these gateway Locations and this table is
+    // not updated to match, this test fails at build time instead of silently reproducing the
+    // exact "LIVE produces zero routes at a real, correctly-identified station" bug this table
+    // exists to fix.
+    private static readonly HashSet<string> VerifiedLiveUexGatewayLocations = new(System.StringComparer.Ordinal)
+    {
+        "Pyro Gateway (Stanton)",
+        "Stanton Gateway (Pyro)",
+        "Terra Gateway (Stanton)",
+    };
+
+    [Fact]
+    public void AllUexLocationValues_AreVerifiedLiveUexLocations()
+    {
+        foreach (var uexLocation in LocationAliases.AllUexLocationsForTesting.Values)
+            Assert.Contains(uexLocation, VerifiedLiveUexGatewayLocations);
     }
 
     // ---- Artifact hygiene: the repo is public. No tooling vocabulary, ASCII only.

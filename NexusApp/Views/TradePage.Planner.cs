@@ -59,10 +59,18 @@ public sealed partial class TradePage
     private const string LiveStartPrefix = "LIVE - ";
     private ComboBox _startCombo = null!;
     private Border _startLiveBtn = null!;       // small pill button: selects LIVE when a session is live, else just logs
-    private List<string>? _startNames;          // the list currently bound to the ComboBox
+    private List<string>? _startNames;          // the list currently bound to the ComboBox (DISPLAY strings - see _startDisplayToKind)
     private string? _startSelectedKind;          // "ANY" | "LIVE" | a terminal name; null only before the first seed
     private bool _startSeeded;
     private bool _suppressStartSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // Location-first display (the owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
+    // LocationFirst's flipped label ("ARC-L1 - Admin") but _startSelectedKind/AppSettings.
+    // TradeStartManual must keep the REAL UEX name the whole time (TerminalIdForName/
+    // StartTerminalIds only ever resolve real names). Rebuilt fresh every RefreshStartCombo call,
+    // display -> kind ("ANY"/"LIVE"/terminal name), so the SelectionChanged handler below can map
+    // the combo's own displayed text straight back to the kind that gets persisted.
+    private Dictionary<string, string>? _startDisplayToKind;
 
     // DESTINATION picker (task 6): "ANY" is the literal first ComboBox item and the sentinel this
     // page uses for "no constraint" - distinct from AppSettings.TradeDestManual, which persists
@@ -73,10 +81,16 @@ public sealed partial class TradePage
     // alongside Starting Location, out of its own standalone input group.
     private const string AnyDestination = "ANY";
     private ComboBox _destCombo = null!;
-    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY")
-    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed
+    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY", DISPLAY strings - see _destDisplayToName)
+    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed; ALWAYS the real UEX name
     private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as the STARTING LOCATION picker above
     private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // Location-first display (the owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
+    // above: display -> real terminal name ("ANY" maps to itself), rebuilt fresh every
+    // RefreshDestCombo call so SelectionChanged can map the combo's displayed text back to the
+    // real name that gets persisted into AppSettings.TradeDestManual.
+    private Dictionary<string, string>? _destDisplayToName;
 
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
@@ -195,7 +209,14 @@ public sealed partial class TradePage
         {
             if (_suppressStartSelection) return;
             if (_startCombo.SelectedItem is not string display) return;
-            SetStart(StartKindForDisplay(display));
+            // _startDisplayToKind (rebuilt every RefreshStartCombo) maps the flipped label the
+            // user actually clicked back to the real kind SetStart persists; StartKindForDisplay
+            // is only a defensive fallback (the map is always populated before the combo is
+            // interactive) so a user pick can never persist a flipped display string.
+            var kind = _startDisplayToKind is not null && _startDisplayToKind.TryGetValue(display, out var k)
+                ? k
+                : StartKindForDisplay(display);
+            SetStart(kind);
         };
         startRow.Children.Add(_startCombo);
         _startLiveBtn = ScopePill("LIVE");
@@ -217,7 +238,12 @@ public sealed partial class TradePage
         _destCombo.SelectionChanged += (_, _) =>
         {
             if (_suppressDestSelection) return;
-            if (_destCombo.SelectedItem is not string name) return;
+            if (_destCombo.SelectedItem is not string display) return;
+            // _destDisplayToName (rebuilt every RefreshDestCombo) maps the flipped label the user
+            // actually clicked back to the real terminal name that gets persisted - the fallback
+            // to `display` itself only matters before the map is ever populated, and "ANY" always
+            // maps to itself.
+            var name = _destDisplayToName is not null && _destDisplayToName.TryGetValue(display, out var real) ? real : display;
             _destSelectedName = name;
             App.Settings.Current.TradeDestManual = name == AnyDestination ? null : name;
             App.Settings.Save();
@@ -340,7 +366,7 @@ public sealed partial class TradePage
         // "no routes buy from here" one, since here the problem is an unresolved start, not a real
         // absence of routes.
         var originIds = TradeOriginResolver.StartTerminalIds(App.Settings.Current.TradeStartManual,
-            App.Locations.LastKnownLocation, snap.Terminals.Rows);
+            App.Locations.LastKnownLocation, snap.Terminals.Rows, App.Locations.LastKnownUexLocation);
         bool originUnknown = originIds is { Count: 0 };
         var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
@@ -422,10 +448,36 @@ public sealed partial class TradePage
     private void RefreshStartCombo(MarketSnapshot? snap)
     {
         string? liveLoc = App.Locations.LastKnownLocation;
-        var names = new List<string> { AnyStart };
-        if (liveLoc is not null) names.Add($"{LiveStartPrefix}{liveLoc}");
         var terminalNames = TerminalNames(snap);
-        names.AddRange(terminalNames);
+
+        // Location-first display (the owner's ask, 2026-07-31): kindToDisplay/displayToKind are
+        // rebuilt fresh on every refresh from the current terminal list - they never persist
+        // anything themselves, they just translate between the real kind (_startSelectedKind,
+        // AppSettings.TradeStartManual) and the flipped label shown on screen. "ANY" and the
+        // "LIVE - {location}" item are NOT run through LocationFirst: they are not terminal
+        // names, and flipping "LIVE - {location}" would mangle it into "{location} - LIVE".
+        var kindToDisplay = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyStart] = AnyStart };
+        var displayToKind = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyStart] = AnyStart };
+        if (liveLoc is not null)
+        {
+            var liveDisplay = $"{LiveStartPrefix}{liveLoc}";
+            kindToDisplay["LIVE"] = liveDisplay;
+            displayToKind[liveDisplay] = "LIVE";
+        }
+        foreach (var n in terminalNames)
+        {
+            var disp = TradeOriginResolver.LocationFirst(n);
+            kindToDisplay[n] = disp;
+            displayToKind[disp] = n;
+        }
+        _startDisplayToKind = displayToKind;
+
+        // The combo's own item order is sorted by DISPLAY text, not TerminalNames' raw-name
+        // order - grouping by location (the whole point of the flip) only shows up if the list
+        // itself is ordered by the flipped label.
+        var names = new List<string> { AnyStart };
+        if (liveLoc is not null) names.Add(kindToDisplay["LIVE"]);
+        names.AddRange(terminalNames.Select(n => kindToDisplay[n]).OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
 
         if (!_startSeeded)
         {
@@ -448,10 +500,14 @@ public sealed partial class TradePage
         // The combo shows nothing selected while the kind is LIVE but no live item exists this
         // render (no session) - an honest "nothing to show" beats highlighting ANY, which would
         // read as "unrestricted" when the real state is "unresolved, waiting on a live location."
+        // The terminal-name branch below maps through kindToDisplay so the combo shows the
+        // flipped label for the currently selected kind, never the raw persisted name.
         string? display = _startSelectedKind switch
         {
-            "LIVE" => liveLoc is not null ? $"{LiveStartPrefix}{liveLoc}" : null,
-            _ => _startSelectedKind,
+            "LIVE" => liveLoc is not null ? kindToDisplay["LIVE"] : null,
+            AnyStart => AnyStart,
+            null => null,
+            _ => kindToDisplay.TryGetValue(_startSelectedKind, out var d) ? d : _startSelectedKind,
         };
 
         _suppressStartSelection = true;
@@ -565,19 +621,42 @@ public sealed partial class TradePage
     // live user pick this session is never clobbered by what was last saved.
     private void RefreshDestCombo(MarketSnapshot? snap)
     {
+        var terminalNames = TerminalNames(snap);
+
+        // Location-first display (the owner's ask, 2026-07-31), same mechanism as RefreshStartCombo
+        // above: nameToDisplay/displayToName are rebuilt fresh on every refresh and never touch
+        // _destSelectedName or AppSettings.TradeDestManual, which stay the real UEX name the
+        // whole time (SelectionChanged persists `name`, never `display`). "ANY" is not a
+        // terminal name and is never run through LocationFirst.
+        var nameToDisplay = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyDestination] = AnyDestination };
+        var displayToName = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyDestination] = AnyDestination };
+        foreach (var n in terminalNames)
+        {
+            var disp = TradeOriginResolver.LocationFirst(n);
+            nameToDisplay[n] = disp;
+            displayToName[disp] = n;
+        }
+        _destDisplayToName = displayToName;
+
+        // Sorted by DISPLAY text, not TerminalNames' raw-name order - same reasoning as the
+        // STARTING LOCATION combo above.
         var names = new List<string> { AnyDestination };
-        names.AddRange(TerminalNames(snap));
+        names.AddRange(terminalNames.Select(n => nameToDisplay[n]).OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
 
         if (!_destSeeded)
         {
             _destSeeded = true;
             var persisted = App.Settings.Current.TradeDestManual;
-            _destSelectedName = !string.IsNullOrEmpty(persisted) && names.Contains(persisted) ? persisted : AnyDestination;
+            _destSelectedName = !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) ? persisted : AnyDestination;
         }
-        else if (_destSelectedName is null || !names.Contains(_destSelectedName))
+        else if (_destSelectedName is null || (_destSelectedName != AnyDestination && !terminalNames.Contains(_destSelectedName)))
         {
             _destSelectedName = AnyDestination;
         }
+
+        string display = _destSelectedName == AnyDestination
+            ? AnyDestination
+            : nameToDisplay.TryGetValue(_destSelectedName!, out var d) ? d : _destSelectedName!;
 
         _suppressDestSelection = true;
         try
@@ -587,8 +666,8 @@ public sealed partial class TradePage
                 _destNames = names;
                 _destCombo.ItemsSource = names;
             }
-            if (!string.Equals(_destCombo.SelectedItem as string, _destSelectedName, StringComparison.Ordinal))
-                _destCombo.SelectedItem = _destSelectedName;
+            if (!string.Equals(_destCombo.SelectedItem as string, display, StringComparison.Ordinal))
+                _destCombo.SelectedItem = display;
         }
         finally { _suppressDestSelection = false; }
     }
