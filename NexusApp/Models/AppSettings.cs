@@ -150,6 +150,12 @@ public class AppSettings
     // set; the planner falls back to whatever the live-location facility reports, if anything.
     public string TradeOriginManual { get; set; } = "";
 
+    // Route planner DESTINATION picker (task 6): a terminal name restricting sell legs, mirroring
+    // TradeOriginManual's persistence but for the sell side. Null (or "") = ANY, the planner's
+    // original unrestricted behavior - unlike TradeOriginManual this has no "falls back to live
+    // location" concept, so null is the honest default rather than an empty string sentinel.
+    public string? TradeDestManual { get; set; }
+
     // System-name scope filter pill (ALL / a specific star system name). Default ALL.
     public string TradeScope { get; set; } = "ALL";
 

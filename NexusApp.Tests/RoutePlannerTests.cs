@@ -253,6 +253,74 @@ public class RoutePlannerTests
         Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.CoversTwoTrips));
     }
 
+    // Destination constraint (task 6): mirror of the FROM HERE origin restriction, but for the sell
+    // leg. Non-null non-empty restricts which terminals may sell; null (or the parameter omitted)
+    // means ANY, unchanged from before this task; non-null EMPTY means an unresolved destination
+    // pick, which must restrict to zero sell legs rather than silently widen back to ANY.
+    [Fact]
+    public void Rank_DestRestrictsSellLegOnly()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"), [3] = Term(3, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 50),    // buy leg: never destination-restricted
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 50),  // destination: allowed
+            Row(3, 47, buy: 0, sell: 210, sellDemand: 50),  // NOT destination: excluded from sell legs
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.Any,
+            destTerminalIds: new HashSet<int> { 2 });
+
+        var route = Assert.Single(routes);
+        Assert.Equal(2, route.SellRow.TerminalId);
+    }
+
+    [Fact]
+    public void Rank_EmptyDestSet_RestrictsToNothing()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 50),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 50),
+        };
+
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10, StockFilter.Any,
+            destTerminalIds: new HashSet<int>()));
+    }
+
+    [Fact]
+    public void Rank_NullDestSet_MatchesOmittedParameterOnRealFixtureData()
+    {
+        var rows = MarketParse.ParseTradePriceRows(TradePricesFixture.LoadSampleJson(), out _)
+            .Where(r => r.CommodityId == 47).ToList();
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [rows.Single(r => r.TerminalName == "HDMS-Lathan").TerminalId] = Term(33, "Stanton", "Lyria"),
+            [rows.Single(r => r.TerminalName == "TDD Area 18").TerminalId] = Term(12, "Stanton", "Area 18"),
+        };
+
+        var omittedRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10);
+        var explicitNullRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, stockFilter: StockFilter.Any, destTerminalIds: null);
+
+        Assert.Equal(omittedRoutes.Count, explicitNullRoutes.Count);
+        for (int i = 0; i < omittedRoutes.Count; i++)
+        {
+            Assert.Equal(omittedRoutes[i].BuyRow, explicitNullRoutes[i].BuyRow);
+            Assert.Equal(omittedRoutes[i].SellRow, explicitNullRoutes[i].SellRow);
+            Assert.Equal(omittedRoutes[i].TripQty, explicitNullRoutes[i].TripQty);
+            Assert.Equal(omittedRoutes[i].Gross, explicitNullRoutes[i].Gross);
+            Assert.Equal(omittedRoutes[i].Net, explicitNullRoutes[i].Net);
+            Assert.Equal(omittedRoutes[i].Tier, explicitNullRoutes[i].Tier);
+            Assert.Equal(omittedRoutes[i].TripParts, explicitNullRoutes[i].TripParts);
+        }
+    }
+
     [Fact]
     public void Rank_DefaultStockFilter_MatchesExplicitAnyOnRealFixtureData()
     {

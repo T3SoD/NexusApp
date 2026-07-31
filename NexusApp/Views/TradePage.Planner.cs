@@ -45,6 +45,19 @@ public sealed partial class TradePage
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
+    // DESTINATION picker (task 6): "ANY" is the literal first ComboBox item and the sentinel this
+    // page uses for "no constraint" - distinct from AppSettings.TradeDestManual, which persists
+    // null/"" for that same state (see RefreshDestCombo/DestTerminalIds). Built once in
+    // BuildPlannerChrome; the ComboBox's items and selection are updated in place on every rebuild
+    // via RefreshDestCombo, same idiom as the Prices flow's commodity picker
+    // (TradePage.Prices.cs, RefreshPricesCommodityBox).
+    private const string AnyDestination = "ANY";
+    private ComboBox _destCombo = null!;
+    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY")
+    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed
+    private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as TradePage.cs's _manualOriginSeeded
+    private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
     // The input area (ship combo, budget box, anchor pills, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
     // Before this, every rebuild started with PlannerHost.Children.Clear(), so the budget box's own
@@ -151,6 +164,28 @@ public sealed partial class TradePage
         anchorGrp.Children.Add(anchorRow);
         inputRow.Children.Add(anchorGrp);
 
+        // DESTINATION picker (task 6): a plain ComboBox, same idiom as the ORIGIN combo in
+        // TradePage.cs's RefreshContextRow but planner-local (this page's own input row, not the
+        // shared context row) - "ANY" is always the first item, selecting it means no constraint.
+        var destGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        destGrp.Children.Add(FieldLabel("Destination"));
+        _destCombo = new ComboBox
+        {
+            Style = (Style)Application.Current.FindResource("NexusComboBox"), MinWidth = 160,
+        };
+        _destCombo.SelectionChanged += (_, _) =>
+        {
+            if (_suppressDestSelection) return;
+            if (_destCombo.SelectedItem is not string name) return;
+            _destSelectedName = name;
+            App.Settings.Current.TradeDestManual = name == AnyDestination ? null : name;
+            App.Settings.Save();
+            Logger.Info($"[UI] trade: destination {name}");
+            RebuildPlanner();
+        };
+        destGrp.Children.Add(_destCombo);
+        inputRow.Children.Add(destGrp);
+
         // Stock/demand coverage filter (task 5): same pill chrome as the anchor pills above, three
         // mutually-exclusive states rather than two, using SetPillOn per pill (already shared with
         // RefreshAnchorPills) so the highlighted-state visuals stay identical across both groups.
@@ -192,6 +227,13 @@ public sealed partial class TradePage
         RefreshStockFilterPills();
 
         var snap = App.Market.Snapshot;
+        RefreshDestCombo(snap);
+        // Small dim note above the results list, only when the DESTINATION picker is actually
+        // constraining sell legs - covers both the empty-state and populated branches below, since
+        // both need the same explanation for why routes are narrowed (task 6).
+        bool destActive = _destSelectedName is not null && _destSelectedName != AnyDestination;
+        if (destActive) _plannerResults.Children.Add(DestinationActiveNote(_destSelectedName!));
+
         if (snap is null || snap.TradePrices.Rows.Count == 0)
         {
             _plannerResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
@@ -210,9 +252,10 @@ public sealed partial class TradePage
         // message below instead of the generic "no routes buy from here" one, since here the
         // problem is an unknown origin, not a real absence of routes.
         bool originUnknown = App.Settings.Current.TradeAnchorFromHere && originIds is { Count: 0 };
+        var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
-            ParseStockFilter(App.Settings.Current.TradeStockFilter));
+            ParseStockFilter(App.Settings.Current.TradeStockFilter), destIds);
 
         if (routes.Count == 0)
         {
@@ -243,7 +286,7 @@ public sealed partial class TradePage
             _plannerResults.Children.Add(row);
         }
 
-        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, anchor {(App.Settings.Current.TradeAnchorFromHere ? "FROM HERE" : "ANYWHERE")}");
+        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, anchor {(App.Settings.Current.TradeAnchorFromHere ? "FROM HERE" : "ANYWHERE")}, dest {_destSelectedName ?? AnyDestination}");
     }
 
     private void SetAnchor(bool fromHere)
@@ -300,6 +343,66 @@ public sealed partial class TradePage
         "COVERS TRIP" => StockFilter.CoversTrip,
         "COVERS 2X" => StockFilter.CoversTwoTrips,
         _ => StockFilter.Any,
+    };
+
+    // Re-validate on every rebuild, same rule as the Prices flow's RefreshPricesCommodityBox: an
+    // hourly snapshot refresh can drop the previously selected destination terminal (or the very
+    // first rebuild ever runs before any snapshot exists), and a one-time seed would leave the
+    // field stuck on a name no longer offered. First call ever seeds from the persisted
+    // TradeDestManual setting (null/"" falls back to ANY); every later call revalidates the
+    // CURRENT selection against the CURRENT terminal list instead of re-reading the setting, so a
+    // live user pick this session is never clobbered by what was last saved.
+    private void RefreshDestCombo(MarketSnapshot? snap)
+    {
+        var names = new List<string> { AnyDestination };
+        names.AddRange(TerminalNames(snap));
+
+        if (!_destSeeded)
+        {
+            _destSeeded = true;
+            var persisted = App.Settings.Current.TradeDestManual;
+            _destSelectedName = !string.IsNullOrEmpty(persisted) && names.Contains(persisted) ? persisted : AnyDestination;
+        }
+        else if (_destSelectedName is null || !names.Contains(_destSelectedName))
+        {
+            _destSelectedName = AnyDestination;
+        }
+
+        _suppressDestSelection = true;
+        try
+        {
+            if (_destNames is null || !_destNames.SequenceEqual(names, StringComparer.Ordinal))
+            {
+                _destNames = names;
+                _destCombo.ItemsSource = names;
+            }
+            if (!string.Equals(_destCombo.SelectedItem as string, _destSelectedName, StringComparison.Ordinal))
+                _destCombo.SelectedItem = _destSelectedName;
+        }
+        finally { _suppressDestSelection = false; }
+    }
+
+    // Resolves the DESTINATION combo's current pick to the terminal id set RoutePlanner needs.
+    // "ANY" (the default, and the literal first combo item) means no constraint - null, the same
+    // sentinel RoutePlanner already uses for "unrestricted" on the buy leg. A named terminal that
+    // fails to resolve (TerminalIdForName returns null - a stale persisted name no live terminal
+    // matches) yields an EMPTY set rather than falling back to ANY, mirroring OriginTerminalIds'
+    // contract: an unresolved constraint restricts to nothing, it never silently widens back out.
+    private IReadOnlySet<int>? DestTerminalIds(IReadOnlyList<MarketTerminal> terminals)
+    {
+        if (_destSelectedName is null || _destSelectedName == AnyDestination) return null;
+        return TradeOriginResolver.TerminalIdForName(_destSelectedName, terminals) is { } id
+            ? new HashSet<int> { id }
+            : new HashSet<int>();
+    }
+
+    // Small dim note (task 6, brief's "results header" fallback: no persistent header line exists
+    // in the planner results area to append onto, so this is a standalone TextBlock shown above the
+    // results list only while the DESTINATION picker is actively constraining sell legs).
+    private static TextBlock DestinationActiveNote(string name) => new()
+    {
+        Text = $"Routes ranked TO {name}.",
+        FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 10),
     };
 
     private static void SetPillOn(Border pill, bool on)

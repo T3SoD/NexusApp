@@ -25,11 +25,18 @@ public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 // resolved to any terminal. An empty set restricts the buy leg to NOTHING, not to "unrestricted" -
 // treating an unresolved origin as ANYWHERE would silently show cross-map routes while FROM HERE
 // stays lit (spec Decision 6: "every listed route is purchasable where the player stands").
+//
+// destTerminalIds (task 6) is the exact same contract, mirrored onto the SELL leg: null = ANY (no
+// constraint, the planner's original behavior, default parameter so every pre-existing call site
+// is untouched), non-null restricts sell legs to that set, non-null EMPTY means the DESTINATION
+// picker's name could not be resolved to a terminal and must yield zero sell legs rather than
+// silently falling back to ANY - same reasoning as the origin's empty-set case above.
 public static class RoutePlanner
 {
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int shipScu, int shipMaxBox, double? budget,
-        IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any)
+        IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any,
+        IReadOnlySet<int>? destTerminalIds = null)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -50,7 +57,10 @@ public static class RoutePlanner
             // buy leg rather than silently falling back to every terminal's.
             if (row.Buy > 0 && (originTerminalIds is null || originTerminalIds.Contains(row.TerminalId)))
                 lists.Buys.Add(row);
-            if (row.Sell > 0) lists.Sells.Add(row);
+            // Same rule, sell leg: null = ANY destination, non-null EMPTY = an unresolved
+            // DESTINATION pick that must exclude every sell leg, not fall back to ANY.
+            if (row.Sell > 0 && (destTerminalIds is null || destTerminalIds.Contains(row.TerminalId)))
+                lists.Sells.Add(row);
         }
 
         foreach (var (buys, sells) in byCommodity.Values)
