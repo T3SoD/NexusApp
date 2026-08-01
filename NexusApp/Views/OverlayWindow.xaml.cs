@@ -213,7 +213,13 @@ public partial class OverlayWindow : Window
         // and every band position stale - on the one surface that is actually on screen while
         // crossing boundaries. Same permanent-subscription-plus-visibility-guard idiom MapPage's
         // player marker already uses, and Changed fires off the UI thread, so marshal.
-        _onLocationChanged = () => Dispatcher.BeginInvoke(() => { if (IsTabPresented("trade")) RebuildTradePanel(); });
+        _onLocationChanged = () => Dispatcher.BeginInvoke(() =>
+        {
+            if (IsTabPresented("trade")) RebuildTradePanel();
+            // The HUB Location LED (F14) updates regardless of the presented tab: the write is a
+            // text + brush set, and keeping it current means tab entry never shows a stale place.
+            RefreshHubLocation();
+        });
         App.Locations.Changed += _onLocationChanged;
 
         // Foreground gating: when neither Nexus nor Star Citizen is in front, OCR auto-scans pause.
@@ -1389,7 +1395,7 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_scanSwTrack, _scanSwKnob, _vm.RsScanState);   // amber on / yellow paused / grey off
         SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
-        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / yellow paused / red off)
+        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / amber paused / dim off)
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.RsScanState switch
         {
@@ -1476,19 +1482,26 @@ public partial class OverlayWindow : Window
     // Reflects contract-scanner-running / contract-box-visible state onto the two HAULING switches.
     private void SyncHaulingControls()
     {
-        // Contract auto-scan: running = on, intent-on-but-not-running = paused (foreground-gated), else off.
-        var contractState = App.ContractScan.IsRunning ? ScanIndicator.On
-            : App.Settings.Current.AutoScanContracts ? ScanIndicator.Paused : ScanIndicator.Off;
+        // Contract auto-scan: running = on, intent-on-but-not-running = paused (foreground-gated),
+        // else off. The mapping is the shared StatusChips seam (F14) because the header AUTO-SCAN
+        // chip folds this same state - two surfaces, one derivation.
+        var contractState = StatusChips.ContractScanState(
+            App.ContractScan.IsRunning, App.Settings.Current.AutoScanContracts);
         SetSwitch(_haulScanSwTrack, _haulScanSwKnob, contractState);   // amber on / yellow paused / grey off
         SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
-        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / yellow paused / red off)
+        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / amber paused / dim off)
     }
 
-    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row): Auto-scan RS + Contracts mirror the
-    // SCAN / HAULING auto-scan toggles (green on / yellow paused / red off), and Session shows Game.log
-    // monitoring (green = live game session being watched, red = SC closed / no log). The scan LEDs sync
-    // via SyncScanControls / SyncHaulingControls; Session via RefreshSessionLed. Toggles live on the tabs.
-    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed;
+    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row) - the overlay's own health
+    // rail, since it renders in-game where the main window's header strip is hidden. Session shows
+    // Game.log monitoring (green = live, red = SC closed / no log); Location (F14) shows where the
+    // log last placed the player, cyan breathing when known - it explains at a glance why route
+    // bands or the scan sell line have no distances; Auto-scan RS + Contracts mirror the SCAN /
+    // HAULING toggles (green on / amber paused / DIM off - off is a choice, red is reserved for
+    // broken). LEDs sync via SyncScanControls / SyncHaulingControls / RefreshSessionLed /
+    // RefreshHubLocation. Toggles live on the tabs.
+    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed, _hubLocationLed;
+    private TextBlock? _hubLocationText;
 
     private void BuildHubScanControls()
     {
@@ -1497,6 +1510,18 @@ public partial class OverlayWindow : Window
         _hubSessionLed = NewLed();
         HubScanBar.Children.Add(HubLedRow(_hubSessionLed, "Session",
             "Game.log session tracking (always on): green = monitoring a live game session, red = Star Citizen closed / no log"));
+
+        _hubLocationLed = NewLed();
+        _hubLocationText = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 9,
+            Foreground = (Brush)FindResource("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+            MaxWidth = 110, TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        HubScanBar.Children.Add(HubLedRow(_hubLocationLed, "Location",
+            "Where Game.log last placed you. Route bands and sell-line distances measure from here.",
+            _hubLocationText));
 
         _hubScanLed = NewLed();
         HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
@@ -1507,17 +1532,32 @@ public partial class OverlayWindow : Window
         SyncScanControls();
         SyncHaulingControls();
         RefreshSessionLed();
+        RefreshHubLocation();
     }
 
     // SESSION LED: green (pulsing) while a live game session is being monitored, red when Star Citizen is
-    // closed / no log. Refreshed from the same GameLog state + status events the old monitoring pill used.
-    private void RefreshSessionLed() => SetHubLed(_hubSessionLed, App.GameLog.IsSessionLive);
+    // closed / no log. The one LED on this rail allowed to show red for its low state: an absent session
+    // is the broken-trunk case, not a switched-off choice (F14 palette rule).
+    private void RefreshSessionLed() => SetLedColor(_hubSessionLed, App.GameLog.IsSessionLive ? LedOn : LedBroken,
+        pulse: App.GameLog.IsSessionLive);
     private void OnGameLogStatusChanged(string _) => RefreshSessionLed();
+
+    // LOCATION LED (F14): cyan breathing when the log places the player somewhere, dim when it does
+    // not. Cyan is the app's reserved live-location identity (Trade ORIGIN, map player marker).
+    private void RefreshHubLocation()
+    {
+        if (_hubLocationLed is null || _hubLocationText is null) return;
+        var place = App.Player?.Label;
+        bool known = !string.IsNullOrWhiteSpace(place);
+        _hubLocationText.Text = known ? place : "unknown";
+        _hubLocationText.Foreground = known ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
+        SetLedColor(_hubLocationLed, known ? LedLocation : LedOff, pulse: known);
+    }
 
     // Read-only HUB status pill (mock .led): a bordered chip with an LED dot + short label, full text in
     // the tooltip. Sizes to content and tiles in a WrapPanel. Not interactive; the live toggle is on
     // SCAN / HAULING.
-    private FrameworkElement HubLedRow(Border led, string label, string tooltip)
+    private FrameworkElement HubLedRow(Border led, string label, string tooltip, TextBlock? value = null)
     {
         var row = new StackPanel
         {
@@ -1530,6 +1570,7 @@ public partial class OverlayWindow : Window
             Foreground = (Brush)FindResource("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
         });
+        if (value != null) row.Children.Add(value);
         return new Border
         {
             Child = row,
@@ -1542,20 +1583,24 @@ public partial class OverlayWindow : Window
         };
     }
 
-    // HUB status LED: paint it (green on / yellow paused / red off) and gently pulse it while On, matching
-    // the mock's breathing scan-status dots. Static while paused / off.
+    // HUB status LED: paint it (green on / amber paused / dim off) and gently pulse it while On,
+    // matching the mock's breathing scan-status dots. Static while paused / off.
     private void SetHubLed(Border? led, ScanIndicator state)
     {
         SetLed(led, state);
         if (led != null) Hud.PulseDot(led, state == ScanIndicator.On);
     }
 
-    private void SetHubLed(Border? led, bool on) => SetHubLed(led, on ? ScanIndicator.On : ScanIndicator.Off);
-
-    // Status LED colors: green = on, red = off, yellow = paused (neither Nexus nor SC in front).
-    private static readonly Color LedOn     = Color.FromRgb(0x3E, 0xD6, 0x8B);
-    private static readonly Color LedOff    = Color.FromRgb(0xE5, 0x48, 0x4D);
-    private static readonly Color LedPaused = Color.FromRgb(0xEA, 0xB3, 0x08);
+    // Status LED colors (F14 palette): green = running, amber = paused (the app accent - the old
+    // one-off #EAB308 yellow existed nowhere else in the palette), DIM slate = off by choice
+    // (the old red-for-off overstated a switched-off scanner as a failure), cyan = live location
+    // (the app's reserved location identity). Red survives as exactly one thing on this rail:
+    // the session LED with no live session - the broken-trunk case.
+    private static readonly Color LedOn       = Color.FromRgb(0x3E, 0xD6, 0x8B);
+    private static readonly Color LedBroken   = Color.FromRgb(0xE5, 0x48, 0x4D);
+    private static readonly Color LedPaused   = Color.FromRgb(0xFF, 0xB2, 0x3E);
+    private static readonly Color LedOff      = Color.FromRgb(0x86, 0x93, 0xA0);
+    private static readonly Color LedLocation = Color.FromRgb(0x7F, 0xE9, 0xE0);
 
     private static Border NewLed() => new()
     {
@@ -1563,23 +1608,29 @@ public partial class OverlayWindow : Window
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private void SetLed(Border? led, bool on) => SetLed(led, on ? ScanIndicator.On : ScanIndicator.Off);
-
-    // Paints an LED green (on), red (off), or yellow (paused) with a soft matching glow.
+    // Paints an LED green (on), amber (paused), or dim (off). Off gets no glow at all - a glow on
+    // a switched-off lamp would still read as a signal.
     private void SetLed(Border? led, ScanIndicator state)
     {
-        if (led == null) return;
         var c = state switch
         {
             ScanIndicator.On     => LedOn,
             ScanIndicator.Paused => LedPaused,
             _                    => LedOff,
         };
+        SetLedColor(led, c, pulse: null, glow: state != ScanIndicator.Off);
+    }
+
+    // Base painter for every HUB LED. pulse: null = leave the current animation alone (SetHubLed
+    // drives it separately for the scanner LEDs), true/false = start/stop the breathe here.
+    private static void SetLedColor(Border? led, Color c, bool? pulse, bool glow = true)
+    {
+        if (led == null) return;
         led.Background = new SolidColorBrush(c);
-        led.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = c, BlurRadius = 7, ShadowDepth = 0, Opacity = state == ScanIndicator.Off ? 0.55 : 0.9,
-        };
+        led.Effect = glow
+            ? new System.Windows.Media.Effects.DropShadowEffect { Color = c, BlurRadius = 7, ShadowDepth = 0, Opacity = 0.9 }
+            : null;
+        if (pulse is { } p) Hud.PulseDot(led, p);
     }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -2247,8 +2298,10 @@ public partial class OverlayWindow : Window
     private void SetSwitch(Border? track, Border? knob, bool on)
         => SetSwitch(track, knob, on ? ScanIndicator.On : ScanIndicator.Off);
 
-    // Tri-state toggle visual: On = amber, Paused = yellow (the knob stays in the on position to show the
-    // user's intent is on, just suspended because neither Nexus nor SC is in front), Off = grey.
+    // Tri-state toggle visual: On = amber, Paused = the same amber at track-tint strength via
+    // LedPaused (F14: the old one-off #EAB308 yellow died with the palette unification; the knob
+    // stays in the on position to show the user's intent is on, just suspended because neither
+    // Nexus nor SC is in front), Off = grey.
     private void SetSwitch(Border? track, Border? knob, ScanIndicator state)
     {
         if (track == null || knob == null) return;
@@ -3427,11 +3480,17 @@ public partial class OverlayWindow : Window
         placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        placeRow.Children.Add(new System.Windows.Shapes.Ellipse
+        // F14: cyan breathing, not static green - this is the same live-location fact the Trade
+        // page's ORIGIN dot reports, and cyan is the app's reserved live-location identity. Green
+        // here said "healthy" when it meant "live".
+        var placeDot = new System.Windows.Shapes.Ellipse
         {
-            Width = 5, Height = 5, Fill = place is null ? dim : ok, VerticalAlignment = VerticalAlignment.Center,
+            Width = 5, Height = 5, VerticalAlignment = VerticalAlignment.Center,
+            Fill = place is null ? dim : (Brush)FindResource("CyanBrush"),
             Margin = new Thickness(0, 0, 6, 0),
-        });
+        };
+        Hud.PulseDot(placeDot, place is not null);
+        placeRow.Children.Add(placeDot);
         var placeLabel = new TextBlock
         {
             // "CURRENT LOCATION", not "YOU" (the owner, 2026-08-01): the panel is read alongside the
@@ -3444,7 +3503,8 @@ public partial class OverlayWindow : Window
         placeRow.Children.Add(placeLabel);
         var placeValue = new TextBlock
         {
-            Text = place ?? "Unknown", FontSize = 11.5, Foreground = place is null ? dim : fg,
+            Text = place ?? "Unknown", FontSize = 11.5,
+            Foreground = place is null ? dim : (Brush)FindResource("CyanBrush"),
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
             ToolTip = place,
         };
@@ -3485,8 +3545,12 @@ public partial class OverlayWindow : Window
         System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
         System.Windows.Media.FontFamily mono)
     {
+        // A null buy terminal marks a SELL-ONLY pin (the Sell tab's own PIN TO OVERLAY): the
+        // player already holds the cargo, so the card has no FROM, no band and no fixed leg
+        // length - it shows SELL AT plus a live from-here distance instead.
+        bool sellOnly = route.BuyTerminalId is null;
         MarketTerminal? buyTerminal = null, sellTerminal = null;
-        terminals?.TryGetValue(route.BuyTerminalId, out buyTerminal);
+        if (route.BuyTerminalId is { } buyId) terminals?.TryGetValue(buyId, out buyTerminal);
         terminals?.TryGetValue(route.SellTerminalId, out sellTerminal);
 
         var rows = new StackPanel();
@@ -3521,49 +3585,70 @@ public partial class OverlayWindow : Window
             // The age is on the card because these numbers are a SNAPSHOT, not a live quote: a
             // pinned route the current ranking does not contain keeps the figures it had when it
             // was last ranked, and a margin quoted as though it were current would be the one lie
-            // this panel could tell.
-            ToolTip = $"Margin per SCU when this route was last ranked "
+            // this panel could tell. Sell-only pins hold a sell PRICE here, not a margin - there
+            // is no buy side to subtract - and the tooltip says which it is.
+            ToolTip = sellOnly
+                ? $"Sell price per SCU when this pin was last refreshed "
+                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)})."
+                : $"Margin per SCU when this route was last ranked "
                     + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)}).",
         };
         Grid.SetColumn(margin, 2);
         head.Children.Add(margin);
         rows.Children.Add(head);
 
-        // Line 2: where the run starts, on its own full-width line.
-        rows.Children.Add(TradeEndLine("FROM", route.BuyTerminalName, fg, dim));
-
-        // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far along
-        // the player is. With no usable position reading the band stays a bare rail with unlit caps
-        // rather than implying a position (absent-not-placeholder).
-        var frac = RouteProgress.Fraction(
-            App.Map.DistanceMeters(here, App.Map.ResolveTerminal(buyTerminal)),
-            App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal)));
-        rows.Children.Add(BuildTradeBand(frac, dim, accent, gold));
-
-        // Line 4: how far the run is, and where it ends. Distance sits left, under the band's start
-        // cap; the destination is right-aligned under its own end cap, so the line reads as the
-        // band's own footnote rather than as a second list of facts.
-        var foot = new Grid { Margin = new Thickness(0, 2, 0, 0) };
-        foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
-        var distance = new TextBlock
+        if (sellOnly)
         {
-            // Null covers both an unplaceable terminal and a run that crosses a jump point, where a
-            // straight line is not the distance flown and a number would be a lie.
-            Text = legMeters is { } m ? MapCatalog.FormatGm(m) : "distance n/a",
-            FontFamily = mono, FontSize = 9.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
-        };
-        foot.Children.Add(distance);
-        var to = new TextBlock
+            // Sell-only card: the destination on its own line, and a LIVE from-here distance -
+            // the run starts wherever the player is, so unlike a route leg this number tracks
+            // the same App.Locations updates that repaint this panel. Null (unknown position,
+            // unplaceable terminal, or a jump point between) renders the honest "distance n/a".
+            rows.Children.Add(TradeEndLine("SELL AT", route.SellTerminalName, fg, dim));
+            var fromHere = App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal));
+            rows.Children.Add(new TextBlock
+            {
+                Text = fromHere is { } fh ? $"{MapCatalog.FormatGm(fh)} from here" : "distance n/a",
+                FontFamily = mono, FontSize = 9.5, Foreground = dim, Margin = new Thickness(0, 2, 0, 0),
+            });
+        }
+        else
         {
-            Text = route.SellTerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center, ToolTip = route.SellTerminalName,
-        };
-        Grid.SetColumn(to, 1);
-        foot.Children.Add(to);
-        rows.Children.Add(foot);
+            // Line 2: where the run starts, on its own full-width line.
+            rows.Children.Add(TradeEndLine("FROM", route.BuyTerminalName, fg, dim));
+
+            // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far
+            // along the player is. With no usable position reading the band stays a bare rail with
+            // unlit caps rather than implying a position (absent-not-placeholder).
+            var frac = RouteProgress.Fraction(
+                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(buyTerminal)),
+                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal)));
+            rows.Children.Add(BuildTradeBand(frac, dim, accent, gold));
+
+            // Line 4: how far the run is, and where it ends. Distance sits left, under the band's
+            // start cap; the destination is right-aligned under its own end cap, so the line reads
+            // as the band's own footnote rather than as a second list of facts.
+            var foot = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
+            var distance = new TextBlock
+            {
+                // Null covers both an unplaceable terminal and a run that crosses a jump point,
+                // where a straight line is not the distance flown and a number would be a lie.
+                Text = legMeters is { } m ? MapCatalog.FormatGm(m) : "distance n/a",
+                FontFamily = mono, FontSize = 9.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+            };
+            foot.Children.Add(distance);
+            var to = new TextBlock
+            {
+                Text = route.SellTerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center, ToolTip = route.SellTerminalName,
+            };
+            Grid.SetColumn(to, 1);
+            foot.Children.Add(to);
+            rows.Children.Add(foot);
+        }
 
         // The close sits over the card's top-right corner rather than inside the head row, so the
         // commodity name gets the full width when there is nothing to close over.
