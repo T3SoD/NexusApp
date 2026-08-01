@@ -578,15 +578,19 @@ public sealed partial class TradePage
 
         if (!_startSeeded)
         {
-            _startSeeded = true;
-            var persisted = App.Settings.Current.TradeStartManual;
-            _startSelectedKind = persisted switch
+            // A5: a null seed means "not yet" - the persisted terminal name met an EMPTY list,
+            // which is the planner opening before the first market fetch lands, not a stale name.
+            // Staying unseeded lets the next refresh (first snapshot in) seed against a real list;
+            // the combo honestly shows nothing selected meanwhile. Consuming the seed here used to
+            // turn the saved start into the LIVE fallback for the rest of the session, and
+            // SetStart's no-op guard then made the mismatch sticky: the ranking kept restricting
+            // to the saved terminal while the combo claimed LIVE, and picking LIVE looked like a
+            // no-op so it never persisted.
+            if (SeedStartKind(App.Settings.Current.TradeStartManual, terminalNames) is { } seed)
             {
-                AnyStart => AnyStart,
-                "LIVE" => "LIVE",
-                _ when !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) => persisted,
-                _ => "LIVE",   // fail-open: null/empty/unrecognized persisted values default to LIVE (old FROM HERE default)
-            };
+                _startSeeded = true;
+                _startSelectedKind = seed;
+            }
         }
         else if (_startSelectedKind is null ||
                  (_startSelectedKind != AnyStart && _startSelectedKind != "LIVE" && !terminalNames.Contains(_startSelectedKind)))
@@ -624,6 +628,23 @@ public sealed partial class TradePage
         SetPillOn(_startLiveBtn, liveSelected);
         _startLiveBtn.Opacity = liveLoc is null ? 0.45 : 1.0;
     }
+
+    // The first-render seed decision, pure so a test can hold it still (A5, final review F4).
+    // ANY, LIVE and the null/empty first-run default depend on nothing, so they seed no matter
+    // what the list holds. A terminal NAME is the one kind that must be checked against the list,
+    // and against an EMPTY list "not found" is indistinguishable from "market data not loaded
+    // yet" - so empty defers (null return) instead of guessing, while a real list that lacks the
+    // name means the name went stale and fails open to LIVE (the old FROM HERE default).
+    internal static string? SeedStartKind(string? persisted, IReadOnlyCollection<string> terminalNames) =>
+        persisted switch
+        {
+            AnyStart => AnyStart,
+            "LIVE" => "LIVE",
+            null or "" => "LIVE",
+            _ when terminalNames.Contains(persisted) => persisted,
+            _ when terminalNames.Count == 0 => null,
+            _ => "LIVE",
+        };
 
     // Demand-at-destination filter (task 5, resemantic task 10): DEMAND-ONLY. Buy stock already
     // caps tripQty via TradeMath.TripQty (a route can never trip more than the terminal has to
