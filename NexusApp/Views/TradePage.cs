@@ -797,6 +797,15 @@ public sealed partial class TradePage : UserControl
     internal IReadOnlyList<TradeRoute> PinnedRoutes => _pinnedRoutes;
     internal event Action? PinnedRouteChanged;
 
+    /// <summary>A planner route leg's terminal name was clicked (app review G7b). MainWindow
+    /// switches to the MAP tab and focuses that stop - the return leg of the map's own SEND TO
+    /// PLANNER, so the two pages reference each other in both directions.</summary>
+    internal event Action<int>? ShowOnMapRequested;
+
+    // Static call sites (BuildLeg is static, like most of this page's row builders) reach the
+    // instance event through this, so the row builders stay static and stateless.
+    private void RaiseShowOnMap(int objectId) => ShowOnMapRequested?.Invoke(objectId);
+
     /// <summary>True when this exact haul (buy terminal, sell terminal, commodity) is pinned. The
     /// row's PIN chip paints from this, so "is this row pinned" can never disagree with what the
     /// overlay is showing.</summary>

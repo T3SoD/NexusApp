@@ -196,6 +196,10 @@ public partial class MainWindow : Window
         // BeginInvoke+queued-flag idiom as ScheduleWorkOrderAnimations below) collapses that storm to a
         // single rebuild instead of running the full gallery pass N+1 times per save.
         _vm.WorkOrders.CollectionChanged += (s, e) => ScheduleWorkOrderRebuild();
+        // The map's MY ORDERS layer (app review G11) is built from this collection, which the map
+        // page itself cannot see. Null-safe on purpose: the map page is lazy and usually does not
+        // exist yet, and when it is created it builds the layer from scratch anyway.
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => _mapPage?.RefreshLiveLayers());
 
         WireNavBadgeUpdates();
 
@@ -840,6 +844,10 @@ public partial class MainWindow : Window
         {
             _guidesPage = new GuidesPage();
             PageGuides.Children.Add(_guidesPage);
+            // The return leg of MapPage.OpenGuideRequested (app review G7b): a guide card's place
+            // strip opens that place on the Starmap, so the two features reference each other in
+            // both directions instead of one. Same SetActivePage-then-call path a dock click takes.
+            _guidesPage.ShowOnMapRequested += id => { SetActivePage("map"); _mapPage?.ShowObject(id); };
         }
         _guidesPage.Activate();
     }
@@ -858,6 +866,9 @@ public partial class MainWindow : Window
             // ...and to the overlay's TRADE tab, which is the surface actually on screen while the
             // route is being flown (app review). Same event, same forwarding shape.
             _tradePage.PinnedRouteChanged += PushPinnedRoutesToOverlay;
+            // The return leg of the map's own SEND TO PLANNER (app review G7b): a route leg's
+            // terminal name opens that stop on the Starmap.
+            _tradePage.ShowOnMapRequested += id => { SetActivePage("map"); _mapPage?.ShowObject(id); };
         }
         _tradePage.Refresh();
     }
@@ -871,7 +882,7 @@ public partial class MainWindow : Window
     {
         if (_mapPage == null)
         {
-            _mapPage = new MapPage(_vm.AllResources);
+            _mapPage = new MapPage(_vm.AllResources, () => _vm.WorkOrders.ToList());
             // M-2: SetActivePage already dispatches the target page's Init*Page (see the page ==
             // "guides"/"trade" branches below), synchronously, so the field it populates is ready
             // for the follow-up call the moment SetActivePage returns - no separate Init call needed.

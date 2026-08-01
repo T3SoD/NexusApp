@@ -1040,14 +1040,14 @@ public sealed partial class TradePage
         string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, buyTerm, RaiseShowOnMap));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, sellTerm, RaiseShowOnMap));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
@@ -1117,7 +1117,7 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu)
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu, MarketTerminal? terminal = null, Action<int>? onShowOnMap = null)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
@@ -1133,6 +1133,23 @@ public sealed partial class TradePage
         // column. That preserves the exact trimming guarantee this site was built with while still
         // placing the tag right after the name, inline, in the same row.
         var name = new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = terminalName };
+        // The leg name opens its stop on the Starmap (app review G7b, the other half of the
+        // one-way leaf the Codex LOCATIONS rows closed). RESOLVE-THEN-DECORATE, per leg, exactly as
+        // that list does: a terminal the geometry catalog cannot place keeps the appearance it has
+        // always had - no cursor, no tooltip change, no handler - rather than offering a jump that
+        // would do nothing.
+        if (onShowOnMap is not null && App.Map.ResolveTerminal(terminal) is { } stop)
+        {
+            name.Cursor = Cursors.Hand;
+            name.ToolTip = $"{terminalName}{Environment.NewLine}Show {stop.Name} on the Starmap.";
+            name.MouseEnter += (_, _) => name.Foreground = Hud.Br("AccentBrush");
+            name.MouseLeave += (_, _) => name.Foreground = Hud.Br("FgBrush");
+            name.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;   // never bubble to the row host and toggle the expand band
+                onShowOnMap(stop.Id);
+            };
+        }
         Grid.SetColumn(name, 0); top.Children.Add(name);
         // Owner's live-pass ask, 2026-07-30 (item A): "the system is extremely close to the price
         // per scu in the planner tab" - SystemTag's own left margin (6px) already separates it from
