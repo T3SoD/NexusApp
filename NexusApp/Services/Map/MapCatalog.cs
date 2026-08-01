@@ -158,11 +158,9 @@ public sealed class MapCatalog
     // Station" names an object in BOTH Stanton and Pyro - see
     // ResolvePlayerLocation). Only the raw token is unique enough to tell them apart, same reasoning
     // as LocationAliases.UexLocationForToken, and this table deliberately mirrors that one's
-    // ground-every-entry discipline: every other gateway raw token (the Terra-side and Magnus-side
-    // tokens, which also display as "Stanton Gateway Station"/"Magnus Gateway Station") has no live
-    // system in starmap_map.json to point at (Terra and Magnus are not reachable systems - grep
-    // confirms no "Terra"/"Magnus" system and no "Magnus Gateway" object exist anywhere in the
-    // catalog) and is deliberately absent, so a miss falls through to null instead of guessing.
+    // ground-every-entry discipline. Every gateway token that can actually fire is here; the three
+    // uncaptured Nyx tokens are deliberately absent, so a miss falls through to null instead of
+    // guessing at a system.
     private static readonly IReadOnlyDictionary<string, (string System, string Name)> RawTokenGateways =
         new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
         {
@@ -177,12 +175,16 @@ public sealed class MapCatalog
     // also near-misses: both target object names exist in more than one system, so aliasing them
     // here by display name alone could mark the wrong system. Those two are resolved only through
     // RawTokenGateways above, before this table is ever consulted.
+    // "Terra Gateway Station" was a third entry here until 2026-08-01. It is gone because
+    // LocationAliases can no longer produce that display name at all: the Terra and Magnus gateway
+    // tokens were dropped from the alias artifact (the owner's ruling - those systems are not in the
+    // game, so no player can ever stand at those gates and no token can ever fire). An alias for a
+    // name nothing emits is dead weight that reads as real coverage.
     private static readonly IReadOnlyDictionary<string, string> PlayerLocationAliases =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Area 18"] = "Area18",
             ["Checkmate Station"] = "Checkmate",
-            ["Terra Gateway Station"] = "Terra Gateway",
         };
 
     // Resolves LocationTracker.LastKnownLocation (an alias-normalized DISPLAY name) plus its raw
@@ -195,10 +197,9 @@ public sealed class MapCatalog
     //      from the Nyx-side one, since the display name repeats across systems.
     //   2. Exact case-insensitive MapObject.Name match, searched across every system (35 of the 41
     //      possible alias display names already hit this tier directly).
-    //   3. PlayerLocationAliases - the 3 near-misses proven unambiguous (a single system carries
-    //      that object name): Area 18, Checkmate Station, Terra Gateway Station.
-    //   4. null - includes "Magnus Gateway Station" (Magnus is not a live system) and any
-    //      unrecognized text.
+    //   3. PlayerLocationAliases - the near-misses proven unambiguous (a single system carries
+    //      that object name): Area 18, Checkmate Station.
+    //   4. null - any unrecognized text, and any gateway display name with no raw token to place it.
     public MapObject? ResolvePlayerLocation(string? displayName, string? rawToken)
     {
         if (!string.IsNullOrEmpty(rawToken) && RawTokenGateways.TryGetValue(rawToken, out var gw))

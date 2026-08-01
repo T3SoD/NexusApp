@@ -294,14 +294,15 @@ public class MapCatalogTests
     }
 
     [Fact]
-    public void ResolvePlayerLocation_TerraGatewayStationAlias_ResolvesToStantonTerraGateway()
+    public void ResolvePlayerLocation_TerraGatewayStation_ReturnsNull_TerraNotInGame()
     {
-        // Terra Gateway exists only in Stanton (no Pyro/Nyx counterpart) - unambiguous, so this is
-        // a plain display-name alias, not a raw-token gateway entry.
-        var obj = Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null);
-        Assert.NotNull(obj);
-        Assert.Equal("Terra Gateway", obj!.Name);
-        Assert.Equal("Stanton", obj.System);
+        // "Terra Gateway Station" had a display-name alias here until 2026-08-01. It is gone
+        // because LocationAliases can no longer produce that name: the Terra and Magnus gateway
+        // tokens were dropped from the artifact (those systems are not in the game, so no player
+        // can stand at those gates). The map OBJECT still exists in the catalog - it comes from
+        // the base map data, which carries unreleased content - but nothing can route a live
+        // location to it, and an alias for a name nothing emits reads as coverage that is not real.
+        Assert.Null(Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null));
     }
 
     [Fact]

@@ -3,10 +3,6 @@
   "aliases": {
     "RR_JP_StantonPyro": "Pyro Gateway Station",
     "RR_JP_PyroStanton": "Stanton Gateway Station",
-    "RR_JP_StantonTerra": "Terra Gateway Station",
-    "RR_JP_TerraStanton": "Stanton Gateway Station",
-    "RR_JP_StantonMagnus": "Magnus Gateway Station",
-    "RR_JP_MagnusStanton": "Stanton Gateway Station",
     "RR_JP_PyroNyx": "Nyx Gateway Station",
 
     "RR_ARC_L1": "ARC-L1 Wide Forest Station",
@@ -51,24 +47,20 @@
   "uexLocations": {
     "RR_JP_StantonPyro": "Pyro Gateway (Stanton)",
     "RR_JP_PyroStanton": "Stanton Gateway (Pyro)",
-    "RR_JP_StantonTerra": "Terra Gateway (Stanton)",
     "RR_JP_PyroNyx": "Nyx Gateway (Pyro)"
   },
   "uexLocationNotes": {
-    "_meta": "Raw-token to UEX Location string, kept separate from 'aliases' (raw-token to in-game DISPLAY name) because display names are not unique - three raw tokens above all display as 'Stanton Gateway Station', but only the raw token is unique enough to key an unambiguous UEX lookup. Every value here was confirmed against a live UEX snapshot: a terminal exists with that exact Location, and at least one of those terminals carries priced rows.",
+    "_meta": "Raw-token to UEX Location string, kept separate from 'aliases' (raw-token to in-game DISPLAY name) because display names are not unique - two raw tokens here display as gateway names that repeat across systems, and only the raw token is unique enough to key an unambiguous UEX lookup. Every value here was confirmed against a live UEX snapshot: a terminal exists with that exact Location, and at least one of those terminals carries priced rows.",
+    "_scope": "GATEWAYS FOR SYSTEMS REACHABLE IN GAME ONLY (the owner's ruling, 2026-08-01). Terra and Magnus gateway tokens were removed even though UEX lists priced terminals for 'Terra Gateway (Stanton)': those systems are not in the game, so a player can never stand there, and a token that can never fire is dead weight that reads as real coverage. Re-add on the same terms as everything else here - a real in-game capture - if and when CIG ships those systems.",
     "_gap_nyx": "PARTIALLY CLOSED 2026-08-01: RR_JP_PyroNyx captured live (see its note below), so the Pyro-side entry is real. Three Nyx-gateway UEX Locations are still listed in the snapshot with no captured raw token - 'Nyx Gateway (Stanton)', 'Stanton Gateway (Nyx)', 'Pyro Gateway (Nyx)' - and by the naming pattern would be RR_JP_StantonNyx, RR_JP_NyxStanton and RR_JP_NyxPyro. None is invented here. Add each only after a real in-game capture, same standard as RR_JP_StantonPyro.",
     "RR_JP_PyroNyx": "verified live 2026-08-01 00:14:49Z: real Game.log capture at the Pyro-side Nyx gateway. UEX Location taken from the same snapshot survey that grounded the three entries below.",
     "RR_JP_StantonPyro": "verified live 2026-07-31: 22 terminals at this Location, 2 with priced rows",
-    "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows",
-    "RR_JP_StantonTerra": "verified live 2026-07-31: 21 terminals at this Location, 2 with priced rows"
+    "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows"
   },
   "notes": {
     "RR_JP_StantonPyro": "verified: real in-game example",
     "RR_JP_PyroNyx": "verified: real in-game capture (Game.log RequestLocationInventory, 2026-08-01). The DISPLAY name follows the convention of the confirmed RR_JP_StantonPyro entry ('<destination> Gateway Station'); the on-screen name was not read back, so correct it here if the game words it differently.",
     "RR_JP_PyroStanton": "derived by naming convention (reverse leg of a bidirectional route confirmed in the shipped starmap trade embed); exact in-game inventory key not independently captured",
-    "RR_JP_StantonTerra": "derived by naming convention; the Stanton-side jump point is present in the shipped starmap trade embed, but the exact in-game inventory key format is not independently captured",
-    "RR_JP_TerraStanton": "derived by naming convention; no corresponding reverse-direction jump point is present in the shipped starmap trade embed (Terra is not yet a reachable system)",
-    "RR_JP_StantonMagnus": "derived by naming convention only; no corresponding jump point exists in the shipped starmap trade embed (Magnus is not yet a reachable system)",
-    "RR_JP_MagnusStanton": "derived by naming convention only; no corresponding jump point exists in the shipped starmap trade embed (Magnus is not yet a reachable system)"
+    "_removed_2026_08_01": "The four Terra and Magnus gateway tokens (RR_JP_StantonTerra, RR_JP_TerraStanton, RR_JP_StantonMagnus, RR_JP_MagnusStanton) were removed here - see the '_scope' note above. Every remaining entry is either a real capture or the reverse leg of one."
   }
 }

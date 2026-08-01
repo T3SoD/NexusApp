@@ -65,7 +65,7 @@ public sealed class MapPage : UserControl
     // the live Game.log location, independent of _system - the whole point of the cross-system case
     // is that this can name an object in a system the user is not currently looking at. Null means
     // no live location resolves (LocationTracker has nothing yet, or it named something the map
-    // catalog cannot place - e.g. Magnus).
+    // catalog cannot place - a jurisdiction like "Rough & Ready", or a gateway with no raw token).
     private MapObject? _playerLocation;
 
     private DispatcherTimer? _hangarTimer;

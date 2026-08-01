@@ -34,9 +34,18 @@ public class LocationTrackerTests
         "requested inventory for Location[RR_JP_StantonPyro] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
-    private const string TerraGatewayReverseInventoryRequest =
-        "<2026-07-29T22:39:34.863Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
-        "requested inventory for Location[RR_JP_TerraStanton] " +
+    // Real capture (2026-08-01) at the Pyro-side Nyx gateway. The object it names, "Nyx Gateway",
+    // exists in BOTH Stanton and Pyro, so this token is what disambiguates the two.
+    private const string NyxGatewayInventoryRequest =
+        "<2026-08-01T00:14:49.839Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+        "requested inventory for Location[RR_JP_PyroNyx] " +
+        "[Team_CoreGameplayFeatures][Inventory]";
+
+    // The Nyx-side counterpart, which has NEVER been captured and is therefore deliberately absent
+    // from both alias tables. Shaped exactly like a real gateway token, which is the point.
+    private const string UncapturedNyxGatewayReverseInventoryRequest =
+        "<2026-08-01T00:14:49.839Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+        "requested inventory for Location[RR_JP_NyxPyro] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
     private const string InventoryLocationTransition =
@@ -196,16 +205,19 @@ public class LocationTrackerTests
         Assert.Equal("Pyro Gateway (Stanton)", t.LastKnownUexLocation); // new: the UEX Location
     }
 
-    // RR_JP_TerraStanton Normalizes to the SAME display name as RR_JP_PyroStanton
-    // ("Stanton Gateway Station" - not live, no UEX terminal), but is deliberately NOT in
-    // uexLocations (Terra is not a reachable system). Proves LastKnownUexLocation is resolved
-    // from the raw token, never guessed from the ambiguous shared display name.
+    // An uncaptured gateway token resolves to NOTHING rather than borrowing a neighbour's answer.
+    // RR_JP_NyxPyro is shaped exactly like the real RR_JP_PyroNyx and names the opposite end of
+    // the same jump point, so a lookup that pattern-matched instead of requiring a real capture
+    // would happily hand back "Nyx Gateway (Pyro)" and place the player in the wrong system.
+    // The raw passthrough asserted here is also the visible symptom of a missing capture: the
+    // origin pill shows the ugly token, which is exactly how the gateway gap got reported in the
+    // first place. That is intended - a wrong-but-tidy name is worse than an obviously raw one.
     [Fact]
-    public void Ingest_UngroundedGatewayTokenSharingADisplayName_LeavesLastKnownUexLocationNull()
+    public void Ingest_UncapturedGatewayToken_PassesThroughRaw_AndBorrowsNoUexLocation()
     {
         var t = new LocationTracker(new GameLogFeed());
-        t.Ingest(E(TerraGatewayReverseInventoryRequest));
-        Assert.Equal("Stanton Gateway Station", t.LastKnownLocation);
+        t.Ingest(E(UncapturedNyxGatewayReverseInventoryRequest));
+        Assert.Equal("RR_JP_NyxPyro", t.LastKnownLocation);
         Assert.Null(t.LastKnownUexLocation);
     }
 
@@ -246,12 +258,15 @@ public class LocationTrackerTests
     }
 
     [Fact]
-    public void Ingest_GatewayToken_SetsLastKnownRawToken_EvenThoughDisplayNameRepeats()
+    public void Ingest_GatewayToken_KeepsTheRawToken_BecauseTheObjectNameRepeatsAcrossSystems()
     {
+        // The display name alone cannot place this: "Nyx Gateway" names an object in BOTH Stanton
+        // and Pyro. Retaining the raw token beside the display name is what lets the map's player
+        // marker land in the right system (MapCatalog.RawTokenGateways).
         var t = new LocationTracker(new GameLogFeed());
-        t.Ingest(E(TerraGatewayReverseInventoryRequest));
-        Assert.Equal("Stanton Gateway Station", t.LastKnownLocation);
-        Assert.Equal("RR_JP_TerraStanton", t.LastKnownRawToken);
+        t.Ingest(E(NyxGatewayInventoryRequest));
+        Assert.Equal("Nyx Gateway Station", t.LastKnownLocation);
+        Assert.Equal("RR_JP_PyroNyx", t.LastKnownRawToken);
     }
 
     [Fact]

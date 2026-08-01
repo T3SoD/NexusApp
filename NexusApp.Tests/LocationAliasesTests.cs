@@ -100,7 +100,6 @@ public class LocationAliasesTests
     [Theory]
     [InlineData("RR_JP_StantonPyro", "Pyro Gateway (Stanton)")]
     [InlineData("RR_JP_PyroStanton", "Stanton Gateway (Pyro)")]
-    [InlineData("RR_JP_StantonTerra", "Terra Gateway (Stanton)")]
     public void UexLocationForToken_GroundedGatewayToken_ReturnsUexLocationString(string token, string expected)
         => Assert.Equal(expected, LocationAliases.UexLocationForToken(token));
 
@@ -108,21 +107,37 @@ public class LocationAliasesTests
     public void UexLocationForToken_IsCaseInsensitive()
         => Assert.Equal("Pyro Gateway (Stanton)", LocationAliases.UexLocationForToken("rr_jp_stantonpyro"));
 
-    // The ambiguity this table exists to avoid: RR_JP_PyroStanton and RR_JP_TerraStanton both
-    // Normalize to the SAME display name ("Stanton Gateway Station" - see
-    // Normalize_ReverseJumpPointGatewayToken_ReturnsStationName above), so a lookup keyed by
-    // display name could not tell them apart. RR_JP_TerraStanton has no live UEX terminal (Terra
-    // is not a reachable system) and is deliberately NOT in uexLocations, so it must resolve to
-    // null here rather than reusing RR_JP_PyroStanton's Location - proof the two tokens are never
-    // conflated even though Normalize maps them to the same text.
+    // The conflation this separate, raw-token-keyed table exists to prevent. Until 2026-08-01 the
+    // clearest demonstration was two tokens Normalizing to the same display name; removing the
+    // Terra and Magnus tokens (systems not in the game) left no such pair behind, so the guard is
+    // shown here with the case that still exists and still matters: two ends of ONE jump point,
+    // one captured and one not.
+    //
+    // RR_JP_PyroNyx and RR_JP_NyxPyro are the same gate from opposite sides. Their map objects are
+    // both named "<destination> Gateway", and that name repeats across systems, so nothing but the
+    // raw token separates them. A lookup that inferred from shape rather than requiring a real
+    // capture would hand the uncaptured side its neighbour's Location and put the player in the
+    // wrong system - so the uncaptured side must stay null.
     [Fact]
-    public void UexLocationForToken_AmbiguousDisplayName_DoesNotConflateDifferentTokens()
+    public void UexLocationForToken_UncapturedOppositeEnd_DoesNotBorrowItsNeighboursLocation()
     {
-        Assert.Equal("Stanton Gateway Station", LocationAliases.Normalize("RR_JP_PyroStanton"));
-        Assert.Equal("Stanton Gateway Station", LocationAliases.Normalize("RR_JP_TerraStanton"));
+        Assert.Equal("Nyx Gateway (Pyro)", LocationAliases.UexLocationForToken("RR_JP_PyroNyx"));
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
+    }
 
-        Assert.Equal("Stanton Gateway (Pyro)", LocationAliases.UexLocationForToken("RR_JP_PyroStanton"));
-        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_TerraStanton"));
+    // The Terra and Magnus gateway tokens were removed 2026-08-01 (the owner's ruling: those systems
+    // are not in the game, so no player can ever stand at those gates and the tokens can never
+    // fire). This pins the removal so a future artifact edit cannot quietly reintroduce coverage
+    // for places that do not exist.
+    [Theory]
+    [InlineData("RR_JP_StantonTerra")]
+    [InlineData("RR_JP_TerraStanton")]
+    [InlineData("RR_JP_StantonMagnus")]
+    [InlineData("RR_JP_MagnusStanton")]
+    public void UnreachableSystemGatewayTokens_AreAbsentFromBothTables(string token)
+    {
+        Assert.Equal(token, LocationAliases.Normalize(token));   // raw passthrough = no alias entry
+        Assert.Null(LocationAliases.UexLocationForToken(token));
     }
 
     [Theory]
