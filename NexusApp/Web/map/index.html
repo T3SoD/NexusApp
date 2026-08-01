@@ -193,7 +193,8 @@ function tex(draw){ const c=document.createElement('canvas'); c.width=c.height=1
   const g=c.getContext('2d'); g.translate(64,64); draw(g);
   const t=new THREE.CanvasTexture(c); t.anisotropy=2; return t; }
 const CYAN='#7FE9E0', DIM='rgba(127,233,224,0.55)', SLATE='#8693A0',
-      AMBER='#FFB23E', GOLD='#FFD089', RED='#FF6B6B', GREEN='#66E6A6';
+      AMBER='#FFB23E', GOLD='#FFD089', RED='#FF6B6B', GREEN='#66E6A6',
+      BLUE='#3B82F6';   /* WorkOrder status-family blue: the MY ORDERS tick + rail LED (F14) */
 function stroke(g,col,w){ g.strokeStyle=col; g.lineWidth=w; g.shadowColor=col; g.shadowBlur=10; }
 const TEX = {
   star: tex(g=>{ const r=g.createRadialGradient(0,0,4,0,0,60);
@@ -235,7 +236,9 @@ const TEX = {
      HAULS is a downward chevron (somewhere you have to go); ORDERS is a square bracket pair. */
   haultick: tex(g=>{ stroke(g,CYAN,5); g.beginPath(); g.moveTo(-30,-14); g.lineTo(0,18);
     g.lineTo(30,-14); g.stroke(); }),
-  ordertick: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.moveTo(-14,-32); g.lineTo(-32,-32);
+  /* BLUE, not gold (F14): gold belonged to GUIDES ticks too, so an object carrying both was
+     ambiguous; blue matches the MY ORDERS rail LED and the work-order status family. */
+  ordertick: tex(g=>{ stroke(g,BLUE,5); g.beginPath(); g.moveTo(-14,-32); g.lineTo(-32,-32);
     g.lineTo(-32,32); g.lineTo(-14,32); g.stroke();
     g.beginPath(); g.moveTo(14,-32); g.lineTo(32,-32); g.lineTo(32,32); g.lineTo(14,32); g.stroke(); }),
 };

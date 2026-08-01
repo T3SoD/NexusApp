@@ -30,8 +30,6 @@ namespace NexusApp.Views;
 public sealed class MapPage : UserControl
 {
     // ── hardcoded values with no exact-value palette brush match (see task-9 report table) ──
-    private static readonly SolidColorBrush HangarChipBg = Frozen(Color.FromArgb(0x12, 0xFF, 0x6B, 0x6B));      // rgba(255,107,107,0.07)
-    private static readonly SolidColorBrush HangarChipBorder = Frozen(Color.FromArgb(0x59, 0xFF, 0x6B, 0x6B));  // rgba(255,107,107,0.35)
     private static readonly SolidColorBrush OreChipBg = Frozen(Color.FromArgb(0x1A, 0x66, 0xE6, 0xA6));         // rgba(102,230,166,0.10)
     private static readonly SolidColorBrush OreChipBorder = Frozen(Color.FromArgb(0x59, 0x66, 0xE6, 0xA6));     // rgba(102,230,166,0.35)
     private static readonly SolidColorBrush MeasureArmedBg = Frozen(Color.FromArgb(0x14, 0x7F, 0xE9, 0xE0));    // rgba(127,233,224,0.08)
@@ -77,7 +75,7 @@ public sealed class MapPage : UserControl
     // catalog cannot place - a jurisdiction like "Rough & Ready", or a gateway with no raw token).
     private MapObject? _playerLocation;
 
-    private DispatcherTimer? _hangarTimer;
+    private ExecHangarStatusLine _hangarLine = null!;
 
     // ── side panel element refs (built once, repainted live) ──
     private readonly Dictionary<string, Border> _systemPills = new(StringComparer.OrdinalIgnoreCase);
@@ -109,8 +107,6 @@ public sealed class MapPage : UserControl
     private WrapPanel _oreRow = null!;
     private WrapPanel _terminalRow = null!;   // app review F10: one chip per UEX terminal on this object
     private Border _hangarChip = null!;
-    private TextBlock _hangarValue = null!;
-    private TextBlock _hangarLabel = null!;
     private Border _addBtn = null!;
     private Border _viewPricesBtn = null!;
     private Border _openGuideBtn = null!;
@@ -669,31 +665,18 @@ public sealed class MapPage : UserControl
         Logger.Info($"[UI] map: measure {(_measureArmed ? "armed" : "off")}");
     }
 
-    // ── hangar countdown timer (visible AND the hangar layer on, only) ──
+    // ── hangar status line lifecycle (F14: the shared ExecHangarStatusLine owns its own
+    // 1-second ticker; this page only decides WHEN it runs, per the control's caller-owned
+    // contract). Runs only while all three gates hold: page visible, hangar layer on, and the
+    // chip actually shown (the hangar object selected) - the old chip ticked even while its
+    // host was collapsed. ──
 
     private void UpdateHangarTimer()
     {
-        bool shouldRun = IsVisible && _hangarOn;
-        if (shouldRun)
-        {
-            if (_hangarTimer != null) return;   // already running - never stack a second timer
-            _hangarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _hangarTimer.Tick += (_, _) => RefreshHangarChip();
-            _hangarTimer.Start();
-            RefreshHangarChip();
-        }
+        if (IsVisible && _hangarOn && _hangarChip.Visibility == Visibility.Visible)
+            _hangarLine.Start();
         else
-        {
-            _hangarTimer?.Stop();
-            _hangarTimer = null;
-        }
-    }
-
-    private void RefreshHangarChip()
-    {
-        var snap = ExecHangarCycle.At(DateTime.UtcNow, App.Settings.Current.ExecHangarAnchorOverrideUtc);
-        _hangarValue.Text = ExecHangarCycle.FormatCountdown(snap.TimeToTransition);
-        _hangarLabel.Text = snap.IsOpen ? "EXEC HANGAR CLOSES" : "EXEC HANGAR OPENS";
+            _hangarLine.Stop();
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -1080,6 +1063,14 @@ public sealed class MapPage : UserControl
         "guides" => Hud.Col("GoldColor"),
         "mining" => Hud.Col("OkColor"),
         "hangar" => Hud.Col("DangerColor"),
+        // F14: the two LIVE personal-data layers earn their own hues instead of the base-map
+        // slate they shipped in - the rail's grammar is color = layer identity, and "your data,
+        // changing right now" deserves better than the asteroid toggle's neutral. Each matches
+        // its own on-map tick: hauls were already cyan chevrons in the scene; the order tick
+        // recolored gold -> this blue in the same pass, which also ended the collision where
+        // order ticks and GUIDES both claimed gold.
+        "hauls" => Hud.Col("CyanColor"),
+        "orders" => Color.FromRgb(0x3B, 0x82, 0xF6),   // WorkOrder.StatusColorHex Mining blue - the queue's own family
         _ => Hud.Col("FgDimColor"),   // asteroids: a display toggle, not a data layer - stays slate
     };
 
@@ -1288,16 +1279,17 @@ public sealed class MapPage : UserControl
         _terminalRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
         content.Children.Add(_terminalRow);
 
-        var hangInner = new StackPanel { Orientation = Orientation.Horizontal };
-        _hangarValue = new TextBlock { FontFamily = Hud.Font("MonoFont"), FontSize = 14, Foreground = Hud.Br("DangerBrush") };
-        _hangarLabel = new TextBlock { FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        hangInner.Children.Add(_hangarValue);
-        hangInner.Children.Add(_hangarLabel);
+        // F14: the shared ExecHangarStatusLine (compact, its fourth host) replaced a hand-rolled
+        // countdown chip that sat in a PERMANENT danger-red tint, open or closed - red that never
+        // changes stops meaning anything, and the one surface where the hangar is literally
+        // selected on a map was the only host without the five phase lights. Neutral chip chrome;
+        // the line's own phase colors (amber open / cyan counting down to open) carry the state.
+        _hangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "map");
         _hangarChip = new Border
         {
-            Background = HangarChipBg, BorderBrush = HangarChipBorder, BorderThickness = new Thickness(1),
+            Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 10, 0, 0),
-            Child = hangInner, Visibility = Visibility.Collapsed,
+            Child = _hangarLine, Visibility = Visibility.Collapsed,
         };
         content.Children.Add(_hangarChip);
 
@@ -1457,7 +1449,7 @@ public sealed class MapPage : UserControl
 
         bool showHangar = isHangar && _hangarOn;
         _hangarChip.Visibility = showHangar ? Visibility.Visible : Visibility.Collapsed;
-        if (showHangar) RefreshHangarChip();
+        UpdateHangarTimer();   // the shared line runs only while its host is actually shown
 
         // TERMINALS (app review F10). Shown only when there is genuinely a choice: with one
         // terminal the VIEW PRICES button already goes to the only place it could, and a lone chip
