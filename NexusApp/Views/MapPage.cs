@@ -60,7 +60,7 @@ public sealed class MapPage : UserControl
     private double? _prevDistanceMeters;
     private readonly List<int> _draft = new();
     private List<int> _plannerIds = new();
-    private (int Buy, int Sell)? _plannerPushed;   // M-1 idempotency guard: the terminal-id pair last pushed to the scene, so MainWindow re-pushing the same pin (or "no pin") on every MAP activation is a no-op
+    private List<(int Buy, int Sell)>? _plannerPushed;   // M-1 idempotency guard: the terminal-id pairs last pushed to the scene, so MainWindow re-pushing the same pins (or "no pins") on every MAP activation is a no-op
     private bool _measureArmed;
     private (string A, string B, double Meters)? _measureResult;
     private bool _sceneReady;
@@ -289,25 +289,35 @@ public sealed class MapPage : UserControl
 
     // ── planner route pinning (MainWindow forwards TradePage's pinned buy/sell terminals) ──
 
-    public void SetPlannerRoute(int buyTerminalId, int sellTerminalId)
+    /// <summary>Draws every pinned route's buy-to-sell leg (the owner's call, 2026-08-01: when several
+    /// routes are pinned the map shows all of them, so the map and the overlay never disagree about
+    /// what is pinned). The scene reads the id list as consecutive PAIRS, one segment per pair, so
+    /// two runs never get joined into one polyline through whichever terminal happened to be listed
+    /// between them. A leg whose terminals do not both resolve to catalog objects is skipped
+    /// individually - one unplaceable terminal must not blank the other runs.</summary>
+    public void SetPlannerRoutes(IReadOnlyList<(int Buy, int Sell)> legs)
     {
-        // M-1: MainWindow re-pushes the pinned route on every MAP activation - a same-pair push
+        // M-1: MainWindow re-pushes the pinned routes on every MAP activation - an identical push
         // is a no-op, not a fresh scene post/log.
-        if (_plannerPushed is { } pushed && pushed.Buy == buyTerminalId && pushed.Sell == sellTerminalId) return;
+        if (_plannerPushed is { } pushed && pushed.SequenceEqual(legs)) return;
 
-        var buyObj = _catalog.ResolveTerminal(FindTerminal(buyTerminalId));
-        var sellObj = _catalog.ResolveTerminal(FindTerminal(sellTerminalId));
-        if (buyObj == null || sellObj == null)
+        var ids = new List<int>();
+        int unresolved = 0;
+        foreach (var (buyId, sellId) in legs)
         {
-            ClearPlannerRoute();
-            Logger.Info("[UI] map: planner route unresolved");
-            return;
+            var buyObj = _catalog.ResolveTerminal(FindTerminal(buyId));
+            var sellObj = _catalog.ResolveTerminal(FindTerminal(sellId));
+            if (buyObj == null || sellObj == null) { unresolved++; continue; }
+            ids.Add(buyObj.Id);
+            ids.Add(sellObj.Id);
         }
 
-        _plannerIds = new List<int> { buyObj.Id, sellObj.Id };
-        _plannerPushed = (buyTerminalId, sellTerminalId);
+        _plannerIds = ids;
+        _plannerPushed = legs.ToList();
         _scene.PostJson(MapSceneBuilder.BuildPlanner(_plannerIds));
-        Logger.Info($"[UI] map: planner route shown ({buyObj.Name} -> {sellObj.Name})");
+        Logger.Info(ids.Count == 0
+            ? $"[UI] map: planner routes cleared ({unresolved} unresolved)"
+            : $"[UI] map: planner routes shown ({ids.Count / 2} of {legs.Count})");
     }
 
     public void ClearPlannerRoute()

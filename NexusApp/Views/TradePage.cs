@@ -781,43 +781,61 @@ public sealed partial class TradePage : UserControl
     }
 
     // ── MAP tab hooks (Task 8, starmap MAP tab integration) ──────────────────────────────────
-    // Session-only pin (not persisted - a route pin is a "what I'm looking at right now" marker,
-    // not a saved preference; nothing in AppSettings' fixed contract has room for it either). The
-    // WPF wiring here (PinRoute, the row's PIN chip, SendRouteFromMap's field writes,
+    // Session-only pins (not persisted - a route pin is a "what I'm running right now" marker, not
+    // a saved preference; nothing in AppSettings' fixed contract has room for one either). The WPF
+    // wiring here (PinRoute, the row's PIN chip, SendRouteFromMap's field writes,
     // ShowPricesForTerminal's tab switch) is not unit tested - constructing a real TradePage needs
-    // a live App/window context, too heavy for a unit test - but the stale-pin DECISION it depends
-    // on is: RoutePlanner.PinSurvivesRefresh (Services/RoutePlanner.cs), unit tested directly in
-    // NexusApp.Tests/TradePinnedRouteTests.cs.
-    private TradeRoute? _pinnedRoute;
-    internal TradeRoute? PinnedRoute => _pinnedRoute;
+    // a live App/window context, too heavy for a unit test - but every DECISION it depends on is:
+    // RoutePlanner.TogglePin / SurvivingPins / PinSurvivesRefresh (Services/RoutePlanner.cs), unit
+    // tested directly in NexusApp.Tests/TradePinnedRouteTests.cs.
+    //
+    // MULTI-PIN since 2026-08-01 (the owner: "i would like the ability to pin multiple routes from
+    // planner to display in the overlay with the ability to close each one out from the overlay").
+    // Order is pin order, oldest first, and it is load-bearing: the overlay lists pins in it, and
+    // TogglePin drops the oldest at the cap.
+    private IReadOnlyList<TradeRoute> _pinnedRoutes = Array.Empty<TradeRoute>();
+    internal IReadOnlyList<TradeRoute> PinnedRoutes => _pinnedRoutes;
     internal event Action? PinnedRouteChanged;
 
-    /// <summary>Toggles the session pin: pinning the already-pinned route unpins it (same-route
-    /// identity is RoutePlanner.PinSurvivesRefresh's own triple rule, reused here rather than a
-    /// second copy of it), pinning null clears with no-op-if-already-clear, and pinning any other
-    /// route replaces whatever was pinned before (one pin at a time). Always raises
-    /// PinnedRouteChanged on an actual change, never on a no-op.</summary>
+    /// <summary>True when this exact haul (buy terminal, sell terminal, commodity) is pinned. The
+    /// row's PIN chip paints from this, so "is this row pinned" can never disagree with what the
+    /// overlay is showing.</summary>
+    internal bool IsPinned(TradeRoute r) => RoutePlanner.PinSurvivesRefresh(r, _pinnedRoutes);
+
+    /// <summary>Toggles a session pin: pinning an already-pinned haul unpins it, and pinning past
+    /// the cap drops the oldest (RoutePlanner.TogglePin owns both rules). Passing null clears every
+    /// pin. Raises PinnedRouteChanged only on an actual change.</summary>
     internal void PinRoute(TradeRoute? r)
     {
-        if (r is null) { ClearPin(); return; }
-        if (_pinnedRoute is { } current && RoutePlanner.PinSurvivesRefresh(current, new[] { r }))
-        {
-            ClearPin();
-            return;
-        }
-        _pinnedRoute = r;
-        Logger.Info("[UI] trade: route pinned");
-        PinnedRouteChanged?.Invoke();
+        if (r is null) { SetPins(Array.Empty<TradeRoute>()); return; }
+        SetPins(RoutePlanner.TogglePin(_pinnedRoutes, r));
     }
 
-    /// <summary>The stale-pin path: RebuildPlanner calls this when the fresh ranking no longer
-    /// contains the pinned route's (buy terminal, sell terminal, commodity) triple. No-op when
-    /// nothing is pinned, so a rebuild that never had a pin never fires a spurious event.</summary>
-    private void ClearPin()
+    /// <summary>Removes one pin, the overlay's per-card close. Unlike PinRoute this never adds:
+    /// a close on a card whose haul is already gone is a no-op, not a re-pin.</summary>
+    internal void UnpinRoute(TradeRoute r)
     {
-        if (_pinnedRoute is null) return;
-        _pinnedRoute = null;
-        Logger.Info("[UI] trade: route unpinned");
+        if (!IsPinned(r)) return;
+        SetPins(_pinnedRoutes.Where(p => !RoutePlanner.SameHaul(p, r)).ToList());
+    }
+
+    /// <summary>The stale-pin path: RebuildPlanner calls this with the fresh ranking so pins whose
+    /// haul no longer exists drop out. Each pin is judged on its own, so one route falling out of
+    /// the ranking never takes the others with it.</summary>
+    internal void DropStalePins(IReadOnlyList<TradeRoute> fresh)
+        => SetPins(RoutePlanner.SurvivingPins(_pinnedRoutes, fresh));
+
+    // The single write path, so every change logs once and raises once. A no-op assignment (same
+    // count, same hauls, same order) is swallowed here rather than at each caller - RebuildPlanner
+    // calls DropStalePins on EVERY rebuild, including the hourly market tick, and an event per tick
+    // would repaint the overlay and re-push the map route for nothing.
+    private void SetPins(IReadOnlyList<TradeRoute> next)
+    {
+        if (next.Count == _pinnedRoutes.Count && next.Zip(_pinnedRoutes).All(p => RoutePlanner.SameHaul(p.First, p.Second)))
+            return;
+        var before = _pinnedRoutes.Count;
+        _pinnedRoutes = next;
+        Logger.Info($"[UI] trade: pinned routes {before} -> {next.Count}");
         PinnedRouteChanged?.Invoke();
     }
 

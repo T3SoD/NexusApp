@@ -332,15 +332,23 @@ function buildSystem(){
   refreshTicks();
 }
 
-/* committed TRADE planner route: solid dim amber, visible only with the Trade layer on */
+/* committed TRADE planner routes: solid dim amber, visible only with the Trade layer on.
+   state.planner is a flat list of buy/sell PAIRS - several routes can be pinned at once
+   (2026-08-01), so this draws LineSegments (one segment per consecutive pair) rather than a
+   polyline, which would otherwise join one run's sell stop to the next run's buy stop. A pair
+   whose ends are not both in the active system contributes nothing and drops out on its own. */
 function redrawPlanner(){
   if(!sysGroup) return;
   if(plannerLine){ sysGroup.remove(plannerLine); plannerLine.geometry.dispose();
     plannerLine.material.dispose(); plannerLine=null; }
-  const objs=state.planner.map(id=>BY_ID.get(id)).filter(Boolean);
-  if(objs.length>1 && state.layers.trade){
-    plannerLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-      objs.map(o=>new THREE.Vector3(o.x/MM,o.z/MM,-o.y/MM))),
+  const pts=[];
+  for(let i=0;i+1<state.planner.length;i+=2){
+    const a=BY_ID.get(state.planner[i]), b=BY_ID.get(state.planner[i+1]);
+    if(!a||!b) continue;
+    pts.push(new THREE.Vector3(a.x/MM,a.z/MM,-a.y/MM), new THREE.Vector3(b.x/MM,b.z/MM,-b.y/MM));
+  }
+  if(pts.length && state.layers.trade){
+    plannerLine=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
       new THREE.LineBasicMaterial({color:0xFFB23E, transparent:true, opacity:0.45}));
     plannerLine.renderOrder=1; sysGroup.add(plannerLine);
   }

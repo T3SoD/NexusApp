@@ -433,9 +433,9 @@ public sealed partial class TradePage
         // terminal, commodity) triple, not by object identity - this fresh `routes` list is a
         // brand new set of TradeRoute instances every rebuild. A pin whose triple no longer exists
         // in the fresh ranking must not survive it (the Sell-picker desync lesson: a stale
-        // selection surviving a snapshot refresh is worse than an honestly cleared one).
-        if (PinnedRoute is { } pinnedRoute && !RoutePlanner.PinSurvivesRefresh(pinnedRoute, routes))
-            PinRoute(null);
+        // selection surviving a snapshot refresh is worse than an honestly cleared one). Since
+        // 2026-08-01 several routes can be pinned, so each is judged separately.
+        DropStalePins(routes);
 
         if (routes.Count == 0)
         {
@@ -994,13 +994,12 @@ public sealed partial class TradePage
         {
             head.Children.Add(RankPerScuTag(r.Net, r.TripQty));
         }
-        // PIN toggle (Task 8, MAP tab route pinning): active state check reuses the same
-        // PinSurvivesRefresh triple rule the stale-pin clear in RebuildPlanner already applies
-        // (fresh = this one row's route), so "is this row the pinned one" can never disagree with
-        // "did the pin survive this rebuild" - one rule, not two hand-written comparisons.
+        // PIN toggle (Task 8, MAP tab route pinning): active state comes from IsPinned, which is
+        // the same triple rule the stale-pin drop in RebuildPlanner applies, so "is this row
+        // pinned" can never disagree with what the overlay and the map are showing - one rule, not
+        // three hand-written comparisons.
         // Last in the head row: the informational tags read together, the action sits at the end.
-        bool pinnedHere = PinnedRoute is { } pinnedForRow && RoutePlanner.PinSurvivesRefresh(pinnedForRow, new[] { r });
-        var pinChip = PinChip(pinnedHere);
+        var pinChip = PinChip(IsPinned(r));
         pinChip.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;   // never bubble to the row host and toggle the expand band

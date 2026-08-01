@@ -229,7 +229,42 @@ public static class RoutePlanner
     // reuses it (fresh = the single row's route) to decide its own active/inactive paint - one
     // rule, one place, instead of two copies of the same three-field comparison drifting apart.
     internal static bool PinSurvivesRefresh(TradeRoute pinned, IReadOnlyList<TradeRoute> fresh) =>
-        fresh.Any(r => r.BuyRow.TerminalId == pinned.BuyRow.TerminalId
-            && r.SellRow.TerminalId == pinned.SellRow.TerminalId
-            && r.BuyRow.CommodityId == pinned.BuyRow.CommodityId);
+        fresh.Any(r => SameHaul(r, pinned));
+
+    /// <summary>The one triple rule every pin decision below is built from: two routes name the
+    /// same haul when they share a buy terminal, a sell terminal and a commodity. Prices, trip
+    /// quantity and tier are all free to differ - a fresh snapshot reprices the same haul.</summary>
+    internal static bool SameHaul(TradeRoute a, TradeRoute b) =>
+        a.BuyRow.TerminalId == b.BuyRow.TerminalId
+        && a.SellRow.TerminalId == b.SellRow.TerminalId
+        && a.BuyRow.CommodityId == b.BuyRow.CommodityId;
+
+    /// <summary>How many routes may be pinned at once (the owner's call, 2026-08-01, when pinning went
+    /// from one route to several). Chosen against the overlay: five Manifest Strip cards fit the
+    /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
+    internal const int MaxPins = 5;
+
+    /// <summary>Pure pin toggle. Pinning a haul that is already pinned UNPINS it (the chip stays a
+    /// toggle, exactly as it behaved when only one pin existed); otherwise the route is appended,
+    /// and once the list is at <paramref name="cap"/> the OLDEST pin is dropped to make room.
+    /// Dropping the oldest rather than refusing the new pin keeps the chip's promise: a click on
+    /// PIN always pins. Returns a new list; never mutates the one passed in.</summary>
+    internal static IReadOnlyList<TradeRoute> TogglePin(
+        IReadOnlyList<TradeRoute> pinned, TradeRoute route, int cap = MaxPins)
+    {
+        var kept = pinned.Where(p => !SameHaul(p, route)).ToList();
+        if (kept.Count != pinned.Count) return kept;   // it was pinned: this click unpinned it
+
+        kept.Add(route);
+        while (kept.Count > cap) kept.RemoveAt(0);
+        return kept;
+    }
+
+    /// <summary>The stale-pin rule applied to the whole list: keeps the pins whose haul still
+    /// exists in a fresh ranking, in their existing order. The single-pin version of this ran once
+    /// per rebuild; with several pins each is judged on its own, so one route falling out of the
+    /// ranking can never take the others down with it.</summary>
+    internal static IReadOnlyList<TradeRoute> SurvivingPins(
+        IReadOnlyList<TradeRoute> pinned, IReadOnlyList<TradeRoute> fresh) =>
+        pinned.Where(p => PinSurvivesRefresh(p, fresh)).ToList();
 }

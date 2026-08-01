@@ -473,9 +473,11 @@
                     </ScrollViewer>
                 </Grid>
 
-                <!-- TRADE tab: the route pinned in the planner, plus where you are. Deliberately
-                     read-only and tiny - this is read mid-flight, so it answers "what am I running
-                     and where am I in it" and nothing else. Built in code (RebuildTradePanel). -->
+                <!-- TRADE tab: every route pinned in the planner as a Manifest Strip card (mock
+                     nexus-design-lab/overlay-trade, candidate B), plus where you are. Deliberately
+                     tiny - this is read mid-flight, so it answers "what am I running and where am I
+                     in it" and nothing else. The only action is a per-card unpin. Built in code
+                     (RebuildTradePanel). -->
                 <Grid x:Name="TradeTabContent" Visibility="Collapsed">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
                         <StackPanel x:Name="TradePanelItems"/>

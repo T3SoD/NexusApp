@@ -5,13 +5,30 @@ namespace NexusApp.Tests;
 
 public class TabGlyphSpecsTests
 {
-    // Every overlay tab, plus the reserved future trade tab, must resolve to a non-empty glyph.
+    // Every overlay tab must resolve to a non-empty glyph.
     [Fact]
     public void EveryTab_HasGlyphParts()
     {
         foreach (var id in OverlayTabs.Ids)
             Assert.NotEmpty(TabGlyphSpecs.PartsFor(id));
-        Assert.NotEmpty(TabGlyphSpecs.PartsFor("trade"));
+    }
+
+    // the owner, 2026-08-01: "the icon does not match the trade icon in the main app". The overlay drew
+    // a hand-authored trending-up arrow because the tab predated the Trade page's dock icon. Only
+    // shopping - which has no app page - may stay hand-authored; every other tab must resolve
+    // through the dock so a regenerated pick can never leave the overlay behind. This is the guard
+    // that keeps a future tab from quietly re-acquiring its own private glyph.
+    [Fact]
+    public void Trade_DrawsTheDockBalanceScale_NotAHandAuthoredGlyph()
+    {
+        var parts = TabGlyphSpecs.PartsFor("trade");
+
+        // DockIconSpecsCustom "trade": beam post, pan bar, two hangers, two pans, one cross bar.
+        Assert.Equal(7, parts.Count);
+        Assert.Equal("M12 4 L12 20.5", parts[0].Attrs["d"]);
+        Assert.Contains(parts, p => p.El == "path" && p.Attrs["d"] == "M1.8 12.5 A 3.2 3.2 0 0 0 8.2 12.5");
+        // The retired arrow, so the fix cannot silently revert.
+        Assert.DoesNotContain(parts, p => p.Attrs.TryGetValue("d", out var d) && d == "M16 7h6v6");
     }
 
     // Flourish parts (f_ prefix) are dock-scale decoration; the 15px tab glyphs must drop them.

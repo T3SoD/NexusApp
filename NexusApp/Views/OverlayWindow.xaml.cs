@@ -3341,18 +3341,44 @@ public partial class OverlayWindow : Window
     // position. This tab answers exactly two questions - what am I running, and where am I in it -
     // and deliberately nothing else. Screen space here is tiny and it is read mid-flight, so it is a
     // read-only glance, not a second planner.
+    //
+    // Reworked the same day on the owner's live pass: it was one route, one column of plain lines, with
+    // no way to unpin from here. It now lists EVERY pinned route as a "Manifest Strip" card - mock
+    // nexus-design-lab/overlay-trade, candidate B of four, picked for pins-per-screen because this
+    // panel gets a two-second read mid-flight. Three lines a card: commodity + SCU, the run itself
+    // on one rail, distance + margin. Each card closes itself.
 
-    // The route TradePage currently has pinned, pushed in by MainWindow on the same event that
-    // already keeps the Starmap's route overlay in sync. Null = nothing pinned.
-    private TradeRoute? _pinnedRoute;
+    // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
+    // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
+    private IReadOnlyList<TradeRoute> _pinnedRoutes = Array.Empty<TradeRoute>();
 
-    /// <summary>MainWindow forwards TradePage's pinned route here, mirroring PushPinnedRouteToMap.
-    /// Cheap and idempotent: it only repaints when this tab is the one being presented.</summary>
-    public void SetPinnedRoute(TradeRoute? route)
+    /// <summary>Raised when a card's close control is clicked. MainWindow routes it back into
+    /// TradePage, which owns the pin list - this window never edits it directly, so the planner
+    /// chip, the Starmap leg and these cards can never disagree about what is pinned.</summary>
+    public event Action<TradeRoute>? UnpinRouteRequested;
+
+    /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
+    /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
+    /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
+    public void SetPinnedRoutes(IReadOnlyList<TradeRoute> routes)
     {
-        _pinnedRoute = route;
+        _pinnedRoutes = routes;
+        TabStrip.SetBadge("trade", routes.Count);
+        GhostRail.SetBadge("trade", routes.Count);   // ghost mode carries the same counts (issue #27)
         if (IsTabPresented("trade")) RebuildTradePanel();
     }
+
+    // Band metrics, from the mock's CSS (.D .band and friends). The band runs the full width of the
+    // card and both terminal names get their own full-width line - a first pass at candidate D put
+    // the names side by side flanking the band, and every terminal name over about 14 characters
+    // was destroyed by the truncation, which is most of them.
+    private const double TradeBandHeight = 18;
+    private const double TradeBandCapSize = 9;
+    private const double TradeBandShipSize = 11;
+    // A right-pointing dart, drawn in the same 24-unit box the dock glyphs use and scaled down by
+    // Stretch.Uniform. Points at the destination rather than up: on a horizontal band, direction of
+    // travel is the whole reason the marker is a ship and not another dot.
+    private const string TradeShipGeometry = "M2 3 L14 9 L2 15 L5 9 Z";
 
     private void RebuildTradePanel()
     {
@@ -3360,7 +3386,9 @@ public partial class OverlayWindow : Window
 
         var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
         var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var ok = (System.Windows.Media.Brush)FindResource("OkBrush");
         var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
 
         // FontFamily is NEVER assigned null: WPF rejects it outright with "'' is not a valid value
@@ -3377,45 +3405,270 @@ public partial class OverlayWindow : Window
             return tb;
         }
 
-        // WHERE YOU ARE. Silence when unknown is not an option on a tab this small - an empty panel
-        // reads as broken - so this one case says so plainly instead.
+        // WHERE YOU ARE, as the panel's own header rather than a card field: it is the one fact
+        // shared by every card, and repeating it per card would cost a line each. Silence when
+        // unknown is not an option on a tab this small - an empty panel reads as broken - so that
+        // one case says so plainly instead.
         var place = App.Player.Label;
-        TradePanelItems.Children.Add(Line(place is null ? "Location unknown" : $"You: {place}",
-                                          place is null ? dim : fg, 12.5));
+        var youRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 2, 8),
+        };
+        youRow.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = 5, Height = 5, Fill = place is null ? dim : ok, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        });
+        youRow.Children.Add(new TextBlock
+        {
+            Text = "YOU", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
+        });
+        youRow.Children.Add(new TextBlock
+        {
+            Text = place ?? "Location unknown", FontSize = 11.5, Foreground = place is null ? dim : fg,
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        TradePanelItems.Children.Add(youRow);
+        TradePanelItems.Children.Add(new Border
+        {
+            Height = 1, Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            Margin = new Thickness(0, 0, 0, 8),
+        });
 
-        if (_pinnedRoute is not { } r)
+        if (_pinnedRoutes.Count == 0)
         {
             TradePanelItems.Children.Add(Line(
-                "No route pinned. Pin one in Trade > Planner and it shows here and on the Starmap.",
+                "No routes pinned. Pin one in Trade > Planner and it shows here and on the Starmap.",
                 dim, 11.5));
             return;
         }
 
-        var buy = r.BuyRow;
-        var sell = r.SellRow;
+        // Terminals, resolved once for the whole rebuild: a TradeRoute carries price rows, not
+        // terminals, and both the leg distance and the progress rail need the real MarketTerminal
+        // to reach the geometry catalog.
+        var terminals = App.Market.Snapshot?.Terminals.Rows.ToDictionary(t => t.Id);
+        var here = App.Player.Current;
 
-        TradePanelItems.Children.Add(Line(buy.CommodityName, accent, 14));
-        TradePanelItems.Children.Add(Line($"BUY   {buy.TerminalName}", fg, 12, mn: true));
-        TradePanelItems.Children.Add(Line($"SELL  {sell.TerminalName}", fg, 12, mn: true));
-
-        // Per-unit margin rather than the trip total: the total depends on a ship and a budget the
-        // player may have changed since pinning, but the margin is a property of the route itself.
-        var perUnit = sell.Sell - buy.Buy;
-        TradePanelItems.Children.Add(Line($"{perUnit:N0} aUEC/SCU   ×{r.TripQty} SCU", dim, 11.5, mn: true));
-
-        // WHICH LEG. Only possible now that App.Player exists, and the single most useful thing this
-        // tab can say mid-flight. Matched by terminal name, since a pinned route carries price rows
-        // rather than resolved terminals, and the player's own label is what the log gave us.
-        if (place is not null)
-        {
-            string? leg =
-                string.Equals(place, buy.TerminalName, StringComparison.OrdinalIgnoreCase) ? "At the BUY stop." :
-                string.Equals(place, sell.TerminalName, StringComparison.OrdinalIgnoreCase) ? "At the SELL stop." :
-                null;
-            if (leg is not null)
-                TradePanelItems.Children.Add(Line(leg, accent, 11.5));
-        }
+        foreach (var route in _pinnedRoutes)
+            TradePanelItems.Children.Add(BuildTradeCard(route, terminals, here, fg, dim, gold, accent, mono));
     }
+
+    // One Manifest Strip card. Every value the owner asked for is on it: start, end, distance,
+    // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
+    private Border BuildTradeCard(
+        TradeRoute route,
+        IReadOnlyDictionary<int, MarketTerminal>? terminals,
+        MapObject? here,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
+        System.Windows.Media.FontFamily mono)
+    {
+        var buy = route.BuyRow;
+        var sell = route.SellRow;
+        MarketTerminal? buyTerminal = null, sellTerminal = null;
+        terminals?.TryGetValue(buy.TerminalId, out buyTerminal);
+        terminals?.TryGetValue(sell.TerminalId, out sellTerminal);
+
+        var rows = new StackPanel();
+
+        // Line 1: commodity, then what the run is worth - SCU and per-SCU margin together, since
+        // both answer the same question and neither earns a line of its own on a card this size.
+        // Per-unit rather than the trip total: the total depends on a ship and a budget the player
+        // may have changed since pinning, while the margin is a property of the route itself.
+        // The right margin is the close control's landing strip.
+        var head = new Grid { Margin = new Thickness(0, 0, 16, 7) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var commodity = new TextBlock
+        {
+            Text = buy.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = buy.CommodityName,
+        };
+        head.Children.Add(commodity);
+        var scu = new TextBlock
+        {
+            Text = $"{route.TripQty} SCU", FontFamily = mono, FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(scu, 1);
+        head.Children.Add(scu);
+        var margin = new TextBlock
+        {
+            Text = $"{sell.Sell - buy.Buy:N0}/SCU", FontFamily = mono, FontSize = 9.5, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 1, 0, 0),
+            ToolTip = "Margin per SCU on this route",
+        };
+        Grid.SetColumn(margin, 2);
+        head.Children.Add(margin);
+        rows.Children.Add(head);
+
+        // Line 2: where the run starts, on its own full-width line.
+        rows.Children.Add(TradeEndLine("FROM", buy.TerminalName, fg, dim));
+
+        // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far along
+        // the player is. With no usable position reading the band stays a bare rail with unlit caps
+        // rather than implying a position (absent-not-placeholder).
+        var frac = RouteProgress.Fraction(
+            App.Map.DistanceMeters(here, App.Map.ResolveTerminal(buyTerminal)),
+            App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal)));
+        rows.Children.Add(BuildTradeBand(frac, dim, accent, gold));
+
+        // Line 4: how far the run is, and where it ends. Distance sits left, under the band's start
+        // cap; the destination is right-aligned under its own end cap, so the line reads as the
+        // band's own footnote rather than as a second list of facts.
+        var foot = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+        foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
+        var distance = new TextBlock
+        {
+            // Null covers both an unplaceable terminal and a run that crosses a jump point, where a
+            // straight line is not the distance flown and a number would be a lie.
+            Text = legMeters is { } m ? MapCatalog.FormatGm(m) : "distance n/a",
+            FontFamily = mono, FontSize = 9.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+        };
+        foot.Children.Add(distance);
+        var to = new TextBlock
+        {
+            Text = sell.TerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = sell.TerminalName,
+        };
+        Grid.SetColumn(to, 1);
+        foot.Children.Add(to);
+        rows.Children.Add(foot);
+
+        // The close sits over the card's top-right corner rather than inside the head row, so the
+        // commodity name gets the full width when there is nothing to close over.
+        var body = new Grid();
+        body.Children.Add(rows);
+        var glyph = new TextBlock
+        {
+            Text = "×", FontSize = 14, Foreground = dim,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        // The hit target is the BORDER, with a transparent background: a bare TextBlock only
+        // hit-tests its own glyph outline, which at this size is a couple of hairlines to aim at
+        // while flying. 18x18 gives it a real target without widening the card.
+        var close = new Border
+        {
+            Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand,
+            Width = 18, Height = 18, Child = glyph, ToolTip = "Unpin this route",
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, -4, -16, 0),
+        };
+        close.MouseEnter += (_, _) => glyph.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+        close.MouseLeave += (_, _) => glyph.Foreground = dim;
+        close.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] overlay trade: unpin {buy.CommodityName}");
+            UnpinRouteRequested?.Invoke(route);
+        };
+        body.Children.Add(close);
+
+        // Standing at either end outlines the card, so the run being flown right now is findable
+        // without reading any of the three lines.
+        bool atAnEnd = frac is 0 or 1;
+        return new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource(atAnEnd ? "AccentFaintBrush" : "Bg2Brush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource(atAnEnd ? "AccentStrongBrush" : "NavBorderBrush"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
+            Margin = new Thickness(0, 0, 0, 7), Child = body,
+        };
+    }
+
+    // One full-width run line: an eyebrow key ("FROM") and the terminal name beside it, the name
+    // taking every pixel left over so it trims only when it genuinely has to.
+    private static FrameworkElement TradeEndLine(string key, string name,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new TextBlock
+        {
+            Text = key, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+        });
+        var value = new TextBlock
+        {
+            Text = name, FontSize = 11, Foreground = fg, TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = name,
+        };
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(value);
+        return grid;
+    }
+
+    // The flight band (mock candidate D): a rail spanning the card, an end cap per stop, and - when
+    // the player's position is known - a fill and a ship marker riding it. Built from two star
+    // columns sized by the fraction rather than a width animation, and the fill STRETCHES into its
+    // column: the planner's own trip bar shipped invisible for a week because a Border with no
+    // child and a Left alignment arranges at its DesiredSize (zero), not the available width.
+    private FrameworkElement BuildTradeBand(double? frac,
+        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent, System.Windows.Media.Brush gold)
+    {
+        // Two nested grids on purpose. The OUTER one carries the caps at its own two edges; the
+        // INNER one is inset by half a cap at each end and is where the fraction split happens, so
+        // the fill runs exactly cap-centre to cap-centre and the ship marker lands on the boundary
+        // at every fraction, including both extremes. Splitting the outer grid instead would
+        // overshoot the right cap by half its width at frac = 1.
+        var host = new Grid { Height = TradeBandHeight, Margin = new Thickness(0, 0, 0, 1) };
+
+        var inner = new Grid { Margin = new Thickness(TradeBandCapSize / 2, 0, TradeBandCapSize / 2, 0) };
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac ?? 0, GridUnitType.Star) });
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - (frac ?? 0), GridUnitType.Star) });
+
+        var rail = new Border
+        {
+            Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
+            Background = (System.Windows.Media.Brush)FindResource("CyanDimBrush"), IsHitTestVisible = false,
+        };
+        Grid.SetColumnSpan(rail, 2);
+        inner.Children.Add(rail);
+
+        if (frac is not null)
+        {
+            inner.Children.Add(new Border
+            {
+                Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+                Background = new System.Windows.Media.LinearGradientBrush(
+                    ((System.Windows.Media.SolidColorBrush)accent).Color,
+                    ((System.Windows.Media.SolidColorBrush)gold).Color,
+                    new Point(0, 0.5), new Point(1, 0.5)),
+            });
+            inner.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = System.Windows.Media.Geometry.Parse(TradeShipGeometry),
+                Fill = gold, Stretch = System.Windows.Media.Stretch.Uniform,
+                Width = TradeBandShipSize, Height = TradeBandShipSize, IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, -TradeBandShipSize / 2, 0),
+            });
+        }
+
+        host.Children.Add(inner);
+        host.Children.Add(TradeBandCap(HorizontalAlignment.Left, lit: frac is 0, dim, accent));
+        host.Children.Add(TradeBandCap(HorizontalAlignment.Right, lit: frac is 1, dim, accent));
+        return host;
+    }
+
+    // One end cap, aligned to its own edge of the band. Lit means the player is standing there.
+    private System.Windows.Shapes.Ellipse TradeBandCap(HorizontalAlignment side, bool lit,
+        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent) => new()
+    {
+        Width = TradeBandCapSize, Height = TradeBandCapSize, StrokeThickness = 1.5,
+        Stroke = lit ? accent : dim,
+        Fill = lit ? accent : (System.Windows.Media.Brush)FindResource("BgBrush"),
+        HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Center,
+        IsHitTestVisible = false,
+    };
 
     private void RebuildShoppingPanel()
     {

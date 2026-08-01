@@ -857,7 +857,7 @@ public partial class MainWindow : Window
             _tradePage.PinnedRouteChanged += PushPinnedRouteToMap;
             // ...and to the overlay's TRADE tab, which is the surface actually on screen while the
             // route is being flown (app review). Same event, same forwarding shape.
-            _tradePage.PinnedRouteChanged += () => _overlay?.SetPinnedRoute(_tradePage?.PinnedRoute);
+            _tradePage.PinnedRouteChanged += PushPinnedRoutesToOverlay;
         }
         _tradePage.Refresh();
     }
@@ -890,9 +890,9 @@ public partial class MainWindow : Window
     // pin the TradePage.PinnedRouteChanged subscription above missed while the map page was gone.
     private void PushPinnedRouteToMap()
     {
-        var route = _tradePage?.PinnedRoute;
-        if (route == null) _mapPage?.ClearPlannerRoute();
-        else _mapPage?.SetPlannerRoute(route.BuyRow.TerminalId, route.SellRow.TerminalId);
+        var routes = _tradePage?.PinnedRoutes;
+        if (routes is null || routes.Count == 0) _mapPage?.ClearPlannerRoute();
+        else _mapPage?.SetPlannerRoutes(routes.Select(r => (r.BuyRow.TerminalId, r.SellRow.TerminalId)).ToList());
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -1482,7 +1482,22 @@ public partial class MainWindow : Window
         _overlay.ContractBoxVisibilityToggled += App.SetContractBoxVisible;
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
+
+        // Pinned trade routes (the owner, 2026-08-01). Either side can come into existence first - the
+        // overlay is lazy and so is TradePage - so the wiring lives here, where the overlay is
+        // known to exist, and the push below catches routes pinned before it did. The per-card
+        // close routes back through TradePage so one owner still holds the pin list; the Refresh
+        // repaints the PIN chip on the planner row that card came from.
+        _overlay.UnpinRouteRequested += route =>
+        {
+            _tradePage?.UnpinRoute(route);
+            if (_activePage == "trade") _tradePage?.Refresh();
+        };
+        PushPinnedRoutesToOverlay();
     }
+
+    private void PushPinnedRoutesToOverlay()
+        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<TradeRoute>());
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {
