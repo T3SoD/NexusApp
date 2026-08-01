@@ -22,6 +22,8 @@ public sealed class CargoPlannerPage : UserControl
     private readonly TextBox _scuBox = new();
     private readonly ComboBox _capBox = new();
     private readonly StackPanel _manifest = new();
+    // Trip selector, shown only when the pack produced more than one trip (see BuildManifestRail).
+    private readonly StackPanel _tripStrip = new();
     private readonly TextBlock _totals = new();
     // Layout overrides are authored in Grid Studio; the planner loads them so packing reflects the
     // corrected grids (read-only here - no editing or review UI on the shippable planner).
@@ -169,6 +171,18 @@ public sealed class CargoPlannerPage : UserControl
         stack.Children.Add(addRow);
 
         stack.Children.Add(Eyebrow("MANIFEST"));
+
+        // App review 2026-08-01: the totals line announced "3 trips" while the viewport only ever
+        // rendered trip 1. SelectedTripIndex was public and settable, but its ONLY assignment in the
+        // whole solution was the reset to 0 inside Repack, and nothing in the payload or the web
+        // scene carried a trip index. Multi-trip is exactly the case a hauler needs this planner for,
+        // so the load order for every trip after the first was unreachable. This strip is the
+        // missing control; it hides itself whenever there is only one trip.
+        _tripStrip.Orientation = Orientation.Horizontal;
+        _tripStrip.Margin = new Thickness(0, 6, 0, 0);
+        _tripStrip.Visibility = Visibility.Collapsed;
+        stack.Children.Add(_tripStrip);
+
         _manifest.Margin = new Thickness(0, 6, 0, 10);
         stack.Children.Add(_manifest);
 
@@ -223,7 +237,39 @@ public sealed class CargoPlannerPage : UserControl
     private void Render()
     {
         _viewport.RenderTrip(_vm.CurrentTrip, _vm.SelectedShip);
+        RenderTripStrip();
         RenderTotals();
+    }
+
+    /// <summary>Rebuilds the trip selector. Hidden entirely at one trip, where a strip reading
+    /// "TRIP 1" with nothing to switch to would be noise. Rebuilt rather than updated in place
+    /// because the trip COUNT changes with every repack, and this runs only on manifest edits.</summary>
+    private void RenderTripStrip()
+    {
+        _tripStrip.Children.Clear();
+        if (_vm.TripCount <= 1)
+        {
+            _tripStrip.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _tripStrip.Visibility = Visibility.Visible;
+        for (int i = 0; i < _vm.TripCount; i++)
+        {
+            int index = i;   // captured per iteration, not the loop variable's final value
+            var b = Btn($"{i + 1}", (_, _) => SelectTrip(index), primary: i == _vm.SelectedTripIndex);
+            b.Padding = new Thickness(9, 3, 9, 3);
+            b.ToolTip = $"Show trip {i + 1} of {_vm.TripCount} in the viewport.";
+            _tripStrip.Children.Add(b);
+        }
+    }
+
+    private void SelectTrip(int index)
+    {
+        if (index == _vm.SelectedTripIndex || index < 0 || index >= _vm.TripCount) return;
+        _vm.SelectedTripIndex = index;
+        Logger.Info($"[CARGO] planner: trip {index + 1} of {_vm.TripCount}");
+        Render();
     }
 
     private void RenderTotals()
@@ -231,7 +277,9 @@ public sealed class CargoPlannerPage : UserControl
         var ship = _vm.SelectedShip;
         int cap = ship?.TotalScu ?? 0;
         string line = $"Manifest {_vm.ManifestScu} SCU / {cap} SCU";
-        if (_vm.TripCount > 1) line += $"   .   {_vm.TripCount} trips";
+        // Names WHICH trip the viewport is showing, not just how many exist. With a selector on
+        // screen, "3 trips" alone leaves the user unsure what they are looking at.
+        if (_vm.TripCount > 1) line += $"   .   trip {_vm.SelectedTripIndex + 1} of {_vm.TripCount}";
         if (_vm.UnplaceableScu > 0) line += $"   .   {_vm.UnplaceableScu} SCU will not fit (shape)";
         _totals.Text = line;
     }
