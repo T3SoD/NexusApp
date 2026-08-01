@@ -3410,26 +3410,36 @@ public partial class OverlayWindow : Window
         // unknown is not an option on a tab this small - an empty panel reads as broken - so that
         // one case says so plainly instead.
         var place = App.Player.Label;
-        var youRow = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 2, 8),
-        };
-        youRow.Children.Add(new System.Windows.Shapes.Ellipse
+        // A Grid, not a StackPanel: the label is long enough that a StackPanel would push a long
+        // place name straight off the right edge instead of trimming it.
+        var placeRow = new Grid { Margin = new Thickness(2, 0, 2, 8) };
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        placeRow.Children.Add(new System.Windows.Shapes.Ellipse
         {
             Width = 5, Height = 5, Fill = place is null ? dim : ok, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0),
         });
-        youRow.Children.Add(new TextBlock
+        var placeLabel = new TextBlock
         {
-            Text = "YOU", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
-        });
-        youRow.Children.Add(new TextBlock
+            // "CURRENT LOCATION", not "YOU" (the owner, 2026-08-01): the panel is read alongside the
+            // planner's own STARTING LOCATION / DESTINATION labels, and a one-word pronoun did not
+            // read as the same kind of thing they are.
+            Text = "CURRENT LOCATION", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+        };
+        Grid.SetColumn(placeLabel, 1);
+        placeRow.Children.Add(placeLabel);
+        var placeValue = new TextBlock
         {
-            Text = place ?? "Location unknown", FontSize = 11.5, Foreground = place is null ? dim : fg,
+            Text = place ?? "Unknown", FontSize = 11.5, Foreground = place is null ? dim : fg,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        TradePanelItems.Children.Add(youRow);
+            ToolTip = place,
+        };
+        Grid.SetColumn(placeValue, 2);
+        placeRow.Children.Add(placeValue);
+        TradePanelItems.Children.Add(placeRow);
         TradePanelItems.Children.Add(new Border
         {
             Height = 1, Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
@@ -3571,11 +3581,17 @@ public partial class OverlayWindow : Window
         body.Children.Add(close);
 
         // Standing at either end outlines the card, so the run being flown right now is findable
-        // without reading any of the three lines.
+        // without reading any of its lines. The fill is built inline at the mock's own 5% rather
+        // than reusing AccentFaintBrush: that resource is 12%, and at this card size it reads as a
+        // yellow panel instead of a hint (the owner's live pass, 2026-08-01). Same inline-alpha idiom the
+        // planner's trip bar already uses. The border is AccentStrongBrush, which is the mock's
+        // amber-line exactly.
         bool atAnEnd = frac is 0 or 1;
         return new Border
         {
-            Background = (System.Windows.Media.Brush)FindResource(atAnEnd ? "AccentFaintBrush" : "Bg2Brush"),
+            Background = atAnEnd
+                ? new System.Windows.Media.SolidColorBrush(((System.Windows.Media.SolidColorBrush)accent).Color) { Opacity = 0.05 }
+                : (System.Windows.Media.Brush)FindResource("Bg2Brush"),
             BorderBrush = (System.Windows.Media.Brush)FindResource(atAnEnd ? "AccentStrongBrush" : "NavBorderBrush"),
             BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
             Margin = new Thickness(0, 0, 0, 7), Child = body,
