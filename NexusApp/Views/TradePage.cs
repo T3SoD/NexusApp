@@ -814,6 +814,21 @@ public sealed partial class TradePage : UserControl
     /// overlay is showing.</summary>
     internal bool IsPinned(TradeRoute r) => PinnedRoutes.Any(p => RoutePlanner.SameHaul(p, r));
 
+    /// <summary>The Sell tab's counterpart (the owner, 2026-08-01): true when a SELL-ONLY pin names
+    /// this buyer terminal + commodity. Planner pins never satisfy this - see SameSellHaul.</summary>
+    internal bool IsSellPinned(int terminalId, int commodityId)
+        => PinnedRoutes.Any(p => RoutePlanner.SameSellHaul(p, terminalId, commodityId));
+
+    /// <summary>Sell-tab pin toggle, through the same single write path as PinRoute - shared
+    /// list, shared cap, shared persistence and overlay push.</summary>
+    internal void PinSellRow(TradePriceRow row, int qty)
+        => SetPins(RoutePlanner.ToggleSellPin(PinnedRoutes, row, qty, DateTime.UtcNow));
+
+    /// <summary>Refreshes sell-only pins from a Sell-tab ranking (one commodity), leaving planner
+    /// pins and other commodities' sell pins alone - RoutePlanner.RefreshSellPins owns the rules.</summary>
+    internal void RefreshSellPinFacts(IReadOnlyList<TradePriceRow> rows)
+        => SetPins(RoutePlanner.RefreshSellPins(PinnedRoutes, rows, DateTime.UtcNow));
+
     /// <summary>Toggles a pin: pinning an already-pinned haul unpins it, and pinning past the cap
     /// drops the oldest (RoutePlanner.TogglePin owns both rules). Passing null clears every pin.
     /// Raises PinnedRouteChanged and saves only on an actual change.</summary>

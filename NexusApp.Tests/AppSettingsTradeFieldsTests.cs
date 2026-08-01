@@ -78,7 +78,8 @@ public class AppSettingsTradeFieldsTests
 
         var back = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
 
-        Assert.Equal(new[] { 1, 2, 3 }, back.PinnedRoutes.ConvertAll(p => p.BuyTerminalId).ToArray());
+        // int?[] since BuyTerminalId went nullable for sell-only pins (2026-08-01).
+        Assert.Equal(new int?[] { 1, 2, 3 }, back.PinnedRoutes.ConvertAll(p => p.BuyTerminalId).ToArray());
     }
 
     [Fact]

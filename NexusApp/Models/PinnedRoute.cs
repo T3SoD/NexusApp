@@ -25,7 +25,12 @@ namespace NexusApp.Models;
 public sealed class PinnedRoute
 {
     // ── identity: what re-attaches this to a live route ──
-    public int BuyTerminalId { get; set; }
+    /// <summary>Null means a SELL-ONLY pin (the owner, 2026-08-01: the Sell tab's own PIN TO OVERLAY):
+    /// the player already holds the cargo, so there is no buy leg - the pin is a destination plus
+    /// a commodity. Sell-only pins draw no Starmap leg (a leg needs two ends) and their card shows
+    /// SELL AT with a live distance instead of FROM/band/TO. Planner pins always carry a value, and
+    /// pre-existing persisted pins deserialize into the value unchanged.</summary>
+    public int? BuyTerminalId { get; set; }
     public int SellTerminalId { get; set; }
     public int CommodityId { get; set; }
 
@@ -34,6 +39,8 @@ public sealed class PinnedRoute
     public string BuyTerminalName { get; set; } = "";
     public string SellTerminalName { get; set; } = "";
     public int TripQty { get; set; }
+    /// <summary>Planner pins: margin per SCU (sell minus buy). Sell-only pins: the SELL PRICE per
+    /// SCU - there is no buy side to subtract. The overlay's tooltip words each accordingly.</summary>
     public double PerScuMargin { get; set; }
 
     /// <summary>When these display facts were last refreshed from a live ranking. Set at pin time

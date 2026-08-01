@@ -829,7 +829,7 @@ public sealed partial class TradePage
     // own active color (TabColor, TradePage.cs:412) rather than the amber AccentBrush every other
     // toggle chip on this page uses - a pin is a session marker, not a filter, and reusing the tab
     // strip's own "this is the one you're on" color keeps that distinction visible at a glance.
-    private static Border PinChip(bool active)
+    private static Border PinChip(bool active, bool sellOnly = false)
     {
         var text = new TextBlock
         {
@@ -850,7 +850,7 @@ public sealed partial class TradePage
             // Reworded again the same day, once several routes could be pinned at once: the chip
             // now names its main destination and the tooltip carries the rest, including the cap.
         };
-        ApplyPinChipVisual(chip, active);
+        ApplyPinChipVisual(chip, active, sellOnly);
         return chip;
     }
 
@@ -860,26 +860,37 @@ public sealed partial class TradePage
     // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the
     // flash, the rank plus 25 rebuilds is the lag, and it also collapsed whatever row the user had
     // expanded. Nothing about the ranking changes when a route is pinned.
-    private static void ApplyPinChipVisual(Border chip, bool active)
+    //
+    // sellOnly words the tooltip honestly per surface: a sell pin draws NO Starmap leg (a leg
+    // needs two ends), so its tooltip must not promise one - the untrue-claim rule.
+    private static void ApplyPinChipVisual(Border chip, bool active, bool sellOnly = false)
     {
         ((TextBlock)chip.Child).Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
         chip.BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush");
-        chip.ToolTip = active
-            ? "Stop showing this route in the overlay and on the Starmap."
-            : $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.";
+        chip.ToolTip = (active, sellOnly) switch
+        {
+            (true, false) => "Stop showing this route in the overlay and on the Starmap.",
+            (false, false) => $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.",
+            (true, true) => "Stop showing this sell stop in the overlay.",
+            (false, true) => $"Show this sell stop in the overlay's TRADE tab. Up to {RoutePlanner.MaxPins} pins at once.",
+        };
     }
 
     // Every pin chip currently on screen, so a pin can repaint all of them in place. ALL of them,
     // not just the one clicked: pinning at the cap evicts the OLDEST pin, and that route may be
-    // visible in this same list, so its chip has to go dim in the same gesture.
+    // visible in this same list - or over on the Sell tab's list - so its chip has to go dim in
+    // the same gesture. The sell list lives here beside the planner's because RefreshPinChips is
+    // the one repaint path both flows share.
     private readonly List<(TradeRoute Route, Border Chip)> _pinChips = new();
+    private readonly List<(int TerminalId, int CommodityId, Border Chip)> _sellPinChips = new();
 
-    /// <summary>Repaints every pin chip on screen from the current pin list. Internal because the
-    /// overlay's own per-card close reaches it through MainWindow: that path used to call Refresh(),
-    /// which rebuilds all THREE flows (planner, sell, prices) to dim one chip.</summary>
+    /// <summary>Repaints every pin chip on screen (planner rows AND sell rows) from the current
+    /// pin list. Internal because the overlay's own per-card close reaches it through MainWindow:
+    /// that path used to call Refresh(), which rebuilds all THREE flows to dim one chip.</summary>
     internal void RefreshPinChips()
     {
         foreach (var (route, chip) in _pinChips) ApplyPinChipVisual(chip, IsPinned(route));
+        foreach (var (tid, cid, chip) in _sellPinChips) ApplyPinChipVisual(chip, IsSellPinned(tid, cid), sellOnly: true);
     }
 
     private static TextBlock FieldLabel(string text) => new()

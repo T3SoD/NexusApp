@@ -184,6 +184,7 @@ public sealed partial class TradePage
         BuildSellChrome();
         if (!EnsureMarketConsent(_sellResults, _sellInputs)) return;
         _sellResults.Children.Clear();
+        _sellPinChips.Clear();   // the chips belonged to the rows just dropped (same rule as the planner's)
 
         var snap = App.Market.Snapshot;
         var commodities = CommodityChoices();
@@ -222,6 +223,11 @@ public sealed partial class TradePage
         // Origin terminal for the distance tag (owner's ask, 2026-07-30): resolved once per rebuild
         // from the same originId the ranking itself already used, not a second origin lookup.
         MarketTerminal? originTerm = originId is { } oid && terminals.TryGetValue(oid, out var ot) ? ot : null;
+
+        // Sell-only pins for THIS commodity get fresh names and prices from the ranking just run,
+        // mirroring RebuildPlanner's RefreshPins call (RoutePlanner.RefreshSellPins owns the rules,
+        // including never touching a pin's quantity).
+        RefreshSellPinFacts(buyers.Select(b => b.Row).ToList());
 
         for (int i = 0; i < buyers.Count; i++)
         {
@@ -371,8 +377,24 @@ public sealed partial class TradePage
         // in the same system - DistanceMeters already encodes both the resolution and the
         // same-system gate, so this is a single call, not a duplicated check.
         double? distanceMeters = _starmap.DistanceMeters(originTerm, term);
+
+        // PIN TO OVERLAY on sell rows (the owner, 2026-08-01), same chip and same repaint-in-place
+        // rules as the planner's: the click never rebuilds, e.Handled keeps it off the row's own
+        // expand toggle, and RefreshPinChips repaints EVERY chip since a cap eviction can dim a
+        // chip on either tab. UEX rows only - an SCT-only listing has no terminal id to pin.
+        var pinChip = PinChip(IsSellPinned(b.Row.TerminalId, b.Row.CommodityId), sellOnly: true);
+        _sellPinChips.Add((b.Row.TerminalId, b.Row.CommodityId, pinChip));
+        var pinnedRow = b.Row;
+        int pinnedQty = qty;
+        pinChip.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            PinSellRow(pinnedRow, pinnedQty);
+            RefreshPinChips();
+        };
+
         return BuildBuyerRowCore(b.Row.TerminalName, system, b.Row.Sell, b.Tier, b.Row.SellDemandScu, b.Row.ModifiedUtc,
-            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), distanceMeters, b.Row.ContainerSizes, out chevron, out detailHost);
+            b.EffectiveValue, qty, CorroborationBadge(Reconcile(b.Row, "sell")), distanceMeters, b.Row.ContainerSizes, out chevron, out detailHost, pinChip);
     }
 
     // Tier omitted (never a placeholder): SctOnlyBuyers only ever returns listings at stations
@@ -407,7 +429,7 @@ public sealed partial class TradePage
     // TradePage.Prices.cs's BuildPriceRow.
     private UIElement BuildBuyerRowCore(string terminalName, string? system, double price, ProximityTier? tier, int demandScu,
         DateTime priceUtc, double effectiveValue, int qty, FrameworkElement? badge, double? distanceMeters, string? containerSizes,
-        out Path chevron, out Border detailHost)
+        out Path chevron, out Border detailHost, Border? pinChip = null)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -439,6 +461,7 @@ public sealed partial class TradePage
         // Max container size (task 2): the sell flow has no ship in scope here, so this is always
         // the plain dim tag, never the AccentBrush warning tint - that only applies on planner legs.
         if (MaxContainerChip(TradeMath.MaxContainerScu(containerSizes ?? "")) is { } maxChip) meta.Children.Add(maxChip);
+        if (pinChip is not null) meta.Children.Add(pinChip);
         left.Children.Add(meta);
         Grid.SetColumn(left, 0); Grid.SetRow(left, 0);
         grid.Children.Add(left);

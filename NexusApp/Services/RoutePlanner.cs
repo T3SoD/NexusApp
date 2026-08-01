@@ -245,11 +245,22 @@ public static class RoutePlanner
     /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
     internal const int MaxPins = 5;
 
-    /// <summary>True when a persisted pin and a live route name the same haul.</summary>
+    /// <summary>True when a persisted pin and a live route name the same haul. A sell-only pin
+    /// (null buy terminal) can never match a planner route - the int? comparison is false for
+    /// null - which is load-bearing: RefreshPins leaves sell pins untouched for free.</summary>
     internal static bool SameHaul(PinnedRoute pin, TradeRoute r) =>
         pin.BuyTerminalId == r.BuyRow.TerminalId
         && pin.SellTerminalId == r.SellRow.TerminalId
         && pin.CommodityId == r.BuyRow.CommodityId;
+
+    /// <summary>The sell-only counterpart: a pin names this Sell-tab buyer when it has NO buy leg
+    /// and shares the buyer's terminal and commodity. A planner pin that happens to sell the same
+    /// commodity at the same terminal is a DIFFERENT pin - it carries a buy leg this row says
+    /// nothing about - so the two coexist rather than toggling each other.</summary>
+    internal static bool SameSellHaul(PinnedRoute pin, int sellTerminalId, int commodityId) =>
+        pin.BuyTerminalId is null
+        && pin.SellTerminalId == sellTerminalId
+        && pin.CommodityId == commodityId;
 
     /// <summary>Captures a live route as a persistable pin. Display facts only - see
     /// PinnedRoute for why no price is among them.</summary>
@@ -281,6 +292,71 @@ public static class RoutePlanner
         kept.Add(ToPin(route, nowUtc));
         while (kept.Count > cap) kept.RemoveAt(0);
         return kept;
+    }
+
+    /// <summary>Captures a Sell-tab buyer as a sell-only pin (the owner, 2026-08-01: "add a pin to
+    /// overlay button for the results in the sell tab"). No buy leg: the identity is (null,
+    /// terminal, commodity), PerScuMargin holds the SELL PRICE, and TripQty is the quantity the
+    /// user had typed - their own cargo, not a computed trip.</summary>
+    internal static PinnedRoute ToSellPin(TradePriceRow row, int qty, DateTime nowUtc) => new()
+    {
+        BuyTerminalId = null,
+        SellTerminalId = row.TerminalId,
+        CommodityId = row.CommodityId,
+        CommodityName = row.CommodityName,
+        BuyTerminalName = "",
+        SellTerminalName = row.TerminalName,
+        TripQty = qty,
+        PerScuMargin = row.Sell,
+        UpdatedUtc = nowUtc,
+        PinnedUtc = nowUtc,
+    };
+
+    /// <summary>TogglePin's sell-only twin: same toggle-off rule, same append, same shared cap -
+    /// planner pins and sell pins live in ONE list because the overlay panel they feed is one
+    /// surface with one five-card budget.</summary>
+    internal static IReadOnlyList<PinnedRoute> ToggleSellPin(
+        IReadOnlyList<PinnedRoute> pinned, TradePriceRow row, int qty, DateTime nowUtc, int cap = MaxPins)
+    {
+        var kept = pinned.Where(p => !SameSellHaul(p, row.TerminalId, row.CommodityId)).ToList();
+        if (kept.Count != pinned.Count) return kept;   // it was pinned: this click unpinned it
+
+        kept.Add(ToSellPin(row, qty, nowUtc));
+        while (kept.Count > cap) kept.RemoveAt(0);
+        return kept;
+    }
+
+    /// <summary>RefreshPins' sell-only twin, fed by a Sell-tab ranking of ONE commodity: any
+    /// sell-only pin matching a ranked row gets fresh names and a fresh sell price; every other
+    /// pin - planner pins, and sell pins for other commodities - is left untouched. TripQty is
+    /// deliberately NOT refreshed: it was the user's own cargo entry at pin time, and the box's
+    /// current value belongs to whatever they are ranking now, not to the pin.</summary>
+    internal static IReadOnlyList<PinnedRoute> RefreshSellPins(
+        IReadOnlyList<PinnedRoute> pinned, IReadOnlyList<TradePriceRow> rows, DateTime nowUtc)
+    {
+        var result = new List<PinnedRoute>(pinned.Count);
+        foreach (var pin in pinned)
+        {
+            var live = pin.BuyTerminalId is null
+                ? rows.FirstOrDefault(r => SameSellHaul(pin, r.TerminalId, r.CommodityId))
+                : null;
+            if (live is null) { result.Add(pin); continue; }
+
+            result.Add(new PinnedRoute
+            {
+                BuyTerminalId = null,
+                SellTerminalId = pin.SellTerminalId,
+                CommodityId = pin.CommodityId,
+                CommodityName = live.CommodityName,
+                BuyTerminalName = "",
+                SellTerminalName = live.TerminalName,
+                TripQty = pin.TripQty,
+                PerScuMargin = live.Sell,
+                UpdatedUtc = nowUtc,
+                PinnedUtc = pin.PinnedUtc,
+            });
+        }
+        return result;
     }
 
     /// <summary>
