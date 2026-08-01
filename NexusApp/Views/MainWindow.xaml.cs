@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 using static NexusApp.Views.UiHelpers;
 
@@ -31,17 +32,23 @@ public partial class MainWindow : Window
         InitializeComponent();
         AppVersionText.Text = $"App v{AppInfo.Version}";
         GameVersionText.Text = $"SC PU {GameData.Version}";
-        UpdateShardChip();
         // The Game.log chain (shards, blueprint session) is pumped by the shared feed's
         // DispatcherTimer, so it already raises on the UI thread - no marshaling, the same
         // contract App.xaml.cs and the overlay follow. Dispatcher.Invoke/BeginInvoke here is
         // reserved for genuinely background sources (ContractScanner, MarketDataService).
-        if (App.Shards != null) App.Shards.Changed += UpdateShardChip;
+        // F14: the shard folded into the SESSION chip, so a shard join/leave repaints that chip
+        // rather than a chip of its own.
+        if (App.Shards != null) App.Shards.Changed += UpdateSessionChip;
         UpdateSessionChip();
-        UpdateBlueprintChip();
+        UpdateLocationChip();
+        // LOCATION chip (F14): LocationTracker raises off the shared feed's DispatcherTimer
+        // (UI thread), but BeginInvoke keeps this safe if a replay path ever raises elsewhere -
+        // the same belt the overlay's own Locations subscription wears.
+        if (App.Locations != null)
+            App.Locations.Changed += () => Dispatcher.BeginInvoke(UpdateLocationChip);
         if (App.GameLog != null)
         {
-            App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            App.GameLog.StateChanged += () => { UpdateSessionChip(); RefreshBlueprintTrackingLine(); };
             // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
             // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
             // ChipSuffix on the next Game.log channel resolve.
@@ -134,8 +141,13 @@ public partial class MainWindow : Window
         _scanChipTimer.Tick += (_, __) => { UpdateScanChip(); RefreshMarketPill(); };
         _scanChipTimer.Start();
         UpdateScanChip();
-        // Flip the SCAN chip to/from the paused (yellow) state the instant foreground relevance changes.
+        // Flip the AUTO-SCAN chip to/from paused the instant foreground relevance changes.
         App.ForegroundRelevanceChanged += _ => Dispatcher.Invoke(UpdateScanChip);
+        // F14: the chip now carries the contract scanner too, so a contract-scan start/stop from
+        // the overlay or the Hauling page repaints it immediately (ContractScanner can raise off
+        // the UI thread - App.xaml.cs marshals its other events the same way).
+        if (App.ContractScan != null)
+            App.ContractScan.RunningChanged += () => Dispatcher.BeginInvoke(UpdateScanChip);
         // Pause/resume the RS auto-scan itself on the same signal - moved from App.xaml.cs's
         // OnForegroundRelevanceChanged (app review, Task 9), unwrapped exactly as it ran there
         // (that handler called SetScanForegroundActive directly, with no Dispatcher marshal).
@@ -195,6 +207,12 @@ public partial class MainWindow : Window
         // BeginInvoke+queued-flag idiom as ScheduleWorkOrderAnimations below) collapses that storm to a
         // single rebuild instead of running the full gallery pass N+1 times per save.
         _vm.WorkOrders.CollectionChanged += (s, e) => ScheduleWorkOrderRebuild();
+        // The map's MY ORDERS layer (app review G11) is built from this collection, which the map
+        // page itself cannot see. Null-safe on purpose: the map page is lazy and usually does not
+        // exist yet, and when it is created it builds the layer from scratch anyway.
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => _mapPage?.RefreshLiveLayers());
+
+        WireNavBadgeUpdates();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
         Loaded += (s, e) => App.MaybeStartUpdateCheck();
@@ -249,11 +267,15 @@ public partial class MainWindow : Window
     private FrameworkElement? ResolveTutorialTarget(TutorialTarget t) => t switch
     {
         TutorialTarget.SessionPill     => SessionChip,
-        TutorialTarget.BlueprintsPill  => BlueprintChip,
+        // F14: the BLUEPRINTS header chip moved to the Blueprint Library, so the tour's
+        // blueprint step anchors on the Library dock tile instead.
+        TutorialTarget.BlueprintsPill  => NavBlue,
         TutorialTarget.AppDock         => DockTiles,
         TutorialTarget.OperationsKpis  => OperationsKpiAnchor(),
+        TutorialTarget.StarmapTile     => NavMap,
         TutorialTarget.RsDecoderTile   => NavScan,
         TutorialTarget.RefineryTile    => NavWork,
+        TutorialTarget.TradeTile       => NavTrade,
         TutorialTarget.HaulingTile     => NavHauling,
         TutorialTarget.NetworkTile     => NavNetwork,
         TutorialTarget.OpenOverlay     => OverlayToggleBtn,
@@ -325,6 +347,7 @@ public partial class MainWindow : Window
         PageHauling.Visibility    = page == "hauling"    ? Visibility.Visible : Visibility.Collapsed;
         PageGuides.Visibility     = page == "guides"     ? Visibility.Visible : Visibility.Collapsed;
         PageTrade.Visibility      = page == "trade"      ? Visibility.Visible : Visibility.Collapsed;
+        PageMap.Visibility        = page == "map"        ? Visibility.Visible : Visibility.Collapsed;
         PagePlanner.Visibility    = page == "planner"    ? Visibility.Visible : Visibility.Collapsed;
         PageGridStudio.Visibility = page == "gridstudio" ? Visibility.Visible : Visibility.Collapsed;
         PageAdmin.Visibility      = page == "admin"      ? Visibility.Visible : Visibility.Collapsed;
@@ -339,6 +362,7 @@ public partial class MainWindow : Window
         NavHauling.IsChecked  = page == "hauling";
         NavGuides.IsChecked   = page == "guides";
         NavTrade.IsChecked    = page == "trade";
+        NavMap.IsChecked      = page == "map";
         NavPlanner.IsChecked  = page == "planner";
         NavGridStudio.IsChecked = page == "gridstudio";
         NavAdmin.IsChecked    = page == "admin";
@@ -361,6 +385,7 @@ public partial class MainWindow : Window
             "hauling"    => "Nexus - Cargo Hauling",
             "guides"     => "Nexus - Mission Guides",
             "trade"      => "Nexus - Trade",
+            "map"        => "Nexus - Starmap",
             "planner"    => "Nexus - Cargo Planner",
             "gridstudio" => "Nexus - Grid Studio",
             "admin"      => "Nexus - Admin",
@@ -378,6 +403,7 @@ public partial class MainWindow : Window
         if (page == "hauling") InitHaulingPage();
         if (page == "guides") InitGuidesPage();
         if (page == "trade") InitTradePage();
+        if (page == "map") InitMapPage();
         if (page == "planner") InitPlannerPage();
         if (page == "gridstudio") InitGridStudioPage();
         if (page == "admin") InitAdminPage();
@@ -396,6 +422,7 @@ public partial class MainWindow : Window
             "hauling"    => PageHauling,
             "guides"     => PageGuides,
             "trade"      => PageTrade,
+            "map"        => PageMap,
             "admin"      => PageAdmin,
             "settings"   => PageSettings,
             _            => (FrameworkElement?)null,
@@ -403,9 +430,9 @@ public partial class MainWindow : Window
     }
 
     // ── Market data consent strip ────────────────────────────────────────────
-    // The three price-capable surfaces (RS Decoder, Mining Codex, Refinery Tracker) share one
-    // host above the page stage, so the one-time question is asked once no matter which of them
-    // the user opens first.
+    // Every price-capable surface (RS Decoder, Mining Codex, Refinery Tracker, Trade, and the MAP
+    // tab's trade layer) shares one host above the page stage, so the one-time question is asked
+    // once no matter which of them the user opens first.
     private bool _marketConsentLogged;   // "shown" logged once per session, not on every page switch
 
     /// <summary>
@@ -418,7 +445,10 @@ public partial class MainWindow : Window
     {
         if (MarketConsentHost == null) return;
 
-        var show = _activePage is "scan" or "reference" or "workorders" or "trade"
+        // "map" joins the list (B7): the MAP tab's TRADE layer is gated on exactly the same consent,
+        // and until now it was the only gated surface that could not answer the question in place -
+        // it just pointed at Settings while every sibling offered one click.
+        var show = _activePage is "scan" or "reference" or "workorders" or "trade" or "map"
                    && MarketNotice.ShouldShowConsent(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile);
         if (!show)
         {
@@ -447,6 +477,9 @@ public partial class MainWindow : Window
             // TRADE has to repaint that page too, or all three of its flows keep showing the
             // "Turn on live market data..." message until the fetch's Changed lands.
             if (_activePage == "trade") _tradePage?.Refresh();
+            // MAP needs the identical treatment for the identical reason: its TRADE layer and the
+            // gated hint under SELECTION both read the consent flag, and neither repaints on its own.
+            if (_activePage == "map") _mapPage?.Refresh();
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>
@@ -524,6 +557,7 @@ public partial class MainWindow : Window
         if (NavHauling.IsChecked == true)  return NavHauling;
         if (NavGuides.IsChecked == true)   return NavGuides;
         if (NavTrade.IsChecked == true)    return NavTrade;
+        if (NavMap.IsChecked == true)      return NavMap;
         if (NavPlanner.IsChecked == true)  return NavPlanner;
         if (NavGridStudio.IsChecked == true) return NavGridStudio;
         if (NavAdmin.IsChecked == true)    return NavAdmin;
@@ -645,23 +679,6 @@ public partial class MainWindow : Window
     private string? _lastGameLogStatus;
     private const string SessionChipDefaultTooltip = "Star Citizen session tracking (always on)";
 
-    // Live SHARD telemetry chip in the header status strip (updates on shard join/leave).
-    private void UpdateShardChip()
-    {
-        var s = App.Shards?.Current;
-        if (s != null)
-        {
-            ShardChipText.Text = (string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}")
-                + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}");
-            ShardDot.Fill = _chipOkBrush;
-        }
-        else
-        {
-            ShardChipText.Text = "not detected";
-            ShardDot.Fill = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        }
-    }
-
     // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms a
     // live game session (green, monitoring) vs Star Citizen being closed / shut down (red, offline). "Live"
     // is read from Game.log freshness (process-based - unchanged), so the chip flips off shortly after
@@ -689,12 +706,21 @@ public partial class MainWindow : Window
         }
         else
         {
-            SessionChipText.Text = (live ? "monitoring" : "offline")
-                + GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel);
+            // F14: the shard IS the live value ("US-E · 042") - it is parsed FROM Game.log and
+            // cannot exist without a live session, so it is session metadata, not a peer chip.
+            // StatusChips.SessionValue drops it from the offline state, where a last-seen shard
+            // would dress a dead reading as current status, and carries no "monitoring" word
+            // (the owner cut it - the breathing green dot already says alive).
+            var s = App.Shards?.Current;
+            var shard = s is null ? null : StatusChips.ShardText(s.Region, s.Instance, s.Channel);
+            SessionChipText.Text = StatusChips.SessionValue(
+                live, GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel), shard);
             SessionDot.Fill = brush;
             SessionChipText.Foreground = brush;
             Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
-            SessionChip.ToolTip = SessionChipDefaultTooltip;
+            SessionChip.ToolTip = shard is null
+                ? SessionChipDefaultTooltip
+                : $"{SessionChipDefaultTooltip}\nShard: {shard}";
             SessionChip.Cursor = Cursors.Arrow;
             // Unconditional reset (review fix): if _sessionChipNoLog just flipped false while the chip
             // was hovered and mid-hover-tint, this resync keeps Background from staying stuck on
@@ -702,42 +728,44 @@ public partial class MainWindow : Window
             // (flip happens while the mouse is never over the chip at all).
             SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
         }
-
-        // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
-        // green ONLINE while Star Citizen is running, red OFFLINE when it's closed.
-        if (LinkDot != null)
-        {
-            LinkDot.Fill = brush;
-            Hud.PulseDot(LinkDot, live);
-        }
-        if (LinkStatusText != null)
-            LinkStatusText.Text = live ? "ONLINE . SECURE LINK" : "OFFLINE . NO LINK";
-
-        // Same signal on the Operations dock tile badge: LIVE while Star Citizen runs,
-        // OFFLINE once it's closed.
-        if (OpsLiveDot != null)
-        {
-            OpsLiveDot.Fill = brush;
-            Hud.PulseDot(OpsLiveDot, live);
-        }
-        if (OpsLiveText != null)
-        {
-            OpsLiveText.Text = live ? "LIVE" : "OFFLINE";
-            OpsLiveText.Foreground = brush;
-        }
+        // F14: the two dock mirrors this method used to paint (OpsLiveDot on the Operations tile,
+        // LinkDot on the identity foot) are gone - one session lamp per viewport, and this chip is it.
     }
 
-    // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
-    // auto-collection is active (green) while a game session is live, else off (red, SC closed).
-    private void UpdateBlueprintChip()
+    // LOCATION telemetry chip (F14, new): where Game.log last placed the player - the gate for
+    // every distance the app renders (Codex, work orders, Trade ranking, map marker, overlay route
+    // bands), which until this chip had no global lamp. Cyan breathing when a place is known
+    // (cyan = the app's live-location identity, reserved), dim "unknown" otherwise. Label over
+    // resolution: App.Player.Label is the log's own words even when the catalog cannot place them,
+    // which is the honest thing for a chip that SAYS rather than MEASURES (PlayerPlace's rule).
+    private bool? _locationChipKnown;
+    private void UpdateLocationChip()
     {
-        if (App.GameLog == null || BlueprintChipText == null) return;
-        bool tracking = App.GameLog.IsSessionLive && App.GameLog.AutoMark;
-        BlueprintChipText.Text = tracking ? "tracking" : "off";
-        var brush = tracking ? _chipOkBrush : _chipDangerBrush;
-        BlueprintDot.Fill = brush;
-        BlueprintChipText.Foreground = brush;
-        Hud.PulseDot(BlueprintDot, tracking);   // the green LED gently flashes while tracking
+        if (LocationChipText == null) return;
+        var label = App.Player?.Label;
+        bool known = !string.IsNullOrWhiteSpace(label);
+        // A jurisdiction reading names whose SPACE the player crossed into, not where they stand
+        // (the owner's live pass, 2026-08-01: the chip read "Crusader Industries" at Crusader). Shown
+        // dim with a "space" qualifier and NO cyan pulse - the cyan live treatment is the chip's
+        // claim that the app knows the player's place, and a jurisdiction is not one.
+        bool coarse = known && App.Player!.LabelIsJurisdiction;
+        LocationChipText.Text = !known ? "unknown" : coarse ? $"{label} space" : label;
+        // The value is width-capped (long outpost names trim at 130px so the strip cannot crowd
+        // the clock) - the tooltip always carries the full text.
+        LocationChipText.ToolTip = !known ? null
+            : coarse ? $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down."
+            : label;
+        var brush = !known || coarse ? Hud.Br("FgDimBrush") : Hud.Br("CyanBrush");
+        LocationChipText.Foreground = brush;
+        LocationDot.Fill = brush;
+        Hud.PulseDot(LocationDot, known && !coarse);
+        // Log only the flips, not every place change - the tracker already logs the timeline.
+        bool lit = known && !coarse;
+        if (_locationChipKnown != lit)
+        {
+            _locationChipKnown = lit;
+            Logger.Info($"[UI] header location: {(known ? LocationChipText.Text : "unknown")}");
+        }
     }
 
     // Dock-foot identity: show the detected RSI handle, or fall back to CITIZEN when no handle
@@ -750,30 +778,51 @@ public partial class MainWindow : Window
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
-    // SCAN telemetry chip (auto-scan on/off), refreshed on a light timer.
+    // AUTO-SCAN telemetry chip (F14): one lamp for BOTH OCR scanners (the owner's amendment on the
+    // mock). The dot carries the fold (StatusChips.AutoScanCombined - paused outranks on outranks
+    // off) and pulses only while the fold is On; the value text spells each scanner out ("RS on ·
+    // CT off") so the aggregate never hides which one is in which state. Off renders DIM, not red:
+    // a scanner the user switched off is a choice, and red stays reserved for real failures.
+    // Refreshed on the light 1.5s timer (which also covers the Settings AutoScanContracts toggle,
+    // which raises no event) plus ContractScan.RunningChanged for instant flips.
     private void UpdateScanChip()
     {
-        switch (_vm.RsScanState)
+        var rs = _vm.RsScanState;
+        var ct = StatusChips.ContractScanState(
+            App.ContractScan?.IsRunning ?? false, App.Settings.Current.AutoScanContracts);
+        var combined = StatusChips.AutoScanCombined(rs, ct);
+        ScanChipText.Text = StatusChips.AutoScanText(rs, ct);
+        var brush = combined switch
         {
-            case ScanIndicator.On:
-                ScanChipText.Text = "Auto · on";
-                ScanChipText.Foreground = _chipOkBrush;
-                break;
-            case ScanIndicator.Paused:
-                ScanChipText.Text = "paused";
-                ScanChipText.Foreground = _chipWarnBrush;
-                break;
-            default:
-                ScanChipText.Text = "off";
-                ScanChipText.Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-                break;
-        }
+            ScanIndicator.On => _chipOkBrush,
+            ScanIndicator.Paused => _chipWarnBrush,
+            _ => (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+        };
+        ScanChipText.Foreground = brush;
+        ScanDot.Fill = brush;
+        Hud.PulseDot(ScanDot, combined == ScanIndicator.On);
     }
 
-    // Active-count badge on the Refinery rail item.
+    /// <summary>Keeps the dock's Refinery and Hauling count badges live. Wired in the constructor to
+    /// the same two signals Operations listens to (app review): before this, UpdateNavBadges ran only
+    /// from SetActivePage, so accepting a contract or finishing a refine left the dock badges stale
+    /// until the user happened to change pages. Unlike the page subscriptions this one has no
+    /// IsVisible guard - the dock rail is always on screen, whichever page is active.</summary>
+    private void WireNavBadgeUpdates()
+    {
+        if (App.Hauls != null)
+            App.Hauls.Changed += () => Dispatcher.BeginInvoke(UpdateNavBadges);
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateNavBadges);
+    }
+
+    // Count badges on the Refinery and Hauling rail items. F14 rule: a badge counts what you can
+    // ACT ON right now. The Refinery badge switched from all-non-complete orders (which made it a
+    // permanent fixture - an always-on badge stops informing) to ready-to-collect, the same
+    // definition the overlay's REFINERY tab badge already used; before this the two disagreed
+    // whenever anything was mid-refine. Queue size stays on the labeled Operations surfaces.
     private void UpdateNavBadges()
     {
-        int orders = App.Data.GetWorkOrders().FindAll(o => o.Status != WorkOrderStatus.Complete).Count;
+        int orders = App.Data.GetWorkOrders().FindAll(o => o.Status == WorkOrderStatus.ReadyToCollect).Count;
         NavWorkBadge.Text = orders > 0 ? orders.ToString() : "";
         NavWorkPill.Visibility = orders > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -811,6 +860,10 @@ public partial class MainWindow : Window
         {
             _guidesPage = new GuidesPage();
             PageGuides.Children.Add(_guidesPage);
+            // The return leg of MapPage.OpenGuideRequested (app review G7b): a guide card's place
+            // strip opens that place on the Starmap, so the two features reference each other in
+            // both directions instead of one. Same SetActivePage-then-call path a dock click takes.
+            _guidesPage.ShowOnMapRequested += id => { SetActivePage("map"); _mapPage?.ShowObject(id); };
         }
         _guidesPage.Activate();
     }
@@ -822,8 +875,55 @@ public partial class MainWindow : Window
         {
             _tradePage = new TradePage();
             PageTrade.Children.Add(_tradePage);
+            // Pinned-route forwarding (Task 10): keep the map's planner-route overlay in sync
+            // with whatever TradePage has pinned, no matter which of the two pages the user is
+            // currently standing on. Subscribed once, here, at construction time.
+            _tradePage.PinnedRouteChanged += PushPinnedRouteToMap;
+            // ...and to the overlay's TRADE tab, which is the surface actually on screen while the
+            // route is being flown (app review). Same event, same forwarding shape.
+            _tradePage.PinnedRouteChanged += PushPinnedRoutesToOverlay;
+            // The return leg of the map's own SEND TO PLANNER (app review G7b): a route leg's
+            // terminal name opens that stop on the Starmap.
+            _tradePage.ShowOnMapRequested += id => { SetActivePage("map"); _mapPage?.ShowObject(id); };
         }
         _tradePage.Refresh();
+    }
+
+    // Starmap (Task 10): lazy singleton like GuidesPage/TradePage, built once and re-activated
+    // on every visit. Cross-page jumps (guide/planner/prices) route through SetActivePage plus
+    // the target page's own Init*Page, the same path a dock click takes, so the target page
+    // exists and is freshly activated before the follow-up call lands on it.
+    private MapPage? _mapPage;
+    private void InitMapPage()
+    {
+        if (_mapPage == null)
+        {
+            _mapPage = new MapPage(_vm.AllResources, () => _vm.WorkOrders.ToList());
+            // M-2: SetActivePage already dispatches the target page's Init*Page (see the page ==
+            // "guides"/"trade" branches below), synchronously, so the field it populates is ready
+            // for the follow-up call the moment SetActivePage returns - no separate Init call needed.
+            _mapPage.OpenGuideRequested += id => { SetActivePage("guides"); _guidesPage?.ShowGuideById(id); };
+            _mapPage.OpenPlannerRequested += (startTid, destTid) => { SetActivePage("trade"); _tradePage?.SendRouteFromMap(startTid, destTid); };
+            _mapPage.OpenPricesRequested += tid => { SetActivePage("trade"); _tradePage?.ShowPricesForTerminal(tid); };
+            PageMap.Children.Add(_mapPage);
+        }
+        _mapPage.Activate();
+        PushPinnedRouteToMap();   // catches a route pinned on TradePage before the map page ever existed
+    }
+
+    // Reads TradePage's session pin and mirrors it onto the map's planner-route overlay. Either
+    // page can initialize first, so this is safe to call (and is called) before both exist: each
+    // side is null-guarded, and InitMapPage re-runs it on every visit to pick up a pre-existing
+    // pin the TradePage.PinnedRouteChanged subscription above missed while the map page was gone.
+    private void PushPinnedRouteToMap()
+    {
+        var routes = _tradePage?.PinnedRoutes;
+        // Sell-only pins (null buy terminal) draw no map leg - a leg needs two ends, and the
+        // player's end is wherever they currently are, which the map's own marker already shows.
+        var legs = routes?.Where(r => r.BuyTerminalId is not null)
+            .Select(r => (r.BuyTerminalId!.Value, r.SellTerminalId)).ToList();
+        if (legs is null || legs.Count == 0) _mapPage?.ClearPlannerRoute();
+        else _mapPage?.SetPlannerRoutes(legs);
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -848,13 +948,14 @@ public partial class MainWindow : Window
         _gridStudioPage.OnShown();
     }
 
-    // Ends both embedded browser viewports (Cargo Planner + Grid Studio) so the portable
-    // self-swap can rename Web\cargo files without msedgewebview2 holding them open.
+    // Ends all embedded browser viewports (Cargo Planner + Grid Studio + Starmap) so the portable
+    // self-swap can rename Web\cargo and Web\map files without msedgewebview2 holding them open.
     public void ShutdownWebViewsForUpdate()
     {
         Logger.Info("[UPDATE] closing embedded browser views before the swap");
         _plannerPage?.ShutdownWebViewForUpdate();
         _gridStudioPage?.ShutdownWebViewForUpdate();
+        _mapPage?.ShutdownWebViewForUpdate();
     }
 
     private AdminPage? _adminPage;
@@ -1184,12 +1285,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // F14 palette: one freshness grammar with the Trade page's UEX pill (same feed, same
+        // colors) - green fresh / amber stale / red for error AND never-fetched. Cyan-fresh died
+        // here because cyan is the app's live-location identity, not its health color; and
+        // "nothing fetched" moved from dim to red because a feed the user enabled that has no
+        // data at all is a missing thing, not an absent-by-choice one.
         var (dot, value) = state switch
         {
-            "busy"  => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
-            "error" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
-            "fresh" => (Hud.Br("CyanBrush"),   Hud.Br("FgBrush")),
-            _       => (Hud.Br("FgDimBrush"),  Hud.Br("FgDimBrush")),   // stale, nodata
+            "busy"   => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
+            "error"  => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
+            "fresh"  => (Hud.Br("OkBrush"),     Hud.Br("FgBrush")),
+            "nodata" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
+            _        => (Hud.Br("AccentBrush"), Hud.Br("AccentBrush")),   // stale
         };
 
         MarketChip.Visibility = Visibility.Visible;
@@ -1319,6 +1426,12 @@ public partial class MainWindow : Window
         { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
         { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        // The last of the four PriceHit surfaces to get the terminal id back (app review). This is a
+        // single decode line rather than a table row, so it takes the overlay's cramped variant: a
+        // real distance or nothing, never a bare system name.
+        if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                            App.Map, App.Player.Current) is { } away)
+            line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
@@ -1406,7 +1519,25 @@ public partial class MainWindow : Window
         _overlay.ContractBoxVisibilityToggled += App.SetContractBoxVisible;
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
+
+        // Pinned trade routes (the owner, 2026-08-01). Either side can come into existence first - the
+        // overlay is lazy and so is TradePage - so the wiring lives here, where the overlay is
+        // known to exist, and the push below catches routes pinned before it did. The per-card
+        // close routes back through TradePage so one owner still holds the pin list; the Refresh
+        // repaints the PIN chip on the planner row that card came from.
+        _overlay.UnpinRouteRequested += pin =>
+        {
+            _tradePage?.UnpinRoute(pin);
+            // Repaint the chips, do NOT Refresh(): that rebuilds the planner, the sell flow and the
+            // price browser to dim one chip, and the planner rebuild alone re-ranks ~2,600 rows and
+            // replays 25 rows of entrance cascade. Same reasoning as the PIN chip's own click.
+            if (_activePage == "trade") _tradePage?.RefreshPinChips();
+        };
+        PushPinnedRoutesToOverlay();
     }
+
+    private void PushPinnedRoutesToOverlay()
+        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<PinnedRoute>());
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {

@@ -4,8 +4,7 @@ using System.Text.Json;
 
 namespace NexusApp.Services;
 
-// Datamined inter-location distances (Data/starmap_locations.json), extracted from the game's
-// StarMap DataCore via sc-datamine/starbreaker (out/starmap_dive). Owner-requested decoration
+// Derived inter-location distances (Data/starmap_locations.json). Owner-requested decoration
 // (2026-07-30) on top of the approved trading-tab mock: true gigameter distances alongside the
 // existing proximity tiers - a recorded deviation beyond the mock, at the owner's explicit ask.
 // Positions are absolute, star-relative meters and are valid ONLY within a single system; two

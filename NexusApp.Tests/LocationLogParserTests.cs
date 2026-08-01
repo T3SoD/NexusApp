@@ -41,13 +41,46 @@ public class LocationLogParserTests
         "MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] " +
         "[Team_CoreGameplayFeatures][Missions][Comms]";
 
-    [Fact]
-    public void ParseJurisdiction_MonitoredSpace_HasNoJurisdictionSuffix()
+    // Real, byte-verbatim line from the 2026-08-01 LIVE session that exposed the defect: this
+    // People's Alliance crossing (Levski's controlling faction) landed 11 seconds before a
+    // "Entered Monitored Space" line, and the status line overwrote it, leaving the origin pill
+    // reading "Monitored Space" while the player stood in Levski. No handle appears in this line,
+    // so nothing needed genericizing.
+    private const string RealPeoplesAllianceJurisdiction =
+        "<2026-08-01T00:24:18.718Z> [Notice] <SHUDEvent_OnNotification> Added notification " +
+        "\"Entered People's Alliance Jurisdiction: \" [97] to queue. New queue size: 2, " +
+        "MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] " +
+        "[Team_CoreGameplayFeatures][Missions][Comms]";
+
+    // Modeled counterpart of the real Monitored Space line above (identical wrapper bytes, only
+    // the status word changed). Lawless space is the documented opposite condition; NOT an
+    // independently captured sample.
+    private const string ModeledUnmonitoredSpace =
+        "<2026-08-01T00:20:20.817Z> [Notice] <SHUDEvent_OnNotification> Added notification " +
+        "\"Entered Unmonitored Space: \" [95] to queue. New queue size: 1, " +
+        "MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] " +
+        "[Team_CoreGameplayFeatures][Missions][Comms]";
+
+    [Theory]
+    [InlineData(true)]    // the real captured line
+    [InlineData(false)]   // its modeled lawless-space counterpart
+    public void ParseJurisdiction_SecurityStatusCrossing_IsDroppedAsNotAPlace(bool monitored)
     {
-        var s = LocationLogParser.ParseJurisdiction(RealMonitoredSpace);
+        // A security-status crossing names a CONDITION, not a location - the identical string
+        // fires at every monitored boundary in the universe. Storing it as the last known place
+        // is what put "Monitored Space" in the origin pill while the player was in Levski.
+        Assert.Null(LocationLogParser.ParseJurisdiction(monitored ? RealMonitoredSpace : ModeledUnmonitoredSpace));
+    }
+
+    [Fact]
+    public void ParseJurisdiction_NamedJurisdictionWithApostrophe_SurvivesTheStatusFilter()
+    {
+        // The other half of the fix: dropping status crossings must not touch real faction
+        // jurisdictions, so the previous good signal is what stays standing.
+        var s = LocationLogParser.ParseJurisdiction(RealPeoplesAllianceJurisdiction);
         Assert.NotNull(s);
-        Assert.Equal("Monitored Space", s!.Value.Place);
-        Assert.Equal(new DateTime(2026, 7, 29, 22, 39, 34, 857, DateTimeKind.Utc), s.Value.SeenUtc);
+        Assert.Equal("People's Alliance", s!.Value.Place);
+        Assert.Equal(new DateTime(2026, 8, 1, 0, 24, 18, 718, DateTimeKind.Utc), s.Value.SeenUtc);
     }
 
     [Fact]

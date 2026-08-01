@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 using static NexusApp.Views.UiHelpers;
 
@@ -536,11 +537,29 @@ public partial class MainWindow
 
         // Terminal name keeps TextWrapping.Wrap (brief's explicit, deliberate override of the
         // mock's single-line ellipsis - see task-11-report.md fix-round mapping).
+        // App review 2026-08-01: the dossier could only ever name a terminal, because PriceHit
+        // carried no id. With the id back, the shared helper appends the system and (with a live
+        // session in the same system) the distance, and the row clicks through to that terminal's
+        // full price board - the same jump the Starmap already makes. Silence rule: an unresolvable
+        // terminal renders exactly as before, with no click affordance.
+        var where = PriceLocationLabel.Describe(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                                App.Map, App.Player.Current);
         var name = new TextBlock
         {
-            Text = hit.TerminalName, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = nameBrush,
+            Text = where is null ? hit.TerminalName : $"{hit.TerminalName}  ({where})",
+            FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = nameBrush,
             TextWrapping = System.Windows.TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
+        if (hit.TerminalId > 0)
+        {
+            name.Cursor = System.Windows.Input.Cursors.Hand;
+            name.ToolTip = $"Show all prices at {hit.TerminalName}.";
+            name.MouseLeftButtonUp += (_, _) =>
+            {
+                SetActivePage("trade");
+                _tradePage?.ShowPricesForTerminal(hit.TerminalId);
+            };
+        }
         g.Children.Add(name);
 
         // Both value cells carry a unit (owner rulings 2026-07-27): the week average spells out
@@ -596,26 +615,73 @@ public partial class MainWindow
         Margin = new Thickness(0, 4, 0, 8),
     };
 
-    private Border YieldRow(NexusApp.Models.RefineryYield y)
+    // One refinery's yield row. The seed's number is the row's number and always has been; the
+    // optional live reading (app review G8) rides beside it as corroboration, never as a
+    // replacement - see MarketQueries.LiveYieldsByStation for why that direction is load-bearing.
+    private Border YieldRow(NexusApp.Models.RefineryYield y, MarketQueries.YieldHit? live = null)
     {
         var rg = new Grid();
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+        rg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
         rg.Children.Add(new TextBlock { Text = y.Station, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         var sysT = new TextBlock { Text = y.System, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sysT, 1); rg.Children.Add(sysT);
+
+        // Only shown when it actually differs. A live reading that agrees with the seed adds a
+        // number to every row and tells the reader nothing; a disagreement is the whole signal.
+        if (live is not null && live.BonusPct != y.ModifierPct)
+        {
+            var liveSign = live.BonusPct > 0 ? "+" : "";
+            var reported = new TextBlock
+            {
+                Text = $"reported {liveSign}{live.BonusPct}%", FontSize = 10.5,
+                FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
+                Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                ToolTip = $"Players reported {liveSign}{live.BonusPct}% here "
+                        + $"({MarketNotice.FormatAge(DateTime.UtcNow - live.ModifiedUtc)}). "
+                        + $"Nexus shows its own {(y.ModifierPct > 0 ? "+" : "")}{y.ModifierPct}% figure.",
+            };
+            Grid.SetColumn(reported, 2); rg.Children.Add(reported);
+        }
+
         var sign = y.ModifierPct > 0 ? "+" : "";
         var yld = new TextBlock { Text = $"{sign}{y.ModifierPct}%", FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = ModifierBrush(y.ModifierPct), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(yld, 2); rg.Children.Add(yld);
+        Grid.SetColumn(yld, 3); rg.Children.Add(yld);
         return Hud.RowCard(rg);
     }
 
-    private TextBlock LocRow(string loc) => new TextBlock
+    // App review 2026-08-01: this was the ONLY list in the dossier with no interaction at all
+    // (BpRow and FoundInRow are both clickable), and the Starmap was a one-way leaf that nothing
+    // could jump into. A row that resolves to a map object now opens it on the Starmap.
+    //
+    // RESOLVE-THEN-DECORATE, per row, deliberately not a blanket clickable list. Only about 15 of
+    // the 48 distinct seed location strings match a map object: whole classes of them (Aaron Halo,
+    // Glaciem Ring, the Lagrange entries, the belts, Breaker Stations, Hathor Caves) are regions
+    // rather than catalogued objects and never will. A list that looked navigable and did nothing
+    // on two rows in three would look broken exactly where miners spend their time, so unresolved
+    // rows keep the appearance they have always had - no cursor, no tooltip, no handler.
+    private TextBlock LocRow(string loc)
     {
-        Text = $"◆  {loc}", FontSize = 12, Foreground = SystemBrush(GetSystem(loc)),
-        Margin = new Thickness(0, 0, 0, 5), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
-    };
+        var row = new TextBlock
+        {
+            Text = $"◆  {loc}", FontSize = 12, Foreground = SystemBrush(GetSystem(loc)),
+            Margin = new Thickness(0, 0, 0, 5), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+        };
+
+        if (App.Map.ResolveSeedLocation(loc) is not { } obj) return row;
+
+        row.Cursor = System.Windows.Input.Cursors.Hand;
+        row.ToolTip = $"Show {obj.Name} on the Starmap.";
+        row.MouseLeftButtonUp += (_, _) =>
+        {
+            SetActivePage("map");
+            _mapPage?.ShowObject(obj.Id);
+        };
+        return row;
+    }
 
     // A byproduct-source row: another ore's deposit that also yields the current resource. The
     // proportional bar + band text show the % of that rock this resource makes up; the right value
@@ -892,6 +958,15 @@ public partial class MainWindow
                 TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
             });
+            // Where that refinery actually is (app review G10). The line named a station and a
+            // percentage and nothing else, so a +8% refinery a jump away read exactly like a +8%
+            // one next door. Same words the price surfaces use, and silent when it cannot place it.
+            if (RefineryPlaces.Describe(bestYield, App.Map, App.Player.Current) is { } where)
+                right.Children.Add(new TextBlock
+                {
+                    Text = where, FontSize = 11, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 7, 0),
+                });
             right.Children.Add(new TextBlock
             {
                 Text = $"{(bestYield.ModifierPct > 0 ? "+" : "")}{bestYield.ModifierPct}%", FontSize = 13,
@@ -1125,7 +1200,10 @@ public partial class MainWindow
         if (topHit is not null || yields.Count > 0)
         {
             ReferenceDetailPanel.Children.Add(RefSectionLabel(MarketNotice.ValueSection));
-            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, yields.Count > 0 ? yields[0] : null));
+            // The headline pick is RefineryPlaces.Best, not yields[0] (app review G10): the modifier
+            // still decides it, but ties - and this seed has many, ten stations deep for some ores -
+            // now go to the nearest rather than to whichever the seed listed first.
+            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, RefineryPlaces.Best(r.Refineries, App.Map, App.Player.Current)));
 
             var valueDetails = new StackPanel { ClipToBounds = true };   // clips mid-reveal, like the work order sell rows
             if (priceHits.Count > 0)
@@ -1168,8 +1246,13 @@ public partial class MainWindow
                 // rows are already behind one click here, and a second expander inside the first
                 // would hide seed data the dossier shows today.
                 valueDetails.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {yields.Count}"));
+                // Live UEX refining bonuses for this ore, joined by station name (app review G8).
+                // Empty whenever market data is off, the snapshot is missing, or nobody has
+                // reported this ore - and an empty lookup makes every row render exactly as it did
+                // before, which is the point: the seed's yields never depend on the network.
+                var liveYields = MarketQueries.LiveYieldsByStation(marketSnap, r.Name);
                 foreach (var y in yields)
-                    valueDetails.Children.Add(YieldRow(y));
+                    valueDetails.Children.Add(YieldRow(y, liveYields.GetValueOrDefault(y.Station)));
             }
 
             ApplyExpanderState(valueDetails, _dossierValueExpanded);

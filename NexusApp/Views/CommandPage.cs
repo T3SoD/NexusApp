@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using NexusApp.Models;
 using NexusApp.Services;
 using NexusApp.ViewModels;
@@ -106,7 +107,96 @@ public sealed class CommandPage : UserControl
         // pick this up live - same UI-thread contract as the shard/update wiring above (the
         // watcher's DispatcherTimer already raises on the UI thread, per GameLogFeed.cs).
         App.GameLogFeed.ChannelChanged += _ => Refresh();
+
+        // App review 2026-08-01: the page subtitle promises "Everything live, in one glance" and the
+        // class comment above asserts the dashboard "rebuilds its content statically on every live
+        // data tick", but the only triggers were the three subscriptions above plus tab activation.
+        // Nothing listened for hauls or work orders, so accepting a contract in game did not move
+        // CARGO IN TRANSIT or ACTIVE HAULS, and the refinery rows sat frozen. HaulTracker was
+        // already raising the Changed event nobody had subscribed to. Unfinished wiring, not a
+        // decision - the entrance cascade is separately gated behind _entrancePlayed, so a Refresh
+        // on a data tick has always been the intended mechanism and never replays the animation.
+        //
+        // Guarded on IsVisible, unlike the three above, because hauls and work orders tick far more
+        // often than a shard or channel change and rebuilding a hidden page's whole visual tree for
+        // each one is pure waste. Nothing is missed: MainWindow's SetActivePage calls Refresh on
+        // every activation, so a page that skipped updates while hidden catches up on open. Same
+        // idiom as TradePage and MapPage's own permanent subscriptions.
+        App.Hauls.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        // The header subtitle now reports where the player was last seen, so a boundary crossing has
+        // to repaint it. Same guard and same idiom MapPage uses for its own player marker.
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+
+        // REMAINING countdown (app review F11). Every other trigger on this page is a DATA change,
+        // and a countdown has none - the number goes stale purely because time passed. So the
+        // refinery rows sat frozen at whatever they said when the page was last rebuilt.
+        //
+        // IsVisible, not Loaded: Operations is a lazy singleton kept permanently in MainWindow's
+        // tree, and page switches are pure Visibility toggling, so Loaded/Unloaded never fire for it
+        // (the same trap GuidesPage documents for its own hangar line).
+        IsVisibleChanged += (_, _) => { if (IsVisible) StartQueueTicker(); else _queueTicker?.Stop(); };
     }
+
+    // ── REMAINING countdown (app review F11) ───────────────────────────────────────────────────
+    // Deliberately NOT a page Refresh on a timer. Refresh rebuilds the entire dashboard's visual
+    // tree, which at one hertz would be indefensible for a number that changes once a minute. This
+    // rewrites the one TextBlock per row that is actually volatile, and only when its text really
+    // changed - WorkOrder.TimerRemainingShort has minute resolution, so 59 ticks in 60 are no-ops
+    // and must not touch the property at all, or WPF invalidates layout for nothing.
+    private readonly List<(WorkOrder Order, TextBlock Cell)> _queueCells = new();
+    private DispatcherTimer? _queueTicker;
+
+    private void StartQueueTicker()
+    {
+        // Nothing counting down means nothing to tick. A queue of orders that are all ready to
+        // collect, or have no timer at all, leaves the timer stopped rather than spinning.
+        if (!_queueCells.Any(c => c.Order.TimerEnd.HasValue))
+        {
+            _queueTicker?.Stop();
+            return;
+        }
+
+        _queueTicker ??= MakeQueueTicker();
+        _queueTicker.Start();
+    }
+
+    private DispatcherTimer MakeQueueTicker()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) => TickQueueCells();
+        return timer;
+    }
+
+    private void TickQueueCells()
+    {
+        var live = false;
+        foreach (var (order, cell) in _queueCells)
+        {
+            if (order.TimerEnd.HasValue) live = true;
+            var text = QueueRemainingText(order);
+            if (!string.Equals(cell.Text, text, StringComparison.Ordinal))
+            {
+                cell.Text = text;
+                // F14 latent defect (pill inventory P54): the ticker rewrote the text but never
+                // the color, so an order going ready mid-view read "ready" in dim gray until
+                // something forced a full Refresh. The color rule is the row builder's own,
+                // re-applied on the same text-actually-changed guard - 59 no-op ticks in 60
+                // still touch nothing.
+                cell.Foreground = order.Status == WorkOrderStatus.ReadyToCollect
+                    ? UiHelpers.BrushFromHex(order.StatusColorHex) : Br("FgDimBrush");
+            }
+        }
+        // An order whose timer ran out stops being volatile. Its own status transition is owned
+        // elsewhere (WorkOrderEditorPanel raises OrderReadyToCollect, which rebuilds this page), so
+        // all this has to do is stop burning a tick once nothing is counting.
+        if (!live) _queueTicker?.Stop();
+    }
+
+    private static string QueueRemainingText(WorkOrder o) =>
+        !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort
+        : o.Status == WorkOrderStatus.ReadyToCollect ? "ready"
+        : "-";
 
     public void Refresh()
     {
@@ -255,8 +345,33 @@ public sealed class CommandPage : UserControl
     {
         var radar = Hud.AmbientGlyph(Hud.Ambient.StatusBoard, 46);
         radar.VerticalAlignment = VerticalAlignment.Center;
-        return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", radar);
+        // The subtitle now says where you are when the app knows. App review: this page had ZERO
+        // references to App.Locations or any geometry catalog, so the landing page could not answer
+        // the most basic live question the app already had the answer to. Possible now that
+        // App.Player exists; before the refactor, position was locked inside two other pages.
+        return Hud.Header("COMMAND", "Operations", HeaderSubtitle(), radar);
     }
+
+    /// <summary>The subtitle, with the player's location folded in when it is known. Pure string
+    /// assembly so the rule is testable: silence when there is no session, which is the normal state
+    /// with the game closed and must not read as an error or a placeholder.</summary>
+    internal static string OperationsSubtitle(string? placeLabel, string? system)
+    {
+        const string Base = "Everything live, in one glance. Drill into any module from the rail.";
+        if (string.IsNullOrWhiteSpace(placeLabel)) return Base;
+
+        // The system is only appended when it is known AND not already implied by the label - the
+        // planet-named jurisdictions ("microTech") would otherwise read "microTech, Stanton" which
+        // is fine, but "Stanton, Stanton" would not be.
+        var where = !string.IsNullOrWhiteSpace(system)
+                    && !string.Equals(system, placeLabel, StringComparison.OrdinalIgnoreCase)
+            ? $"{placeLabel}, {system}"
+            : placeLabel;
+        return $"Last seen at {where}. " + Base;
+    }
+
+    private static string HeaderSubtitle()
+        => OperationsSubtitle(App.Player?.Label, App.Player?.System);
 
     // ── auto-relaunch notice strip: amber alert shown on a render-relaunch start ──
     // Sits between the header and the KPI row, only when this session was auto-relaunched by
@@ -852,8 +967,11 @@ public sealed class CommandPage : UserControl
     {
         var sp = new StackPanel();
         sp.Children.Add(PanelHead("REFINERY QUEUE", "Open tracker", "workorders"));
+        // Rebuilt every Refresh, so the old TextBlocks are dropped with the tree they belonged to;
+        // holding them would tick controls that are no longer on screen (F11).
+        _queueCells.Clear();
         var active = App.Data.GetWorkOrders().Where(o => o.Status != WorkOrderStatus.Complete).ToList();
-        if (active.Count == 0) { sp.Children.Add(Empty("No active work orders.")); return sp; }
+        if (active.Count == 0) { sp.Children.Add(Empty("No active work orders.")); _queueTicker?.Stop(); return sp; }
 
         sp.Children.Add(TableRow(Th("ORDER"), Th("STATION"), Th("STATUS"), Th("REMAINING", right: true), header: true));
         foreach (var o in active)
@@ -865,10 +983,11 @@ public sealed class CommandPage : UserControl
             };
             var station = new TextBlock { Text = !string.IsNullOrWhiteSpace(o.Refinery) ? o.Refinery : o.Location, FontFamily = Ui, FontSize = 12, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
             var chipHolder = new ContentControl { Content = Hud.StatusChip(o.Status), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            var remTxt = !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort : (o.Status == WorkOrderStatus.ReadyToCollect ? "ready" : "-");
-            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            var rem = new TextBlock { Text = QueueRemainingText(o), FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            _queueCells.Add((o, rem));
             sp.Children.Add(TableRow(order, station, chipHolder, rem));
         }
+        StartQueueTicker();
         return sp;
     }
 

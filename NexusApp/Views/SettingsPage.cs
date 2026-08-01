@@ -80,14 +80,23 @@ public sealed class SettingsPage : UserControl
         _openLogMonitor = openLogMonitor;
         _openAppLogMonitor = openAppLogMonitor;
         _underlineBrush = new SolidColorBrush(Hud.Col("AccentColor"));
+        // Singleton page, visibility-toggled: refresh the one Diagnostics value that can change
+        // mid-session on every entry (see RefreshRestartRow).
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) RefreshRestartRow(); };
 
         var root = new Grid { Margin = new Thickness(28, 22, 28, 0) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                    // page header
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                    // tab strip
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });// pane host
 
+        // Reworded 2026-08-01 (app review). "Everything stays on this machine" predates the update
+        // checker and the two market-data sources, and this same page now hosts all three network
+        // toggles. It was defensible about the USER'S data (update checks send nothing about you,
+        // market fetches are anonymous reads) but read as "this app never goes online", which is no
+        // longer true. Say the honest version instead of the reassuring one.
         var header = Hud.Header("Configuration", "Settings",
-            "Paths and data. Everything stays on this machine.");
+            "Paths and data. Your files stay on this machine; anything that uses the internet is off "
+            + "until you turn it on.");
         Grid.SetRow(header, 0);
         root.Children.Add(header);
 
@@ -538,9 +547,26 @@ public sealed class SettingsPage : UserControl
             SettingRow("Last automatic restart",
                 "Shows the most recent time Nexus closed and reopened itself automatically after " +
                 "Windows reported a display error, usually while the game was crashing or quitting.",
-                RestartValue(App.Settings.Current.LastAutoRelaunchUtc), last: true)));
+                _restartValueHost = new ContentControl
+                {
+                    Content = RestartValue(App.Settings.Current.LastAutoRelaunchUtc),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                }, last: true)));
 
         return Pane(panel);
+    }
+
+    // F14 latent defect (pill inventory P94): this row was built once at construction and never
+    // again, and SettingsPage is an app-lifetime singleton - a relaunch recorded mid-session
+    // stayed invisible until the next app start. The page is visibility-toggled (never
+    // Loaded/Unloaded, same as every lazy singleton page), so re-read the stored value on each
+    // entry; the write itself happens at startup in the relaunch path, so entry-time is as live
+    // as this value can ever need to be.
+    private ContentControl? _restartValueHost;
+    private void RefreshRestartRow()
+    {
+        if (_restartValueHost != null)
+            _restartValueHost.Content = RestartValue(App.Settings.Current.LastAutoRelaunchUtc);
     }
 
     // UPDATES: app auto-update checks + live market data. Both moved out of DIAGNOSTICS (app
@@ -592,7 +618,7 @@ public sealed class SettingsPage : UserControl
 
             panel.Children.Add(SectionPanel("Updates", false,
                 SettingRow("Check for updates automatically",
-                    "Once a day when Nexus starts, Nexus asks github.com for the latest version " +
+                    "Each time Nexus starts, it asks github.com for the latest version " +
                     "number. Nothing about you or your data is sent. Downloads and installs always " +
                     "ask first.",
                     checkToggle, last: false),

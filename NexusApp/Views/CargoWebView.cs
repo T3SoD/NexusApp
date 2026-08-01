@@ -86,31 +86,13 @@ public sealed class CargoWebView : UserControl
         Loaded += async (_, _) => await InitAsync();
     }
 
-    // One shared environment for every CargoWebView in the process. A second environment on the
-    // same user-data folder throws ("folder in use"), so both the planner and Grid Studio
-    // viewports must share this one.
-    private static Task<CoreWebView2Environment>? _sharedEnv;
-    private static Task<CoreWebView2Environment> SharedEnvAsync()
-    {
-        if (_sharedEnv == null)
-        {
-            // Keep the WebView2 profile in a writable per-user folder (the exe may live under Program Files).
-            var dataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexusApp",
-                AppPaths.IsDemoProfile ? "WebView2_demo" : "WebView2");
-            Directory.CreateDirectory(dataFolder);
-            _sharedEnv = CoreWebView2Environment.CreateAsync(null, dataFolder, null);
-        }
-        return _sharedEnv;
-    }
-
     private async Task InitAsync()
     {
         if (_web.CoreWebView2 != null) return;
 
         try
         {
-            await _web.EnsureCoreWebView2Async(await SharedEnvAsync());
+            await _web.EnsureCoreWebView2Async(await WebViewEnv.SharedAsync());
 
             var core = _web.CoreWebView2!;
             var siteFolder = Path.Combine(AppContext.BaseDirectory, "Web", "cargo");
@@ -141,7 +123,7 @@ public sealed class CargoWebView : UserControl
             // WebView2 runtime missing, or the shared user-data folder is locked/corrupt. Do not let an
             // async-void Loaded handler take the whole app down; show a fallback and let a later view retry.
             Logger.Error("[CARGO] cargo 3D view failed to start; WebView2 could not initialize", ex);
-            _sharedEnv = null;
+            WebViewEnv.Reset();
             Content = new System.Windows.Controls.TextBlock
             {
                 Text = "3D view unavailable. The WebView2 runtime could not be started. See nexus.log.",
@@ -162,7 +144,7 @@ public sealed class CargoWebView : UserControl
     {
         try { _web.Dispose(); }
         catch (Exception ex) { Logger.Error("[CARGO] WebView2 dispose before update failed", ex); }
-        _sharedEnv = null;
+        WebViewEnv.Reset();
         _ready = false;
     }
 

@@ -7,7 +7,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -65,7 +67,13 @@ public sealed partial class TradePage : UserControl
 
     // Datamined starmap positions (owner's ask, 2026-07-30), shared by the Planner and Sell flows'
     // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
-    private readonly StarmapCatalog _starmap = StarmapCatalog.LoadEmbedded();
+    // Was a second, near-duplicate geometry catalog of its own (StarmapCatalog, 215 places, its own
+    // 59 KB embed, its own copy of Resolve and FormatGm). Retired 2026-08-01 in favour of the one
+    // app-wide catalog: the two shipped byte-identical 215-triple alias sets and agreed on
+    // coordinates to within 0.81 m, so this is a visual no-op for the Gm figures while deleting a
+    // whole duplicated resolver. MapCatalog.DistanceMeters(MarketTerminal, MarketTerminal) is a
+    // deliberate same-shape replacement for StarmapCatalog's, so the call sites did not change form.
+    private MapCatalog _starmap => App.Map;
 
     public TradePage()
     {
@@ -298,8 +306,15 @@ public sealed partial class TradePage : UserControl
             CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2),
             Child = text, VerticalAlignment = VerticalAlignment.Center,
         };
-        chip.ToolTip = "Distance between the buy and sell stops. Closest to farthest: Same Orbit, " +
-                       "Same Planet, Same System, Cross-System.";   // mock:653, verbatim
+        // Reworded 2026-08-01 (app review): the old text was "Distance between the buy and sell
+        // stops", which this chip does not measure. The tier is pure string equality over UEX
+        // hierarchy fields with no geometry at all (ProximityTiers.cs, whose own header says
+        // "Coarse tiers only - no distances, no ETAs"), and the real Gm figure renders inches away
+        // in the same row - so the chip and the number could visibly disagree and read as a bug.
+        // The tier is deliberately NOT derived from real distance; that is a documented spec
+        // decision, so the wording changes instead of the behaviour.
+        chip.ToolTip = "Where the two stops sit relative to each other: same station or orbit, " +
+                       "same planet, same star system, or across a jump. Not a measured distance.";
         return chip;
     }
 
@@ -676,7 +691,7 @@ public sealed partial class TradePage : UserControl
     /// already applies to every other unresolved-origin case.</summary>
     internal IReadOnlySet<int> OriginTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
         App.Locations.LastKnownLocation is { } loc
-            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals)
+            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals, App.Locations.LastKnownUexLocation)
             : new HashSet<int>();
 
     private void RefreshContextRow()
@@ -764,5 +779,136 @@ public sealed partial class TradePage : UserControl
         _sctAgePill.ToolTip = $"SCT: SC Trade Tools, a secondary price source, last updated {_sctAgeValue.Text}. " +
                               "LED: green under 24h, amber older, red no data.";
         SetFreshnessDot(_sctPillDot, age);
+    }
+
+    // ── MAP tab hooks (Task 8, starmap MAP tab integration) ──────────────────────────────────
+    // Session-only pins (not persisted - a route pin is a "what I'm running right now" marker, not
+    // a saved preference; nothing in AppSettings' fixed contract has room for one either). The WPF
+    // wiring here (PinRoute, the row's PIN chip, SendRouteFromMap's field writes,
+    // ShowPricesForTerminal's tab switch) is not unit tested - constructing a real TradePage needs
+    // a live App/window context, too heavy for a unit test - but every DECISION it depends on is:
+    // RoutePlanner.TogglePin / SurvivingPins / PinSurvivesRefresh (Services/RoutePlanner.cs), unit
+    // tested directly in NexusApp.Tests/TradePinnedRouteTests.cs.
+    //
+    // MULTI-PIN and PERSISTED since 2026-08-01 (the owner: "i would like the ability to pin multiple routes from
+    // planner to display in the overlay with the ability to close each one out from the overlay").
+    // Order is pin order, oldest first, and it is load-bearing: the overlay lists pins in it, and
+    // TogglePin drops the oldest at the cap.
+    // PERSISTED since 2026-08-01 (the owner: "lets have trade routes pinned persist the same as refinery
+    // orders"). Backed by AppSettings.PinnedRoutes, which is the live list itself rather than a copy
+    // written back - one owner, so a pin cannot exist in memory and not on disk.
+    internal IReadOnlyList<PinnedRoute> PinnedRoutes => App.Settings.Current.PinnedRoutes;
+    internal event Action? PinnedRouteChanged;
+
+    /// <summary>A planner route leg's terminal name was clicked (app review G7b). MainWindow
+    /// switches to the MAP tab and focuses that stop - the return leg of the map's own SEND TO
+    /// PLANNER, so the two pages reference each other in both directions.</summary>
+    internal event Action<int>? ShowOnMapRequested;
+
+    // Static call sites (BuildLeg is static, like most of this page's row builders) reach the
+    // instance event through this, so the row builders stay static and stateless.
+    private void RaiseShowOnMap(int objectId) => ShowOnMapRequested?.Invoke(objectId);
+
+    /// <summary>True when this exact haul (buy terminal, sell terminal, commodity) is pinned. The
+    /// row's PIN chip paints from this, so "is this row pinned" can never disagree with what the
+    /// overlay is showing.</summary>
+    internal bool IsPinned(TradeRoute r) => PinnedRoutes.Any(p => RoutePlanner.SameHaul(p, r));
+
+    /// <summary>The Sell tab's counterpart (the owner, 2026-08-01): true when a SELL-ONLY pin names
+    /// this buyer terminal + commodity. Planner pins never satisfy this - see SameSellHaul.</summary>
+    internal bool IsSellPinned(int terminalId, int commodityId)
+        => PinnedRoutes.Any(p => RoutePlanner.SameSellHaul(p, terminalId, commodityId));
+
+    /// <summary>Sell-tab pin toggle, through the same single write path as PinRoute - shared
+    /// list, shared cap, shared persistence and overlay push.</summary>
+    internal void PinSellRow(TradePriceRow row, int qty)
+        => SetPins(RoutePlanner.ToggleSellPin(PinnedRoutes, row, qty, DateTime.UtcNow));
+
+    /// <summary>Refreshes sell-only pins from a Sell-tab ranking (one commodity), leaving planner
+    /// pins and other commodities' sell pins alone - RoutePlanner.RefreshSellPins owns the rules.</summary>
+    internal void RefreshSellPinFacts(IReadOnlyList<TradePriceRow> rows)
+        => SetPins(RoutePlanner.RefreshSellPins(PinnedRoutes, rows, DateTime.UtcNow));
+
+    /// <summary>Toggles a pin: pinning an already-pinned haul unpins it, and pinning past the cap
+    /// drops the oldest (RoutePlanner.TogglePin owns both rules). Passing null clears every pin.
+    /// Raises PinnedRouteChanged and saves only on an actual change.</summary>
+    internal void PinRoute(TradeRoute? r)
+    {
+        if (r is null) { SetPins(new List<PinnedRoute>()); return; }
+        SetPins(RoutePlanner.TogglePin(PinnedRoutes, r, DateTime.UtcNow));
+    }
+
+    /// <summary>Removes one pin, the overlay's per-card close. Unlike PinRoute this never adds:
+    /// a close on a card whose haul is already gone is a no-op, not a re-pin.</summary>
+    internal void UnpinRoute(PinnedRoute pin)
+        => SetPins(PinnedRoutes.Where(p => !p.SameHaulAs(pin)).ToList());
+
+    /// <summary>Refreshes the display facts of any pin the fresh ranking contains, and leaves the
+    /// rest alone. This USED to drop pins missing from the ranking; see RoutePlanner.RefreshPins for
+    /// why that rule could not survive pins outliving their session.</summary>
+    internal void RefreshPins(IReadOnlyList<TradeRoute> fresh)
+        => SetPins(RoutePlanner.RefreshPins(PinnedRoutes, fresh, DateTime.UtcNow));
+
+    // The single write path, so every change logs once, saves once and raises once. A no-op
+    // assignment is swallowed here rather than at each caller: RebuildPlanner calls RefreshPins on
+    // EVERY rebuild, including the hourly market tick, and an event per tick would repaint the
+    // overlay and re-push the map route for nothing - and, now that pins are persisted, would write
+    // settings.json on a timer.
+    //
+    // "No-op" compares the display facts too, not just the haul identity: a refresh that moved a
+    // trip quantity or a margin IS a change the overlay has to show, even though the same routes are
+    // pinned in the same order.
+    private void SetPins(IReadOnlyList<PinnedRoute> next)
+    {
+        var current = App.Settings.Current.PinnedRoutes;
+        if (next.Count == current.Count && next.Zip(current).All(p => Unchanged(p.First, p.Second))) return;
+
+        var before = current.Count;
+        App.Settings.Current.PinnedRoutes = next.ToList();
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: pinned routes {before} -> {next.Count} (saved)");
+        PinnedRouteChanged?.Invoke();
+    }
+
+    private static bool Unchanged(PinnedRoute a, PinnedRoute b) =>
+        a.SameHaulAs(b) && a.TripQty == b.TripQty && a.PerScuMargin.Equals(b.PerScuMargin)
+        && a.CommodityName == b.CommodityName
+        && a.BuyTerminalName == b.BuyTerminalName && a.SellTerminalName == b.SellTerminalName;
+
+    // PrefillPlannerOriginFromMap was removed 2026-08-01 (app review). It took a single terminal id
+    // and seeded only STARTING LOCATION, and its doc comment described a per-pin "set as planner
+    // start" action that does not exist on the map - its one real caller was SEND TO PLANNER, which
+    // is exactly the path that was dropping every stop after the first. SendRouteFromMap below
+    // replaces it and carries both ends.
+
+    /// <summary>The map's ROUTE BUILDER handing over a whole run: the first stop becomes STARTING
+    /// LOCATION and the last becomes DESTINATION. Added 2026-08-01 (app review) because SEND TO
+    /// PLANNER used to forward only the first stop, so a numbered multi-stop route with per-leg
+    /// distances and a TOTAL arrived as a start with DESTINATION still on ANY - a contract mismatch
+    /// the receiving method's own doc comment ("set as planner start") made visible in the code.
+    /// Either end failing to resolve is a silent no-op on that end only; the start is applied first
+    /// so a resolvable start still lands even if the destination has since fallen out of the
+    /// snapshot. Both go through the same SetStart/SetDest paths the combos use, so persistence,
+    /// logging, combo refresh and the rerun all stay on one road.</summary>
+    internal void SendRouteFromMap(int startTerminalId, int destTerminalId)
+    {
+        var terminals = App.Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>();
+
+        if (TradeOriginResolver.OriginNameForTerminal(startTerminalId, terminals) is { } startName)
+        {
+            Logger.Info($"[UI] trade: start prefilled from map route ({startName})");
+            SetStart(startName);
+        }
+
+        // Reuses OriginNameForTerminal despite the name: it is a plain id-to-MarketTerminal.Name
+        // lookup, and Name is exactly what BOTH pickers persist (TradeStartManual and
+        // TradeDestManual). A second identical method for the destination side would be a copy.
+        if (TradeOriginResolver.OriginNameForTerminal(destTerminalId, terminals) is { } destName)
+        {
+            Logger.Info($"[UI] trade: destination prefilled from map route ({destName})");
+            SetDest(destName);
+        }
+
+        SwitchTab(0);
     }
 }

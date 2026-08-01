@@ -397,4 +397,75 @@ public class GameLogBlueprintImporterTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // ── Step 5, the token-set fallback (issue #35) ──────────────────────────────────────────────
+    // The reported failure verbatim: a StarStrings install whose localization renames the Mirai
+    // racing gear with the variant word FIRST ("BlueFlame Racing Helmet"), while the seed carries
+    // the official order ("Neutrino Racing Helmet BlueFlame"). Steps 1-4 all miss - the log lines
+    // were a month older than the user's current global.ini, and step 4 needs an official name
+    // embedded intact, which a word-order flip never is.
+
+    private static readonly string[] RacingPool =
+    {
+        "Neutrino Racing Helmet Mirai",
+        "Neutrino Racing Helmet WhiteHot",
+        "Neutrino Racing Helmet BlackFire",
+        "Neutrino Racing Helmet BlueFlame",
+        "Neutrino Racing Flight Suit BlueFlame",
+        "Calva Racing Helmet",
+    };
+
+    [Fact]
+    public void Resolve_Issue35_ReorderedHelmet_ResolvesUniquely()
+    {
+        var imp = new GameLogBlueprintImporter(RacingPool);
+        // The exact line from the issue's attached report.
+        var line = "<2026-07-04T09:10:16.504Z> [Notice] <SHUDEvent_OnNotification> Added notification " +
+            "\"Received Blueprint: BlueFlame Racing Helmet: \" [114] to queue. New queue size: 3, " +
+            "MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]";
+        Assert.Equal("Neutrino Racing Helmet BlueFlame", imp.ResolveLine(line));
+    }
+
+    [Fact]
+    public void Resolve_Issue35_ReorderedFlightSuit_ResolvesUniquely()
+    {
+        var imp = new GameLogBlueprintImporter(RacingPool);
+        Assert.Equal("Neutrino Racing Flight Suit BlueFlame",
+            imp.Resolve("BlueFlame Racing Flight Suit"));
+    }
+
+    [Fact]
+    public void Resolve_TokenSubset_AmbiguousAcrossVariants_Refuses()
+    {
+        // "Racing Helmet" is a whole-word subset of five pool names: resolving any of them would
+        // mark the wrong item owned, so the only correct answer is unresolved (it reaches the
+        // unrecognized report instead).
+        var imp = new GameLogBlueprintImporter(RacingPool);
+        Assert.Null(imp.Resolve("Racing Helmet"));
+    }
+
+    [Fact]
+    public void Resolve_TokenSubset_SingleWord_Refuses()
+    {
+        // One word is too weak to identify anything, even when it happens to be unique.
+        var imp = new GameLogBlueprintImporter(new[] { "Neutrino Racing Helmet BlueFlame" });
+        Assert.Null(imp.Resolve("BlueFlame"));
+    }
+
+    [Fact]
+    public void Resolve_TokenSubset_CountsAsFallback_InHistoryScan()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nexus_scan_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = Path.Combine(dir, "Game.log");
+        File.WriteAllLines(log, new[] { RealLine("BlueFlame Racing Helmet") });
+        try
+        {
+            var imp = new GameLogBlueprintImporter(RacingPool);
+            var scan = imp.ScanHistory(log);
+            Assert.Contains("Neutrino Racing Helmet BlueFlame", scan.Matched);
+            Assert.Equal(1, scan.FallbackMatched);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

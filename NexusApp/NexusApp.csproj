@@ -16,7 +16,7 @@
     <!-- SINGLE SOURCE OF TRUTH for the app version. The in-app badges read this
          at runtime and the installer reads it from the built exe. For a release,
          CI overrides it from the git tag (dotnet publish -p:Version=X.Y.Z). -->
-    <Version>6.12.1</Version>
+    <Version>6.13.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\nexus.ico</ApplicationIcon>
     <!-- Per-Monitor-DPI-Aware V2 (issue #6): makes PointToScreen + GDI capture use true
@@ -60,6 +60,8 @@
     <EmbeddedResource Include="Data\sct_uex_map.json" />
     <None Remove="Data\starmap_locations.json" />
     <EmbeddedResource Include="Data\starmap_locations.json" />
+    <None Remove="Data\starmap_map.json" />
+    <EmbeddedResource Include="Data\starmap_map.json" />
     <None Remove="Data\location_aliases.json" />
     <EmbeddedResource Include="Data\location_aliases.json" />
     <None Update="README.txt">
@@ -76,6 +78,28 @@
   <ItemGroup>
     <None Remove="Web\cargo\**\*" />
     <Content Include="Web\cargo\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Starmap MAP tab 3D scene (Three.js, vendored for offline) served to the WebView2 host. -->
+  <ItemGroup>
+    <None Remove="Web\map\**\*" />
+    <Content Include="Web\map\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Same Assets\Fonts TTFs, also copied loose so MapWebView's nexus.fonts virtual host mapping
+       (Task 5 fix round) can serve them to the starmap scene page's @font-face rules. Stays under
+       Assets\Fonts in every build/publish/portable layout, never promoted to the root. Embedding
+       below (Resource) is unaffected - WPF's own XAML FontFamily pack-URI lookups still resolve
+       from the assembly. -->
+  <ItemGroup>
+    <None Remove="Assets\Fonts\*.ttf" />
+    <Content Include="Assets\Fonts\*.ttf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>

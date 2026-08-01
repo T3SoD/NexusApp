@@ -12,8 +12,16 @@ public sealed record GlyphPart(string El, IReadOnlyDictionary<string, string> At
 /// 2026-07-27: overlay tabs match their related pages), read from the same DockIconSpecs JSON the
 /// dock renders, so a regenerated dock pick can never drift from the overlay. Core parts only:
 /// flourish parts (ids prefixed "f_") and animation tracks are dock-scale detail, unreadable at
-/// 15px. Tabs with no app page (shopping, future trade) carry hand-authored glyphs at the same
-/// stroke weight, mirroring the approved mock's ICONS map exactly.
+/// 15px. Tabs with no app page (shopping) carry hand-authored glyphs at the same stroke weight,
+/// mirroring the approved mock's ICONS map exactly.
+///
+/// <para>"trade" used to be hand-authored too - a trending-up arrow, written when the tab was
+/// reserved for a commodity page that did not exist yet. That page shipped with its own dock icon
+/// (the balance scale in DockIconSpecsCustom), so from 2026-08-01 the entry is gone and the tab
+/// resolves through the dock like every other page-backed tab: the owner's report was simply that the
+/// overlay's icon did not match the app's. The scale's core parts sit inside x 1.8-22.2, y 4-20.5,
+/// so the default 24x24 crop frames them without clipping, and Geometry.Parse handles its two arc
+/// segments.</para>
 /// </summary>
 public static class TabGlyphSpecs
 {
@@ -51,12 +59,6 @@ public static class TabGlyphSpecs
             {
                 ["d"] = "M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12",
             }),
-        },
-        // Trending-up, reserved for the future commodity trading tab.
-        ["trade"] = new List<GlyphPart>
-        {
-            new("path", new Dictionary<string, string> { ["d"] = "M16 7h6v6" }),
-            new("path", new Dictionary<string, string> { ["d"] = "m22 7-8.5 8.5-5-5L2 17" }),
         },
     };
 

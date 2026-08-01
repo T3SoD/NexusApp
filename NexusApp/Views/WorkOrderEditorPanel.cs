@@ -29,6 +29,26 @@ public class WorkOrderEditorPanel : UserControl
         return true;
     }
 
+    /// <summary>Should Save restamp TimerStart/TimerEnd? Only when the user actually CHANGED the
+    /// timer boxes and the result is a real duration. The boxes arrive prefilled with the order's
+    /// remaining time, so "non-zero" alone is not evidence of intent - that was the bug: any edit
+    /// to any other field restamped a fresh timer, which reset the progress bars to empty and, via
+    /// the prefill's second truncation, shaved up to 59 seconds off the order every time.
+    /// Pure so the rule is testable without a WPF tree (house idiom: MapPage.LayerRowVisible,
+    /// RoutePlanner.ChosenSystemOutsideScope).</summary>
+    internal static bool ShouldRestampTimer(string? hoursNow, string? minutesNow,
+                                            string? hoursAtBuild, string? minutesAtBuild)
+    {
+        var hNow = (hoursNow ?? "").Trim();
+        var mNow = (minutesNow ?? "").Trim();
+        if (hNow == (hoursAtBuild ?? "").Trim() && mNow == (minutesAtBuild ?? "").Trim())
+            return false;
+
+        int h = int.TryParse(hNow, out var hv) ? hv : 0;
+        int m = int.TryParse(mNow, out var mv) ? mv : 0;
+        return h > 0 || m > 0;
+    }
+
     private readonly WorkOrder _order;
     private readonly MainViewModel _vm;
     private readonly List<string> _allLocations;
@@ -58,6 +78,12 @@ public class WorkOrderEditorPanel : UserControl
     private ListBox? _locationSuggestList;
     private bool _suppressResourcesAC;
     private bool _suppressLocationAC;
+
+    // What the timer boxes were prefilled with when the editor was built. Save compares against
+    // these to tell "the user changed the timer" from "the user changed something else and the
+    // timer just happens to be showing its remaining time".
+    private string _timerHoursAtBuild = "";
+    private string _timerMinutesAtBuild = "";
 
     private static readonly string[] Refineries =
     [
@@ -175,6 +201,14 @@ public class WorkOrderEditorPanel : UserControl
         _locationBox.Text = _order.Location;
 
         foreach (var r in Refineries) _refineryBox.Items.Add(r);
+        // App review 2026-08-01: SelectedItem set to a string that is not in Items resolves to
+        // NULL, and Save wrote SelectedItem?.ToString() ?? "" - so opening a card and clicking Save
+        // (to flip a status pill, say) silently BLANKED any refinery this hardcoded list does not
+        // carry byte-exactly. That hits overlay quick-add free text (a plain TextBox by documented
+        // choice), imported orders, and anything created before the list last changed. Carry the
+        // stored value into the list rather than dropping it on the floor.
+        if (!string.IsNullOrWhiteSpace(_order.Refinery) && !_refineryBox.Items.Contains(_order.Refinery))
+            _refineryBox.Items.Insert(0, _order.Refinery);
         _refineryBox.SelectedItem = _order.Refinery;
         stack.Children.Add(MakeRow("Refinery", _refineryBox));
 
@@ -230,6 +264,10 @@ public class WorkOrderEditorPanel : UserControl
                 _timerMinutes.Text = remaining.Minutes.ToString();
             }
         }
+        // Snapshot what the timer boxes were PREFILLED with, so Save can tell an untouched timer
+        // from an edited one. See Save_Click for why that distinction matters.
+        _timerHoursAtBuild   = _timerHours.Text.Trim();
+        _timerMinutesAtBuild = _timerMinutes.Text.Trim();
 
         // Countdown display
         var countdownSection = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
@@ -468,13 +506,25 @@ public class WorkOrderEditorPanel : UserControl
         _order.Label     = _labelBox.Text;
         _order.Resources = _resourcesBox.Text.Trim().TrimEnd(';').Trim();
         _order.Location  = _locationBox.Text;
-        _order.Refinery  = _refineryBox.SelectedItem?.ToString() ?? "";
+        // Belt and braces alongside the Items.Insert in BuildUI: never let a null selection erase a
+        // stored refinery. The combo offers no blank entry, so there is no legitimate way for the
+        // user to intend "clear this".
+        _order.Refinery  = _refineryBox.SelectedItem?.ToString() ?? _order.Refinery ?? "";
         _order.Status    = GetStatusFromPills();
         _order.Notes     = _notesBox.Text;
 
+        // App review 2026-08-01: this used to restamp TimerStart/TimerEnd whenever either box was
+        // non-zero, INCLUDING when the user never touched them. The boxes are prefilled from the
+        // remaining time (BuildUI), so editing a label on a 2-hour order 10 minutes from done
+        // restamped a fresh 10-minute timer starting now: the countdown still read ~10m, but
+        // TimerFraction ((now - TimerStart) / (TimerEnd - TimerStart)) evaluated to ~0, so both
+        // progress bars snapped to empty and then raced to full over the last 10 minutes. Repeated
+        // edits also shaved up to 59 seconds off the timer each time, because the prefill truncates
+        // seconds. Comparing against the build-time snapshot leaves an untouched timer exactly as
+        // it was, which fixes both symptoms with one condition.
         var h = int.TryParse(_timerHours.Text.Trim(),   out var hv) ? hv : 0;
         var m = int.TryParse(_timerMinutes.Text.Trim(), out var mv) ? mv : 0;
-        if (h > 0 || m > 0)
+        if (ShouldRestampTimer(_timerHours.Text, _timerMinutes.Text, _timerHoursAtBuild, _timerMinutesAtBuild))
         {
             _order.TimerStart = DateTime.UtcNow;
             _order.TimerEnd   = DateTime.UtcNow.AddHours(h).AddMinutes(m);

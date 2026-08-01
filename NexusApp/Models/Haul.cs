@@ -8,6 +8,12 @@ public enum HaulOutcome { Active, Complete, Abandoned, Failed, Deactivated }
 // One pickup or dropoff objective of a haul. Pickup and dropoff that move the same
 // cargo share CargoKey (the objective GUID base + leg index), so a pickup can borrow
 // its sibling dropoff's commodity / SCU for display.
+//
+// NO COORDINATES HERE, deliberately. This carried X/Y/Z from the marker line for a while, written
+// on every leg and read by nothing; the app review flagged them as dead. They were removed rather
+// than wired up because they cannot mean what they look like they mean - see the CreateMarker note
+// in HaulLogParser for the three real log lines that establish it. A leg is placed by NAME
+// (Destination), through the geometry catalog, exactly like every other stop in the app.
 public sealed class HaulLeg
 {
     public string ObjectiveId { get; init; } = "";   // e.g. "dropoff_6e9335e8-..._0"
@@ -17,9 +23,6 @@ public sealed class HaulLeg
     public string Commodity { get; set; } = "";       // dropoff only (from the Deliver line)
     public int TargetScu { get; set; }                // dropoff only
     public string Destination { get; set; } = "";     // dropoff only (the "to <X>")
-    public double X { get; init; }
-    public double Y { get; init; }
-    public double Z { get; init; }
     public bool Completed { get; set; }
 }
 

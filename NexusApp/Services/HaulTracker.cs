@@ -214,7 +214,7 @@ public sealed class HaulTracker : IDisposable
             h.Legs.Add(new HaulLeg
             {
                 ObjectiveId = m.ObjectiveId, CargoKey = m.CargoKey, Role = m.Role,
-                LegIndex = m.LegIndex, X = m.X, Y = m.Y, Z = m.Z,
+                LegIndex = m.LegIndex,
             });
         if (!existed) Logger.Info($"[HAUL] mission accepted: {h.Company} {h.Topology}");
         TryApplyPending(h);   // the haul's company is now known; apply any contract scanned before it appeared

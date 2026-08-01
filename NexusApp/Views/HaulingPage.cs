@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -153,16 +154,23 @@ public sealed class HaulingPage : UserControl
             nameStack.Children.Add(topo);
         }
 
-        // Max container size the contract delivers in (from the contract OCR). Cyan when detected,
-        // dim placeholder when the panel text has not yielded it yet.
+        // Max container size the contract delivers in. Corrected 2026-08-01 (app review): both the
+        // comment and both tooltips used to credit contract OCR, but OCR is the FALLBACK, not the
+        // source. HaulTracker.ApplyMarker looks the cap up in ContractCapCatalog by the exact
+        // contract token first, and Enrich only lets an OCR value through when the catalog had no
+        // entry. The unknown-case wording was the harmful half: "not found in the scanned text yet"
+        // reads as "be patient", but contract scanning is OFF by default and can only be turned on
+        // from the overlay's HAULING tab, so a player who never enabled it was waiting for
+        // something that would never happen.
         bool capDetected = h.ContainerCap.HasValue;
         var capChip = Hud.Chip(capDetected ? Cyan : Color.FromRgb(0x7C, 0x8A, 0x99),
                                capDetected ? $"Box ≤ {h.ContainerCap} SCU" : "Box size ?");
         capChip.Margin = new Thickness(6, 0, 0, 0);
         capChip.VerticalAlignment = VerticalAlignment.Center;
         capChip.ToolTip = capDetected
-            ? "Max container size this contract delivers in, read from the contract panel."
-            : "The contract's max container size was not found in the scanned text yet.";
+            ? "Max container size this contract delivers in."
+            : "No container size on record for this contract. Turning on contract scanning "
+              + "(overlay, HAULING tab) lets Nexus read it from the contract panel.";
         nameStack.Children.Add(capChip);
 
         Grid.SetColumn(nameStack, 0); titleRow.Children.Add(nameStack);
@@ -337,8 +345,18 @@ public sealed class HaulingPage : UserControl
     {
         var con = App.Hauls.BuildConsolidation();
 
+        // App review 2026-08-01: these stops used to render in dictionary insertion order, which is
+        // the order contracts happened to be accepted in - meaningless to a hauler planning a run.
+        // The app has had real coordinates for these places and a live player position all along and
+        // used neither. Now ordered nearest-first when a session places the player; unchanged when
+        // it does not, because sorting by distance from nowhere would be theatre.
+        var here = App.Player.Current;
+        var pickups = ConsolidationOrder.ByDistanceFrom(con.Pickups, App.Map, here);
+        var dropoffs = ConsolidationOrder.ByDistanceFrom(con.Dropoffs, App.Map, here);
+
         var bodyStack = new StackPanel();
-        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation", "grouped by location"));
+        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation",
+            here is null ? "grouped by location" : "grouped by location, nearest first"));
 
         if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
         {
@@ -358,13 +376,32 @@ public sealed class HaulingPage : UserControl
         AddCell(table, 0, 2, HeaderCell("COMMODITY", false));
         AddCell(table, 0, 3, HeaderCell("SCU", true));
 
+        // The distance is appended to the LOCATION cell only on the first row of each stop, so a
+        // stop with four commodities does not repeat it four times. Null (unplaceable stop, or no
+        // session) renders exactly as before.
         var rowIdx = 1;
-        foreach (var s in con.Pickups)
+        foreach (var s in pickups)
+        {
+            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
+            bool first = true;
             foreach (var item in s.Items)
-                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, true, item.Commodity, item.Scu);
-        foreach (var s in con.Dropoffs)
+            {
+                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
+                                             true, item.Commodity, item.Scu);
+                first = false;
+            }
+        }
+        foreach (var s in dropoffs)
+        {
+            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
+            bool first = true;
             foreach (var item in s.Items)
-                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, false, item.Commodity, item.Scu);
+            {
+                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
+                                             false, item.Commodity, item.Scu);
+                first = false;
+            }
+        }
 
         bodyStack.Children.Add(table);
         return Hud.Panel(bodyStack, padding: new Thickness(0));

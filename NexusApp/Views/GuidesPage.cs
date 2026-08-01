@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -10,6 +11,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -24,6 +26,11 @@ namespace NexusApp.Views;
 /// </summary>
 public sealed class GuidesPage : UserControl
 {
+    /// <summary>A guide card's place strip was clicked (app review G7b). MainWindow switches to the
+    /// MAP tab and focuses the object, mirroring MapPage.OpenGuideRequested in the other direction -
+    /// the two features now know about each other both ways.</summary>
+    public event Action<int>? ShowOnMapRequested;
+
     // Cascade idiom shared with the rest of the app (MainWindow CascadeIn): 200ms per element,
     // 40ms stagger, 12px rise, quad-out. Section heads and cards share one continuous index so
     // the page sweeps in as a single movement; the credits footer is last.
@@ -86,6 +93,27 @@ public sealed class GuidesPage : UserControl
     }
 
     // -- guide open / close ----------------------------------------------------------
+
+    /// <summary>Opens a guide by catalog id, called by MainWindow when the MAP tab's OPEN GUIDE
+    /// button fires (Task 10). Duplicates OpenGuide's open path rather than calling it directly:
+    /// that overload takes a click's DependencyObject for InteractionLog, which a programmatic
+    /// jump has none of. An id that no longer resolves (a stale pin) is a silent no-op with its
+    /// own log line, matching the map-tab callers' unresolved-id convention.</summary>
+    internal void ShowGuideById(string id)
+    {
+        var guide = GuideCatalog.All.FirstOrDefault(g => g.Id == id);
+        if (guide == null)
+        {
+            Logger.Info($"[UI] guide open miss: {id}");
+            return;
+        }
+
+        _openGuide = guide;
+        _listHost.Visibility = Visibility.Collapsed;
+        _viewer.Visibility = Visibility.Visible;
+        _viewer.Show(guide);
+        Logger.Info($"[UI] guide opened: {id} (map)");
+    }
 
     private void OpenGuide(GuideEntry guide, DependencyObject source)
     {
@@ -274,6 +302,35 @@ public sealed class GuidesPage : UserControl
             FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
             Opacity = 0.85, Margin = new Thickness(0, 3, 0, 0),
         });
+
+        // WHERE THIS GUIDE IS (app review G7b). Every guide is a map of a real place, and the MAP
+        // tab has drawn those places as its GUIDES layer since it shipped - but the cards never
+        // said where they were, so the two features knew about each other in one direction only.
+        // Absent for the two Tactical Strike Groups guides, which document a formation rather than
+        // a location: those cards keep exactly the shape they have today.
+        if (GuidePlaces.Describe(App.Map, guide.Id, App.Player.Current) is { } where)
+        {
+            var place = new TextBlock
+            {
+                Text = $"◆  {where}", FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 4, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis, Cursor = Cursors.Hand,
+                ToolTip = "Show this place on the Starmap.",
+            };
+            place.MouseEnter += (_, _) => place.Foreground = Hud.Br("AccentBrush");
+            place.MouseLeave += (_, _) => place.Foreground = Hud.Br("FgDimBrush");
+            place.MouseLeftButtonUp += (_, e) =>
+            {
+                // Never bubble: the whole card opens the guide viewer, and this one strip inside it
+                // does something else. Same guard the planner row's PIN chip uses.
+                e.Handled = true;
+                if (GuidePlaces.Resolve(App.Map, guide.Id) is not { } obj) return;
+                Logger.Info($"[UI] guides: show {obj.Name} on the map");
+                ShowOnMapRequested?.Invoke(obj.Id);
+            };
+            meta.Children.Add(place);
+        }
+
         inner.Children.Add(meta);
 
         var host = Hud.CardFrame(inner, out var frame, out var brackets, chamfer: 10, padding: new Thickness(8));

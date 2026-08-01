@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -73,6 +74,7 @@ public partial class OverlayWindow : Window
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
     private readonly Action<string> _onOrderReady;
     private readonly Action _onMarketChanged;
+    private readonly Action _onLocationChanged;
 
     public OverlayWindow(MainViewModel vm)
     {
@@ -204,6 +206,21 @@ public partial class OverlayWindow : Window
         // market fan-out follows).
         _onMarketChanged = () => Dispatcher.BeginInvoke(RefreshMarketSellLines);
         App.Market.Changed += _onMarketChanged;
+
+        // Live player location on the TRADE tab (the owner, 2026-08-01: "current location in the overlay
+        // tab does not update live like it does in the main app"). The tab was only ever repainted
+        // on a tab switch or a pin change, so a boundary crossing mid-flight left CURRENT LOCATION
+        // and every band position stale - on the one surface that is actually on screen while
+        // crossing boundaries. Same permanent-subscription-plus-visibility-guard idiom MapPage's
+        // player marker already uses, and Changed fires off the UI thread, so marshal.
+        _onLocationChanged = () => Dispatcher.BeginInvoke(() =>
+        {
+            if (IsTabPresented("trade")) RebuildTradePanel();
+            // The HUB Location LED (F14) updates regardless of the presented tab: the write is a
+            // text + brush set, and keeping it current means tab entry never shows a stale place.
+            RefreshHubLocation();
+        });
+        App.Locations.Changed += _onLocationChanged;
 
         // Foreground gating: when neither Nexus nor Star Citizen is in front, OCR auto-scans pause.
         // Re-sync the HUB scan LEDs so they flip to/from the yellow paused state as that happens.
@@ -446,6 +463,7 @@ public partial class OverlayWindow : Window
         // SaveBounds, so SaveBounds' size guard stays armed across the whole teardown (see there).
         if (on) { _ghostActive = true; EnterGhost(restore: source == "restore"); }
         else ExitGhost();
+        RefreshCloseGlyphTooltip();
     }
 
     // Ghost transitions shrink the overlay to (or toward) the rail; a Refinery Tracker flyout
@@ -552,6 +570,7 @@ public partial class OverlayWindow : Window
     private void LeaveActiveTabForGhost()
     {
         _guidesHangarLine?.Stop();
+        _hubHangarLine?.Stop();
         _ordersTicker?.Stop();
         _ordersTicker = null;
     }
@@ -582,6 +601,7 @@ public partial class OverlayWindow : Window
         _ghostMotionGen++;                             // orphan any in-flight slide
         if (_ghostPanelOpen) LeaveActiveTabForGhost();
         _ghostPanelOpen = false;
+        RefreshCloseGlyphTooltip();
         _ghostFlyoutOpen = false;
         // Normal mode's header gear can leave its own flyout state behind when ghost mode engages
         // mid-open (Settings toggle, live from anywhere): reset both here so a later normal-mode
@@ -615,6 +635,7 @@ public partial class OverlayWindow : Window
         var gen = ++_ghostMotionGen;
         var wasOpen = _ghostPanelOpen;
         _ghostPanelOpen = true;
+        RefreshCloseGlyphTooltip();
         var (win, mon, dpi) = GhostContext();
         var s = App.Settings.Current;
         // Where the rail is has to come from the WINDOW's actual footprint, not from _ghostPanelOpen.
@@ -654,6 +675,7 @@ public partial class OverlayWindow : Window
         HideRefineryTrackerForGhost();
         var gen = ++_ghostMotionGen;
         _ghostPanelOpen = false;
+        RefreshCloseGlyphTooltip();
         var tab = _activeTab;
         LeaveActiveTabForGhost();
         GhostRail.SetActive(null);
@@ -1373,7 +1395,7 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_scanSwTrack, _scanSwKnob, _vm.RsScanState);   // amber on / yellow paused / grey off
         SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
-        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / yellow paused / red off)
+        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / amber paused / dim off)
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.RsScanState switch
         {
@@ -1460,19 +1482,26 @@ public partial class OverlayWindow : Window
     // Reflects contract-scanner-running / contract-box-visible state onto the two HAULING switches.
     private void SyncHaulingControls()
     {
-        // Contract auto-scan: running = on, intent-on-but-not-running = paused (foreground-gated), else off.
-        var contractState = App.ContractScan.IsRunning ? ScanIndicator.On
-            : App.Settings.Current.AutoScanContracts ? ScanIndicator.Paused : ScanIndicator.Off;
+        // Contract auto-scan: running = on, intent-on-but-not-running = paused (foreground-gated),
+        // else off. The mapping is the shared StatusChips seam (F14) because the header AUTO-SCAN
+        // chip folds this same state - two surfaces, one derivation.
+        var contractState = StatusChips.ContractScanState(
+            App.ContractScan.IsRunning, App.Settings.Current.AutoScanContracts);
         SetSwitch(_haulScanSwTrack, _haulScanSwKnob, contractState);   // amber on / yellow paused / grey off
         SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
-        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / yellow paused / red off)
+        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / amber paused / dim off)
     }
 
-    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row): Auto-scan RS + Contracts mirror the
-    // SCAN / HAULING auto-scan toggles (green on / yellow paused / red off), and Session shows Game.log
-    // monitoring (green = live game session being watched, red = SC closed / no log). The scan LEDs sync
-    // via SyncScanControls / SyncHaulingControls; Session via RefreshSessionLed. Toggles live on the tabs.
-    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed;
+    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row) - the overlay's own health
+    // rail, since it renders in-game where the main window's header strip is hidden. Session shows
+    // Game.log monitoring (green = live, red = SC closed / no log); Location (F14) shows where the
+    // log last placed the player, cyan breathing when known - it explains at a glance why route
+    // bands or the scan sell line have no distances; Auto-scan RS + Contracts mirror the SCAN /
+    // HAULING toggles (green on / amber paused / DIM off - off is a choice, red is reserved for
+    // broken). LEDs sync via SyncScanControls / SyncHaulingControls / RefreshSessionLed /
+    // RefreshHubLocation. Toggles live on the tabs.
+    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed, _hubLocationLed;
+    private TextBlock? _hubLocationText;
 
     private void BuildHubScanControls()
     {
@@ -1481,6 +1510,18 @@ public partial class OverlayWindow : Window
         _hubSessionLed = NewLed();
         HubScanBar.Children.Add(HubLedRow(_hubSessionLed, "Session",
             "Game.log session tracking (always on): green = monitoring a live game session, red = Star Citizen closed / no log"));
+
+        _hubLocationLed = NewLed();
+        _hubLocationText = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 9,
+            Foreground = (Brush)FindResource("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+            MaxWidth = 110, TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        HubScanBar.Children.Add(HubLedRow(_hubLocationLed, "Location",
+            "Where Game.log last placed you. Route bands and sell-line distances measure from here.",
+            _hubLocationText));
 
         _hubScanLed = NewLed();
         HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
@@ -1491,17 +1532,35 @@ public partial class OverlayWindow : Window
         SyncScanControls();
         SyncHaulingControls();
         RefreshSessionLed();
+        RefreshHubLocation();
     }
 
     // SESSION LED: green (pulsing) while a live game session is being monitored, red when Star Citizen is
-    // closed / no log. Refreshed from the same GameLog state + status events the old monitoring pill used.
-    private void RefreshSessionLed() => SetHubLed(_hubSessionLed, App.GameLog.IsSessionLive);
+    // closed / no log. The one LED on this rail allowed to show red for its low state: an absent session
+    // is the broken-trunk case, not a switched-off choice (F14 palette rule).
+    private void RefreshSessionLed() => SetLedColor(_hubSessionLed, App.GameLog.IsSessionLive ? LedOn : LedBroken,
+        pulse: App.GameLog.IsSessionLive);
     private void OnGameLogStatusChanged(string _) => RefreshSessionLed();
+
+    // LOCATION LED (F14): cyan breathing when the log places the player somewhere, dim when it does
+    // not. Cyan is the app's reserved live-location identity (Trade ORIGIN, map player marker).
+    private void RefreshHubLocation()
+    {
+        if (_hubLocationLed is null || _hubLocationText is null) return;
+        var place = App.Player?.Label;
+        bool known = !string.IsNullOrWhiteSpace(place);
+        // Same jurisdiction honesty as the header chip: an area reading shows dim with a "space"
+        // qualifier and no cyan pulse, never dressed up as a place.
+        bool coarse = known && App.Player!.LabelIsJurisdiction;
+        _hubLocationText.Text = !known ? "unknown" : coarse ? $"{place} space" : place;
+        _hubLocationText.Foreground = known && !coarse ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
+        SetLedColor(_hubLocationLed, known && !coarse ? LedLocation : LedOff, pulse: known && !coarse);
+    }
 
     // Read-only HUB status pill (mock .led): a bordered chip with an LED dot + short label, full text in
     // the tooltip. Sizes to content and tiles in a WrapPanel. Not interactive; the live toggle is on
     // SCAN / HAULING.
-    private FrameworkElement HubLedRow(Border led, string label, string tooltip)
+    private FrameworkElement HubLedRow(Border led, string label, string tooltip, TextBlock? value = null)
     {
         var row = new StackPanel
         {
@@ -1514,6 +1573,7 @@ public partial class OverlayWindow : Window
             Foreground = (Brush)FindResource("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
         });
+        if (value != null) row.Children.Add(value);
         return new Border
         {
             Child = row,
@@ -1526,20 +1586,24 @@ public partial class OverlayWindow : Window
         };
     }
 
-    // HUB status LED: paint it (green on / yellow paused / red off) and gently pulse it while On, matching
-    // the mock's breathing scan-status dots. Static while paused / off.
+    // HUB status LED: paint it (green on / amber paused / dim off) and gently pulse it while On,
+    // matching the mock's breathing scan-status dots. Static while paused / off.
     private void SetHubLed(Border? led, ScanIndicator state)
     {
         SetLed(led, state);
         if (led != null) Hud.PulseDot(led, state == ScanIndicator.On);
     }
 
-    private void SetHubLed(Border? led, bool on) => SetHubLed(led, on ? ScanIndicator.On : ScanIndicator.Off);
-
-    // Status LED colors: green = on, red = off, yellow = paused (neither Nexus nor SC in front).
-    private static readonly Color LedOn     = Color.FromRgb(0x3E, 0xD6, 0x8B);
-    private static readonly Color LedOff    = Color.FromRgb(0xE5, 0x48, 0x4D);
-    private static readonly Color LedPaused = Color.FromRgb(0xEA, 0xB3, 0x08);
+    // Status LED colors (F14 palette): green = running, amber = paused (the app accent - the old
+    // one-off #EAB308 yellow existed nowhere else in the palette), DIM slate = off by choice
+    // (the old red-for-off overstated a switched-off scanner as a failure), cyan = live location
+    // (the app's reserved location identity). Red survives as exactly one thing on this rail:
+    // the session LED with no live session - the broken-trunk case.
+    private static readonly Color LedOn       = Color.FromRgb(0x3E, 0xD6, 0x8B);
+    private static readonly Color LedBroken   = Color.FromRgb(0xE5, 0x48, 0x4D);
+    private static readonly Color LedPaused   = Color.FromRgb(0xFF, 0xB2, 0x3E);
+    private static readonly Color LedOff      = Color.FromRgb(0x86, 0x93, 0xA0);
+    private static readonly Color LedLocation = Color.FromRgb(0x7F, 0xE9, 0xE0);
 
     private static Border NewLed() => new()
     {
@@ -1547,23 +1611,29 @@ public partial class OverlayWindow : Window
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private void SetLed(Border? led, bool on) => SetLed(led, on ? ScanIndicator.On : ScanIndicator.Off);
-
-    // Paints an LED green (on), red (off), or yellow (paused) with a soft matching glow.
+    // Paints an LED green (on), amber (paused), or dim (off). Off gets no glow at all - a glow on
+    // a switched-off lamp would still read as a signal.
     private void SetLed(Border? led, ScanIndicator state)
     {
-        if (led == null) return;
         var c = state switch
         {
             ScanIndicator.On     => LedOn,
             ScanIndicator.Paused => LedPaused,
             _                    => LedOff,
         };
+        SetLedColor(led, c, pulse: null, glow: state != ScanIndicator.Off);
+    }
+
+    // Base painter for every HUB LED. pulse: null = leave the current animation alone (SetHubLed
+    // drives it separately for the scanner LEDs), true/false = start/stop the breathe here.
+    private static void SetLedColor(Border? led, Color c, bool? pulse, bool glow = true)
+    {
+        if (led == null) return;
         led.Background = new SolidColorBrush(c);
-        led.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = c, BlurRadius = 7, ShadowDepth = 0, Opacity = state == ScanIndicator.Off ? 0.55 : 0.9,
-        };
+        led.Effect = glow
+            ? new System.Windows.Media.Effects.DropShadowEffect { Color = c, BlurRadius = 7, ShadowDepth = 0, Opacity = 0.9 }
+            : null;
+        if (pulse is { } p) Hud.PulseDot(led, p);
     }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1587,11 +1657,29 @@ public partial class OverlayWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
+        // App review 2026-08-01: in ghost mode this header stays visible above an expanded ghost
+        // panel (documented at the header-visibility comment below, and QuickSettings_Click already
+        // branches on _ghostActive the same way one handler up). So this glyph sat on the panel the
+        // user had just opened and killed the WHOLE overlay - which also pauses the scanner, via
+        // MainWindow wiring _overlay.Hidden to PauseScanner. Closing the overlay is already covered
+        // by the rail's own bottom-pinned glyph, which carries a CLOSE OVERLAY tooltip; this one had
+        // no tooltip at all, so the unlabelled control was the destructive one. In ghost mode it now
+        // closes the PANEL and returns to the rail. Normal mode is unchanged.
+        if (_ghostActive && _ghostPanelOpen) { CollapseGhostPanel(); return; }
+
         SaveBounds();
         _woFlyout?.Hide();
         _ordersTicker?.Stop();
         _ordersTicker = null;
         Hide();
+    }
+
+    /// <summary>Keeps the header close glyph's tooltip honest about what it will actually do, which
+    /// differs by mode (see Close_Click). Called from every site that changes ghost state.</summary>
+    private void RefreshCloseGlyphTooltip()
+    {
+        if (CloseBtn == null) return;
+        CloseBtn.ToolTip = _ghostActive && _ghostPanelOpen ? "CLOSE PANEL" : "CLOSE OVERLAY";
     }
 
     // Persists window position/size plus the RECENT strip's current height (the strip is scan-only and
@@ -1764,6 +1852,13 @@ public partial class OverlayWindow : Window
         { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
         { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        // Where that terminal is, and how far, once PriceHit carries the id (app review). This is
+        // the overlay, so it earns its space only when the player is in the same system and the
+        // answer is a real distance - the bare system name is worth printing on the Codex and the
+        // work order rows, but here it would just crowd a line read at a glance mid-flight.
+        if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                            App.Map, App.Player.Current) is { } away)
+            line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
@@ -2078,6 +2173,7 @@ public partial class OverlayWindow : Window
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
         HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
         GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
+        TradeTabContent.Visibility    = tab == "trade"    ? Visibility.Visible : Visibility.Collapsed;
 
         // A tab switch is a real content change under the header gear's normal-mode flyout too
         // (issue #27 review): close it rather than let it float over content it no longer relates to.
@@ -2098,6 +2194,7 @@ public partial class OverlayWindow : Window
         if (tab == "scan") SyncScanControls();
         if (tab == "shopping") RebuildShoppingPanel();
         if (tab == "hauling") RebuildHaulingPanel();
+        if (tab == "trade") RebuildTradePanel();
         if (tab == "guides") ShowGuidesTab();
 
         // Executive Hangar (issue #26 amendment): the compact control ticks only while GUIDES is
@@ -2106,6 +2203,13 @@ public partial class OverlayWindow : Window
         // always finds it non-null; the null-conditional is only a defensive guard.
         if (tab == "guides") _guidesHangarLine?.Start();
         else if (prev == "guides") _guidesHangarLine?.Stop();
+
+        // Same lifecycle for the HUB's own copy (app review): built on first entry, ticking only
+        // while HUB is the presented tab. Two independent ExecHangarStatusLine instances is
+        // deliberate - the control owns its own timer, and sharing one across two hosts would mean
+        // reparenting it on every tab switch.
+        if (tab == "stats") { EnsureHubHangarLine(); _hubHangarLine?.Start(); }
+        else if (prev == "stats") _hubHangarLine?.Stop();
 
         if (tab == "orders")
         {
@@ -2197,8 +2301,10 @@ public partial class OverlayWindow : Window
     private void SetSwitch(Border? track, Border? knob, bool on)
         => SetSwitch(track, knob, on ? ScanIndicator.On : ScanIndicator.Off);
 
-    // Tri-state toggle visual: On = amber, Paused = yellow (the knob stays in the on position to show the
-    // user's intent is on, just suspended because neither Nexus nor SC is in front), Off = grey.
+    // Tri-state toggle visual: On = amber, Paused = the same amber at track-tint strength via
+    // LedPaused (F14: the old one-off #EAB308 yellow died with the palette unification; the knob
+    // stays in the on position to show the user's intent is on, just suspended because neither
+    // Nexus nor SC is in front), Off = grey.
     private void SetSwitch(Border? track, Border? knob, ScanIndicator state)
     {
         if (track == null || knob == null) return;
@@ -2262,6 +2368,7 @@ public partial class OverlayWindow : Window
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
         App.Market.Changed -= _onMarketChanged;
+        App.Locations.Changed -= _onLocationChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
         App.ContractScan.StageChanged -= OnContractStageChanged;
@@ -3283,6 +3390,398 @@ public partial class OverlayWindow : Window
             foreach (var (s, order) in _orderFillRefs.Values)
                 s.ScaleX = Math.Clamp(order.TimerFraction, 0, 1);
     }
+
+    // The HUB's Executive Hangar countdown (app review 2026-08-01). Built lazily on first entry to
+    // the tab, like the guides copy, so an overlay that never opens HUB never pays for it.
+    private ExecHangarStatusLine? _hubHangarLine;
+
+    private void EnsureHubHangarLine()
+    {
+        if (_hubHangarLine is not null) return;
+        _hubHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay HUB");
+        HubHangarHost.Content = _hubHangarLine;
+    }
+
+    // ── TRADE tab ──────────────────────────────────────────────────────────────
+    // App review 2026-08-01: the overlay carried no trade information at all, on the one surface
+    // actually on screen while a route is being flown, and had zero references to the player's live
+    // position. This tab answers exactly two questions - what am I running, and where am I in it -
+    // and deliberately nothing else. Screen space here is tiny and it is read mid-flight, so it is a
+    // read-only glance, not a second planner.
+    //
+    // Reworked the same day on the owner's live pass: it was one route, one column of plain lines, with
+    // no way to unpin from here. It now lists EVERY pinned route as a "Manifest Strip" card - mock
+    // nexus-design-lab/overlay-trade, candidate B of four, picked for pins-per-screen because this
+    // panel gets a two-second read mid-flight. Three lines a card: commodity + SCU, the run itself
+    // on one rail, distance + margin. Each card closes itself.
+
+    // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
+    // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
+    private IReadOnlyList<PinnedRoute> _pinnedRoutes = Array.Empty<PinnedRoute>();
+
+    /// <summary>Raised when a card's close control is clicked. MainWindow routes it back into
+    /// TradePage, which owns the pin list - this window never edits it directly, so the planner
+    /// chip, the Starmap leg and these cards can never disagree about what is pinned.</summary>
+    public event Action<PinnedRoute>? UnpinRouteRequested;
+
+    /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
+    /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
+    /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
+    public void SetPinnedRoutes(IReadOnlyList<PinnedRoute> routes)
+    {
+        _pinnedRoutes = routes;
+        TabStrip.SetBadge("trade", routes.Count);
+        GhostRail.SetBadge("trade", routes.Count);   // ghost mode carries the same counts (issue #27)
+        if (IsTabPresented("trade")) RebuildTradePanel();
+    }
+
+    // Band metrics, from the mock's CSS (.D .band and friends). The band runs the full width of the
+    // card and both terminal names get their own full-width line - a first pass at candidate D put
+    // the names side by side flanking the band, and every terminal name over about 14 characters
+    // was destroyed by the truncation, which is most of them.
+    private const double TradeBandHeight = 18;
+    private const double TradeBandCapSize = 9;
+    private const double TradeBandShipSize = 11;
+    // A right-pointing dart, drawn in the same 24-unit box the dock glyphs use and scaled down by
+    // Stretch.Uniform. Points at the destination rather than up: on a horizontal band, direction of
+    // travel is the whole reason the marker is a ship and not another dot.
+    private const string TradeShipGeometry = "M2 3 L14 9 L2 15 L5 9 Z";
+
+    private void RebuildTradePanel()
+    {
+        TradePanelItems.Children.Clear();
+
+        var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var ok = (System.Windows.Media.Brush)FindResource("OkBrush");
+        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+
+        // FontFamily is NEVER assigned null: WPF rejects it outright with "'' is not a valid value
+        // for property 'FontFamily'", which crashed the app the first time this tab was opened.
+        // Leaving the property unset inherits from the panel, which is what the non-mono lines want.
+        TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool mn = false)
+        {
+            var tb = new TextBlock
+            {
+                Text = text, Foreground = brush, FontSize = size, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 3),
+            };
+            if (mn) tb.FontFamily = mono;
+            return tb;
+        }
+
+        // WHERE YOU ARE, as the panel's own header rather than a card field: it is the one fact
+        // shared by every card, and repeating it per card would cost a line each. Silence when
+        // unknown is not an option on a tab this small - an empty panel reads as broken - so that
+        // one case says so plainly instead.
+        var place = App.Player.Label;
+        // A Grid, not a StackPanel: the label is long enough that a StackPanel would push a long
+        // place name straight off the right edge instead of trimming it.
+        var placeRow = new Grid { Margin = new Thickness(2, 0, 2, 8) };
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        placeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        // F14: cyan breathing, not static green - this is the same live-location fact the Trade
+        // page's ORIGIN dot reports, and cyan is the app's reserved live-location identity. Green
+        // here said "healthy" when it meant "live".
+        var placeDot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 5, Height = 5, VerticalAlignment = VerticalAlignment.Center,
+            Fill = place is null ? dim : (Brush)FindResource("CyanBrush"),
+            Margin = new Thickness(0, 0, 6, 0),
+        };
+        Hud.PulseDot(placeDot, place is not null);
+        placeRow.Children.Add(placeDot);
+        var placeLabel = new TextBlock
+        {
+            // "CURRENT LOCATION", not "YOU" (the owner, 2026-08-01): the panel is read alongside the
+            // planner's own STARTING LOCATION / DESTINATION labels, and a one-word pronoun did not
+            // read as the same kind of thing they are.
+            Text = "CURRENT LOCATION", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+        };
+        Grid.SetColumn(placeLabel, 1);
+        placeRow.Children.Add(placeLabel);
+        var placeValue = new TextBlock
+        {
+            Text = place ?? "Unknown", FontSize = 11.5,
+            Foreground = place is null ? dim : (Brush)FindResource("CyanBrush"),
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            ToolTip = place,
+        };
+        Grid.SetColumn(placeValue, 2);
+        placeRow.Children.Add(placeValue);
+        TradePanelItems.Children.Add(placeRow);
+        TradePanelItems.Children.Add(new Border
+        {
+            Height = 1, Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            Margin = new Thickness(0, 0, 0, 8),
+        });
+
+        if (_pinnedRoutes.Count == 0)
+        {
+            TradePanelItems.Children.Add(Line(
+                "No routes pinned. Pin one in Trade > Planner and it shows here and on the Starmap.",
+                dim, 11.5));
+            return;
+        }
+
+        // Terminals, resolved once for the whole rebuild: a TradeRoute carries price rows, not
+        // terminals, and both the leg distance and the progress rail need the real MarketTerminal
+        // to reach the geometry catalog.
+        var terminals = App.Market.Snapshot?.Terminals.Rows.ToDictionary(t => t.Id);
+        var here = App.Player.Current;
+
+        foreach (var route in _pinnedRoutes)
+            TradePanelItems.Children.Add(BuildTradeCard(route, terminals, here, fg, dim, gold, accent, mono));
+    }
+
+    // One Manifest Strip card. Every value the owner asked for is on it: start, end, distance,
+    // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
+    private Border BuildTradeCard(
+        PinnedRoute route,
+        IReadOnlyDictionary<int, MarketTerminal>? terminals,
+        MapObject? here,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
+        System.Windows.Media.FontFamily mono)
+    {
+        // A null buy terminal marks a SELL-ONLY pin (the Sell tab's own PIN TO OVERLAY): the
+        // player already holds the cargo, so the card has no FROM, no band and no fixed leg
+        // length - it shows SELL AT plus a live from-here distance instead.
+        bool sellOnly = route.BuyTerminalId is null;
+        MarketTerminal? buyTerminal = null, sellTerminal = null;
+        if (route.BuyTerminalId is { } buyId) terminals?.TryGetValue(buyId, out buyTerminal);
+        terminals?.TryGetValue(route.SellTerminalId, out sellTerminal);
+
+        var rows = new StackPanel();
+
+        // Line 1: commodity, then what the run is worth - SCU and per-SCU margin together, since
+        // both answer the same question and neither earns a line of its own on a card this size.
+        // Per-unit rather than the trip total: the total depends on a ship and a budget the player
+        // may have changed since pinning, while the margin is a property of the route itself.
+        // The right margin is the close control's landing strip.
+        var head = new Grid { Margin = new Thickness(0, 0, 16, 7) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var commodity = new TextBlock
+        {
+            Text = route.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = route.CommodityName,
+        };
+        head.Children.Add(commodity);
+        var scu = new TextBlock
+        {
+            Text = $"{route.TripQty} SCU", FontFamily = mono, FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(scu, 1);
+        head.Children.Add(scu);
+        var margin = new TextBlock
+        {
+            Text = $"{route.PerScuMargin:N0}/SCU", FontFamily = mono, FontSize = 9.5, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 1, 0, 0),
+            // The age is on the card because these numbers are a SNAPSHOT, not a live quote: a
+            // pinned route the current ranking does not contain keeps the figures it had when it
+            // was last ranked, and a margin quoted as though it were current would be the one lie
+            // this panel could tell. Sell-only pins hold a sell PRICE here, not a margin - there
+            // is no buy side to subtract - and the tooltip says which it is.
+            ToolTip = sellOnly
+                ? $"Sell price per SCU when this pin was last refreshed "
+                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)})."
+                : $"Margin per SCU when this route was last ranked "
+                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)}).",
+        };
+        Grid.SetColumn(margin, 2);
+        head.Children.Add(margin);
+        rows.Children.Add(head);
+
+        if (sellOnly)
+        {
+            // Sell-only card: the destination on its own line, and a LIVE from-here distance -
+            // the run starts wherever the player is, so unlike a route leg this number tracks
+            // the same App.Locations updates that repaint this panel. Null (unknown position,
+            // unplaceable terminal, or a jump point between) renders the honest "distance n/a".
+            rows.Children.Add(TradeEndLine("SELL AT", route.SellTerminalName, fg, dim));
+            var fromHere = App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal));
+            rows.Children.Add(new TextBlock
+            {
+                Text = fromHere is { } fh ? $"{MapCatalog.FormatGm(fh)} from here" : "distance n/a",
+                FontFamily = mono, FontSize = 9.5, Foreground = dim, Margin = new Thickness(0, 2, 0, 0),
+            });
+        }
+        else
+        {
+            // Line 2: where the run starts, on its own full-width line.
+            rows.Children.Add(TradeEndLine("FROM", route.BuyTerminalName, fg, dim));
+
+            // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far
+            // along the player is. With no usable position reading the band stays a bare rail with
+            // unlit caps rather than implying a position (absent-not-placeholder).
+            var frac = RouteProgress.Fraction(
+                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(buyTerminal)),
+                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal)));
+            rows.Children.Add(BuildTradeBand(frac, dim, accent, gold));
+
+            // Line 4: how far the run is, and where it ends. Distance sits left, under the band's
+            // start cap; the destination is right-aligned under its own end cap, so the line reads
+            // as the band's own footnote rather than as a second list of facts.
+            var foot = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
+            var distance = new TextBlock
+            {
+                // Null covers both an unplaceable terminal and a run that crosses a jump point,
+                // where a straight line is not the distance flown and a number would be a lie.
+                Text = legMeters is { } m ? MapCatalog.FormatGm(m) : "distance n/a",
+                FontFamily = mono, FontSize = 9.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+            };
+            foot.Children.Add(distance);
+            var to = new TextBlock
+            {
+                Text = route.SellTerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center, ToolTip = route.SellTerminalName,
+            };
+            Grid.SetColumn(to, 1);
+            foot.Children.Add(to);
+            rows.Children.Add(foot);
+        }
+
+        // The close sits over the card's top-right corner rather than inside the head row, so the
+        // commodity name gets the full width when there is nothing to close over.
+        var body = new Grid();
+        body.Children.Add(rows);
+        var glyph = new TextBlock
+        {
+            Text = "×", FontSize = 14, Foreground = dim,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        // The hit target is the BORDER, with a transparent background: a bare TextBlock only
+        // hit-tests its own glyph outline, which at this size is a couple of hairlines to aim at
+        // while flying. 18x18 gives it a real target without widening the card.
+        var close = new Border
+        {
+            Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand,
+            Width = 18, Height = 18, Child = glyph, ToolTip = "Unpin this route",
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, -4, -16, 0),
+        };
+        close.MouseEnter += (_, _) => glyph.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+        close.MouseLeave += (_, _) => glyph.Foreground = dim;
+        close.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] overlay trade: unpin {route.CommodityName}");
+            UnpinRouteRequested?.Invoke(route);
+        };
+        body.Children.Add(close);
+
+        // EVERY card looks the same. An earlier pass tinted and outlined the card in amber while
+        // the player stood at one of its stops; the owner rejected it twice (2026-08-01), and he is
+        // right - the band already lights that end's cap, which is candidate D's own way of saying
+        // it, and a second signal for the same fact turned an accent into a background colour.
+        return new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("Bg2Brush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
+            Margin = new Thickness(0, 0, 0, 7), Child = body,
+        };
+    }
+
+    // One full-width run line: an eyebrow key ("FROM") and the terminal name beside it, the name
+    // taking every pixel left over so it trims only when it genuinely has to.
+    private static FrameworkElement TradeEndLine(string key, string name,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new TextBlock
+        {
+            Text = key, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+        });
+        var value = new TextBlock
+        {
+            Text = name, FontSize = 11, Foreground = fg, TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = name,
+        };
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(value);
+        return grid;
+    }
+
+    // The flight band (mock candidate D): a rail spanning the card, an end cap per stop, and - when
+    // the player's position is known - a fill and a ship marker riding it. Built from two star
+    // columns sized by the fraction rather than a width animation, and the fill STRETCHES into its
+    // column: the planner's own trip bar shipped invisible for a week because a Border with no
+    // child and a Left alignment arranges at its DesiredSize (zero), not the available width.
+    private FrameworkElement BuildTradeBand(double? frac,
+        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent, System.Windows.Media.Brush gold)
+    {
+        // Two nested grids on purpose. The OUTER one carries the caps at its own two edges; the
+        // INNER one is inset by half a cap at each end and is where the fraction split happens, so
+        // the fill runs exactly cap-centre to cap-centre and the ship marker lands on the boundary
+        // at every fraction, including both extremes. Splitting the outer grid instead would
+        // overshoot the right cap by half its width at frac = 1.
+        var host = new Grid { Height = TradeBandHeight, Margin = new Thickness(0, 0, 0, 1) };
+
+        var inner = new Grid { Margin = new Thickness(TradeBandCapSize / 2, 0, TradeBandCapSize / 2, 0) };
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac ?? 0, GridUnitType.Star) });
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - (frac ?? 0), GridUnitType.Star) });
+
+        var rail = new Border
+        {
+            Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
+            Background = (System.Windows.Media.Brush)FindResource("CyanDimBrush"), IsHitTestVisible = false,
+        };
+        Grid.SetColumnSpan(rail, 2);
+        inner.Children.Add(rail);
+
+        if (frac is not null)
+        {
+            inner.Children.Add(new Border
+            {
+                Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+                Background = new System.Windows.Media.LinearGradientBrush(
+                    ((System.Windows.Media.SolidColorBrush)accent).Color,
+                    ((System.Windows.Media.SolidColorBrush)gold).Color,
+                    new Point(0, 0.5), new Point(1, 0.5)),
+            });
+            inner.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = System.Windows.Media.Geometry.Parse(TradeShipGeometry),
+                Fill = gold, Stretch = System.Windows.Media.Stretch.Uniform,
+                Width = TradeBandShipSize, Height = TradeBandShipSize, IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, -TradeBandShipSize / 2, 0),
+            });
+        }
+
+        host.Children.Add(inner);
+        host.Children.Add(TradeBandCap(HorizontalAlignment.Left, lit: frac is 0, dim, accent));
+        host.Children.Add(TradeBandCap(HorizontalAlignment.Right, lit: frac is 1, dim, accent));
+        return host;
+    }
+
+    // One end cap, aligned to its own edge of the band. Lit means the player is standing there.
+    private System.Windows.Shapes.Ellipse TradeBandCap(HorizontalAlignment side, bool lit,
+        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent) => new()
+    {
+        Width = TradeBandCapSize, Height = TradeBandCapSize, StrokeThickness = 1.5,
+        Stroke = lit ? accent : dim,
+        Fill = lit ? accent : (System.Windows.Media.Brush)FindResource("BgBrush"),
+        HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Center,
+        IsHitTestVisible = false,
+    };
 
     private void RebuildShoppingPanel()
     {

@@ -31,6 +31,34 @@ public sealed class LocationTracker : IDisposable
     }
 
     public string? LastKnownLocation { get; private set; }
+
+    // The UEX Location string for LastKnownLocation, when the raw token that produced it is one
+    // of the (currently gateway-only) tokens LocationAliases.UexLocationForToken recognizes - null
+    // for every other place, including the common case where LastKnownLocation is itself already
+    // a UEX-shaped Location string. LastKnownLocation cannot be reverse-mapped to a UEX Location
+    // safely: display names are not unique (three raw gateway tokens all display as "Stanton
+    // Gateway Station"), so this is resolved here, once, from the raw token Apply already has in
+    // scope, rather than asking a consumer to guess a UEX Location from the display name later.
+    // Consumers (TradeOriginResolver.TerminalIdsForLocation) treat this as a first-pass hint and
+    // fall back to their existing display-name matching when it is null.
+    public string? LastKnownUexLocation { get; private set; }
+
+    // The raw Game.log token that produced LastKnownLocation (e.g. "RR_JP_StantonPyro"), retained
+    // alongside the normalized display name for the same reason LastKnownUexLocation is: some
+    // display names are not unique (three raw gateway tokens all display as "Stanton Gateway
+    // Station"), so a consumer that needs to disambiguate - the MAP tab's player marker, resolving
+    // through MapCatalog.ResolvePlayerLocation's raw-token gateway tier - reads this instead of
+    // guessing from LastKnownLocation alone. Null whenever LastKnownLocation itself is null (no
+    // signal ingested yet).
+    public string? LastKnownRawToken { get; private set; }
+
+    // True when LastKnownLocation came from a JURISDICTION crossing rather than a real place
+    // signal (the owner's live pass, 2026-08-01: the header LOCATION chip read "Crusader Industries"
+    // at Crusader - a jurisdiction names whose SPACE you are in, not where you are). Stored so
+    // display surfaces can say so instead of dressing an area up as a location; the value itself
+    // still stands, since a coarse reading beats none.
+    public bool LastKnownIsJurisdiction { get; private set; }
+
     public DateTime? LastSeenUtc { get; private set; }
     public event Action? Changed;
 
@@ -81,6 +109,9 @@ public sealed class LocationTracker : IDisposable
         var display = LocationAliases.Normalize(place);
         bool moved = !string.Equals(LastKnownLocation, display, StringComparison.Ordinal);
         LastKnownLocation = display;
+        LastKnownUexLocation = LocationAliases.UexLocationForToken(place);
+        LastKnownRawToken = place;
+        LastKnownIsJurisdiction = kind == "jurisdiction";
         LastSeenUtc = seenUtc;
         if (!moved) return;
         var suffix = string.Equals(display, place, StringComparison.Ordinal)

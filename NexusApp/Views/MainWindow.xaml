@@ -33,8 +33,12 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left: logo + title + version badges -->
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+            <!-- Left: logo + title + version badges. ClipToBounds (F14 follow-up, the owner's live pass:
+                 the widened strip painted over the clock): a StackPanel arranges children at full
+                 desired size and PAINTS past its star column into the clock's Auto column when the
+                 window is narrow - clipping keeps the cut on our side of the boundary. The chips
+                 themselves carry trim caps (SESSION, LOCATION) so the cut is rare. -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0" ClipToBounds="True">
                 <views:NexusBeamIcon Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
                     <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
@@ -103,38 +107,41 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- SHARD telemetry chip (live from App.Shards) -->
-                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
-                        Background="{StaticResource Bg2NavBrush}"
-                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="ShardDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="SHARD" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="ShardChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
-                <!-- SESSION telemetry chip: Game.log tracking is always on (green = monitoring, red = offline,
-                     amber = no Game.log path found - click through to Settings > GAME to fix it). State,
-                     colours, tooltip and click target are driven by UpdateSessionChip in code-behind. -->
+                <!-- SESSION telemetry chip: Game.log tracking is always on (green breathing = live,
+                     red = offline, amber = no Game.log path found - click through to Settings > GAME to
+                     fix it). State, colours, tooltip and click target are driven by UpdateSessionChip in
+                     code-behind. F14: the old SHARD chip folded in here - the shard is parsed FROM
+                     Game.log and cannot exist without a live session, so it IS the live value
+                     ("US-E · 042", StatusChips.SessionValue) instead of holding its own header slot;
+                     the word "monitoring" was cut (the owner) since the breathing dot already says alive. -->
                 <Border x:Name="SessionChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
                         ToolTip="Star Citizen session tracking (always on)">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="SessionDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="GAME SESSION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="SessionChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                        <!-- "SESSION", not "GAME SESSION" (F14 follow-up): with SHARD and BLUEPRINTS
+                             gone from the strip there is nothing to disambiguate against, and the
+                             shorter label buys back width the shard suffix spends. -->
+                        <TextBlock Text="SESSION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="SessionChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Border>
-                <!-- BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on (green = tracking, red = off) -->
-                <Border x:Name="BlueprintChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                <!-- LOCATION telemetry chip (F14, new): where Game.log last placed the player. The one
+                     signal every distance in the app hangs off (Codex, work orders, Trade ranking, the
+                     map marker, overlay route bands) and it had no global lamp. Cyan is the app's
+                     live-location identity (Trade ORIGIN dot, map player marker) - reserved, so this is
+                     the only header chip allowed to wear it. Driven by UpdateLocationChip.
+                     (The old BLUEPRINTS chip that held this slot moved to the Blueprint Library header:
+                     session AND a Settings toggle is a single-feature derivation, not app health.) -->
+                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
-                        ToolTip="Auto-Track Blueprints: collects blueprints you unlock to your library (always on)">
+                        ToolTip="Where Game.log last placed you. Distances across the app measure from here.">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="BlueprintDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="BLUEPRINTS" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="BlueprintChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                        <Ellipse x:Name="LocationDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="LOCATION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="LocationChipText" Text="unknown" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" MaxWidth="130" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Border>
                 <!-- MARKET telemetry chip (live market data). Hidden entirely while the feature is
@@ -151,13 +158,19 @@
                         <TextBlock x:Name="MarketChipText" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- SCAN telemetry chip (auto-scan state) -->
-                <Border Padding="10,3" CornerRadius="4" Margin="0,0,6,0"
+                <!-- AUTO-SCAN telemetry chip: BOTH OCR scanners (RS + contracts) on one lamp (F14,
+                     the owner's amendment). The dot is the fold (StatusChips.AutoScanCombined: paused
+                     outranks on outranks off) and the value text spells each scanner out so the
+                     aggregate never hides which one is in which state. Also gained the LED dot its
+                     header siblings always had - it was the only chip carrying state in text alone. -->
+                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
-                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1">
+                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
+                        ToolTip="Auto-scan: RS (mining OCR) and CT (contract OCR). Both pause themselves when neither Nexus nor Star Citizen is in front.">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="SCAN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="ScanChipText" Text="off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
+                        <Ellipse x:Name="ScanDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="AUTO-SCAN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="ScanChipText" Text="RS off · CT off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -236,7 +249,7 @@
                         <TextBlock Text="INSTALLED MODULES" FontFamily="{StaticResource UiFont}" FontWeight="Bold"
                                    FontSize="8.5" Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
                         <Border HorizontalAlignment="Right" BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="1" Padding="6,1">
-                            <TextBlock Text="10" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
+                            <TextBlock Text="11" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{DynamicResource AccentBrush}"/>
                         </Border>
                     </Grid>
 
@@ -250,9 +263,11 @@
                                 <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="10" ShadowDepth="0" Opacity="0.85"/></Border.Effect>
                             </Border>
                         <StackPanel x:Name="DockTiles">
+                            <!-- F14: the tile's LIVE/OFFLINE lamp was a mirror of the GAME SESSION header
+                                 chip 60px above it, in the same viewport - one lamp per viewport, so it went. -->
                             <RadioButton x:Name="NavCommand" Tag="command" Style="{StaticResource DockTile}" IsChecked="True" Click="Nav_Click" Checked="Nav_Click">
                                 <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
                                         <views:AnimatedDockIcon IconKey="operations" Width="28" Height="28"/>
                                     </views:ChamferPanel>
@@ -260,9 +275,18 @@
                                         <TextBlock Text="Operations" Style="{StaticResource DockTileName}"/>
                                         <TextBlock Text="HUD HOME" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Ellipse x:Name="OpsLiveDot" Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                        <TextBlock x:Name="OpsLiveText" Text="LIVE" FontFamily="{StaticResource MonoFont}" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource OkBrush}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </RadioButton>
+
+                            <RadioButton x:Name="NavMap" Tag="map" Style="{StaticResource DockTile}" Click="Nav_Click" Checked="Nav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <views:ChamferPanel Grid.Column="0" Style="{StaticResource DockChip}">
+                                        <views:AnimatedDockIcon IconKey="map" Width="28" Height="28"/>
+                                    </views:ChamferPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Starmap" Style="{StaticResource DockTileName}"/>
+                                        <TextBlock Text="NAVIGATION" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </RadioButton>
@@ -445,10 +469,11 @@
                             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                 <TextBlock x:Name="OperatorName" Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11"
                                            Foreground="{DynamicResource FgBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                    <Ellipse x:Name="LinkDot" Width="7" Height="7" Fill="{DynamicResource OkBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <TextBlock x:Name="LinkStatusText" Text="ONLINE . SECURE LINK" FontFamily="{StaticResource MonoFont}" FontSize="8" Foreground="{DynamicResource FgDimBrush}"/>
-                                </StackPanel>
+                                <!-- F14: static identity chrome. The old LinkDot + "ONLINE . SECURE LINK"
+                                     line was a third rendering of the session boolean in this viewport,
+                                     and claimed a "secure link" the offline-by-design app does not have. -->
+                                <TextBlock Text="NEXUS TERMINAL" FontFamily="{StaticResource MonoFont}" FontSize="8"
+                                           Foreground="{DynamicResource FgDimBrush}" Margin="0,2,0,0"/>
                             </StackPanel>
                         </StackPanel>
                     </views:ChamferPanel>
@@ -526,6 +551,9 @@
 
                 <!-- ── TRADE PAGE (built in code - Views/TradePage.cs) ── -->
                 <Grid x:Name="PageTrade" Visibility="Collapsed"/>
+
+                <!-- ── STARMAP PAGE (built in code - Views/MapPage.cs) ── -->
+                <Grid x:Name="PageMap" Visibility="Collapsed"/>
 
                 <Grid x:Name="PagePlanner" Visibility="Collapsed"/>
                 <Grid x:Name="PageGridStudio" Visibility="Collapsed"/>
@@ -1023,6 +1051,21 @@
                                        Foreground="{StaticResource CyanBrush}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <!-- AUTO-TRACK status (F14): the old BLUEPRINTS header chip, moved home. It is
+                                 "session live AND the Auto-Track setting" - a single-feature derivation, so
+                                 it lives with the feature. Off renders dim, never red: not tracking is a
+                                 state of the world (no session) or a choice (Settings), not a failure.
+                                 Painted by RefreshBlueprintTrackingLine in MainWindow.Blueprints.cs. -->
+                            <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,10,0"
+                                    Background="{StaticResource Bg2NavBrush}"
+                                    BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
+                                    ToolTip="Auto-Track Blueprints: collects blueprints you unlock to your library while a game session is live">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse x:Name="BpAutoTrackDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="AUTO-TRACK" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                    <TextBlock x:Name="BpAutoTrackText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
                             <Button x:Name="BpImportScmdbBtn" Margin="0,0,8,0"
                                     Content="Import from SCMDB…" Style="{StaticResource NexusButton}"
                                     Height="28" Padding="14,0" FontSize="11"

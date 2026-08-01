@@ -9,7 +9,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.Services.Cargo;
 using NexusApp.Models.Cargo;
 
@@ -42,6 +44,7 @@ public sealed partial class TradePage
     private Border _demandTwoXPill = null!;
     private Border _rankProfitPill = null!;
     private Border _rankProfitPerScuPill = null!;
+    private Border _rankProfitPerGmPill = null!;
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
@@ -59,10 +62,18 @@ public sealed partial class TradePage
     private const string LiveStartPrefix = "LIVE - ";
     private ComboBox _startCombo = null!;
     private Border _startLiveBtn = null!;       // small pill button: selects LIVE when a session is live, else just logs
-    private List<string>? _startNames;          // the list currently bound to the ComboBox
+    private List<string>? _startNames;          // the list currently bound to the ComboBox (DISPLAY strings - see _startDisplayToKind)
     private string? _startSelectedKind;          // "ANY" | "LIVE" | a terminal name; null only before the first seed
     private bool _startSeeded;
     private bool _suppressStartSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // Location-first display (the owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
+    // LocationFirst's flipped label ("ARC-L1 - Admin") but _startSelectedKind/AppSettings.
+    // TradeStartManual must keep the REAL UEX name the whole time (TerminalIdForName/
+    // StartTerminalIds only ever resolve real names). Rebuilt fresh every RefreshStartCombo call,
+    // display -> kind ("ANY"/"LIVE"/terminal name), so the SelectionChanged handler below can map
+    // the combo's own displayed text straight back to the kind that gets persisted.
+    private Dictionary<string, string>? _startDisplayToKind;
 
     // DESTINATION picker (task 6): "ANY" is the literal first ComboBox item and the sentinel this
     // page uses for "no constraint" - distinct from AppSettings.TradeDestManual, which persists
@@ -73,10 +84,16 @@ public sealed partial class TradePage
     // alongside Starting Location, out of its own standalone input group.
     private const string AnyDestination = "ANY";
     private ComboBox _destCombo = null!;
-    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY")
-    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed
+    private List<string>? _destNames;          // the list currently bound to the ComboBox (leading "ANY", DISPLAY strings - see _destDisplayToName)
+    private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed; ALWAYS the real UEX name
     private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as the STARTING LOCATION picker above
     private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // Location-first display (the owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
+    // above: display -> real terminal name ("ANY" maps to itself), rebuilt fresh every
+    // RefreshDestCombo call so SelectionChanged can map the combo's displayed text back to the
+    // real name that gets persisted into AppSettings.TradeDestManual.
+    private Dictionary<string, string>? _destDisplayToName;
 
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
@@ -96,8 +113,45 @@ public sealed partial class TradePage
     // Reentrancy guard for the budget box's live TextChanged re-rank below, same pattern as the
     // Sell tab's quantity box (TradePage.Sell.cs, _inQtyLiveRerank) - RebuildPlanner never writes
     // back to _budgetBox.Text itself, so nothing today re-enters this handler, but the guard is
-    // cheap insurance against a future write-back (or IME composition) looping back in.
+    // cheap insurance against a future write-back (or IME composition) looping back in. Now
+    // guards the DEBOUNCED call (see _budgetDebounceTimer below), not an immediate one.
     private bool _inBudgetLiveRerank;
+
+    // Debounce for the live re-rank (the owner's live-lag report, 2026-07-31): RoutePlanner.Rank
+    // bucketizes the WHOLE TradePrices row set (~2,600 rows in a live snapshot) and pairs every
+    // buy against every sell PER COMMODITY, then RebuildPlanner rebuilds up to 25 WPF route rows
+    // - firing that on every single keystroke stutters at typing speed. Same DispatcherTimer
+    // idiom as ExecHangarStatusLine.cs (a single reused timer, never recreated per event): each
+    // TextChanged restarts the timer instead of rebuilding immediately, so only the keystroke
+    // that ends a quiet BudgetDebounceMs window actually triggers RebuildPlanner. Built lazily on
+    // first use (BuildPlannerChrome only ever runs once, so "lazily" and "once" are the same
+    // thing here) rather than in the ctor, matching this file's existing lazy-field style.
+    // Internal (not private) so NexusApp.Tests can assert the interval constant directly - the
+    // timer wiring itself is WPF dispatcher plumbing and not unit-testable (same documented
+    // precedent as ExecHangarStatusLine's own 1-second ticker), so the interval value is the one
+    // piece of this that a test can pin.
+    internal const int BudgetDebounceMs = 250;
+    private DispatcherTimer? _budgetDebounceTimer;
+
+    // Built once (called only from the `??=` in the TextChanged handler above), then reused for
+    // every later keystroke - a fresh DispatcherTimer per keystroke would be its own small waste
+    // on top of the exact problem this exists to avoid. The Tick handler stops the timer before
+    // doing anything else, same as ExecHangarStatusLine's own Tick pattern of never leaving a
+    // timer running past the work it exists to gate, then defers to RebuildPlanner through the
+    // same reentrancy guard the immediate call used to use directly.
+    private DispatcherTimer MakeBudgetDebounceTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BudgetDebounceMs) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_inBudgetLiveRerank) return;
+            _inBudgetLiveRerank = true;
+            try { RebuildPlanner(); }
+            finally { _inBudgetLiveRerank = false; }
+        };
+        return timer;
+    }
 
     private ShipCargoDef CurrentShip() =>
         _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
@@ -148,6 +202,11 @@ public sealed partial class TradePage
         };
         _budgetBox.LostFocus += (_, _) =>
         {
+            // Cancel any pending debounced re-rank BEFORE the no-op guard below: a blur always
+            // applies immediately from here on down, so a tick that lands after this handler
+            // returns would just re-run RebuildPlanner a second time for nothing. Unconditional
+            // and cheap (Stop() on an idle timer is a no-op), so it runs even on a no-op blur.
+            _budgetDebounceTimer?.Stop();
             if (_budgetText == _budgetBox.Text) return;   // guard, same pattern as SetDemandFilter/SetScope: no-op blur never logs or rebuilds
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
@@ -162,12 +221,19 @@ public sealed partial class TradePage
         // CurrentBudget already reads _budgetBox.Text directly (not _budgetText), so a rebuild here
         // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
         // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
+        //
+        // DEBOUNCED (the owner's live-lag report, 2026-07-31 - see _budgetDebounceTimer's own comment
+        // above for the cost this avoids): every keystroke restarts the one shared timer instead
+        // of rebuilding right away; only the Tick, after BudgetDebounceMs of quiet typing, calls
+        // RebuildPlanner. The reentrancy guard (_inBudgetLiveRerank) moves down into the Tick
+        // handler with it, unchanged in purpose - it still exists purely as insurance against a
+        // future write-back or IME composition re-entering the rebuild, not because anything here
+        // re-enters it today.
         _budgetBox.TextChanged += (_, _) =>
         {
-            if (_inBudgetLiveRerank) return;
-            _inBudgetLiveRerank = true;
-            try { RebuildPlanner(); }
-            finally { _inBudgetLiveRerank = false; }
+            _budgetDebounceTimer ??= MakeBudgetDebounceTimer();
+            _budgetDebounceTimer.Stop();
+            _budgetDebounceTimer.Start();
         };
         budgetGrp.Children.Add(_budgetBox);
         topRow.Children.Add(budgetGrp);
@@ -195,7 +261,14 @@ public sealed partial class TradePage
         {
             if (_suppressStartSelection) return;
             if (_startCombo.SelectedItem is not string display) return;
-            SetStart(StartKindForDisplay(display));
+            // _startDisplayToKind (rebuilt every RefreshStartCombo) maps the flipped label the
+            // user actually clicked back to the real kind SetStart persists; StartKindForDisplay
+            // is only a defensive fallback (the map is always populated before the combo is
+            // interactive) so a user pick can never persist a flipped display string.
+            var kind = _startDisplayToKind is not null && _startDisplayToKind.TryGetValue(display, out var k)
+                ? k
+                : StartKindForDisplay(display);
+            SetStart(kind);
         };
         startRow.Children.Add(_startCombo);
         _startLiveBtn = ScopePill("LIVE");
@@ -217,12 +290,13 @@ public sealed partial class TradePage
         _destCombo.SelectionChanged += (_, _) =>
         {
             if (_suppressDestSelection) return;
-            if (_destCombo.SelectedItem is not string name) return;
-            _destSelectedName = name;
-            App.Settings.Current.TradeDestManual = name == AnyDestination ? null : name;
-            App.Settings.Save();
-            Logger.Info($"[UI] trade: destination {name}");
-            RebuildPlanner();
+            if (_destCombo.SelectedItem is not string display) return;
+            // _destDisplayToName (rebuilt every RefreshDestCombo) maps the flipped label the user
+            // actually clicked back to the real terminal name that gets persisted - the fallback
+            // to `display` itself only matters before the map is ever populated, and "ANY" always
+            // maps to itself.
+            var name = _destDisplayToName is not null && _destDisplayToName.TryGetValue(display, out var real) ? real : display;
+            SetDest(name);
         };
         destGrp.Children.Add(_destCombo);
         routeRow.Children.Add(destGrp);
@@ -258,10 +332,13 @@ public sealed partial class TradePage
         var rankModeRow = new StackPanel { Orientation = Orientation.Horizontal };
         _rankProfitPill = ScopePill("PROFIT");
         _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
+        _rankProfitPerGmPill = ScopePill("PROFIT PER Gm");
         _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
         _rankProfitPerScuPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerScu);
+        _rankProfitPerGmPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerGm);
         rankModeRow.Children.Add(_rankProfitPill);
         rankModeRow.Children.Add(_rankProfitPerScuPill);
+        rankModeRow.Children.Add(_rankProfitPerGmPill);
         rankModeGrp.Children.Add(rankModeRow);
         bottomRow.Children.Add(rankModeGrp);
 
@@ -307,6 +384,7 @@ public sealed partial class TradePage
         BuildPlannerChrome();
         if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
         _plannerResults.Children.Clear();
+        _pinChips.Clear();   // the chips belonged to the rows just dropped
         _plannerExpanded = -1;
 
         var snap = App.Market.Snapshot;
@@ -340,21 +418,57 @@ public sealed partial class TradePage
         // "no routes buy from here" one, since here the problem is an unresolved start, not a real
         // absence of routes.
         var originIds = TradeOriginResolver.StartTerminalIds(App.Settings.Current.TradeStartManual,
-            App.Locations.LastKnownLocation, snap.Terminals.Rows);
+            App.Locations.LastKnownLocation, snap.Terminals.Rows, App.Locations.LastKnownUexLocation);
         bool originUnknown = originIds is { Count: 0 };
         var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
             ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
-            ParseRankMode(App.Settings.Current.TradeRankMode));
+            ParseRankMode(App.Settings.Current.TradeRankMode),
+            // The same measurement this page already renders per row as a dim decoration - now it
+            // can also do the ranking, instead of the planner sorting purely on money while showing
+            // a distance it ignored.
+            App.Map.DistanceMeters);
+
+        // Pin refresh (Task 8, resemantic 2026-08-01 when pins began surviving a restart). A pin is
+        // identified by its (buy terminal, sell terminal, commodity) triple, not by object identity:
+        // this `routes` list is a brand new set of TradeRoute instances every rebuild. Any pin the
+        // fresh ranking contains has its trip quantity and margin brought up to date here.
+        //
+        // It no longer DROPS the pins the ranking is missing. That rule was right while a pin lasted
+        // only as long as the session that made it; a ranking is the best 25 routes for the ship,
+        // budget and scope selected right now, so once pins persist, "not in the top 25" would have
+        // silently erased them the first time the user switched ships.
+        RefreshPins(routes);
 
         if (routes.Count == 0)
         {
+            // Empty-state ladder, most specific cause first. The two scope-conflict rungs (A3) sit
+            // above the generic messages because a contradiction between the scope pill and a
+            // picker is not an absence of routes, and reporting it as one sends the user off
+            // adjusting ship, budget and demand filter to fix something none of those can reach.
+            // DESTINATION is tested before STARTING LOCATION only to pick one when both conflict:
+            // the message stays short, and fixing the first surfaces the second on the next run.
+            var scope = App.Settings.Current.TradeScope;
             string message;
             if (originUnknown)
             {
                 message = "Starting location unknown - pick one above, or set it to ANY.";
                 Logger.Info("[UI] Trade planner run: 0 routes, origin unknown");
+            }
+            else if (RoutePlanner.ChosenSystemOutsideScope(destIds, terminals, scope) is { } destSystem)
+            {
+                // Named with the same location-first label the user picked from the dropdown, not
+                // the raw UEX name, so the message points at something they recognize.
+                message = $"{TradeOriginResolver.LocationFirst(_destSelectedName)} is in {destSystem}, "
+                        + $"but your scope is {scope}. Widen the scope to ALL, or pick a destination in {scope}.";
+                Logger.Info($"[UI] Trade planner run: 0 routes, destination outside scope {scope} (in {destSystem})");
+            }
+            else if (RoutePlanner.ChosenSystemOutsideScope(originIds, terminals, scope) is { } startSystem)
+            {
+                message = $"Your starting location is in {startSystem}, but your scope is {scope}. "
+                        + $"Widen the scope to ALL, or start from somewhere in {scope}.";
+                Logger.Info($"[UI] Trade planner run: 0 routes, starting location outside scope {scope} (in {startSystem})");
             }
             else
             {
@@ -392,6 +506,23 @@ public sealed partial class TradePage
         RebuildPlanner();
     }
 
+    // DESTINATION's counterpart to SetStart, extracted from the combo's own SelectionChanged so the
+    // map's SEND TO PLANNER has a single path to set a destination (app review: it previously had
+    // none, which is part of why it could only ever send a start). Same no-op-on-unchanged guard, so
+    // re-picking what is already selected never logs or reruns. Null and "" both mean ANY, matching
+    // AppSettings.TradeDestManual's own contract.
+    private void SetDest(string? name)
+    {
+        var chosen = string.IsNullOrEmpty(name) ? AnyDestination : name;
+        if (_destSelectedName == chosen) return;
+
+        _destSelectedName = chosen;
+        App.Settings.Current.TradeDestManual = chosen == AnyDestination ? null : chosen;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: destination {chosen}");
+        RebuildPlanner();
+    }
+
     // LIVE button: selects the LIVE item when a session is actually live. With no live session it
     // does nothing to the selection - only logs - rather than picking a kind that would just
     // resolve to the same empty/origin-unknown state the combo already shows.
@@ -414,22 +545,52 @@ public sealed partial class TradePage
     private void RefreshStartCombo(MarketSnapshot? snap)
     {
         string? liveLoc = App.Locations.LastKnownLocation;
-        var names = new List<string> { AnyStart };
-        if (liveLoc is not null) names.Add($"{LiveStartPrefix}{liveLoc}");
         var terminalNames = TerminalNames(snap);
-        names.AddRange(terminalNames);
+
+        // Location-first display (the owner's ask, 2026-07-31): kindToDisplay/displayToKind are
+        // rebuilt fresh on every refresh from the current terminal list - they never persist
+        // anything themselves, they just translate between the real kind (_startSelectedKind,
+        // AppSettings.TradeStartManual) and the flipped label shown on screen. "ANY" and the
+        // "LIVE - {location}" item are NOT run through LocationFirst: they are not terminal
+        // names, and flipping "LIVE - {location}" would mangle it into "{location} - LIVE".
+        var kindToDisplay = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyStart] = AnyStart };
+        var displayToKind = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyStart] = AnyStart };
+        if (liveLoc is not null)
+        {
+            var liveDisplay = $"{LiveStartPrefix}{liveLoc}";
+            kindToDisplay["LIVE"] = liveDisplay;
+            displayToKind[liveDisplay] = "LIVE";
+        }
+        foreach (var n in terminalNames)
+        {
+            var disp = TradeOriginResolver.LocationFirst(n);
+            kindToDisplay[n] = disp;
+            displayToKind[disp] = n;
+        }
+        _startDisplayToKind = displayToKind;
+
+        // The combo's own item order is sorted by DISPLAY text, not TerminalNames' raw-name
+        // order - grouping by location (the whole point of the flip) only shows up if the list
+        // itself is ordered by the flipped label.
+        var names = new List<string> { AnyStart };
+        if (liveLoc is not null) names.Add(kindToDisplay["LIVE"]);
+        names.AddRange(terminalNames.Select(n => kindToDisplay[n]).OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
 
         if (!_startSeeded)
         {
-            _startSeeded = true;
-            var persisted = App.Settings.Current.TradeStartManual;
-            _startSelectedKind = persisted switch
+            // A5: a null seed means "not yet" - the persisted terminal name met an EMPTY list,
+            // which is the planner opening before the first market fetch lands, not a stale name.
+            // Staying unseeded lets the next refresh (first snapshot in) seed against a real list;
+            // the combo honestly shows nothing selected meanwhile. Consuming the seed here used to
+            // turn the saved start into the LIVE fallback for the rest of the session, and
+            // SetStart's no-op guard then made the mismatch sticky: the ranking kept restricting
+            // to the saved terminal while the combo claimed LIVE, and picking LIVE looked like a
+            // no-op so it never persisted.
+            if (SeedStartKind(App.Settings.Current.TradeStartManual, terminalNames) is { } seed)
             {
-                AnyStart => AnyStart,
-                "LIVE" => "LIVE",
-                _ when !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) => persisted,
-                _ => "LIVE",   // fail-open: null/empty/unrecognized persisted values default to LIVE (old FROM HERE default)
-            };
+                _startSeeded = true;
+                _startSelectedKind = seed;
+            }
         }
         else if (_startSelectedKind is null ||
                  (_startSelectedKind != AnyStart && _startSelectedKind != "LIVE" && !terminalNames.Contains(_startSelectedKind)))
@@ -440,10 +601,14 @@ public sealed partial class TradePage
         // The combo shows nothing selected while the kind is LIVE but no live item exists this
         // render (no session) - an honest "nothing to show" beats highlighting ANY, which would
         // read as "unrestricted" when the real state is "unresolved, waiting on a live location."
+        // The terminal-name branch below maps through kindToDisplay so the combo shows the
+        // flipped label for the currently selected kind, never the raw persisted name.
         string? display = _startSelectedKind switch
         {
-            "LIVE" => liveLoc is not null ? $"{LiveStartPrefix}{liveLoc}" : null,
-            _ => _startSelectedKind,
+            "LIVE" => liveLoc is not null ? kindToDisplay["LIVE"] : null,
+            AnyStart => AnyStart,
+            null => null,
+            _ => kindToDisplay.TryGetValue(_startSelectedKind, out var d) ? d : _startSelectedKind,
         };
 
         _suppressStartSelection = true;
@@ -463,6 +628,23 @@ public sealed partial class TradePage
         SetPillOn(_startLiveBtn, liveSelected);
         _startLiveBtn.Opacity = liveLoc is null ? 0.45 : 1.0;
     }
+
+    // The first-render seed decision, pure so a test can hold it still (A5, final review F4).
+    // ANY, LIVE and the null/empty first-run default depend on nothing, so they seed no matter
+    // what the list holds. A terminal NAME is the one kind that must be checked against the list,
+    // and against an EMPTY list "not found" is indistinguishable from "market data not loaded
+    // yet" - so empty defers (null return) instead of guessing, while a real list that lacks the
+    // name means the name went stale and fails open to LIVE (the old FROM HERE default).
+    internal static string? SeedStartKind(string? persisted, IReadOnlyCollection<string> terminalNames) =>
+        persisted switch
+        {
+            AnyStart => AnyStart,
+            "LIVE" => "LIVE",
+            null or "" => "LIVE",
+            _ when terminalNames.Contains(persisted) => persisted,
+            _ when terminalNames.Count == 0 => null,
+            _ => "LIVE",
+        };
 
     // Demand-at-destination filter (task 5, resemantic task 10): DEMAND-ONLY. Buy stock already
     // caps tripQty via TradeMath.TripQty (a route can never trip more than the terminal has to
@@ -532,11 +714,13 @@ public sealed partial class TradePage
         var active = ParseRankMode(App.Settings.Current.TradeRankMode);
         SetPillOn(_rankProfitPill, active == RankMode.Profit);
         SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
+        SetPillOn(_rankProfitPerGmPill, active == RankMode.ProfitPerGm);
     }
 
     private static string RankModeLabel(RankMode mode) => mode switch
     {
         RankMode.ProfitPerScu => "PROFIT PER SCU",
+        RankMode.ProfitPerGm => "PROFIT PER GM",
         _ => "PROFIT",
     };
 
@@ -545,6 +729,7 @@ public sealed partial class TradePage
     private static RankMode ParseRankMode(string? value) => value switch
     {
         "PROFIT PER SCU" => RankMode.ProfitPerScu,
+        "PROFIT PER GM" => RankMode.ProfitPerGm,
         _ => RankMode.Profit,
     };
 
@@ -557,19 +742,42 @@ public sealed partial class TradePage
     // live user pick this session is never clobbered by what was last saved.
     private void RefreshDestCombo(MarketSnapshot? snap)
     {
+        var terminalNames = TerminalNames(snap);
+
+        // Location-first display (the owner's ask, 2026-07-31), same mechanism as RefreshStartCombo
+        // above: nameToDisplay/displayToName are rebuilt fresh on every refresh and never touch
+        // _destSelectedName or AppSettings.TradeDestManual, which stay the real UEX name the
+        // whole time (SelectionChanged persists `name`, never `display`). "ANY" is not a
+        // terminal name and is never run through LocationFirst.
+        var nameToDisplay = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyDestination] = AnyDestination };
+        var displayToName = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyDestination] = AnyDestination };
+        foreach (var n in terminalNames)
+        {
+            var disp = TradeOriginResolver.LocationFirst(n);
+            nameToDisplay[n] = disp;
+            displayToName[disp] = n;
+        }
+        _destDisplayToName = displayToName;
+
+        // Sorted by DISPLAY text, not TerminalNames' raw-name order - same reasoning as the
+        // STARTING LOCATION combo above.
         var names = new List<string> { AnyDestination };
-        names.AddRange(TerminalNames(snap));
+        names.AddRange(terminalNames.Select(n => nameToDisplay[n]).OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
 
         if (!_destSeeded)
         {
             _destSeeded = true;
             var persisted = App.Settings.Current.TradeDestManual;
-            _destSelectedName = !string.IsNullOrEmpty(persisted) && names.Contains(persisted) ? persisted : AnyDestination;
+            _destSelectedName = !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) ? persisted : AnyDestination;
         }
-        else if (_destSelectedName is null || !names.Contains(_destSelectedName))
+        else if (_destSelectedName is null || (_destSelectedName != AnyDestination && !terminalNames.Contains(_destSelectedName)))
         {
             _destSelectedName = AnyDestination;
         }
+
+        string display = _destSelectedName == AnyDestination
+            ? AnyDestination
+            : nameToDisplay.TryGetValue(_destSelectedName!, out var d) ? d : _destSelectedName!;
 
         _suppressDestSelection = true;
         try
@@ -579,8 +787,8 @@ public sealed partial class TradePage
                 _destNames = names;
                 _destCombo.ItemsSource = names;
             }
-            if (!string.Equals(_destCombo.SelectedItem as string, _destSelectedName, StringComparison.Ordinal))
-                _destCombo.SelectedItem = _destSelectedName;
+            if (!string.Equals(_destCombo.SelectedItem as string, display, StringComparison.Ordinal))
+                _destCombo.SelectedItem = display;
         }
         finally { _suppressDestSelection = false; }
     }
@@ -614,6 +822,75 @@ public sealed partial class TradePage
         text.Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
         pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
         pill.Background = on ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush");
+    }
+
+    // PIN chip (Task 8): house chip geometry (mono-free, matches TierChip/ScopePill: 1px border,
+    // radius 3, padding 7,2,7,2 - TierChip's exact numbers), active state Gold like the tab strip's
+    // own active color (TabColor, TradePage.cs:412) rather than the amber AccentBrush every other
+    // toggle chip on this page uses - a pin is a session marker, not a filter, and reusing the tab
+    // strip's own "this is the one you're on" color keeps that distinction visible at a glance.
+    private static Border PinChip(bool active, bool sellOnly = false)
+    {
+        var text = new TextBlock
+        {
+            // "PIN TO OVERLAY", not "PIN" (the owner, 2026-08-01): a bare PIN said nothing about where
+            // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
+            // second effect, and the tooltip below is where that belongs.
+            Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+        };
+        var chip = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Cursor = Cursors.Hand,
+            Margin = new Thickness(8, 0, 0, 0), Child = text, VerticalAlignment = VerticalAlignment.Center,
+            // Reworded 2026-08-01 (app review): the old text promised the route "stays here through
+            // a refresh", which RebuildPlanner never implements - it ranks fresh every time and the
+            // pin's only effect on THIS list is to be cleared when the route falls out of it. The
+            // pin's actual payoff is on other surfaces entirely, which no Trade surface mentioned.
+            // Reworded again the same day, once several routes could be pinned at once: the chip
+            // now names its main destination and the tooltip carries the rest, including the cap.
+        };
+        ApplyPinChipVisual(chip, active, sellOnly);
+        return chip;
+    }
+
+    // Repaints an existing chip rather than rebuilding it (the owner's live pass, 2026-08-01: "when i
+    // click pin to overlay the main app flashes and lags a bit"). The click handler used to call
+    // RebuildPlanner, which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
+    // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the
+    // flash, the rank plus 25 rebuilds is the lag, and it also collapsed whatever row the user had
+    // expanded. Nothing about the ranking changes when a route is pinned.
+    //
+    // sellOnly words the tooltip honestly per surface: a sell pin draws NO Starmap leg (a leg
+    // needs two ends), so its tooltip must not promise one - the untrue-claim rule.
+    private static void ApplyPinChipVisual(Border chip, bool active, bool sellOnly = false)
+    {
+        ((TextBlock)chip.Child).Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
+        chip.BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush");
+        chip.ToolTip = (active, sellOnly) switch
+        {
+            (true, false) => "Stop showing this route in the overlay and on the Starmap.",
+            (false, false) => $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.",
+            (true, true) => "Stop showing this sell stop in the overlay.",
+            (false, true) => $"Show this sell stop in the overlay's TRADE tab. Up to {RoutePlanner.MaxPins} pins at once.",
+        };
+    }
+
+    // Every pin chip currently on screen, so a pin can repaint all of them in place. ALL of them,
+    // not just the one clicked: pinning at the cap evicts the OLDEST pin, and that route may be
+    // visible in this same list - or over on the Sell tab's list - so its chip has to go dim in
+    // the same gesture. The sell list lives here beside the planner's because RefreshPinChips is
+    // the one repaint path both flows share.
+    private readonly List<(TradeRoute Route, Border Chip)> _pinChips = new();
+    private readonly List<(int TerminalId, int CommodityId, Border Chip)> _sellPinChips = new();
+
+    /// <summary>Repaints every pin chip on screen (planner rows AND sell rows) from the current
+    /// pin list. Internal because the overlay's own per-card close reaches it through MainWindow:
+    /// that path used to call Refresh(), which rebuilds all THREE flows to dim one chip.</summary>
+    internal void RefreshPinChips()
+    {
+        foreach (var (route, chip) in _pinChips) ApplyPinChipVisual(chip, IsPinned(route));
+        foreach (var (tid, cid, chip) in _sellPinChips) ApplyPinChipVisual(chip, IsSellPinned(tid, cid), sellOnly: true);
     }
 
     private static TextBlock FieldLabel(string text) => new()
@@ -774,7 +1051,7 @@ public sealed partial class TradePage
         // same system - DistanceMeters already encodes both the resolution and the same-system
         // gate, so this is a single call, not a duplicated check.
         if (_starmap.DistanceMeters(buyTerm, sellTerm) is { } routeDistanceM
-            && DistanceTag(StarmapCatalog.FormatGm(routeDistanceM)) is { } routeDistTag)
+            && DistanceTag(MapCatalog.FormatGm(routeDistanceM)) is { } routeDistTag)
         {
             head.Children.Add(routeDistTag);
         }
@@ -785,6 +1062,20 @@ public sealed partial class TradePage
         {
             head.Children.Add(RankPerScuTag(r.Net, r.TripQty));
         }
+        // PIN toggle (Task 8, MAP tab route pinning): active state comes from IsPinned, which is
+        // the same triple rule the stale-pin drop in RebuildPlanner applies, so "is this row
+        // pinned" can never disagree with what the overlay and the map are showing - one rule, not
+        // three hand-written comparisons.
+        // Last in the head row: the informational tags read together, the action sits at the end.
+        var pinChip = PinChip(IsPinned(r));
+        _pinChips.Add((r, pinChip));
+        pinChip.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;   // never bubble to the row host and toggle the expand band
+            PinRoute(r);
+            RefreshPinChips();   // repaint in place; see ApplyPinChipVisual for why not a rebuild
+        };
+        head.Children.Add(pinChip);
         Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
         grid.Children.Add(head);
 
@@ -812,14 +1103,14 @@ public sealed partial class TradePage
         string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, buyTerm, RaiseShowOnMap));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, sellTerm, RaiseShowOnMap));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
@@ -889,7 +1180,7 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu)
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu, MarketTerminal? terminal = null, Action<int>? onShowOnMap = null)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
@@ -905,6 +1196,23 @@ public sealed partial class TradePage
         // column. That preserves the exact trimming guarantee this site was built with while still
         // placing the tag right after the name, inline, in the same row.
         var name = new TextBlock { Text = terminalName, FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = terminalName };
+        // The leg name opens its stop on the Starmap (app review G7b, the other half of the
+        // one-way leaf the Codex LOCATIONS rows closed). RESOLVE-THEN-DECORATE, per leg, exactly as
+        // that list does: a terminal the geometry catalog cannot place keeps the appearance it has
+        // always had - no cursor, no tooltip change, no handler - rather than offering a jump that
+        // would do nothing.
+        if (onShowOnMap is not null && App.Map.ResolveTerminal(terminal) is { } stop)
+        {
+            name.Cursor = Cursors.Hand;
+            name.ToolTip = $"{terminalName}{Environment.NewLine}Show {stop.Name} on the Starmap.";
+            name.MouseEnter += (_, _) => name.Foreground = Hud.Br("AccentBrush");
+            name.MouseLeave += (_, _) => name.Foreground = Hud.Br("FgBrush");
+            name.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;   // never bubble to the row host and toggle the expand band
+                onShowOnMap(stop.Id);
+            };
+        }
         Grid.SetColumn(name, 0); top.Children.Add(name);
         // Owner's live-pass ask, 2026-07-30 (item A): "the system is extremely close to the price
         // per scu in the planner tab" - SystemTag's own left margin (6px) already separates it from

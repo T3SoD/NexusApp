@@ -113,10 +113,13 @@ public class HelpDialog : Window
 
         new("✓", "Session Tracking",
             "Nexus reads Star Citizen's Game.log and auto-collects blueprints you receive - marking them Owned live as you play, or in bulk from past logs. Always on.",
-            [new("GAME SESSION", "header pill"), new("Import", "past logs")],
+            [new("SESSION", "header pill"), new("Import", "past logs")],
             [
                 "Session tracking and blueprint auto-collect are always on - there's nothing to switch on.",
-                "The header pills show the live state - GAME SESSION reads monitoring while Star Citizen runs and offline once it's closed; BLUEPRINTS reads tracking or off.",
+                // F14 wording (2026-08-01): the chip is SESSION now, its live value carries the
+                // shard rather than the word "monitoring" (the owner cut it - the breathing green dot
+                // already says alive), and BLUEPRINTS moved to the Library as AUTO-TRACK.
+                "The header pills show the live state - SESSION breathes green with your shard beside it while Star Citizen runs, and reads offline once it's closed; the Blueprint Library's own AUTO-TRACK chip shows blueprint collection working.",
                 "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library and bumps the session count - quietly, with no popups.",
                 "The overlay HUB shows the READY ORDERS and HAUL tiles plus the Collection Log feed, whose header carries a live blueprint count; counts reset when Star Citizen starts a new session.",
                 "For more control, open the advanced monitor from Settings › Game.log Paths › Open Game.log Monitor - a raw log view, snapshot export, and Reset session.",

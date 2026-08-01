@@ -6,7 +6,18 @@ namespace NexusApp.Services;
 // Hauling, work order suggestions, the Mining Codex) reads. WeekAvg / Instant / GameVersion /
 // ModifiedUtc are carried straight from the MarketPriceRow the hit was built from; Stale is
 // computed once here so callers never re-derive it.
-internal sealed record PriceHit(string TerminalName, double WeekAvg, double Instant, DateTime ModifiedUtc, string GameVersion, bool Stale)
+// TerminalId is LAST and OPTIONAL on purpose: it was added 2026-08-01 (app review) to an existing
+// record with construction sites in test fixtures, and a trailing default keeps every one of them
+// compiling untouched. 0 means "not known", which is what a hand-built fixture gets.
+//
+// Why it matters out of proportion to its size: the id was already in hand and thrown away one line
+// from where it was needed (RankedHits builds each hit from a MarketPriceRow whose first field is
+// TerminalId). Without it, every non-Trade price surface - the Codex dossier and cards, the work
+// order sell block, the decoder scan card, the overlay SCAN line - held only a NAME, so none could
+// resolve snapshot.Terminals to a MarketTerminal. That single gap is why none of them could print
+// which system a price is in, none could compute a distance, and none could click through to
+// TradePage.ShowPricesForTerminal(int), which the Starmap already calls.
+internal sealed record PriceHit(string TerminalName, double WeekAvg, double Instant, DateTime ModifiedUtc, string GameVersion, bool Stale, int TerminalId = 0)
 {
     // The number every surface displays: week average, falling back to instant when week is 0.
     public double Display => WeekAvg > 0 ? WeekAvg : Instant;
@@ -84,6 +95,59 @@ internal static class MarketQueries
         return null;
     }
 
+    // ── Live refinery yields (app review G8) ───────────────────────────────────────────────────
+    // The refineries_yields dataset has been fetched, parsed, cached and persisted since the market
+    // feature shipped, and read by nothing. It is UEX's community-reported refining bonus per
+    // terminal per RAW commodity - the live counterpart of the seed's static RefineryYield - and it
+    // is worth surfacing precisely because it can DISAGREE with the seed.
+    //
+    // It never replaces the seed. Two reasons, both load-bearing: the yield half of the dossier's
+    // VALUE section must survive market data being switched off (that is why the two halves are
+    // gated independently), and these rows are community reports carrying their own date, some of
+    // them months old. Corroboration, shown beside the seed's number, is the honest use - the same
+    // shape the SCT layer already takes against UEX prices.
+
+    /// <summary>One live refining bonus reading at one refinery, for one raw ore.</summary>
+    internal sealed record YieldHit(string Station, int BonusPct, int BonusPctWeek, DateTime ModifiedUtc, int TerminalId);
+
+    /// <summary>UEX names these terminals "Refinement Center - Levski" / "Refinement Processing -
+    /// Stanton Gateway (Pyro)". The seed names the same place "Levski" / "Stanton Gateway (Pyro)".
+    /// Strips any "<something> - " prefix so the two vocabularies can be joined; a name with no
+    /// separator is returned unchanged.</summary>
+    public static string RefineryStationName(string? uexTerminalName)
+    {
+        if (string.IsNullOrWhiteSpace(uexTerminalName)) return "";
+        var cut = uexTerminalName.IndexOf(" - ", StringComparison.Ordinal);
+        return (cut >= 0 ? uexTerminalName[(cut + 3)..] : uexTerminalName).Trim();
+    }
+
+    /// <summary>Live refining bonuses for one seed ore, keyed by station name as the seed spells it.
+    /// Empty on every miss - no snapshot, an unmapped ore, or no reported rows - so a caller can
+    /// look up unconditionally and get silence.</summary>
+    public static IReadOnlyDictionary<string, YieldHit> LiveYieldsByStation(MarketSnapshot? s, string seedResourceName)
+    {
+        var empty = new Dictionary<string, YieldHit>(StringComparer.OrdinalIgnoreCase);
+        if (s is null) return empty;
+
+        // Keyed on the RAW commodity: the bonus applies to what goes INTO the refinery, which is
+        // why this resolves the raw row rather than following the refined link the price queries do.
+        var raw = ResolveRawCommodity(s, seedResourceName);
+        if (raw is null) return empty;
+
+        var byStation = new Dictionary<string, YieldHit>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in s.Yields.Rows)
+        {
+            if (row.CommodityId != raw.Id) continue;
+            var station = RefineryStationName(row.TerminalName);
+            if (station.Length == 0) continue;
+            // First wins. UEX reports one row per terminal per commodity; a duplicate would mean
+            // upstream changed shape, and overwriting silently would hide that.
+            if (!byStation.ContainsKey(station))
+                byStation[station] = new YieldHit(station, row.BonusPct, row.BonusPctWeek, row.ModifiedUtc, row.TerminalId);
+        }
+        return byStation;
+    }
+
     private static void LogMissOnce(string seedResourceName)
     {
         lock (_loggedMisses)
@@ -108,7 +172,7 @@ internal static class MarketQueries
             var stale = !string.IsNullOrEmpty(liveGameVersion)
                 && !string.Equals(row.GameVersion, liveGameVersion, StringComparison.OrdinalIgnoreCase);
 
-            var hit = new PriceHit(row.TerminalName, row.SellAvgWeek, row.Sell, row.ModifiedUtc, row.GameVersion, stale);
+            var hit = new PriceHit(row.TerminalName, row.SellAvgWeek, row.Sell, row.ModifiedUtc, row.GameVersion, stale, row.TerminalId);
             if (hit.Display <= 0) continue;
             hits.Add(hit);
         }

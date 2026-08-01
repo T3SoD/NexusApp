@@ -5,7 +5,9 @@ namespace NexusApp.Views;
 // re-running the picks gallery can never drop these entries.
 // Currently: "guides" (folded map, adopted from the approved Mission Guides mock); "trade"
 // (balance scale, adopted from the approved Trade dock icon mock, candidate 3 of 10 - see
-// nexus-design-lab/trade-icon/index.html).
+// nexus-design-lab/trade-icon/index.html); "map" (star system: a filled star, two orbits on
+// different inclinations, and a planet riding the outer one - adopted from the Starmap dock icon
+// mock, candidate 2 of 9, see nexus-design-lab/map-icon/index.html).
 public static class DockIconSpecsCustom
 {
     public const string Json = """
@@ -457,6 +459,304 @@ public static class DockIconSpecsCustom
      ],
      "ease": "back",
      "delay": 0.35
+    }
+   ]
+  }
+ },
+ "map": {
+  "view": [
+   -6,
+   -6,
+   36,
+   36
+  ],
+  "stroke": 1.5,
+  "parts": [
+   {
+    "id": "p0",
+    "el": "path",
+    "d": "M2,12 A 10,4 0 1,0 22,12 A 10,4 0 1,0 2,12"
+   },
+   {
+    "id": "p1",
+    "el": "path",
+    "d": "M6.56,14.54 A 6,2.2 -25 1,0 17.44,9.46 A 6,2.2 -25 1,0 6.56,14.54"
+   },
+   {
+    "id": "p2",
+    "el": "circle",
+    "cx": 12,
+    "cy": 12,
+    "r": 2.2,
+    "fill": true
+   },
+   {
+    "id": "p3",
+    "el": "circle",
+    "cx": 18.43,
+    "cy": 8.94,
+    "r": 1.5,
+    "fill": true
+   },
+   {
+    "id": "f_tl",
+    "el": "path",
+    "d": "M-2 -5 L-5 -5 L-5 -2",
+    "sw": 1.0
+   },
+   {
+    "id": "f_tr",
+    "el": "path",
+    "d": "M26 -5 L29 -5 L29 -2",
+    "sw": 1.0
+   },
+   {
+    "id": "f_bl",
+    "el": "path",
+    "d": "M-5 26 L-5 29 L-2 29",
+    "sw": 1.0
+   },
+   {
+    "id": "f_br",
+    "el": "path",
+    "d": "M29 26 L29 29 L26 29",
+    "sw": 1.0
+   },
+   {
+    "id": "f_pip",
+    "el": "circle",
+    "cx": 29,
+    "cy": -5,
+    "r": 1.3,
+    "fill": "#7FE9E0"
+   }
+  ],
+  "hover": {
+   "duration": 0.22,
+   "ease": "easeOut",
+   "tracks": [
+    {
+     "part": "p0",
+     "scale": [
+      1,
+      1.06,
+      1
+     ],
+     "origin": [
+      12,
+      12
+     ]
+    },
+    {
+     "part": "p1",
+     "scale": [
+      1,
+      1.06,
+      1
+     ],
+     "origin": [
+      12,
+      12
+     ]
+    },
+    {
+     "part": "p2",
+     "scale": [
+      1,
+      1.15,
+      1
+     ],
+     "origin": [
+      12,
+      12
+     ]
+    },
+    {
+     "part": "p3",
+     "scale": [
+      1,
+      1.2,
+      1
+     ],
+     "origin": [
+      18.43,
+      8.94
+     ]
+    },
+    {
+     "part": "f_tl",
+     "x": [
+      0,
+      -1,
+      0
+     ],
+     "y": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "part": "f_tr",
+     "x": [
+      0,
+      1,
+      0
+     ],
+     "y": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "part": "f_bl",
+     "x": [
+      0,
+      -1,
+      0
+     ],
+     "y": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "part": "f_br",
+     "x": [
+      0,
+      1,
+      0
+     ],
+     "y": [
+      0,
+      1,
+      0
+     ]
+    },
+    {
+     "part": "f_pip",
+     "scale": [
+      1,
+      1.25,
+      1
+     ]
+    }
+   ]
+  },
+  "selected": {
+   "duration": 0.55,
+   "ease": "settle",
+   "tracks": [
+    {
+     "part": "p0",
+     "draw": true,
+     "delay": 0.0
+    },
+    {
+     "part": "p1",
+     "draw": true,
+     "delay": 0.12
+    },
+    {
+     "part": "p2",
+     "scale": [
+      0,
+      1
+     ],
+     "origin": [
+      12,
+      12
+     ],
+     "ease": "back",
+     "delay": 0.28
+    },
+    {
+     "part": "p3",
+     "scale": [
+      0,
+      1
+     ],
+     "origin": [
+      18.43,
+      8.94
+     ],
+     "ease": "back",
+     "delay": 0.36
+    },
+    {
+     "part": "f_tl",
+     "x": [
+      -3,
+      0
+     ],
+     "y": [
+      -3,
+      0
+     ],
+     "opacity": [
+      0,
+      1
+     ],
+     "delay": 0.0
+    },
+    {
+     "part": "f_tr",
+     "x": [
+      3,
+      0
+     ],
+     "y": [
+      -3,
+      0
+     ],
+     "opacity": [
+      0,
+      1
+     ],
+     "delay": 0.03
+    },
+    {
+     "part": "f_bl",
+     "x": [
+      -3,
+      0
+     ],
+     "y": [
+      3,
+      0
+     ],
+     "opacity": [
+      0,
+      1
+     ],
+     "delay": 0.06
+    },
+    {
+     "part": "f_br",
+     "x": [
+      3,
+      0
+     ],
+     "y": [
+      3,
+      0
+     ],
+     "opacity": [
+      0,
+      1
+     ],
+     "delay": 0.09
+    },
+    {
+     "part": "f_pip",
+     "scale": [
+      0,
+      1
+     ],
+     "ease": "back",
+     "delay": 0.42
     }
    ]
   }

@@ -22,6 +22,11 @@ public class AppSettings
 
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
+    // Trade routes pinned in the planner (the owner, 2026-08-01: "the same as refinery orders"). They
+    // shipped session-only that morning; a run outlives a session, so that was wrong. Order is pin
+    // order, oldest first, and it is load-bearing - the overlay lists cards in it and the cap drops
+    // the oldest. See Models/PinnedRoute.cs for what is stored and what deliberately is not.
+    public List<PinnedRoute> PinnedRoutes { get; set; } = [];
     public bool FirstRunComplete { get; set; }
 
     // BETA Session Tracking - remember whether the watch / auto-collect were on, so they
@@ -98,11 +103,12 @@ public class AppSettings
 
     // Auto-update consent: null = the one-time opt-in strip has not been answered yet (and no
     // network call ever happens), true/false = the user's standing choice, changeable anytime
-    // in Settings > Updates. The check itself is throttled to once per 24h by UpdateService.
+    // in Settings > Updates. With consent on, the check runs on every launch (the 24h throttle
+    // died 2026-08-01 at the owner's ask).
     public bool? UpdateCheckEnabled { get; set; }
 
-    // UTC instant of the last completed update check (success or failure), driving both the
-    // 24-hour auto-check throttle and the "Last checked" row. Null until the first check ever.
+    // UTC instant of the last completed update check (success or failure), driving the
+    // "Last checked" row in Settings > Updates. Null until the first check ever.
     public DateTime? LastUpdateCheckUtc { get; set; }
 
     // Live market data consent: null = the one-time strip has not been answered, true/false =
@@ -166,6 +172,19 @@ public class AppSettings
     // original unrestricted behavior - unlike TradeOriginManual this has no "falls back to live
     // location" concept, so null is the honest default rather than an empty string sentinel.
     public string? TradeDestManual { get; set; }
+
+    // MAP tab: the star system the user was last looking at. Null = never set, so the map opens on
+    // its built-in default. Validated against the catalog on load - a system that no longer exists
+    // (a renamed or removed one) falls back to the default rather than opening on nothing.
+    public string? MapSystem { get; set; }
+
+    // MAP tab: which data layers are switched on, as a comma-separated list of layer keys
+    // ("trade,mining"). One setting rather than five booleans because the set is small, the keys
+    // are already the vocabulary the page and the scene both speak, and it stays readable in
+    // settings.json. NULL IS MEANINGFUL and distinct from empty: null = never saved, so first-run
+    // defaults apply; "" = the user deliberately switched everything off, which must survive a
+    // restart. See MapPage.ParseLayers.
+    public string? MapLayers { get; set; }
 
     // System-name scope filter pill (ALL / a specific star system name). Default ALL.
     public string TradeScope { get; set; } = "ALL";

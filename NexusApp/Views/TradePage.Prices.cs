@@ -22,6 +22,14 @@ public sealed partial class TradePage
     private static readonly string[] PriceColLabels = { "STOCK", "STATUS", "AGE", "+WEEK AVG" };
     private string? _pricesSelectedCommodity;
 
+    // MAP tab terminal filter (Task 8): set only by ShowPricesForTerminal, session-only (same
+    // reasoning as _priceCols/_pricesSortColumn above - not part of AppSettings' fixed contract
+    // and not something a "last state" restore should reapply on its own). Coexists with a chosen
+    // commodity (both filters AND together); when no commodity is chosen while this is set, the
+    // results show every commodity traded at that one terminal instead of the usual "one commodity,
+    // every terminal" view - see RefreshPricesCommodityBox and RebuildPrices below.
+    private int? _pricesTerminalFilter;
+
     // Sort state (owner live-pass ask, 2026-07-30, item 2): session-only, not persisted - same
     // reasoning as _priceCols above. Default Sell descending is the pre-existing behavior, with
     // the Sell header visually marked active from first paint.
@@ -112,10 +120,18 @@ public sealed partial class TradePage
     // a permanent "0 terminals" render. The ComboBox is updated in place afterwards so the box
     // visibly shows the commodity that was actually rendered - suppressed, since neither write is a
     // user pick, and skipped entirely when nothing changed (an open dropdown must survive a tick).
+    //
+    // Task 8 addition: while the MAP tab's terminal filter is active, an invalid/null selection
+    // falls back to null (no forced pick) instead of the first commodity - that null is the
+    // deliberate "every commodity at this terminal" state ShowPricesForTerminal puts the page into,
+    // and forcing a default here would silently narrow it back down to one commodity on the very
+    // next refresh. Outside terminal-filter mode this is unchanged from before.
     private void RefreshPricesCommodityBox(List<string> commodities)
     {
-        if (_pricesSelectedCommodity is null || !commodities.Any(c => string.Equals(c, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase)))
-            _pricesSelectedCommodity = commodities.FirstOrDefault();
+        bool stillValid = _pricesSelectedCommodity is not null
+            && commodities.Any(c => string.Equals(c, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase));
+        if (!stillValid)
+            _pricesSelectedCommodity = _pricesTerminalFilter is null ? commodities.FirstOrDefault() : null;
 
         _suppressPricesSelection = true;
         try
@@ -145,7 +161,10 @@ public sealed partial class TradePage
 
         RefreshPricesCommodityBox(commodities);
 
-        if (snap is null || commodities.Count == 0 || _pricesSelectedCommodity is null)
+        // Task 8: a null selection is only a real empty state when it is NOT the terminal-browse
+        // "every commodity at this one terminal" mode RefreshPricesCommodityBox above deliberately
+        // leaves null for (ShowPricesForTerminal's whole point) - that mode still has rows to show.
+        if (snap is null || commodities.Count == 0 || (_pricesSelectedCommodity is null && _pricesTerminalFilter is null))
         {
             _pricesResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc));
             return;
@@ -155,14 +174,21 @@ public sealed partial class TradePage
         // System tag is a dictionary read rather than a linear scan of Terminals.Rows.
         var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
 
+        // Task 8: the commodity filter is now optional (null = every commodity, the terminal-browse
+        // mode) and the terminal filter is a second, independently optional AND clause - a MAP tab
+        // pin can arrive with either, both, or (outside this feature) neither set.
         var uexRows = snap.TradePrices.Rows
-            .Where(r => string.Equals(r.CommodityName, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase))
+            .Where(r => _pricesSelectedCommodity is null || string.Equals(r.CommodityName, _pricesSelectedCommodity, StringComparison.OrdinalIgnoreCase))
+            .Where(r => _pricesTerminalFilter is not { } tid || r.TerminalId == tid)
             .ToList();
 
-        // SCT-only rows for the selected commodity, merged into the same list (never a separate
-        // section). App.Sct.SctOnlyBuyers self-gates on SctDataEnabled; the outer check here keeps
-        // this call site's own trace at zero while dark, same as the Sell flow.
-        var sctOnly = App.Settings.Current.SctDataEnabled && uexRows.Count > 0
+        // SCT-only rows, merged into the same list (never a separate section). Only meaningful for
+        // a single selected commodity - SctOnlyBuyers takes one CommodityId, and the terminal-browse
+        // "every commodity here" mode has no one id to key it off, so that mode shows UEX rows only
+        // (never a fabricated per-commodity SCT match). App.Sct.SctOnlyBuyers self-gates on
+        // SctDataEnabled; the outer check here keeps this call site's own trace at zero while dark,
+        // same as the Sell flow.
+        var sctOnly = App.Settings.Current.SctDataEnabled && _pricesSelectedCommodity is not null && uexRows.Count > 0
             ? App.Sct.SctOnlyBuyers(uexRows[0].CommodityId).ToList()
             : new List<SctListing>();
 
@@ -175,6 +201,18 @@ public sealed partial class TradePage
             _pricesSortColumn, _pricesSortDescending);
         int totalTerminals = merged.Count;   // includes the SCT-only rows only when they render (sctOnly is empty while dark)
         var top = merged.Take(50).ToList();   // spartan by default; codex row idiom, house rule against clutter on price surfaces
+
+        // Task 8: the dismissible "TERMINAL: <name> x" chip, dropped above the header/results the
+        // instant the filter clears (mouse-only dismiss - a plain TextBlock click handler, same
+        // idiom as the ORIGIN chip's Manual/Live links, TradePage.cs:704-711 - carries no keyboard
+        // path at all: nothing here is a Tab stop or has a key binding).
+        // Location-first display (the owner's ask, 2026-07-31): filterTerm.Name is a raw MarketTerminal
+        // name (Shop-first), unlike the price rows' own TerminalName column below (TradePriceRow.
+        // TerminalName is a different UEX vocabulary - see BuildPriceRow's comment). Display only:
+        // _pricesTerminalFilter stores the terminal ID, never this label, so nothing here can leak
+        // a flipped name into filtering or persistence.
+        if (_pricesTerminalFilter is { } filterTid && terminals.TryGetValue(filterTid, out var filterTerm))
+            _pricesResults.Children.Add(TerminalFilterChip(TradeOriginResolver.LocationFirst(filterTerm.Name)));
 
         var cols = new System.Collections.Generic.List<ColumnDefinition> { new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = new GridLength(100) }, new() { Width = new GridLength(100) } };
         if (_priceCols[0]) cols.Add(new ColumnDefinition { Width = new GridLength(100) });
@@ -208,7 +246,75 @@ public sealed partial class TradePage
         });
 
         string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
-        Logger.Info($"[UI] Trade prices run: {totalTerminals} terminals, commodity {_pricesSelectedCommodity}, showing {top.Count}{sctSuffix}");
+        string commodityPart = _pricesSelectedCommodity ?? "ALL (terminal browse)";
+        Logger.Info($"[UI] Trade prices run: {totalTerminals} terminals, commodity {commodityPart}, showing {top.Count}{sctSuffix}");
+    }
+
+    /// <summary>Called when the user picks "show prices here" on a MAP tab terminal pin: switches
+    /// to the Prices flow and filters results down to that one terminal. Coexists with whatever
+    /// commodity is already selected (both filters AND together, RebuildPrices' uexRows Where
+    /// chain) - this does not touch _pricesSelectedCommodity, so a prior single-commodity browse
+    /// narrows further to "this commodity, at this terminal" rather than resetting.
+    ///
+    /// A terminal id that does not resolve (stale pin from a snapshot that has since changed)
+    /// mirrors PrefillPlannerOriginFromMap's own no-op-on-null rule: the filter is never set at
+    /// all, only skipped - still switches to Prices (the user's click should land somewhere), but
+    /// leaves _pricesTerminalFilter untouched rather than setting it to an id nothing can resolve.
+    /// That matters here in a way it does not for the origin prefill: the dismiss chip
+    /// (TerminalFilterChip below) is the ONLY reset path for this field, and it only renders once
+    /// terminals.TryGetValue resolves the id (RebuildPrices) - an unresolved id would otherwise set
+    /// a filter with no chip to ever clear it, locking the flow onto an invisible, un-dismissable
+    /// filter for the rest of the session (review finding, task-8).</summary>
+    internal void ShowPricesForTerminal(int terminalId)
+    {
+        var terminals = App.Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>();
+        var name = TradeOriginResolver.OriginNameForTerminal(terminalId, terminals);
+        SwitchTab(2);
+        if (name is null)
+        {
+            Logger.Info("[UI] trade: prices filter skipped (terminal unresolved)");
+        }
+        else
+        {
+            _pricesTerminalFilter = terminalId;
+            Logger.Info($"[UI] trade: prices filtered from map ({name})");
+        }
+        RebuildPrices();
+    }
+
+    // Dismissible terminal-filter chip (Task 8). "x" is a plain TextBlock, not a Button - the same
+    // mouse-only-dismiss idiom the ORIGIN chip's Manual/Live links already use (TradePage.cs), so
+    // it carries no keyboard path (not a Tab stop, no key binding) by construction rather than by
+    // suppressing one on a focusable control.
+    private Border TerminalFilterChip(string terminalName)
+    {
+        var label = new TextBlock
+        {
+            Text = $"TERMINAL: {terminalName.ToUpperInvariant()}", FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        var close = new TextBlock
+        {
+            Text = "x", FontFamily = Hud.Font("UiFont"), FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(9, 0, 0, 0), Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        close.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            _pricesTerminalFilter = null;
+            Logger.Info("[UI] Trade prices: terminal filter cleared");
+            RebuildPrices();
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(label);
+        row.Children.Add(close);
+        return new Border
+        {
+            Background = Hud.Br("AccentFaintBrush"), BorderBrush = Hud.Br("AccentStrongBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 0, 10),
+            Child = row, HorizontalAlignment = HorizontalAlignment.Left,
+        };
     }
 
     private static TextBlock HeaderCell(string text, int column, bool right)
@@ -313,6 +419,16 @@ public sealed partial class TradePage
             // name+tag are wrapped in a horizontal StackPanel within that same cell (house idiom,
             // matches the SCT-only branch's termPanel below) - this column is the widest of the row
             // and carries no trimming, so the tag never wraps or clips.
+            //
+            // Location-first display NOT applied here (the owner's ask, 2026-07-31 review): r.TerminalName
+            // is TradePriceRow.TerminalName, a DIFFERENT UEX vocabulary from MarketTerminal.Name -
+            // already documented in TradePage.cs's TerminalNames doc comment (e.g. "CBD Lorville" vs
+            // "CBD - Central Business District - Lorville" for the same terminal, verified against a
+            // real capture). TradeOriginResolver.LocationFirst's " - " split rule was verified only
+            // against MarketTerminal.Name; applying it here unverified risks mangling names that don't
+            // follow that vocabulary. Same reasoning applies to the Sell flow's buyer rows
+            // (TradePage.Sell.cs, BuildBuyerRowCore's terminalName param, fed from SellLookup.Buyer.
+            // Row.TerminalName) - left unchanged.
             var termPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             termPanel.Children.Add(new TextBlock { Text = r.TerminalName, FontFamily = Hud.Font("UiFont"), FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center });
             string? system = terminals.TryGetValue(r.TerminalId, out var termInfo) ? termInfo.System : null;

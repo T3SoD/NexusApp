@@ -175,6 +175,15 @@
                             </views:ChamferPanel>
                         </Grid>
 
+                        <!-- Executive Hangar countdown (app review 2026-08-01). HUB is the restore default,
+                             so it is what the player sees mid-flight, and it answered neither of the two
+                             clock-driven facts in the product. The countdown existed but lived inside the
+                             GUIDES tab's Contested Zones section and only ticked while GUIDES was active.
+                             This is a SECOND ExecHangarStatusLine, started and stopped on the "stats" tab
+                             exactly as the guides copy is; the hero tiles above are a frozen, signed-off
+                             surface and are deliberately untouched. -->
+                        <ContentControl x:Name="HubHangarHost" Margin="0,11,0,0"/>
+
                         <!-- SERVER / SHARD: current + recent shards (built in code-behind, RebuildShardPanel). -->
                         <views:ChamferPanel Chamfer="12" Padding="13,10" Margin="0,11,0,0">
                             <StackPanel x:Name="ShardPanel"/>
@@ -461,6 +470,17 @@
                 <Grid x:Name="ShoppingTabContent" Visibility="Collapsed">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
                         <StackPanel x:Name="ShoppingPanelItems"/>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- TRADE tab: every route pinned in the planner as a Manifest Strip card (mock
+                     nexus-design-lab/overlay-trade, candidate B), plus where you are. Deliberately
+                     tiny - this is read mid-flight, so it answers "what am I running and where am I
+                     in it" and nothing else. The only action is a per-card unpin. Built in code
+                     (RebuildTradePanel). -->
+                <Grid x:Name="TradeTabContent" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
+                        <StackPanel x:Name="TradePanelItems"/>
                     </ScrollViewer>
                 </Grid>
 

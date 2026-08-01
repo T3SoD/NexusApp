@@ -36,7 +36,24 @@ public static class LocationLogParser
         @"^<(?<ts>[0-9T:.Z+-]+)>.*?<Update Inventory Location> Player \[[^\]]*\] is changing location\.",
         RegexOptions.Compiled);
 
-    public static LocationSignal? ParseJurisdiction(string raw) => Match(Jurisdiction, raw);
+    // The "Entered ..." family also carries SECURITY-STATUS crossings, which are not places: the
+    // same string fires anywhere in the universe that has a monitored boundary, so it names a
+    // condition, not somewhere you can be. Live capture 2026-08-01: standing in Levski, the origin
+    // pill read "Monitored Space" because a status crossing at 00:24:29 overwrote a real
+    // "People's Alliance Jurisdiction" line from 00:24:18. Dropping these here (rather than in
+    // LocationTracker) keeps the one choke point pure and leaves the previous real location standing.
+    // "Monitored Space" is from that capture, seen in both the Entered and Exited forms;
+    // "Unmonitored Space" is its lawless-space counterpart, included as the same class and inert
+    // until it fires. Armistice lines need no entry - they read "Entering"/"Leaving", which this
+    // regex's "Entered " literal never matches.
+    private static readonly HashSet<string> NotPlaces = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Monitored Space",
+        "Unmonitored Space",
+    };
+
+    public static LocationSignal? ParseJurisdiction(string raw) =>
+        Match(Jurisdiction, raw) is { } signal && !NotPlaces.Contains(signal.Place) ? signal : null;
 
     public static LocationSignal? ParseLocationInventory(string raw) => Match(InventoryRequest, raw);
 

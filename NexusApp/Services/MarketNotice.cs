@@ -35,10 +35,12 @@ internal static class MarketNotice
     // once. The toggle row itself only exists while live market data is on.
     public const string CodexColumnToggle = "Show sell prices";
 
-    // MARKET status pill in the top status strip (amendment 2026-07-27 item 6d, mock section 07B).
+    // UEX status pill in the top status strip (amendment 2026-07-27 item 6d, mock section 07B;
+    // renamed from MARKET in the F14 pill consolidation - it is the same feed the Trade page's
+    // UEX pill reports, and one feed does not get two names and two palettes).
     // The pill is not rendered at all when the feature is off, so there is no "off" string here:
     // silence over placeholder, the same rule every price surface follows.
-    public const string PillLabel = "MARKET";
+    public const string PillLabel = "UEX";
     public const string PillOffline = "offline";   // a cycle failed: the dot also goes DangerColor
     public const string PillSyncing = "syncing";   // a first-ever cycle is running, no clock to show yet
     public const string PillNoData = "no data";    // enabled, nothing fetched yet, nothing failed yet

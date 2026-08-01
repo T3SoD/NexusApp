@@ -91,6 +91,10 @@ public sealed class GameLogBlueprintImporter
     //      word-bounded in the custom string - every community pack keeps the official name
     //      inside its decorated string, so this resolves even when the on-disk global.ini is
     //      missing or no longer matches the (possibly months-old) log lines
+    //   5) token-set fallback (issue #35): a custom string whose words are all whole words of
+    //      exactly ONE seed name resolves to it - catches word-order flips ("BlueFlame Racing
+    //      Helmet" -> "Neutrino Racing Helmet BlueFlame") that step 4's intact-substring rule
+    //      cannot; refuses single-word strings and any ambiguity
     // A vanilla name has no prefix, so step 2 is a harmless no-op for unmodded users; step 3 is a
     // no-op when no localizationMap is supplied; step 4 is a no-op without componentOfficialNames.
     public string? Resolve(string rawName, IReadOnlyDictionary<string, string>? localizationMap = null)
@@ -132,7 +136,59 @@ public sealed class GameLogBlueprintImporter
             }
             return null;
         }
+        // Step 5 (issue #35): token-set fallback for REORDERED custom names. The reported lines -
+        // "BlueFlame Racing Helmet" for the seed's "Neutrino Racing Helmet BlueFlame" - defeat
+        // every step above: not exact, no StarStrings prefix, a month older than the user's
+        // current global.ini, and step 4 needs an official name embedded INTACT, which a
+        // word-order flip never is. This step matches on the words themselves: every word of the
+        // custom string must appear as a whole word of exactly ONE seed name. Two guards keep it
+        // from guessing: single-word strings are refused (too weak to identify anything), and
+        // more than one candidate is refused outright - "Racing Helmet" alone names half a dozen
+        // seed entries and resolving any of them would mark the wrong item owned. Runs only when
+        // step 4 found NO embedded name at all; step 4's own refusals (ties, seed gaps) stay
+        // terminal, per its documented contract.
+        if (ResolveByTokenSubset(rawScan) is { } byTokens)
+        {
+            viaNameFallback = true;
+            return byTokens;
+        }
         return null;
+    }
+
+    // name -> its word set, built lazily from the seed pool on the first step-5 miss and reused
+    // for the rest of the scan (a history scan can hit this once per unmatched line).
+    private List<(string Name, HashSet<string> Tokens)>? _tokenIndex;
+
+    private string? ResolveByTokenSubset(string raw)
+    {
+        var tokens = Tokenize(raw);
+        if (tokens.Count < 2) return null;
+
+        _tokenIndex ??= _known.Keys.Select(n => (n, Tokenize(n))).ToList();
+
+        string? hit = null;
+        foreach (var (name, nameTokens) in _tokenIndex)
+        {
+            if (!tokens.IsSubsetOf(nameTokens)) continue;
+            if (hit is not null) return null;   // ambiguous: any pick would be a guess
+            hit = name;
+        }
+        return hit;
+    }
+
+    // Words = maximal letter/digit runs, case-insensitive. Splitting on everything else means
+    // NBSP, hyphens and quotes all separate, matching ContainsWordBounded's idea of a boundary.
+    private static HashSet<string> Tokenize(string s)
+    {
+        var set = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        int start = -1;
+        for (int i = 0; i <= s.Length; i++)
+        {
+            bool alnum = i < s.Length && char.IsLetterOrDigit(s[i]);
+            if (alnum) { if (start < 0) start = i; }
+            else if (start >= 0) { set.Add(s[start..i]); start = -1; }
+        }
+        return set;
     }
 
     // True when name occurs in raw with no letter/digit touching either end of the match
