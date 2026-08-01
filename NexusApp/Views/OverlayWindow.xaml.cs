@@ -3580,19 +3580,14 @@ public partial class OverlayWindow : Window
         };
         body.Children.Add(close);
 
-        // Standing at either end outlines the card, so the run being flown right now is findable
-        // without reading any of its lines. The fill is built inline at the mock's own 5% rather
-        // than reusing AccentFaintBrush: that resource is 12%, and at this card size it reads as a
-        // yellow panel instead of a hint (the owner's live pass, 2026-08-01). Same inline-alpha idiom the
-        // planner's trip bar already uses. The border is AccentStrongBrush, which is the mock's
-        // amber-line exactly.
-        bool atAnEnd = frac is 0 or 1;
+        // EVERY card looks the same. An earlier pass tinted and outlined the card in amber while
+        // the player stood at one of its stops; the owner rejected it twice (2026-08-01), and he is
+        // right - the band already lights that end's cap, which is candidate D's own way of saying
+        // it, and a second signal for the same fact turned an accent into a background colour.
         return new Border
         {
-            Background = atAnEnd
-                ? new System.Windows.Media.SolidColorBrush(((System.Windows.Media.SolidColorBrush)accent).Color) { Opacity = 0.05 }
-                : (System.Windows.Media.Brush)FindResource("Bg2Brush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource(atAnEnd ? "AccentStrongBrush" : "NavBorderBrush"),
+            Background = (System.Windows.Media.Brush)FindResource("Bg2Brush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
             BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
             Margin = new Thickness(0, 0, 0, 7), Child = body,
         };

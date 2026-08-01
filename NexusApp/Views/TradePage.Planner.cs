@@ -808,7 +808,10 @@ public sealed partial class TradePage
     {
         var text = new TextBlock
         {
-            Text = "PIN", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            // "PIN TO OVERLAY", not "PIN" (the owner, 2026-08-01): a bare PIN said nothing about where
+            // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
+            // second effect, and the tooltip below is where that belongs.
+            Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
             Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush"),
         };
         return new Border
@@ -819,9 +822,12 @@ public sealed partial class TradePage
             // Reworded 2026-08-01 (app review): the old text promised the route "stays here through
             // a refresh", which RebuildPlanner never implements - it ranks fresh every time and the
             // pin's only effect on THIS list is to be cleared when the route falls out of it. The
-            // pin's actual payoff is on another tab entirely (PushPinnedRouteToMap draws the
-            // buy-to-sell leg on the Starmap), which no Trade surface mentioned.
-            ToolTip = active ? "Stop showing this route on the Starmap." : "Show this route on the Starmap.",
+            // pin's actual payoff is on other surfaces entirely, which no Trade surface mentioned.
+            // Reworded again the same day, once several routes could be pinned at once: the chip
+            // now names its main destination and the tooltip carries the rest, including the cap.
+            ToolTip = active
+                ? "Stop showing this route in the overlay and on the Starmap."
+                : $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.",
         };
     }
 
