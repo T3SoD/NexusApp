@@ -4,6 +4,12 @@
 [Oo]ut/
 [Ll]og/
 [Ll]ogs/
+# Scratch build outputs (alternate BaseOutputPath dirs like bin_b7, "bin_all 2Debug",
+# publish_check): plain "bin/" does not match them, and 7,200 of their files - PDBs carrying
+# local user paths - once rode a git add into an unpushed branch and had to be filtered back
+# out before release (2026-08-01). Never again.
+[Bb]in_*/
+publish_check/
 
 # Visual Studio
 .vs/
