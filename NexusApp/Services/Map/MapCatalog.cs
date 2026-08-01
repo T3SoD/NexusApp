@@ -152,9 +152,10 @@ public sealed class MapCatalog
             .ToList();
     }
 
-    // Raw Game.log token -> (system, MapObject.Name) for the two gateway stations whose in-game
+    // Raw Game.log token -> (system, MapObject.Name) for the gateway stations whose in-game
     // display name repeats across systems ("Pyro Gateway Station" names an object in BOTH Stanton
-    // and Nyx; "Stanton Gateway Station" names an object in BOTH Pyro and Nyx - see
+    // and Nyx; "Stanton Gateway Station" names an object in BOTH Pyro and Nyx; "Nyx Gateway
+    // Station" names an object in BOTH Stanton and Pyro - see
     // ResolvePlayerLocation). Only the raw token is unique enough to tell them apart, same reasoning
     // as LocationAliases.UexLocationForToken, and this table deliberately mirrors that one's
     // ground-every-entry discipline: every other gateway raw token (the Terra-side and Magnus-side
@@ -167,6 +168,7 @@ public sealed class MapCatalog
         {
             ["RR_JP_StantonPyro"] = ("Stanton", "Pyro Gateway"),   // Stanton-side gate to Pyro
             ["RR_JP_PyroStanton"] = ("Pyro", "Stanton Gateway"),   // Pyro-side gate to Stanton
+            ["RR_JP_PyroNyx"]     = ("Pyro", "Nyx Gateway"),       // Pyro-side gate to Nyx (captured live 2026-08-01)
         };
 
     // LocationTracker.LastKnownLocation display names that do not exact-match a MapObject.Name but

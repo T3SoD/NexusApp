@@ -7,6 +7,7 @@
     "RR_JP_TerraStanton": "Stanton Gateway Station",
     "RR_JP_StantonMagnus": "Magnus Gateway Station",
     "RR_JP_MagnusStanton": "Stanton Gateway Station",
+    "RR_JP_PyroNyx": "Nyx Gateway Station",
 
     "RR_ARC_L1": "ARC-L1 Wide Forest Station",
     "RR_ARC_L2": "ARC-L2 Lively Pathway Station",
@@ -50,17 +51,20 @@
   "uexLocations": {
     "RR_JP_StantonPyro": "Pyro Gateway (Stanton)",
     "RR_JP_PyroStanton": "Stanton Gateway (Pyro)",
-    "RR_JP_StantonTerra": "Terra Gateway (Stanton)"
+    "RR_JP_StantonTerra": "Terra Gateway (Stanton)",
+    "RR_JP_PyroNyx": "Nyx Gateway (Pyro)"
   },
   "uexLocationNotes": {
     "_meta": "Raw-token to UEX Location string, kept separate from 'aliases' (raw-token to in-game DISPLAY name) because display names are not unique - three raw tokens above all display as 'Stanton Gateway Station', but only the raw token is unique enough to key an unambiguous UEX lookup. Every value here was confirmed against a live UEX snapshot: a terminal exists with that exact Location, and at least one of those terminals carries priced rows.",
-    "_gap_nyx": "known gap, not filled here: the live snapshot lists priced UEX Locations for Nyx gateways ('Nyx Gateway (Stanton)', 'Stanton Gateway (Nyx)', 'Nyx Gateway (Pyro)', 'Pyro Gateway (Nyx)'), but no raw Game.log token for a Nyx gateway has been captured yet, so no RR_JP_*Nyx* entry is invented here. Add one only after a real in-game capture, same standard as RR_JP_StantonPyro above.",
+    "_gap_nyx": "PARTIALLY CLOSED 2026-08-01: RR_JP_PyroNyx captured live (see its note below), so the Pyro-side entry is real. Three Nyx-gateway UEX Locations are still listed in the snapshot with no captured raw token - 'Nyx Gateway (Stanton)', 'Stanton Gateway (Nyx)', 'Pyro Gateway (Nyx)' - and by the naming pattern would be RR_JP_StantonNyx, RR_JP_NyxStanton and RR_JP_NyxPyro. None is invented here. Add each only after a real in-game capture, same standard as RR_JP_StantonPyro.",
+    "RR_JP_PyroNyx": "verified live 2026-08-01 00:14:49Z: real Game.log capture at the Pyro-side Nyx gateway. UEX Location taken from the same snapshot survey that grounded the three entries below.",
     "RR_JP_StantonPyro": "verified live 2026-07-31: 22 terminals at this Location, 2 with priced rows",
     "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows",
     "RR_JP_StantonTerra": "verified live 2026-07-31: 21 terminals at this Location, 2 with priced rows"
   },
   "notes": {
     "RR_JP_StantonPyro": "verified: real in-game example",
+    "RR_JP_PyroNyx": "verified: real in-game capture (Game.log RequestLocationInventory, 2026-08-01). The DISPLAY name follows the convention of the confirmed RR_JP_StantonPyro entry ('<destination> Gateway Station'); the on-screen name was not read back, so correct it here if the game words it differently.",
     "RR_JP_PyroStanton": "derived by naming convention (reverse leg of a bidirectional route confirmed in the shipped starmap trade embed); exact in-game inventory key not independently captured",
     "RR_JP_StantonTerra": "derived by naming convention; the Stanton-side jump point is present in the shipped starmap trade embed, but the exact in-game inventory key format is not independently captured",
     "RR_JP_TerraStanton": "derived by naming convention; no corresponding reverse-direction jump point is present in the shipped starmap trade embed (Terra is not yet a reachable system)",

@@ -305,6 +305,27 @@ public class MapCatalogTests
     }
 
     [Fact]
+    public void ResolvePlayerLocation_NyxGatewayRawToken_ResolvesToThePyroSideGate()
+    {
+        // Captured live 2026-08-01 at the Pyro-side Nyx gateway. "Nyx Gateway" names an object in
+        // BOTH Stanton and Pyro, so the display name alone cannot place it - this is exactly the
+        // ambiguity the raw-token tier exists for.
+        var obj = Catalog.ResolvePlayerLocation("Nyx Gateway Station", rawToken: "RR_JP_PyroNyx");
+        Assert.NotNull(obj);
+        Assert.Equal("Nyx Gateway", obj!.Name);
+        Assert.Equal("Pyro", obj.System);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_NyxGatewayDisplayNameAlone_DoesNotGuessASystem()
+    {
+        // Without the raw token there is no honest answer: the exact-name tier cannot match
+        // "Nyx Gateway Station" (the objects are named "Nyx Gateway"), and the display-name alias
+        // table deliberately omits it because two systems carry that object. Null beats a coin flip.
+        Assert.Null(Catalog.ResolvePlayerLocation("Nyx Gateway Station", rawToken: null));
+    }
+
+    [Fact]
     public void ResolvePlayerLocation_MagnusGatewayStation_ReturnsNull_MagnusNotLive()
     {
         // No "Magnus" system and no "Magnus Gateway" object exist anywhere in starmap_map.json -

@@ -26,6 +26,32 @@ public class LocationAliasesTests
     }
 
     [Fact]
+    public void Normalize_NyxGatewayToken_ReturnsStationName()
+    {
+        // Captured live 2026-08-01 at the Pyro-side Nyx gateway, closing the documented
+        // "_gap_nyx" hole: before this, the origin pill showed the raw RR_JP_PyroNyx token.
+        Assert.Equal("Nyx Gateway Station", LocationAliases.Normalize("RR_JP_PyroNyx"));
+    }
+
+    [Fact]
+    public void UexLocationForToken_NyxGatewayToken_ReturnsUexVocabulary()
+    {
+        // The display name and the UEX name diverge here exactly as they do for the Stanton-Pyro
+        // pair, which is why the two tables are keyed separately by raw token.
+        Assert.Equal("Nyx Gateway (Pyro)", LocationAliases.UexLocationForToken("RR_JP_PyroNyx"));
+    }
+
+    [Fact]
+    public void UexLocationForToken_UncapturedNyxTokens_StillReturnNull()
+    {
+        // Three Nyx-gateway UEX Locations remain in the snapshot with no captured raw token. The
+        // file's standing rule is that a naming-convention guess is never enough to add one.
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_StantonNyx"));
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxStanton"));
+    }
+
+    [Fact]
     public void Normalize_InventoryKeySlug_ReturnsReadableName()
     {
         Assert.Equal("New Babbage", LocationAliases.Normalize("Stanton4_NewBabbage"));
@@ -126,6 +152,10 @@ public class LocationAliasesTests
         "Pyro Gateway (Stanton)",
         "Stanton Gateway (Pyro)",
         "Terra Gateway (Stanton)",
+        // Added 2026-08-01 with the RR_JP_PyroNyx raw-token capture. The Location string comes
+        // from the same live-UEX survey that grounded the three above (recorded verbatim in the
+        // file's own "_gap_nyx" note before the token existed to pair it with).
+        "Nyx Gateway (Pyro)",
     };
 
     [Fact]

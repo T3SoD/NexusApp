@@ -54,11 +54,28 @@ public class LocationTrackerTests
     }
 
     [Fact]
-    public void Ingest_MonitoredSpaceLine_SetsGenericLabel()
+    public void Ingest_MonitoredSpaceLine_IsIgnored_NotStoredAsAPlace()
     {
+        // A security-status crossing is a condition, not a location: the same string fires at
+        // every monitored boundary in the universe, so storing it tells the user nothing about
+        // where they are. Dropped in LocationLogParser before it ever reaches the tracker.
         var t = new LocationTracker(new GameLogFeed());
         t.Ingest(E(MonitoredSpace));
-        Assert.Equal("Monitored Space", t.LastKnownLocation);
+        Assert.Null(t.LastKnownLocation);
+    }
+
+    [Fact]
+    public void Ingest_MonitoredSpaceAfterARealLocation_LeavesTheRealLocationStanding()
+    {
+        // The live defect, 2026-08-01: standing in Levski, the origin pill read "Monitored Space"
+        // because a status crossing landed seconds after a real location line and overwrote it.
+        // The whole point of dropping the status line is that the last real place survives.
+        var t = new LocationTracker(new GameLogFeed());
+        t.Ingest(E(LocationInventoryRequest));
+        Assert.Equal("New Babbage", t.LastKnownLocation);
+
+        t.Ingest(E(MonitoredSpace));
+        Assert.Equal("New Babbage", t.LastKnownLocation);
     }
 
     [Fact]
