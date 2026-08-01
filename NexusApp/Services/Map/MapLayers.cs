@@ -104,4 +104,85 @@ public static class MapLayers
     }
 
     public static int? HangarObject(MapCatalog catalog) => catalog.ByName("Pyro", "PYAM-EXHANG-0-1")?.Id;
+
+    // ── Layers built from LIVE app state (app review G11) ───────────────────────────────────────
+    // Every layer above is static reference data - the same pins for every player, every session.
+    // The app has been holding two sets of places that are specific to THIS player and THIS session
+    // (the stops their accepted contracts require, and the refineries their work orders are sitting
+    // in) and the map showed neither, which is what made it a reference chart rather than a tool.
+    //
+    // Both resolve FREE TEXT, not ids, and both are honest about it. Contract stop names come from
+    // OCR or a Game.log Deliver line; refinery names come from a picker with a free-text fallback.
+    // Plenty will never resolve ("Pickup (TBD)", a system-level destination, an OCR misread), and an
+    // unresolved place is silently absent from the layer rather than pinned somewhere plausible.
+
+    /// <summary>Objects that an active haul needs the player to visit, mapped to the labels shown
+    /// on their pins. Pickups and dropoffs are one layer: what matters on a map is that the place
+    /// is on the run, and the label says which kind it is.</summary>
+    public static IReadOnlyDictionary<int, IReadOnlyList<string>> BuildHauls(
+        IReadOnlyList<Haul> hauls, MapCatalog catalog)
+    {
+        var byObject = new Dictionary<int, List<string>>();
+
+        foreach (var haul in hauls)
+        {
+            if (!haul.IsActive) continue;   // a finished contract is not somewhere you still have to go
+            foreach (var leg in haul.Legs)
+            {
+                if (leg.Completed) continue;
+                var place = leg.Role == HaulRole.Dropoff ? leg.Destination : haul.PickupName;
+                if (string.IsNullOrWhiteSpace(place)) continue;
+
+                // Same resolver ConsolidationOrder uses for these exact strings, so a stop that
+                // gets a distance in the hauling list is the stop that gets a pin here.
+                var obj = catalog.ResolvePlayerLocation(place, rawToken: null);
+                if (obj is null) continue;
+
+                var label = leg.Role == HaulRole.Dropoff && !string.IsNullOrWhiteSpace(leg.Commodity)
+                    ? $"Drop {leg.Commodity}"
+                    : leg.Role == HaulRole.Dropoff ? "Dropoff" : "Pickup";
+
+                if (!byObject.TryGetValue(obj.Id, out var list))
+                    byObject[obj.Id] = list = new List<string>();
+                if (!list.Contains(label)) list.Add(label);
+            }
+        }
+
+        return byObject.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
+    }
+
+    /// <summary>Refineries with a work order still in them, mapped to their order labels. Complete
+    /// orders are excluded: the point of the layer is where the player still has to go.</summary>
+    public static IReadOnlyDictionary<int, IReadOnlyList<string>> BuildOrders(
+        IEnumerable<WorkOrder> orders, MapCatalog catalog)
+    {
+        var systems = catalog.Objects.Select(o => o.System).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var byObject = new Dictionary<int, List<string>>();
+
+        foreach (var order in orders)
+        {
+            if (order.Status == WorkOrderStatus.Complete) continue;
+            if (string.IsNullOrWhiteSpace(order.Refinery)) continue;
+
+            // A work order records a refinery NAME and no system, so this searches every system for
+            // it - the same shape BuildMining uses for community location strings. The name is
+            // written in UEX vocabulary by the picker ("Stanton Gateway (Pyro)"), so it goes through
+            // the same parenthetical strip the refinery yield rows use.
+            var station = RefineryPlaces.BaseName(order.Refinery);
+            MapObject? obj = null;
+            foreach (var system in systems)
+            {
+                obj = catalog.ByName(system, station);
+                if (obj is not null) break;
+            }
+            if (obj is null) continue;
+
+            var label = string.IsNullOrWhiteSpace(order.Label) ? order.StatusLabel : order.Label;
+            if (!byObject.TryGetValue(obj.Id, out var list))
+                byObject[obj.Id] = list = new List<string>();
+            if (!list.Contains(label)) list.Add(label);
+        }
+
+        return byObject.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
+    }
 }

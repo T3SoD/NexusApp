@@ -3,16 +3,29 @@ using System.Text.Json;
 namespace NexusApp.Services.Map;
 
 // Per-object layer membership for the starmap scene, keyed by MapObject.Id. Built by the Task 7
-// providers (trade terminals, guide entries, mineable ores, the exec hangar object) and consumed
-// here to compute the four per-row booleans (trade/guide/mine/hangar) BuildInit serializes onto
-// each catalog row. An object counts as flagged for a layer purely by key presence in the matching
-// dictionary (an empty terminal/ore list still flags the object) - the same "present means true"
-// contract as MapCatalog's own alias indexing.
+// providers (trade terminals, guide entries, mineable ores, the exec hangar object) plus the two
+// live-state providers added by app review G11, and consumed here to compute the per-row booleans
+// BuildInit serializes onto each catalog row. An object counts as flagged for a layer purely by key
+// presence in the matching dictionary (an empty terminal/ore list still flags the object) - the
+// same "present means true" contract as MapCatalog's own alias indexing.
+//
+// The last two are OPTIONAL with empty defaults, deliberately: every existing construction site,
+// including the test fixtures, keeps compiling untouched, and a caller that has no haul or work
+// order state produces exactly the scene it produced before.
 public sealed record MapLayerPins(
     IReadOnlyDictionary<int, IReadOnlyList<int>> TradeTerminalsByObject,  // objectId -> UEX terminal ids
     IReadOnlyDictionary<int, string> GuideIdByObject,                     // objectId -> GuideEntry.Id
     IReadOnlyDictionary<int, IReadOnlyList<string>> OresByObject,         // objectId -> ore names
-    int? HangarObjectId);
+    int? HangarObjectId,
+    IReadOnlyDictionary<int, IReadOnlyList<string>>? HaulStopsByObject = null,   // objectId -> stop labels
+    IReadOnlyDictionary<int, IReadOnlyList<string>>? OrdersByObject = null)      // objectId -> work order labels
+{
+    public IReadOnlyDictionary<int, IReadOnlyList<string>> Hauls =>
+        HaulStopsByObject ?? new Dictionary<int, IReadOnlyList<string>>();
+
+    public IReadOnlyDictionary<int, IReadOnlyList<string>> Orders =>
+        OrdersByObject ?? new Dictionary<int, IReadOnlyList<string>>();
+}
 
 // Pure C# bridge payload builders for the MAP tab's WebView2 scene (Web/map/index.html). Every
 // method serializes one of the page's inbound message shapes (init, layerToggle, select,
@@ -30,7 +43,7 @@ public static class MapSceneBuilder
     public static string BuildInit(MapCatalog catalog, string system, MapLayerPins pins,
         bool tradeOn, bool guidesOn, bool miningOn, bool hangarOn, bool asteroidsOn,
         int? selection, IReadOnlyList<int> draft, IReadOnlyList<int> planner, bool reduced,
-        int? player = null)
+        int? player = null, bool haulsOn = false, bool ordersOn = false)
     {
         var rows = catalog.Objects
             .Where(o => string.Equals(o.System, system, StringComparison.OrdinalIgnoreCase))
@@ -47,6 +60,8 @@ public static class MapSceneBuilder
                 guide = pins.GuideIdByObject.ContainsKey(o.Id),
                 mine = pins.OresByObject.ContainsKey(o.Id),
                 hangar = pins.HangarObjectId.HasValue && pins.HangarObjectId.Value == o.Id,
+                haul = pins.Hauls.ContainsKey(o.Id),
+                order = pins.Orders.ContainsKey(o.Id),
             })
             .ToList();
 
@@ -57,7 +72,7 @@ public static class MapSceneBuilder
             reduced,
             asteroids = asteroidsOn,
             catalog = rows,
-            layers = new { trade = tradeOn, guides = guidesOn, mining = miningOn, hangar = hangarOn },
+            layers = new { trade = tradeOn, guides = guidesOn, mining = miningOn, hangar = hangarOn, hauls = haulsOn, orders = ordersOn },
             selection,
             draft,
             planner,

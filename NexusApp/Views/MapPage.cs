@@ -55,6 +55,7 @@ public sealed class MapPage : UserControl
     private string _system = DefaultSystem;
     private bool _tradeOn, _guidesOn, _miningOn, _hangarOn;
     private bool _asteroidsOn = true;
+    private bool _haulsOn, _ordersOn;   // app review G11, live-state layers
     private int? _selection;
     private int? _prevSelection;
     private double? _prevDistanceMeters;
@@ -137,7 +138,11 @@ public sealed class MapPage : UserControl
     // ── persisted view state (app review) ──
 
     internal const string LayerTrade = "trade", LayerGuides = "guides", LayerMining = "mining",
-                          LayerHangar = "hangar", LayerAsteroids = "asteroids";
+                          LayerHangar = "hangar", LayerAsteroids = "asteroids",
+                          // Live-state layers (app review G11): the places THIS pilot has accepted
+                          // contracts and running work orders at, as opposed to the static
+                          // reference pins every other layer draws.
+                          LayerHauls = "hauls", LayerOrders = "orders";
 
     /// <summary>Turns the persisted MapLayers string into the five layer booleans.
     /// <paramref name="saved"/> null means "never saved" and selects first-run defaults; an EMPTY
@@ -146,41 +151,56 @@ public sealed class MapPage : UserControl
     /// TRADE only when market data is already enabled, since the TRADE row hides entirely under the
     /// consent gate and switching on a layer whose row is invisible would be a confusing default.
     /// Pure so it is testable without a WPF tree.</summary>
-    internal static (bool Trade, bool Guides, bool Mining, bool Hangar, bool Asteroids)
+    internal static (bool Trade, bool Guides, bool Mining, bool Hangar, bool Asteroids, bool Hauls, bool Orders)
         ParseLayers(string? saved, bool marketConsent)
     {
-        if (saved is null) return (marketConsent, false, true, false, true);
+        // HAULS and ORDERS default ON at first run. They need no consent and no network, their rows
+        // hide themselves whenever there is nothing running (LayerRowVisible's count rule), and when
+        // there is, they are the most personally relevant pins on the map. A layer that defaulted
+        // off AND was invisible when empty would essentially never be discovered.
+        if (saved is null) return (marketConsent, false, true, false, true, true, true);
 
         var keys = new HashSet<string>(
             saved.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
         return (keys.Contains(LayerTrade), keys.Contains(LayerGuides), keys.Contains(LayerMining),
-                keys.Contains(LayerHangar), keys.Contains(LayerAsteroids));
+                keys.Contains(LayerHangar), keys.Contains(LayerAsteroids),
+                keys.Contains(LayerHauls), keys.Contains(LayerOrders));
     }
 
     /// <summary>Inverse of ParseLayers. Returns "" (never null) when nothing is on, so the caller
     /// persists a real "all off" rather than a null that would re-seed the first-run defaults.</summary>
-    internal static string FormatLayers(bool trade, bool guides, bool mining, bool hangar, bool asteroids)
+    internal static string FormatLayers(bool trade, bool guides, bool mining, bool hangar, bool asteroids,
+                                        bool hauls = false, bool orders = false)
     {
-        var keys = new List<string>(5);
+        var keys = new List<string>(7);
         if (trade) keys.Add(LayerTrade);
         if (guides) keys.Add(LayerGuides);
         if (mining) keys.Add(LayerMining);
         if (hangar) keys.Add(LayerHangar);
         if (asteroids) keys.Add(LayerAsteroids);
+        if (hauls) keys.Add(LayerHauls);
+        if (orders) keys.Add(LayerOrders);
         return string.Join(",", keys);
     }
 
     private void SaveViewState()
     {
         App.Settings.Current.MapSystem = _system;
-        App.Settings.Current.MapLayers = FormatLayers(_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn);
+        App.Settings.Current.MapLayers = FormatLayers(_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn, _haulsOn, _ordersOn);
         App.Settings.Save();
     }
 
-    public MapPage(IReadOnlyList<Resource> resources)
+    // Work orders live on MainViewModel, which this page has no reference to, so the host supplies
+    // them through a delegate read fresh on every RebuildPins. A null supplier (any caller that
+    // predates G11, including tests) yields no orders and therefore an empty MY ORDERS layer whose
+    // row hides itself - identical behaviour to before the layer existed.
+    private readonly Func<IReadOnlyList<WorkOrder>>? _workOrders;
+
+    public MapPage(IReadOnlyList<Resource> resources, Func<IReadOnlyList<WorkOrder>>? workOrders = null)
     {
         _resources = resources;
+        _workOrders = workOrders;
 
         // Restore before anything reads _system or the layer flags - RebuildPins and the first
         // SendInit both depend on them. A persisted system that no longer exists in the catalog
@@ -191,7 +211,7 @@ public sealed class MapPage : UserControl
             && _catalog.Objects.Any(o => string.Equals(o.System, savedSystem, StringComparison.OrdinalIgnoreCase)))
             _system = savedSystem;
 
-        (_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn) =
+        (_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn, _haulsOn, _ordersOn) =
             ParseLayers(App.Settings.Current.MapLayers, App.Settings.Current.MarketDataEnabled == true);
 
         RebuildPins();
@@ -220,6 +240,12 @@ public sealed class MapPage : UserControl
         // just as visible as a market tick is. Never moves the camera on its own (design b/c); it
         // only updates the resolved location and the side panel.
         App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlayerLocation(); });
+
+        // Live-state layers (app review G11). A contract accepted or completed while the MAP tab is
+        // open moves pins, exactly as a Game.log location change moves the marker one line above.
+        // Work orders come through RefreshLiveLayers instead, called by the host on its own
+        // collection-changed subscription - this page cannot see that collection.
+        App.Hauls.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshLiveLayers(); });
 
         RefreshSystemPills();
         RefreshLayerCounts();
@@ -282,6 +308,18 @@ public sealed class MapPage : UserControl
         RefreshLayerCounts();
         RefreshSelectionZone();
         UpdateHangarTimer();
+    }
+
+    /// <summary>Rebuilds the two live-state layers and repaints (app review G11). Cheap enough to
+    /// call on any haul or work order change, and a no-op for everything the user is looking at
+    /// except the pins themselves. Skipped entirely while the tab is off screen: the next Activate
+    /// rebuilds from scratch anyway.</summary>
+    internal void RefreshLiveLayers()
+    {
+        if (!IsVisible) return;
+        RebuildPins();
+        RefreshLayerCounts();
+        if (_sceneReady) SendInit();
     }
 
     // Portable self-swap: release the embedded browser's handles on Web\map before files are renamed.
@@ -348,7 +386,9 @@ public sealed class MapPage : UserControl
             MapLayers.BuildTrade(terminals, _catalog),
             MapLayers.BuildGuides(_catalog),
             MapLayers.BuildMining(_resources, _catalog),
-            MapLayers.HangarObject(_catalog));
+            MapLayers.HangarObject(_catalog),
+            MapLayers.BuildHauls(App.Hauls.ActiveHauls, _catalog),
+            MapLayers.BuildOrders(_workOrders?.Invoke() ?? Array.Empty<WorkOrder>(), _catalog));
     }
 
     private static bool TradeGated => App.Market.Snapshot == null || App.Settings.Current.MarketDataEnabled != true;
@@ -362,7 +402,7 @@ public sealed class MapPage : UserControl
         _sceneReady = true;
         _scene.PostJson(MapSceneBuilder.BuildInit(_catalog, _system, _pins,
             _tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn,
-            _selection, _draft, _plannerIds, Motion.Reduced, _playerLocation?.Id));
+            _selection, _draft, _plannerIds, Motion.Reduced, _playerLocation?.Id, _haulsOn, _ordersOn));
     }
 
     // ── player marker (design a/b/c) ──
@@ -500,6 +540,8 @@ public sealed class MapPage : UserControl
             case "mining": _miningOn = !_miningOn; on = _miningOn; break;
             case "hangar": _hangarOn = !_hangarOn; on = _hangarOn; break;
             case "asteroids": _asteroidsOn = !_asteroidsOn; on = _asteroidsOn; break;
+            case "hauls": _haulsOn = !_haulsOn; on = _haulsOn; break;
+            case "orders": _ordersOn = !_ordersOn; on = _ordersOn; break;
             default: return;
         }
 
@@ -995,6 +1037,10 @@ public sealed class MapPage : UserControl
         stack.Children.Add(BuildLayerRow("guides", "GUIDES"));
         stack.Children.Add(BuildLayerRow("mining", "MINING"));
         stack.Children.Add(BuildLayerRow("hangar", "EXEC HANGAR"));
+        // Live-state layers last among the data rows, above the base-map divider (app review G11):
+        // they are the only two that can change on their own while the tab is open.
+        stack.Children.Add(BuildLayerRow("hauls", "MY HAULS"));
+        stack.Children.Add(BuildLayerRow("orders", "MY ORDERS"));
         stack.Children.Add(BuildBaseMapDivider());
         stack.Children.Add(BuildLayerRow("asteroids", "ASTEROID CLUSTERS"));
         return Zone("LAYERS", stack);
@@ -1137,12 +1183,16 @@ public sealed class MapPage : UserControl
         int miningCount = rows.Count(o => _pins.OresByObject.ContainsKey(o.Id));
         int hangarCount = rows.Count(o => _pins.HangarObjectId == o.Id);
         int asteroidsCount = rows.Count(o => o.Type.StartsWith("Asteroid", StringComparison.OrdinalIgnoreCase));
+        int haulsCount = rows.Count(o => _pins.Hauls.ContainsKey(o.Id));
+        int ordersCount = rows.Count(o => _pins.Orders.ContainsKey(o.Id));
 
         _layerRows["trade"].Count.Text = tradeCount.ToString();
         _layerRows["guides"].Count.Text = guidesCount.ToString();
         _layerRows["mining"].Count.Text = miningCount.ToString();
         _layerRows["hangar"].Count.Text = hangarCount.ToString();
         _layerRows["asteroids"].Count.Text = asteroidsCount.ToString();
+        _layerRows["hauls"].Count.Text = haulsCount.ToString();
+        _layerRows["orders"].Count.Text = ordersCount.ToString();
 
         // Row visibility (the owner live-use finding: EXEC HANGAR shows 0 in Stanton/Nyx and toggling it
         // does nothing there). Recomputed here because RefreshLayerCounts is the one choke point all
@@ -1160,12 +1210,16 @@ public sealed class MapPage : UserControl
         _layerRows["mining"].Host.Visibility = LayerRowVisible("mining", miningCount, gated) ? Visibility.Visible : Visibility.Collapsed;
         _layerRows["hangar"].Host.Visibility = LayerRowVisible("hangar", hangarCount, gated) ? Visibility.Visible : Visibility.Collapsed;
         _layerRows["asteroids"].Host.Visibility = LayerRowVisible("asteroids", asteroidsCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["hauls"].Host.Visibility = LayerRowVisible("hauls", haulsCount, gated) ? Visibility.Visible : Visibility.Collapsed;
+        _layerRows["orders"].Host.Visibility = LayerRowVisible("orders", ordersCount, gated) ? Visibility.Visible : Visibility.Collapsed;
 
         RefreshLayerRowVisual("trade", _tradeOn);
         RefreshLayerRowVisual("guides", _guidesOn);
         RefreshLayerRowVisual("mining", _miningOn);
         RefreshLayerRowVisual("hangar", _hangarOn);
         RefreshLayerRowVisual("asteroids", _asteroidsOn);
+        RefreshLayerRowVisual("hauls", _haulsOn);
+        RefreshLayerRowVisual("orders", _ordersOn);
     }
 
     // ── SELECTION zone ──

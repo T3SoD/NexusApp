@@ -230,6 +230,14 @@ const TEX = {
   minetick: tex(g=>{ stroke(g,GREEN,5); g.beginPath(); g.arc(0,0,30,0.8,2.4); g.stroke();
     g.beginPath(); g.arc(0,0,30,3.9,5.5); g.stroke(); }),
   hangtick: tex(g=>{ stroke(g,RED,5); g.beginPath(); g.arc(0,0,36,0,7); g.stroke(); }),
+  /* Live-state layers (app review G11). Deliberately not more rings: an object can now carry up to
+     six ticks at once, so these two are open shapes that stay readable stacked with the others.
+     HAULS is a downward chevron (somewhere you have to go); ORDERS is a square bracket pair. */
+  haultick: tex(g=>{ stroke(g,CYAN,5); g.beginPath(); g.moveTo(-30,-14); g.lineTo(0,18);
+    g.lineTo(30,-14); g.stroke(); }),
+  ordertick: tex(g=>{ stroke(g,GOLD,5); g.beginPath(); g.moveTo(-14,-32); g.lineTo(-32,-32);
+    g.lineTo(-32,32); g.lineTo(-14,32); g.stroke();
+    g.beginPath(); g.moveTo(14,-32); g.lineTo(32,-32); g.lineTo(32,32); g.lineTo(14,32); g.stroke(); }),
 };
 const TYPE_TEX = (t)=>{
   if(t==='Star') return {t:TEX.star, s:0.16, rank:0};
@@ -274,7 +282,7 @@ controls.zoomSpeed = 2.2;   // tuned value, live smoke test - default 1.0 felt t
    tween token). Layer membership (trade/guide/mine/hangar) always comes
    precomputed on the catalog row; this page never derives it. */
 const state = {
-  system:'', layers:{trade:false, guides:false, mining:false, hangar:false, asteroids:true},
+  system:'', layers:{trade:false, guides:false, mining:false, hangar:false, hauls:false, orders:false, asteroids:true},
   selection:null, focusName:null,
   draft:[], planner:[],
   measure:{armed:false, first:null, result:null},
@@ -367,6 +375,8 @@ function refreshTicks(){
     if(state.layers.guides && obj.guide) add(TEX.guidetick, 2.0);
     if(state.layers.mining && obj.mine) add(TEX.minetick, 1.8);
     if(state.layers.hangar && obj.hangar) add(TEX.hangtick, 2.3);
+    if(state.layers.hauls && obj.haul) add(TEX.haultick, 2.0);
+    if(state.layers.orders && obj.order) add(TEX.ordertick, 2.2);
     if(state.selection===obj.id) add(TEX.selring, 2.1);
     if(state.playerMarker===obj.id) playerTickSprite = add(TEX.playertick, PLAYER_TICK_BASE_SCALE);
   });
@@ -557,6 +567,8 @@ function labelPass(){
     if(p.id===state.selection) s-=1e6; if(p.id===hoverId) s-=9e5;
     if(state.layers.guides&&p.obj.guide) s-=5e5;
     if(state.layers.hangar&&p.obj.hangar) s-=5e5;
+    if(state.layers.hauls&&p.obj.haul) s-=6e5;      // somewhere you personally have to go
+    if(state.layers.orders&&p.obj.order) s-=6e5;
     if(state.layers.trade&&p.obj.trade) s-=1200;
     return s; };
   const cands=[...projected].sort((a,b)=>score(a)-score(b)).slice(0,60);
@@ -641,7 +653,8 @@ function applyInit(msg){
   REDUCED = !!msg.reduced;
   const layers = msg.layers || {};
   state.layers = { trade:!!layers.trade, guides:!!layers.guides,
-    mining:!!layers.mining, hangar:!!layers.hangar, asteroids:!!msg.asteroids };
+    mining:!!layers.mining, hangar:!!layers.hangar,
+    hauls:!!layers.hauls, orders:!!layers.orders, asteroids:!!msg.asteroids };
   state.selection = (msg.selection==null)? null : msg.selection;
   state.focusName = null;
   state.draft = Array.isArray(msg.draft)? msg.draft.slice() : [];
