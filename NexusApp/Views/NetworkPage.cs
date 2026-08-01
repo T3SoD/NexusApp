@@ -1028,8 +1028,17 @@ public sealed class NetworkPage : UserControl
             {
                 _files.BuildSelfLibrary(selfId, choice.DisplayName, kind, selfHandle, _settings.Current.OwnedBlueprints, now).Member!,
             };
+            // App review 2026-08-01: this loop used to take EVERY member while the file was stamped
+            // with the currently selected group's name, so exporting a roster while filtered to one
+            // group produced a file labelled with that group but containing the whole network. On
+            // import every member is filed under the file's GroupName, so the recipient
+            // materialised a real group full of strangers. Export was the only read path on this
+            // page that consulted _groupFilter without applying it (compare BuildMembersView:377,
+            // :537, :689, which all use exactly this GetGroupMemberIds idiom).
+            var rosterIds = _groupFilter != null ? new HashSet<string>(_store.GetGroupMemberIds(_groupFilter)) : null;
             foreach (var m in _store.GetMembers())
-                members.Add(NetworkFileService.ToFileMember(m, _store.GetOwnedNames(m.Id)));
+                if (rosterIds is null || rosterIds.Contains(m.Id))
+                    members.Add(NetworkFileService.ToFileMember(m, _store.GetOwnedNames(m.Id)));
             var groupName = _groupFilter != null ? _store.GetGroups().FirstOrDefault(g => g.Id == _groupFilter)?.Name : null;
             file = _files.BuildRoster(groupName, members, now);
         }

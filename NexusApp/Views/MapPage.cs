@@ -44,7 +44,12 @@ public sealed class MapPage : UserControl
     private readonly MapWebView _scene = new();
 
     // ── runtime state (mirrors the mock's chromeStore) ──
-    private string _system = "Stanton";
+    // Seeded from AppSettings in the constructor (app review: a Pyro player used to re-pick Pyro and
+    // re-flip every toggle on each launch, while neighbouring surfaces - TradeStartManual,
+    // TradeDestManual, the Codex sell column - all persist). The initialisers here are the
+    // never-saved fallback, not the runtime default.
+    private const string DefaultSystem = "Stanton";
+    private string _system = DefaultSystem;
     private bool _tradeOn, _guidesOn, _miningOn, _hangarOn;
     private bool _asteroidsOn = true;
     private int? _selection;
@@ -124,9 +129,66 @@ public sealed class MapPage : UserControl
     public event Action<int>? OpenPricesRequested;     // VIEW PRICES (terminal id)
     public event Action<string>? OpenGuideRequested;   // OPEN GUIDE (GuideCatalog id)
 
+    // ── persisted view state (app review) ──
+
+    internal const string LayerTrade = "trade", LayerGuides = "guides", LayerMining = "mining",
+                          LayerHangar = "hangar", LayerAsteroids = "asteroids";
+
+    /// <summary>Turns the persisted MapLayers string into the five layer booleans.
+    /// <paramref name="saved"/> null means "never saved" and selects first-run defaults; an EMPTY
+    /// string is a real saved state (the user switched everything off) and must round-trip as such.
+    /// First-run turns MINING and ASTEROIDS on because they need no consent and no network, and
+    /// TRADE only when market data is already enabled, since the TRADE row hides entirely under the
+    /// consent gate and switching on a layer whose row is invisible would be a confusing default.
+    /// Pure so it is testable without a WPF tree.</summary>
+    internal static (bool Trade, bool Guides, bool Mining, bool Hangar, bool Asteroids)
+        ParseLayers(string? saved, bool marketConsent)
+    {
+        if (saved is null) return (marketConsent, false, true, false, true);
+
+        var keys = new HashSet<string>(
+            saved.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
+        return (keys.Contains(LayerTrade), keys.Contains(LayerGuides), keys.Contains(LayerMining),
+                keys.Contains(LayerHangar), keys.Contains(LayerAsteroids));
+    }
+
+    /// <summary>Inverse of ParseLayers. Returns "" (never null) when nothing is on, so the caller
+    /// persists a real "all off" rather than a null that would re-seed the first-run defaults.</summary>
+    internal static string FormatLayers(bool trade, bool guides, bool mining, bool hangar, bool asteroids)
+    {
+        var keys = new List<string>(5);
+        if (trade) keys.Add(LayerTrade);
+        if (guides) keys.Add(LayerGuides);
+        if (mining) keys.Add(LayerMining);
+        if (hangar) keys.Add(LayerHangar);
+        if (asteroids) keys.Add(LayerAsteroids);
+        return string.Join(",", keys);
+    }
+
+    private void SaveViewState()
+    {
+        App.Settings.Current.MapSystem = _system;
+        App.Settings.Current.MapLayers = FormatLayers(_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn);
+        App.Settings.Save();
+    }
+
     public MapPage(IReadOnlyList<Resource> resources)
     {
         _resources = resources;
+
+        // Restore before anything reads _system or the layer flags - RebuildPins and the first
+        // SendInit both depend on them. A persisted system that no longer exists in the catalog
+        // (renamed, or removed like the unreachable-system exclusions) falls back to the default
+        // rather than opening the map on a system with no objects.
+        var savedSystem = App.Settings.Current.MapSystem;
+        if (!string.IsNullOrWhiteSpace(savedSystem)
+            && _catalog.Objects.Any(o => string.Equals(o.System, savedSystem, StringComparison.OrdinalIgnoreCase)))
+            _system = savedSystem;
+
+        (_tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn) =
+            ParseLayers(App.Settings.Current.MapLayers, App.Settings.Current.MarketDataEnabled == true);
+
         RebuildPins();
         _lastSnapshotRef = App.Market.Snapshot;
         _lastConsent = App.Settings.Current.MarketDataEnabled == true;
@@ -405,6 +467,7 @@ public sealed class MapPage : UserControl
         RefreshMeasureZone();
         RefreshPlayerLocation();   // re-resolve on system switch (design: the LOCATION zone's same-vs-cross-system state depends on _system)
 
+        SaveViewState();
         Logger.Info($"[UI] map: system {sys}");
         if (hadDraft) Logger.Info("[UI] map: route draft cleared (system switch)");
         if (hadMeasure) Logger.Info("[UI] map: measure cleared (system switch)");
@@ -431,6 +494,7 @@ public sealed class MapPage : UserControl
         if (key == "trade") RefreshRouteZone();   // the draft/planner legend only shows while trade is on
         if (key == "hangar") UpdateHangarTimer();
 
+        SaveViewState();
         Logger.Info($"[UI] map: layer {key} {(on ? "ON" : "OFF")}");
     }
 

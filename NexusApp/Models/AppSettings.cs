@@ -167,6 +167,19 @@ public class AppSettings
     // location" concept, so null is the honest default rather than an empty string sentinel.
     public string? TradeDestManual { get; set; }
 
+    // MAP tab: the star system the user was last looking at. Null = never set, so the map opens on
+    // its built-in default. Validated against the catalog on load - a system that no longer exists
+    // (a renamed or removed one) falls back to the default rather than opening on nothing.
+    public string? MapSystem { get; set; }
+
+    // MAP tab: which data layers are switched on, as a comma-separated list of layer keys
+    // ("trade,mining"). One setting rather than five booleans because the set is small, the keys
+    // are already the vocabulary the page and the scene both speak, and it stays readable in
+    // settings.json. NULL IS MEANINGFUL and distinct from empty: null = never saved, so first-run
+    // defaults apply; "" = the user deliberately switched everything off, which must survive a
+    // restart. See MapPage.ParseLayers.
+    public string? MapLayers { get; set; }
+
     // System-name scope filter pill (ALL / a specific star system name). Default ALL.
     public string TradeScope { get; set; } = "ALL";
 
