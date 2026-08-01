@@ -801,6 +801,23 @@ public sealed class MapPage : UserControl
     /// the one implementation, rather than duplicating it here - THEN select and fly the camera
     /// through the exact same internal calls a pin double-click already uses (OnPinDoubleClicked:
     /// Select then FocusOn), so a search pick is indistinguishable from double-clicking that pin.</summary>
+    /// <summary>Cross-page entry: show a specific object, switching system first when it lives in
+    /// another one. Added 2026-08-01 (app review) because the Starmap was a ONE-WAY LEAF - other
+    /// pages could be jumped to from it, but nothing could jump into it. Reuses the same
+    /// switch-select-focus sequence the search box commits, so an arriving jump lands the camera
+    /// exactly where a search for that object would.</summary>
+    public void ShowObject(int objectId)
+    {
+        if (_catalog.ById(objectId) is not { } obj) return;   // stale id: no-op, never a half-move
+
+        if (!string.Equals(obj.System, _system, StringComparison.OrdinalIgnoreCase))
+            SwitchSystem(obj.System);
+
+        Select(obj.Id);
+        FocusOn(obj.Id);
+        Logger.Info($"[UI] map: show {obj.Name} ({obj.System}) from another page");
+    }
+
     private void CommitSearchResult(MapObject obj, string query)
     {
         if (!string.Equals(obj.System, _system, StringComparison.OrdinalIgnoreCase))

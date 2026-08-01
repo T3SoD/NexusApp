@@ -279,6 +279,42 @@ public sealed class MapCatalog
         return null;
     }
 
+    /// <summary>Resolves a MINING SEED location string to a map object, or null. Separate from
+    /// ResolvePlayerLocation because the seed's vocabulary is its own: these are hand-authored
+    /// strings from the mining data, not Game.log tokens.
+    ///
+    /// <para>Coverage is genuinely partial and that is the point of returning null rather than
+    /// guessing. Of the 48 distinct seed strings only about 15 exact-match an object name; a large
+    /// class never resolves at all (Aaron Halo, Glaciem Ring, the Lagrange entries, the belts,
+    /// Breaker Stations, Hathor Caves) because they are regions rather than catalogued objects.
+    /// Callers must resolve-then-decorate per row, never present a whole list as navigable, or it
+    /// looks broken exactly where miners spend their time.</para>
+    ///
+    /// <para>The parenthetical fallback is what lifts coverage materially: the seed writes Pyro's
+    /// planets as "Pyro II (Monox)" while the catalog knows them as "Monox".</para></summary>
+    public MapObject? ResolveSeedLocation(string? seedLocation)
+    {
+        if (string.IsNullOrWhiteSpace(seedLocation)) return null;
+
+        var name = seedLocation.Trim();
+        foreach (var obj in _objects)
+            if (string.Equals(obj.Name, name, StringComparison.OrdinalIgnoreCase))
+                return obj;
+
+        int open = name.IndexOf('(');
+        int close = name.LastIndexOf(')');
+        if (open >= 0 && close > open + 1)
+        {
+            var inner = name[(open + 1)..close].Trim();
+            if (inner.Length > 0)
+                foreach (var obj in _objects)
+                    if (string.Equals(obj.Name, inner, StringComparison.OrdinalIgnoreCase))
+                        return obj;
+        }
+
+        return null;
+    }
+
     public MapObject? ById(int id) => _byId.TryGetValue(id, out var o) ? o : null;
 
     public MapObject? ByName(string system, string name)

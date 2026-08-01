@@ -630,11 +630,35 @@ public partial class MainWindow
         return Hud.RowCard(rg);
     }
 
-    private TextBlock LocRow(string loc) => new TextBlock
+    // App review 2026-08-01: this was the ONLY list in the dossier with no interaction at all
+    // (BpRow and FoundInRow are both clickable), and the Starmap was a one-way leaf that nothing
+    // could jump into. A row that resolves to a map object now opens it on the Starmap.
+    //
+    // RESOLVE-THEN-DECORATE, per row, deliberately not a blanket clickable list. Only about 15 of
+    // the 48 distinct seed location strings match a map object: whole classes of them (Aaron Halo,
+    // Glaciem Ring, the Lagrange entries, the belts, Breaker Stations, Hathor Caves) are regions
+    // rather than catalogued objects and never will. A list that looked navigable and did nothing
+    // on two rows in three would look broken exactly where miners spend their time, so unresolved
+    // rows keep the appearance they have always had - no cursor, no tooltip, no handler.
+    private TextBlock LocRow(string loc)
     {
-        Text = $"◆  {loc}", FontSize = 12, Foreground = SystemBrush(GetSystem(loc)),
-        Margin = new Thickness(0, 0, 0, 5), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
-    };
+        var row = new TextBlock
+        {
+            Text = $"◆  {loc}", FontSize = 12, Foreground = SystemBrush(GetSystem(loc)),
+            Margin = new Thickness(0, 0, 0, 5), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+        };
+
+        if (App.Map.ResolveSeedLocation(loc) is not { } obj) return row;
+
+        row.Cursor = System.Windows.Input.Cursors.Hand;
+        row.ToolTip = $"Show {obj.Name} on the Starmap.";
+        row.MouseLeftButtonUp += (_, _) =>
+        {
+            SetActivePage("map");
+            _mapPage?.ShowObject(obj.Id);
+        };
+        return row;
+    }
 
     // A byproduct-source row: another ore's deposit that also yields the current resource. The
     // proportional bar + band text show the % of that rock this resource makes up; the right value
