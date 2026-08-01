@@ -15,27 +15,51 @@ public class MapCatalogTests
     {
         // 4 source placeholder records ("<= UNINITIALIZED =>", Stanton) were filtered out of the
         // extractor's map artifact; ids 419/437/473/515 are gaps, not renumbered.
-        // 959 = 963 in the artifact minus the 4 objects for systems that are not in the game,
+        // 961 = 963 in the artifact minus the 2 objects for systems that are not in the game,
         // excluded at load (MapCatalog.ExcludedObjects).
-        Assert.Equal(959, Catalog.Count);
-        Assert.Equal(959, Catalog.Objects.Count);
+        Assert.Equal(961, Catalog.Count);
+        Assert.Equal(961, Catalog.Objects.Count);
     }
 
     // ── Unreachable-system exclusions (the owner, 2026-08-01) ──
 
     [Theory]
-    [InlineData("Stanton", "Stanton - Terra Jump Point")]
-    [InlineData("Stanton", "Terra Gateway")]
     [InlineData("Stanton", "Stanton - Magnus Jump Point")]
     [InlineData("Nyx", "Nyx - Castra Jump Point")]
     public void UnreachableSystemObjects_AreNotInTheCatalog(string system, string name)
     {
-        // Terra, Magnus and Castra are not in the game. These rows exist in the artifact only
-        // because it is derived from the game's object catalog, which carries unreleased content.
-        // The Castra case is the one that shows the rule is about the DESTINATION system, not the
-        // system the object sits in: that jump point is physically in Nyx, which is live.
+        // Magnus and Castra are not in the game. These rows exist in the artifact only because it is
+        // derived from the game's object catalog, which carries unreleased content. The Castra case
+        // shows the rule is about the DESTINATION system, not the system the object sits in: that
+        // jump point is physically in Nyx, which is live.
         Assert.Null(Catalog.ByName(system, name));
         Assert.DoesNotContain(Catalog.Objects, o => o.Name == name);
+    }
+
+    [Theory]
+    [InlineData("Stanton", "Terra Gateway")]
+    [InlineData("Stanton", "Stanton - Terra Jump Point")]
+    public void TerraObjects_AreInTheCatalog(string system, string name)
+    {
+        // Excluded on 2026-08-01 and restored the same day - the owner: "terra gateway does exist in the
+        // game, magnus does not". Pinned in the positive so the mistake cannot be repeated silently.
+        Assert.NotNull(Catalog.ByName(system, name));
+    }
+
+    [Fact]
+    public void ExcludedObjects_CarryNoUexAliases()
+    {
+        // The guard that replaced a whole carve-out. While Terra was wrongly excluded, its UEX
+        // aliases had to be kept resolvable for distance or 21 real terminals would have silently
+        // lost the figure the planner had always shown. Every current exclusion is alias-free, so
+        // that second resolve path was deleted - and this fails the moment someone excludes an
+        // alias-carrying object again, which is exactly when the problem would return.
+        foreach (var name in new[] { "Stanton - Magnus Jump Point", "Nyx - Castra Jump Point" })
+        {
+            var terminal = new MarketTerminal(1, "probe", "commodity", false,
+                                              name.StartsWith("Nyx") ? "Nyx" : "Stanton", name);
+            Assert.Null(Catalog.ResolveTerminal(terminal));
+        }
     }
 
     [Fact]
@@ -82,14 +106,14 @@ public class MapCatalogTests
     }
 
     [Fact]
-    public void ExcludedTerraJumpPoint_TakesItsUexAliasesWithIt()
+    public void TerraJumpPoint_KeepsItsUexAliases()
     {
-        // "Stanton - Terra Jump Point" carried the UEX aliases "Terra Gateway (Stanton)" (location
-        // and orbit). Those must go too, or a UEX terminal could still resolve onto a place that is
-        // no longer in the map - and it would stay coherent with location_aliases.json, where the
-        // matching "Terra Gateway (Stanton)" entry was removed in the same ruling.
+        // "Stanton - Terra Jump Point" carries the UEX aliases "Terra Gateway (Stanton)" (location
+        // and orbit), covering 21 real UEX terminals. Losing this resolution was the concrete cost
+        // of the brief wrong exclusion, and it stays coherent with location_aliases.json, where the
+        // matching entry was restored in the same correction.
         var terminal = new MarketTerminal(1, "Some Terminal", "commodity", false, "Stanton", "Terra Gateway (Stanton)");
-        Assert.Null(Catalog.ResolveTerminal(terminal));
+        Assert.NotNull(Catalog.ResolveTerminal(terminal));
     }
 
     [Fact]
@@ -370,15 +394,15 @@ public class MapCatalogTests
     }
 
     [Fact]
-    public void ResolvePlayerLocation_TerraGatewayStation_ReturnsNull_TerraNotInGame()
+    public void ResolvePlayerLocation_TerraGatewayStationAlias_ResolvesToStantonTerraGateway()
     {
-        // "Terra Gateway Station" had a display-name alias here until 2026-08-01. It is gone
-        // because LocationAliases can no longer produce that name: the Terra and Magnus gateway
-        // tokens were dropped from the artifact (those systems are not in the game, so no player
-        // can stand at those gates). The map OBJECT still exists in the catalog - it comes from
-        // the base map data, which carries unreleased content - but nothing can route a live
-        // location to it, and an alias for a name nothing emits reads as coverage that is not real.
-        Assert.Null(Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null));
+        // Terra Gateway exists in game (the owner, 2026-08-01) and "Terra Gateway" names an object in
+        // Stanton ONLY, so a plain display-name alias is correct here - unlike the gateways whose
+        // object names repeat across systems and need the raw token to be told apart.
+        var obj = Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Terra Gateway", obj!.Name);
+        Assert.Equal("Stanton", obj.System);
     }
 
     [Fact]

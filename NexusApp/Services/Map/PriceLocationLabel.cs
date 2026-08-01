@@ -42,8 +42,7 @@ internal static class PriceLocationLabel
         if (!string.Equals(playerAt.System, terminal.System, StringComparison.OrdinalIgnoreCase))
             return terminal.System + Sep + "another system";
 
-        // Geometry-only resolution, so a terminal at a place held off the map surface still measures.
-        var target = map.ResolveTerminalForDistance(terminal);
+        var target = map.ResolveTerminal(terminal);
         return map.DistanceMeters(playerAt, target) is { } meters
             ? terminal.System + Sep + MapCatalog.FormatGm(meters)
             : terminal.System;

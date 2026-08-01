@@ -56,8 +56,7 @@ public sealed class PlayerPlace
     public string? DistanceFrom(MapObject? target)
         => _map.DistanceMeters(Current, target) is { } m ? MapCatalog.FormatGm(m) : null;
 
-    /// <summary>The same, for a market terminal. Resolves the terminal through the geometry-only
-    /// path, so a terminal at a place held off the map surface still reports a real distance.</summary>
+    /// <summary>The same, for a market terminal.</summary>
     public string? DistanceFrom(MarketTerminal? terminal)
-        => DistanceFrom(_map.ResolveTerminalForDistance(terminal));
+        => DistanceFrom(_map.ResolveTerminal(terminal));
 }

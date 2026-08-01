@@ -73,34 +73,25 @@ public class MapCatalogTerminalDistanceTests
         Assert.Equal(0, Map.DistanceMeters(a, a));
     }
 
-    // ── the excluded-object carve-out ──
+    // ── Terra Gateway ──
+    // Briefly excluded from the map on 2026-08-01 and restored the same day: the owner corrected the
+    // premise with "terra gateway does exist in the game, magnus does not". These pin the corrected
+    // state, and the UEX evidence that should have prompted a question before the exclusion.
 
     [Fact]
-    public void ExcludedPlace_StillResolvesForDistance()
+    public void TerraGateway_ResolvesLikeAnyOtherPlace()
     {
-        // "Stanton - Terra Jump Point" is held off the map surface (Terra is not in the game), but it
-        // is the ONLY excluded object carrying UEX aliases, and its "Terra Gateway (Stanton)" location
-        // covers 21 real UEX terminals. Refusing to measure them would have silently removed a
-        // distance the Trade planner has always shown - a regression hidden inside a cosmetic ruling.
         var terminal = Term("Stanton", "Terra Gateway (Stanton)");
 
-        Assert.NotNull(Map.ResolveTerminalForDistance(terminal));
-        Assert.Equal("Stanton - Terra Jump Point", Map.ResolveTerminalForDistance(terminal)!.Name);
+        Assert.NotNull(Map.ResolveTerminal(terminal));
+        Assert.Equal("Stanton - Terra Jump Point", Map.ResolveTerminal(terminal)!.Name);
     }
 
     [Fact]
-    public void ExcludedPlace_NeverResolvesForTheMapSurface()
+    public void TerraGateway_YieldsARealDistance_MatchingTheOldCatalog()
     {
-        // The other half of the carve-out, and the reason it is two methods rather than a flag on
-        // one: whatever builds scene pins must NOT get this back, or it would place a pin for an
-        // object the scene does not contain.
-        Assert.Null(Map.ResolveTerminal(Term("Stanton", "Terra Gateway (Stanton)")));
-    }
-
-    [Fact]
-    public void ExcludedPlace_YieldsARealDistance_MatchingTheOldCatalog()
-    {
-        // End to end: the carve-out exists so this number does not disappear.
+        // 21 real UEX terminals sit at this Location, 2 of them priced. Losing this figure was the
+        // concrete cost of the wrong exclusion, which is why it is measured rather than assumed.
         var terra = Term("Stanton", "Terra Gateway (Stanton)");
         var everus = Term("Stanton", "Everus Harbor");
 

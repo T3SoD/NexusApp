@@ -125,19 +125,30 @@ public class LocationAliasesTests
         Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
     }
 
-    // The Terra and Magnus gateway tokens were removed 2026-08-01 (the owner's ruling: those systems
-    // are not in the game, so no player can ever stand at those gates and the tokens can never
-    // fire). This pins the removal so a future artifact edit cannot quietly reintroduce coverage
-    // for places that do not exist.
+    // Magnus gateway tokens stay out: no player can stand at those gates, so the tokens can never
+    // fire. RR_JP_TerraStanton (the TERRA-side leg) is also absent - the Stanton-side gateway
+    // existing does not establish that a player can stand on the Terra side, and it has never been
+    // captured. This pins those so a future artifact edit cannot quietly reintroduce coverage for
+    // places nobody has been.
     [Theory]
-    [InlineData("RR_JP_StantonTerra")]
     [InlineData("RR_JP_TerraStanton")]
     [InlineData("RR_JP_StantonMagnus")]
     [InlineData("RR_JP_MagnusStanton")]
-    public void UnreachableSystemGatewayTokens_AreAbsentFromBothTables(string token)
+    public void UnreachableGatewayTokens_AreAbsentFromBothTables(string token)
     {
         Assert.Equal(token, LocationAliases.Normalize(token));   // raw passthrough = no alias entry
         Assert.Null(LocationAliases.UexLocationForToken(token));
+    }
+
+    [Fact]
+    public void StantonSideTerraToken_IsPresentInBothTables()
+    {
+        // Excluded on 2026-08-01 and restored the same day: the owner corrected the premise with "terra
+        // gateway does exist in the game, magnus does not". UEX had been carrying 21 terminals with
+        // priced rows at this Location the whole time, which was the evidence that should have
+        // prompted a question rather than been treated as noise.
+        Assert.Equal("Terra Gateway Station", LocationAliases.Normalize("RR_JP_StantonTerra"));
+        Assert.Equal("Terra Gateway (Stanton)", LocationAliases.UexLocationForToken("RR_JP_StantonTerra"));
     }
 
     [Theory]

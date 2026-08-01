@@ -40,20 +40,13 @@ public sealed class MapCatalog
     // object - a planet's planetOrMoon alias and its orbit alias must both resolve.
     private readonly Dictionary<string, MapObject> _byAlias;
 
-    // UEX aliases belonging to objects kept OUT of the map surface (ExcludedObjects). Consulted only
-    // by ResolveTerminalForDistance, never by ResolveTerminal - so a terminal at an unreachable place
-    // still gets a real distance while never earning a pin in a scene that does not contain it.
-    private readonly Dictionary<string, MapObject> _byAliasExcluded;
-
     private MapCatalog(List<MapObject> objects, Dictionary<int, MapObject> byId,
-        Dictionary<string, MapObject> byName, Dictionary<string, MapObject> byAlias,
-        Dictionary<string, MapObject> byAliasExcluded)
+        Dictionary<string, MapObject> byName, Dictionary<string, MapObject> byAlias)
     {
         _objects = objects;
         _byId = byId;
         _byName = byName;
         _byAlias = byAlias;
-        _byAliasExcluded = byAliasExcluded;
     }
 
     public IReadOnlyList<MapObject> Objects => _objects;
@@ -85,10 +78,20 @@ public sealed class MapCatalog
     // unactivated jump point might have been something a player could fly to and see) and the owner
     // ruled it out on the same terms as the rest. The destination system is what decides, not the
     // system the object happens to sit in.
+    //
+    // TERRA WAS REMOVED FROM THIS LIST 2026-08-01, same day it was added: the owner corrected the
+    // premise - "terra gateway does exist in the game, magnus does not". That also explains the
+    // thing that looked wrong at the time, namely UEX carrying 21 real terminals at
+    // "Terra Gateway (Stanton)" with priced rows. The data was right and the exclusion was wrong.
+    //
+    // Every remaining entry is alias-free, which is asserted by a test rather than assumed - see
+    // ExcludedObjects_CarryNoUexAliases. That guard is what is left of the carve-out this list once
+    // needed: while Terra was excluded, its aliases had to stay resolvable for distance or 21
+    // terminals would have silently lost the figure the planner had always shown. Rather than keep
+    // a second resolve path with no members, the test now fails if anyone excludes an alias-carrying
+    // object again, which is the moment that problem would come back.
     private static readonly HashSet<string> ExcludedObjects = new(StringComparer.OrdinalIgnoreCase)
     {
-        NameKey("Stanton", "Stanton - Terra Jump Point"),
-        NameKey("Stanton", "Terra Gateway"),
         NameKey("Stanton", "Stanton - Magnus Jump Point"),
         NameKey("Nyx", "Nyx - Castra Jump Point"),
     };
@@ -114,7 +117,6 @@ public sealed class MapCatalog
             var byId = new Dictionary<int, MapObject>();
             var byName = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
             var byAlias = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
-            var byAliasExcluded = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
 
             if (raw.Objects is not null)
             {
@@ -123,24 +125,11 @@ public sealed class MapCatalog
                     if (string.IsNullOrEmpty(o.System) || string.IsNullOrEmpty(o.Name))
                         continue;
 
-                    var aliases = BuildAliases(o.Uex);
                     if (ExcludedObjects.Contains(NameKey(o.System, o.Name)))
-                    {
-                        // Excluded from the MAP SURFACE, but its UEX aliases still index for
-                        // DISTANCE. The exclusion answers "should a player see a place they cannot
-                        // fly to", not "should we refuse to measure a terminal UEX still lists".
-                        // Exactly one excluded object carries aliases - "Stanton - Terra Jump Point",
-                        // whose "Terra Gateway (Stanton)" location covers 21 real UEX terminals, 2 of
-                        // them priced. Dropping those from geometry would have silently removed the
-                        // distance figure the Trade planner has always shown for them.
-                        foreach (var alias in aliases)
-                            byAliasExcluded[AliasKey(o.System, alias.Kind, alias.Name)] =
-                                new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z, null, aliases);
                         continue;
-                    }
 
                     objects.Add(new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z,
-                                              o.Parent, aliases));
+                                              o.Parent, BuildAliases(o.Uex)));
                 }
 
                 // An excluded object can be some SURVIVING object's parent, which would leave a
@@ -166,12 +155,11 @@ public sealed class MapCatalog
                 }
             }
 
-            return new MapCatalog(objects, byId, byName, byAlias, byAliasExcluded);
+            return new MapCatalog(objects, byId, byName, byAlias);
         }
         catch (Exception)
         {
             return new MapCatalog(new List<MapObject>(), new Dictionary<int, MapObject>(),
-                new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase));
         }
@@ -243,16 +231,17 @@ public sealed class MapCatalog
     // also near-misses: both target object names exist in more than one system, so aliasing them
     // here by display name alone could mark the wrong system. Those two are resolved only through
     // RawTokenGateways above, before this table is ever consulted.
-    // "Terra Gateway Station" was a third entry here until 2026-08-01. It is gone because
-    // LocationAliases can no longer produce that display name at all: the Terra and Magnus gateway
-    // tokens were dropped from the alias artifact (the owner's ruling - those systems are not in the
-    // game, so no player can ever stand at those gates and no token can ever fire). An alias for a
-    // name nothing emits is dead weight that reads as real coverage.
+    // "Terra Gateway Station" was pulled from here earlier on 2026-08-01 and restored the same day
+    // when the owner corrected the premise: Terra Gateway DOES exist in the game (Magnus does not). It is
+    // unambiguous - "Terra Gateway" names an object in Stanton only - so a plain display-name alias
+    // is right for it, unlike the gateways whose object names repeat across systems and can only be
+    // told apart by raw token.
     private static readonly IReadOnlyDictionary<string, string> PlayerLocationAliases =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Area 18"] = "Area18",
             ["Checkmate Station"] = "Checkmate",
+            ["Terra Gateway Station"] = "Terra Gateway",
         };
 
     // Resolves LocationTracker.LastKnownLocation (an alias-normalized DISPLAY name) plus its raw
@@ -304,28 +293,15 @@ public sealed class MapCatalog
     // catalog also falls through to the next level rather than failing the whole resolution -
     // same fallback semantics as StarmapCatalog.Resolve (StarmapCatalog.cs:84). Scoped to
     // t.System throughout: this never crosses systems.
-    public MapObject? ResolveTerminal(MarketTerminal? t) => ResolveTerminal(t, includeExcluded: false);
-
-    /// <summary>Resolution for GEOMETRY ONLY: identical to ResolveTerminal but also matches objects
-    /// held off the map surface by ExcludedObjects. Callers that place something in the 3D scene must
-    /// use ResolveTerminal, or they will pin an object the scene does not contain; callers that only
-    /// want a position or a distance should use this, so an unreachable-system place that UEX still
-    /// lists terminals for keeps the distance figure it has always had.</summary>
-    public MapObject? ResolveTerminalForDistance(MarketTerminal? t) => ResolveTerminal(t, includeExcluded: true);
-
-    private MapObject? ResolveTerminal(MarketTerminal? t, bool includeExcluded)
+    public MapObject? ResolveTerminal(MarketTerminal? t)
     {
         if (t is null || string.IsNullOrEmpty(t.System)) return null;
 
         return Look("location", t.Location) ?? Look("planetOrMoon", t.PlanetOrMoon) ?? Look("orbit", t.Orbit);
 
         MapObject? Look(string kind, string? value)
-        {
-            if (string.IsNullOrEmpty(value)) return null;
-            var key = AliasKey(t.System, kind, value);
-            if (_byAlias.TryGetValue(key, out var hit)) return hit;
-            return includeExcluded && _byAliasExcluded.TryGetValue(key, out var ex) ? ex : null;
-        }
+            => !string.IsNullOrEmpty(value) && _byAlias.TryGetValue(AliasKey(t.System, kind, value), out var hit)
+                ? hit : null;
     }
 
     /// <summary>Straight-line meters between two market terminals, or null when either fails to
@@ -337,7 +313,7 @@ public sealed class MapCatalog
     {
         if (a is null || b is null) return null;
         if (!string.Equals(a.System, b.System, StringComparison.OrdinalIgnoreCase)) return null;
-        return DistanceMeters(ResolveTerminalForDistance(a), ResolveTerminalForDistance(b));
+        return DistanceMeters(ResolveTerminal(a), ResolveTerminal(b));
     }
 
     // Straight-line meters between two objects, or null when either is null or the two objects

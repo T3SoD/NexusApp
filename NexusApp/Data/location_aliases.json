@@ -3,6 +3,7 @@
   "aliases": {
     "RR_JP_StantonPyro": "Pyro Gateway Station",
     "RR_JP_PyroStanton": "Stanton Gateway Station",
+    "RR_JP_StantonTerra": "Terra Gateway Station",
     "RR_JP_PyroNyx": "Nyx Gateway Station",
 
     "RR_ARC_L1": "ARC-L1 Wide Forest Station",
@@ -47,20 +48,23 @@
   "uexLocations": {
     "RR_JP_StantonPyro": "Pyro Gateway (Stanton)",
     "RR_JP_PyroStanton": "Stanton Gateway (Pyro)",
+    "RR_JP_StantonTerra": "Terra Gateway (Stanton)",
     "RR_JP_PyroNyx": "Nyx Gateway (Pyro)"
   },
   "uexLocationNotes": {
     "_meta": "Raw-token to UEX Location string, kept separate from 'aliases' (raw-token to in-game DISPLAY name) because display names are not unique - two raw tokens here display as gateway names that repeat across systems, and only the raw token is unique enough to key an unambiguous UEX lookup. Every value here was confirmed against a live UEX snapshot: a terminal exists with that exact Location, and at least one of those terminals carries priced rows.",
-    "_scope": "GATEWAYS FOR SYSTEMS REACHABLE IN GAME ONLY (the owner's ruling, 2026-08-01). Terra and Magnus gateway tokens were removed even though UEX lists priced terminals for 'Terra Gateway (Stanton)': those systems are not in the game, so a player can never stand there, and a token that can never fire is dead weight that reads as real coverage. Re-add on the same terms as everything else here - a real in-game capture - if and when CIG ships those systems.",
+    "_scope": "GATEWAYS THAT EXIST IN GAME ONLY (the owner's ruling, 2026-08-01). Magnus gateway tokens are excluded: no player can stand there, and a token that can never fire is dead weight that reads as real coverage. TERRA WAS BRIEFLY EXCLUDED THE SAME DAY AND RESTORED - the owner corrected it with 'terra gateway does exist in the game, magnus does not', which also explains why UEX carried 21 real terminals at 'Terra Gateway (Stanton)' with priced rows. That UEX evidence was the signal the exclusion was wrong; treat a populated, priced UEX Location as a reason to check before excluding, not as noise. Only the STANTON-SIDE Terra token is here: the Terra-side counterpart (RR_JP_TerraStanton) is still uncaptured and unverifiable, and is not invented.",
     "_gap_nyx": "PARTIALLY CLOSED 2026-08-01: RR_JP_PyroNyx captured live (see its note below), so the Pyro-side entry is real. Three Nyx-gateway UEX Locations are still listed in the snapshot with no captured raw token - 'Nyx Gateway (Stanton)', 'Stanton Gateway (Nyx)', 'Pyro Gateway (Nyx)' - and by the naming pattern would be RR_JP_StantonNyx, RR_JP_NyxStanton and RR_JP_NyxPyro. None is invented here. Add each only after a real in-game capture, same standard as RR_JP_StantonPyro.",
     "RR_JP_PyroNyx": "verified live 2026-08-01 00:14:49Z: real Game.log capture at the Pyro-side Nyx gateway. UEX Location taken from the same snapshot survey that grounded the three entries below.",
     "RR_JP_StantonPyro": "verified live 2026-07-31: 22 terminals at this Location, 2 with priced rows",
-    "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows"
+    "RR_JP_PyroStanton": "verified live 2026-07-31: 20 terminals at this Location, 2 with priced rows",
+    "RR_JP_StantonTerra": "verified live 2026-07-31: 21 terminals at this Location, 2 with priced rows; gateway confirmed in game by the owner 2026-08-01"
   },
   "notes": {
     "RR_JP_StantonPyro": "verified: real in-game example",
     "RR_JP_PyroNyx": "verified: real in-game capture (Game.log RequestLocationInventory, 2026-08-01). The DISPLAY name follows the convention of the confirmed RR_JP_StantonPyro entry ('<destination> Gateway Station'); the on-screen name was not read back, so correct it here if the game words it differently.",
     "RR_JP_PyroStanton": "derived by naming convention (reverse leg of a bidirectional route confirmed in the shipped starmap trade embed); exact in-game inventory key not independently captured",
-    "_removed_2026_08_01": "The four Terra and Magnus gateway tokens (RR_JP_StantonTerra, RR_JP_TerraStanton, RR_JP_StantonMagnus, RR_JP_MagnusStanton) were removed here - see the '_scope' note above. Every remaining entry is either a real capture or the reverse leg of one."
+    "RR_JP_StantonTerra": "the Stanton-side Terra gateway; confirmed to exist in game by the owner 2026-08-01, and independently corroborated by UEX carrying 21 terminals with priced rows at this Location. The exact in-game inventory key is still not independently captured, so correct the display name here if the game words it differently.",
+    "_removed_2026_08_01": "The Magnus gateway tokens (RR_JP_StantonMagnus, RR_JP_MagnusStanton) are excluded - see the '_scope' note above. RR_JP_TerraStanton, the Terra-SIDE leg, is also absent: the Stanton-side gateway existing does not establish that a player can stand on the Terra side, and it has never been captured."
   }
 }
