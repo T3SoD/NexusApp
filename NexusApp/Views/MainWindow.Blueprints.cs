@@ -251,9 +251,29 @@ public partial class MainWindow
         return newDepth;
     }
 
+    /// <summary>The AUTO-TRACK status chip on the Library's filter row - the old BLUEPRINTS
+    /// header chip, moved home (F14: "session AND a Settings toggle" is a single-feature
+    /// derivation, so it lives with its feature). Three honest states instead of the old two:
+    /// green breathing "tracking" when collecting; dim "no session" when the toggle is on but
+    /// Star Citizen is closed; dim "off in Settings" when the user disabled it. Never red - not
+    /// tracking is a state of the world or a choice, not a failure. Repainted on
+    /// App.GameLog.StateChanged (wired in the MainWindow ctor) and on every nav render.</summary>
+    internal void RefreshBlueprintTrackingLine()
+    {
+        if (BpAutoTrackText == null || App.GameLog == null) return;
+        bool tracking = App.GameLog.IsSessionLive && App.GameLog.AutoMark;
+        BpAutoTrackText.Text = tracking ? "tracking"
+            : App.GameLog.AutoMark ? "no session" : "off in Settings";
+        var brush = tracking ? Hud.Br("OkBrush") : Hud.Br("FgDimBrush");
+        BpAutoTrackDot.Fill = brush;
+        BpAutoTrackText.Foreground = brush;
+        Hud.PulseDot(BpAutoTrackDot, tracking);
+    }
+
     private void RenderBlueprintNav()
     {
         RefreshBlueprintNetworkCounts();   // one grouped read per render, never one per row (G12)
+        RefreshBlueprintTrackingLine();
         BlueprintNavPanel.Children.Clear();
         BlueprintCrumbHost.Content = null;
         _deselectBpRow = null;

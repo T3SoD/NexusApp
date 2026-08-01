@@ -42,8 +42,10 @@ public sealed class TourController
             "Nexus went live the moment you launched it - your game feeds it everything through one log file, no setup required. This quick tour shows you the map: a status strip that reports, a module dock that works, and an overlay that flies with you."),
         new(TutorialTarget.SessionPill, "The status strip",
             "This pill lights up when Star Citizen writes to Game.log and Nexus reads along - read-only, nothing modified, EAC-safe. If it stays dark, point Settings at your Game.log path."),
+        // F14: this step anchored on the BLUEPRINTS header chip until that chip moved into the
+        // Blueprint Library itself; it now points at the Library dock tile, same enum member.
         new(TutorialTarget.BlueprintsPill, "Blueprints count themselves",
-            "Pick up a blueprint in the verse and this count ticks on its own - every find lands in your Blueprint Library with zero clicks. WHERE TO MINE there shows how to get the ones you are missing."),
+            "Pick up a blueprint in the verse and it lands in your Blueprint Library on its own - zero clicks, whenever a session is live. The AUTO-TRACK light inside shows it working, and WHERE TO MINE shows how to get the ones you are missing."),
         // "Eight modules" was correct when the tour was written and has been wrong for several
         // releases; the dock now shows eleven by default and its own head badge says 11
         // (MainWindow.xaml:239). Counted 2026-08-01: Operations, Starmap, Mission Guides, RS
@@ -61,8 +63,10 @@ public sealed class TourController
             "Every station, outpost and rock cluster across Stanton, Pyro and Nyx, in 3D. Your live location shows up as a marker, and the layer rail paints trade terminals, mission sites and mining spots straight onto the map."),
         new(TutorialTarget.RsDecoderTile, "RS Decoder",
             "Your first stop after scanning a rock: click in, type the RS value, and get a best-match ore breakdown. Or skip the typing - auto-scan can read it off your screen."),
+        // F14 badge rule: a dock badge counts what you can act on NOW, so this copy tracks the
+        // badge's switch from all-open-orders to ready-to-collect.
         new(TutorialTarget.RefineryTile, "Refinery",
-            "Click + Add work order inside and Nexus counts down every job. The pill on this tile shows how many orders are cooking."),
+            "Click + Add work order inside and Nexus counts down every job. The pill on this tile lights up when orders are ready to collect."),
         new(TutorialTarget.HaulingTile, "Hauling tracks itself",
             "Accept a hauling contract in game and it appears here on its own - the pill shows your active hauls. Click in for consolidated collect and deliver stops across all of them."),
         new(TutorialTarget.TradeTile, "Trade",
@@ -72,7 +76,7 @@ public sealed class TourController
         new(TutorialTarget.OpenOverlay, "The third space",
             "Click here to launch the overlay - a compact panel that floats over Star Citizen so you never leave the game to use Nexus."),
         new(TutorialTarget.OverlayHub, "Proof of life",
-            "The overlay opens on the HUB: green lights mean a feed is live right now - session, RS auto-scan, contracts. Blueprints collected, server, and shard read out below."),
+            "The overlay opens on the HUB: green lights mean a feed is live right now - session, RS auto-scan, contracts - and the cyan one is where the game last placed you. Blueprints collected, server, and shard read out below."),
         new(TutorialTarget.ScanToggle, "Auto-scan is opt-in",
             "Switch this on and Nexus reads rock signatures straight off your screen through the magenta box you draw once. It pauses on its own whenever you and the game are both in the background."),
         new(TutorialTarget.ContractRegion, "Contracts get their own box",

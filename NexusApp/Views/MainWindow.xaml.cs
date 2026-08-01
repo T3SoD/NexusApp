@@ -32,17 +32,23 @@ public partial class MainWindow : Window
         InitializeComponent();
         AppVersionText.Text = $"App v{AppInfo.Version}";
         GameVersionText.Text = $"SC PU {GameData.Version}";
-        UpdateShardChip();
         // The Game.log chain (shards, blueprint session) is pumped by the shared feed's
         // DispatcherTimer, so it already raises on the UI thread - no marshaling, the same
         // contract App.xaml.cs and the overlay follow. Dispatcher.Invoke/BeginInvoke here is
         // reserved for genuinely background sources (ContractScanner, MarketDataService).
-        if (App.Shards != null) App.Shards.Changed += UpdateShardChip;
+        // F14: the shard folded into the SESSION chip, so a shard join/leave repaints that chip
+        // rather than a chip of its own.
+        if (App.Shards != null) App.Shards.Changed += UpdateSessionChip;
         UpdateSessionChip();
-        UpdateBlueprintChip();
+        UpdateLocationChip();
+        // LOCATION chip (F14): LocationTracker raises off the shared feed's DispatcherTimer
+        // (UI thread), but BeginInvoke keeps this safe if a replay path ever raises elsewhere -
+        // the same belt the overlay's own Locations subscription wears.
+        if (App.Locations != null)
+            App.Locations.Changed += () => Dispatcher.BeginInvoke(UpdateLocationChip);
         if (App.GameLog != null)
         {
-            App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateBlueprintChip(); };
+            App.GameLog.StateChanged += () => { UpdateSessionChip(); RefreshBlueprintTrackingLine(); };
             // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
             // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
             // ChipSuffix on the next Game.log channel resolve.
@@ -135,8 +141,13 @@ public partial class MainWindow : Window
         _scanChipTimer.Tick += (_, __) => { UpdateScanChip(); RefreshMarketPill(); };
         _scanChipTimer.Start();
         UpdateScanChip();
-        // Flip the SCAN chip to/from the paused (yellow) state the instant foreground relevance changes.
+        // Flip the AUTO-SCAN chip to/from paused the instant foreground relevance changes.
         App.ForegroundRelevanceChanged += _ => Dispatcher.Invoke(UpdateScanChip);
+        // F14: the chip now carries the contract scanner too, so a contract-scan start/stop from
+        // the overlay or the Hauling page repaints it immediately (ContractScanner can raise off
+        // the UI thread - App.xaml.cs marshals its other events the same way).
+        if (App.ContractScan != null)
+            App.ContractScan.RunningChanged += () => Dispatcher.BeginInvoke(UpdateScanChip);
         // Pause/resume the RS auto-scan itself on the same signal - moved from App.xaml.cs's
         // OnForegroundRelevanceChanged (app review, Task 9), unwrapped exactly as it ran there
         // (that handler called SetScanForegroundActive directly, with no Dispatcher marshal).
@@ -256,7 +267,9 @@ public partial class MainWindow : Window
     private FrameworkElement? ResolveTutorialTarget(TutorialTarget t) => t switch
     {
         TutorialTarget.SessionPill     => SessionChip,
-        TutorialTarget.BlueprintsPill  => BlueprintChip,
+        // F14: the BLUEPRINTS header chip moved to the Blueprint Library, so the tour's
+        // blueprint step anchors on the Library dock tile instead.
+        TutorialTarget.BlueprintsPill  => NavBlue,
         TutorialTarget.AppDock         => DockTiles,
         TutorialTarget.OperationsKpis  => OperationsKpiAnchor(),
         TutorialTarget.StarmapTile     => NavMap,
@@ -666,23 +679,6 @@ public partial class MainWindow : Window
     private string? _lastGameLogStatus;
     private const string SessionChipDefaultTooltip = "Star Citizen session tracking (always on)";
 
-    // Live SHARD telemetry chip in the header status strip (updates on shard join/leave).
-    private void UpdateShardChip()
-    {
-        var s = App.Shards?.Current;
-        if (s != null)
-        {
-            ShardChipText.Text = (string.IsNullOrWhiteSpace(s.Instance) ? s.Region : $"{s.Region} · {s.Instance}")
-                + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}");
-            ShardDot.Fill = _chipOkBrush;
-        }
-        else
-        {
-            ShardChipText.Text = "not detected";
-            ShardDot.Fill = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        }
-    }
-
     // Live SESSION telemetry chip in the header status strip: tracking is always on, so this confirms a
     // live game session (green, monitoring) vs Star Citizen being closed / shut down (red, offline). "Live"
     // is read from Game.log freshness (process-based - unchanged), so the chip flips off shortly after
@@ -710,12 +706,20 @@ public partial class MainWindow : Window
         }
         else
         {
-            SessionChipText.Text = (live ? "monitoring" : "offline")
-                + GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel);
+            // F14: the shard rides the live value ("monitoring · US-E · 042") - it is parsed FROM
+            // Game.log and cannot exist without a live session, so it is session metadata, not a
+            // peer chip. StatusChips.SessionValue drops it from the offline state, where a
+            // last-seen shard would dress a dead reading as current status.
+            var s = App.Shards?.Current;
+            var shard = s is null ? null : StatusChips.ShardText(s.Region, s.Instance, s.Channel);
+            SessionChipText.Text = StatusChips.SessionValue(
+                live, GameChannels.ChipSuffix(App.GameLogFeed.ActiveChannel), shard);
             SessionDot.Fill = brush;
             SessionChipText.Foreground = brush;
             Hud.PulseDot(SessionDot, live);   // the green LED gently flashes while a session is live
-            SessionChip.ToolTip = SessionChipDefaultTooltip;
+            SessionChip.ToolTip = shard is null
+                ? SessionChipDefaultTooltip
+                : $"{SessionChipDefaultTooltip}\nShard: {shard}";
             SessionChip.Cursor = Cursors.Arrow;
             // Unconditional reset (review fix): if _sessionChipNoLog just flipped false while the chip
             // was hovered and mid-hover-tint, this resync keeps Background from staying stuck on
@@ -723,42 +727,36 @@ public partial class MainWindow : Window
             // (flip happens while the mouse is never over the chip at all).
             SessionChip.Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush");
         }
-
-        // Mirror the SESSION LED on the dock-foot identity badge so they always agree:
-        // green ONLINE while Star Citizen is running, red OFFLINE when it's closed.
-        if (LinkDot != null)
-        {
-            LinkDot.Fill = brush;
-            Hud.PulseDot(LinkDot, live);
-        }
-        if (LinkStatusText != null)
-            LinkStatusText.Text = live ? "ONLINE . SECURE LINK" : "OFFLINE . NO LINK";
-
-        // Same signal on the Operations dock tile badge: LIVE while Star Citizen runs,
-        // OFFLINE once it's closed.
-        if (OpsLiveDot != null)
-        {
-            OpsLiveDot.Fill = brush;
-            Hud.PulseDot(OpsLiveDot, live);
-        }
-        if (OpsLiveText != null)
-        {
-            OpsLiveText.Text = live ? "LIVE" : "OFFLINE";
-            OpsLiveText.Foreground = brush;
-        }
+        // F14: the two dock mirrors this method used to paint (OpsLiveDot on the Operations tile,
+        // LinkDot on the identity foot) are gone - one session lamp per viewport, and this chip is it.
     }
 
-    // Live BLUEPRINTS telemetry chip: Auto-Track Blueprints is always on, so this confirms blueprint
-    // auto-collection is active (green) while a game session is live, else off (red, SC closed).
-    private void UpdateBlueprintChip()
+    // LOCATION telemetry chip (F14, new): where Game.log last placed the player - the gate for
+    // every distance the app renders (Codex, work orders, Trade ranking, map marker, overlay route
+    // bands), which until this chip had no global lamp. Cyan breathing when a place is known
+    // (cyan = the app's live-location identity, reserved), dim "unknown" otherwise. Label over
+    // resolution: App.Player.Label is the log's own words even when the catalog cannot place them,
+    // which is the honest thing for a chip that SAYS rather than MEASURES (PlayerPlace's rule).
+    private bool? _locationChipKnown;
+    private void UpdateLocationChip()
     {
-        if (App.GameLog == null || BlueprintChipText == null) return;
-        bool tracking = App.GameLog.IsSessionLive && App.GameLog.AutoMark;
-        BlueprintChipText.Text = tracking ? "tracking" : "off";
-        var brush = tracking ? _chipOkBrush : _chipDangerBrush;
-        BlueprintDot.Fill = brush;
-        BlueprintChipText.Foreground = brush;
-        Hud.PulseDot(BlueprintDot, tracking);   // the green LED gently flashes while tracking
+        if (LocationChipText == null) return;
+        var label = App.Player?.Label;
+        bool known = !string.IsNullOrWhiteSpace(label);
+        LocationChipText.Text = known ? label : "unknown";
+        // The value is width-capped (long outpost names trim at 130px so the strip cannot crowd
+        // the clock) - the tooltip always carries the full place.
+        LocationChipText.ToolTip = known ? label : null;
+        var brush = known ? Hud.Br("CyanBrush") : Hud.Br("FgDimBrush");
+        LocationChipText.Foreground = brush;
+        LocationDot.Fill = brush;
+        Hud.PulseDot(LocationDot, known);
+        // Log only the flips, not every place change - the tracker already logs the timeline.
+        if (_locationChipKnown != known)
+        {
+            _locationChipKnown = known;
+            Logger.Info($"[UI] header location: {(known ? label : "unknown")}");
+        }
     }
 
     // Dock-foot identity: show the detected RSI handle, or fall back to CITIZEN when no handle
@@ -771,24 +769,29 @@ public partial class MainWindow : Window
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
-    // SCAN telemetry chip (auto-scan on/off), refreshed on a light timer.
+    // AUTO-SCAN telemetry chip (F14): one lamp for BOTH OCR scanners (the owner's amendment on the
+    // mock). The dot carries the fold (StatusChips.AutoScanCombined - paused outranks on outranks
+    // off) and pulses only while the fold is On; the value text spells each scanner out ("RS on ·
+    // CT off") so the aggregate never hides which one is in which state. Off renders DIM, not red:
+    // a scanner the user switched off is a choice, and red stays reserved for real failures.
+    // Refreshed on the light 1.5s timer (which also covers the Settings AutoScanContracts toggle,
+    // which raises no event) plus ContractScan.RunningChanged for instant flips.
     private void UpdateScanChip()
     {
-        switch (_vm.RsScanState)
+        var rs = _vm.RsScanState;
+        var ct = StatusChips.ContractScanState(
+            App.ContractScan?.IsRunning ?? false, App.Settings.Current.AutoScanContracts);
+        var combined = StatusChips.AutoScanCombined(rs, ct);
+        ScanChipText.Text = StatusChips.AutoScanText(rs, ct);
+        var brush = combined switch
         {
-            case ScanIndicator.On:
-                ScanChipText.Text = "Auto · on";
-                ScanChipText.Foreground = _chipOkBrush;
-                break;
-            case ScanIndicator.Paused:
-                ScanChipText.Text = "paused";
-                ScanChipText.Foreground = _chipWarnBrush;
-                break;
-            default:
-                ScanChipText.Text = "off";
-                ScanChipText.Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-                break;
-        }
+            ScanIndicator.On => _chipOkBrush,
+            ScanIndicator.Paused => _chipWarnBrush,
+            _ => (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+        };
+        ScanChipText.Foreground = brush;
+        ScanDot.Fill = brush;
+        Hud.PulseDot(ScanDot, combined == ScanIndicator.On);
     }
 
     /// <summary>Keeps the dock's Refinery and Hauling count badges live. Wired in the constructor to
@@ -803,10 +806,14 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateNavBadges);
     }
 
-    // Active-count badge on the Refinery rail item.
+    // Count badges on the Refinery and Hauling rail items. F14 rule: a badge counts what you can
+    // ACT ON right now. The Refinery badge switched from all-non-complete orders (which made it a
+    // permanent fixture - an always-on badge stops informing) to ready-to-collect, the same
+    // definition the overlay's REFINERY tab badge already used; before this the two disagreed
+    // whenever anything was mid-refine. Queue size stays on the labeled Operations surfaces.
     private void UpdateNavBadges()
     {
-        int orders = App.Data.GetWorkOrders().FindAll(o => o.Status != WorkOrderStatus.Complete).Count;
+        int orders = App.Data.GetWorkOrders().FindAll(o => o.Status == WorkOrderStatus.ReadyToCollect).Count;
         NavWorkBadge.Text = orders > 0 ? orders.ToString() : "";
         NavWorkPill.Visibility = orders > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -902,8 +909,12 @@ public partial class MainWindow : Window
     private void PushPinnedRouteToMap()
     {
         var routes = _tradePage?.PinnedRoutes;
-        if (routes is null || routes.Count == 0) _mapPage?.ClearPlannerRoute();
-        else _mapPage?.SetPlannerRoutes(routes.Select(r => (r.BuyTerminalId, r.SellTerminalId)).ToList());
+        // Sell-only pins (null buy terminal) draw no map leg - a leg needs two ends, and the
+        // player's end is wherever they currently are, which the map's own marker already shows.
+        var legs = routes?.Where(r => r.BuyTerminalId is not null)
+            .Select(r => (r.BuyTerminalId!.Value, r.SellTerminalId)).ToList();
+        if (legs is null || legs.Count == 0) _mapPage?.ClearPlannerRoute();
+        else _mapPage?.SetPlannerRoutes(legs);
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -1265,12 +1276,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // F14 palette: one freshness grammar with the Trade page's UEX pill (same feed, same
+        // colors) - green fresh / amber stale / red for error AND never-fetched. Cyan-fresh died
+        // here because cyan is the app's live-location identity, not its health color; and
+        // "nothing fetched" moved from dim to red because a feed the user enabled that has no
+        // data at all is a missing thing, not an absent-by-choice one.
         var (dot, value) = state switch
         {
-            "busy"  => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
-            "error" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
-            "fresh" => (Hud.Br("CyanBrush"),   Hud.Br("FgBrush")),
-            _       => (Hud.Br("FgDimBrush"),  Hud.Br("FgDimBrush")),   // stale, nodata
+            "busy"   => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
+            "error"  => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
+            "fresh"  => (Hud.Br("OkBrush"),     Hud.Br("FgBrush")),
+            "nodata" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
+            _        => (Hud.Br("AccentBrush"), Hud.Br("AccentBrush")),   // stale
         };
 
         MarketChip.Visibility = Visibility.Visible;
