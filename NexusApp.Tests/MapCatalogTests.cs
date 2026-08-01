@@ -417,6 +417,31 @@ public class MapCatalogTests
         Assert.Equal("Pyro", obj.System);
     }
 
+    // The sharpest case the raw-token tier exists for, and the reason RR_JP_NyxPyro was worth
+    // adding the moment it was captured (twice, 2026-08-01, in the owner's own Game.log): these two
+    // tokens produce the SAME display name AND the same object name, in two different systems.
+    // Given only "Pyro Gateway Station", nothing downstream could place the player at all.
+    [Fact]
+    public void ResolvePlayerLocation_TwoGatesSharingOneName_AreSeparatedByRawTokenAlone()
+    {
+        var stantonSide = Catalog.ResolvePlayerLocation("Pyro Gateway Station", rawToken: "RR_JP_StantonPyro");
+        var nyxSide = Catalog.ResolvePlayerLocation("Pyro Gateway Station", rawToken: "RR_JP_NyxPyro");
+
+        Assert.Equal("Pyro Gateway", stantonSide!.Name);
+        Assert.Equal("Pyro Gateway", nyxSide!.Name);
+        Assert.Equal("Stanton", stantonSide.System);
+        Assert.Equal("Nyx", nyxSide.System);
+        Assert.NotEqual(stantonSide.Id, nyxSide.Id);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_AmbiguousGatewayNameWithNoRawToken_StaysNull()
+    {
+        // Without the token there is no honest answer, and guessing a system would put the player
+        // marker light-years from where they are.
+        Assert.Null(Catalog.ResolvePlayerLocation("Pyro Gateway Station", rawToken: null));
+    }
+
     [Fact]
     public void ResolvePlayerLocation_NyxGatewayDisplayNameAlone_DoesNotGuessASystem()
     {

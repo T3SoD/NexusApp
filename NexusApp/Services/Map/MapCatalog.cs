@@ -214,15 +214,20 @@ public sealed class MapCatalog
     // Station" names an object in BOTH Stanton and Pyro - see
     // ResolvePlayerLocation). Only the raw token is unique enough to tell them apart, same reasoning
     // as LocationAliases.UexLocationForToken, and this table deliberately mirrors that one's
-    // ground-every-entry discipline. Every gateway token that can actually fire is here; the three
-    // uncaptured Nyx tokens are deliberately absent, so a miss falls through to null instead of
-    // guessing at a system.
+    // ground-every-entry discipline. Every gateway token that can actually fire is here; the two
+    // still-uncaptured Nyx tokens are deliberately absent, so a miss falls through to null instead
+    // of guessing at a system.
+    //
+    // RR_JP_NyxPyro is the sharpest illustration of why this table exists: standing at the Nyx-side
+    // gate, the object you are at is called "Pyro Gateway" - the SAME name as the Stanton-side one -
+    // and nothing but the raw token separates them.
     private static readonly IReadOnlyDictionary<string, (string System, string Name)> RawTokenGateways =
         new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
         {
             ["RR_JP_StantonPyro"] = ("Stanton", "Pyro Gateway"),   // Stanton-side gate to Pyro
             ["RR_JP_PyroStanton"] = ("Pyro", "Stanton Gateway"),   // Pyro-side gate to Stanton
             ["RR_JP_PyroNyx"]     = ("Pyro", "Nyx Gateway"),       // Pyro-side gate to Nyx (captured live 2026-08-01)
+            ["RR_JP_NyxPyro"]     = ("Nyx", "Pyro Gateway"),       // Nyx-side gate to Pyro (captured live twice, 2026-08-01)
         };
 
     // LocationTracker.LastKnownLocation display names that do not exact-match a MapObject.Name but

@@ -44,9 +44,9 @@ public class LocationAliasesTests
     [Fact]
     public void UexLocationForToken_UncapturedNyxTokens_StillReturnNull()
     {
-        // Three Nyx-gateway UEX Locations remain in the snapshot with no captured raw token. The
-        // file's standing rule is that a naming-convention guess is never enough to add one.
-        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
+        // TWO Nyx-gateway UEX Locations remain in the snapshot with no captured raw token
+        // (RR_JP_NyxPyro left this list on 2026-08-01 when it was captured live, twice). The file's
+        // standing rule is unchanged: a naming-convention guess is never enough to add one.
         Assert.Null(LocationAliases.UexLocationForToken("RR_JP_StantonNyx"));
         Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxStanton"));
     }
@@ -107,22 +107,30 @@ public class LocationAliasesTests
     public void UexLocationForToken_IsCaseInsensitive()
         => Assert.Equal("Pyro Gateway (Stanton)", LocationAliases.UexLocationForToken("rr_jp_stantonpyro"));
 
-    // The conflation this separate, raw-token-keyed table exists to prevent. Until 2026-08-01 the
-    // clearest demonstration was two tokens Normalizing to the same display name; removing the
-    // Terra and Magnus tokens (systems not in the game) left no such pair behind, so the guard is
-    // shown here with the case that still exists and still matters: two ends of ONE jump point,
-    // one captured and one not.
-    //
-    // RR_JP_PyroNyx and RR_JP_NyxPyro are the same gate from opposite sides. Their map objects are
-    // both named "<destination> Gateway", and that name repeats across systems, so nothing but the
-    // raw token separates them. A lookup that inferred from shape rather than requiring a real
-    // capture would hand the uncaptured side its neighbour's Location and put the player in the
-    // wrong system - so the uncaptured side must stay null.
+    // The conflation this separate, raw-token-keyed table exists to prevent, now demonstrable with
+    // BOTH ends captured (2026-08-01: RR_JP_NyxPyro appeared twice in the owner's own Game.log). These
+    // two tokens are the same gate from opposite sides. Their DISPLAY names collide outright - the
+    // gate you are looking at is named for where it leads, so the Nyx-side one displays "Pyro
+    // Gateway Station", exactly like the Stanton-side RR_JP_StantonPyro - and their map objects are
+    // both plain "Pyro Gateway", a name that exists in two systems. Nothing but the raw token can
+    // tell any of them apart, which is the whole reason UEX Locations are keyed on it.
     [Fact]
-    public void UexLocationForToken_UncapturedOppositeEnd_DoesNotBorrowItsNeighboursLocation()
+    public void UexLocationForToken_BothEndsOfOneGate_ResolveToDifferentLocations()
     {
         Assert.Equal("Nyx Gateway (Pyro)", LocationAliases.UexLocationForToken("RR_JP_PyroNyx"));
-        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
+        Assert.Equal("Pyro Gateway (Nyx)", LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
+    }
+
+    // The display-name collision itself, pinned: two DIFFERENT gates, in two different systems,
+    // showing the player the same words. Anything that keys off the display name is wrong by
+    // construction.
+    [Fact]
+    public void TwoDifferentGates_ShareOneDisplayName()
+    {
+        Assert.Equal("Pyro Gateway Station", LocationAliases.Normalize("RR_JP_StantonPyro"));
+        Assert.Equal("Pyro Gateway Station", LocationAliases.Normalize("RR_JP_NyxPyro"));
+        Assert.NotEqual(LocationAliases.UexLocationForToken("RR_JP_StantonPyro"),
+                        LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
     }
 
     // Magnus gateway tokens stay out: no player can stand at those gates, so the tokens can never
@@ -182,6 +190,8 @@ public class LocationAliasesTests
         // from the same live-UEX survey that grounded the three above (recorded verbatim in the
         // file's own "_gap_nyx" note before the token existed to pair it with).
         "Nyx Gateway (Pyro)",
+        // Same survey, same day: the reverse leg, added once RR_JP_NyxPyro was captured twice.
+        "Pyro Gateway (Nyx)",
     };
 
     [Fact]

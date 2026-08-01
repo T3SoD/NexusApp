@@ -41,11 +41,22 @@ public class LocationTrackerTests
         "requested inventory for Location[RR_JP_PyroNyx] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
-    // The Nyx-side counterpart, which has NEVER been captured and is therefore deliberately absent
-    // from both alias tables. Shaped exactly like a real gateway token, which is the point.
-    private const string UncapturedNyxGatewayReverseInventoryRequest =
-        "<2026-08-01T00:14:49.839Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+    // The Nyx-side counterpart of the gate above. Captured live on 2026-08-01, twice (00:19:50Z
+    // and 00:42:15Z), which is what let it into the alias tables. Its display name COLLIDES with
+    // the Stanton-side RR_JP_StantonPyro - both read "Pyro Gateway Station" - so this fixture is
+    // also the tracker-level proof that the raw token has to be retained.
+    private const string NyxSideGatewayInventoryRequest =
+        "<2026-08-01T00:19:50.535Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
         "requested inventory for Location[RR_JP_NyxPyro] " +
+        "[Team_CoreGameplayFeatures][Inventory]";
+
+    // A gateway token that has NEVER been captured and is therefore deliberately absent from both
+    // alias tables. Shaped exactly like a real one, which is the point. RR_JP_NyxPyro used to play
+    // this role and was promoted out of it on 2026-08-01 when the owner's own log produced it twice;
+    // "Stanton Gateway (Nyx)" is still listed in the UEX snapshot with no token to pair it with.
+    private const string UncapturedGatewayInventoryRequest =
+        "<2026-08-01T00:14:49.839Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+        "requested inventory for Location[RR_JP_NyxStanton] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
     private const string InventoryLocationTransition =
@@ -206,19 +217,33 @@ public class LocationTrackerTests
     }
 
     // An uncaptured gateway token resolves to NOTHING rather than borrowing a neighbour's answer.
-    // RR_JP_NyxPyro is shaped exactly like the real RR_JP_PyroNyx and names the opposite end of
-    // the same jump point, so a lookup that pattern-matched instead of requiring a real capture
-    // would happily hand back "Nyx Gateway (Pyro)" and place the player in the wrong system.
-    // The raw passthrough asserted here is also the visible symptom of a missing capture: the
-    // origin pill shows the ugly token, which is exactly how the gateway gap got reported in the
-    // first place. That is intended - a wrong-but-tidy name is worse than an obviously raw one.
+    // RR_JP_NyxStanton is shaped exactly like the real tokens and names a gate whose UEX Location
+    // ("Stanton Gateway (Nyx)") really does sit in the snapshot, so a lookup that pattern-matched
+    // instead of requiring a real capture would happily hand one back and place the player in the
+    // wrong system. The raw passthrough asserted here is also the visible symptom of a missing
+    // capture: the origin pill shows the ugly token, which is exactly how the gateway gap got
+    // reported in the first place. That is intended - a wrong-but-tidy name is worse than an
+    // obviously raw one.
     [Fact]
     public void Ingest_UncapturedGatewayToken_PassesThroughRaw_AndBorrowsNoUexLocation()
     {
         var t = new LocationTracker(new GameLogFeed());
-        t.Ingest(E(UncapturedNyxGatewayReverseInventoryRequest));
-        Assert.Equal("RR_JP_NyxPyro", t.LastKnownLocation);
+        t.Ingest(E(UncapturedGatewayInventoryRequest));
+        Assert.Equal("RR_JP_NyxStanton", t.LastKnownLocation);
         Assert.Null(t.LastKnownUexLocation);
+    }
+
+    // The promotion itself: the token that USED to be this file's uncaptured example now resolves
+    // end to end, because it was captured for real. Both halves matter - the display name and the
+    // UEX vocabulary diverge, and the UEX one is what makes a trade lookup succeed at the gate.
+    [Fact]
+    public void Ingest_NyxSideGatewayToken_NowResolves_AfterItsLiveCapture()
+    {
+        var t = new LocationTracker(new GameLogFeed());
+        t.Ingest(E(NyxSideGatewayInventoryRequest));
+        Assert.Equal("Pyro Gateway Station", t.LastKnownLocation);
+        Assert.Equal("Pyro Gateway (Nyx)", t.LastKnownUexLocation);
+        Assert.Equal("RR_JP_NyxPyro", t.LastKnownRawToken);
     }
 
     [Fact]
