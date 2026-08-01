@@ -6,7 +6,18 @@ namespace NexusApp.Services;
 // Hauling, work order suggestions, the Mining Codex) reads. WeekAvg / Instant / GameVersion /
 // ModifiedUtc are carried straight from the MarketPriceRow the hit was built from; Stale is
 // computed once here so callers never re-derive it.
-internal sealed record PriceHit(string TerminalName, double WeekAvg, double Instant, DateTime ModifiedUtc, string GameVersion, bool Stale)
+// TerminalId is LAST and OPTIONAL on purpose: it was added 2026-08-01 (app review) to an existing
+// record with construction sites in test fixtures, and a trailing default keeps every one of them
+// compiling untouched. 0 means "not known", which is what a hand-built fixture gets.
+//
+// Why it matters out of proportion to its size: the id was already in hand and thrown away one line
+// from where it was needed (RankedHits builds each hit from a MarketPriceRow whose first field is
+// TerminalId). Without it, every non-Trade price surface - the Codex dossier and cards, the work
+// order sell block, the decoder scan card, the overlay SCAN line - held only a NAME, so none could
+// resolve snapshot.Terminals to a MarketTerminal. That single gap is why none of them could print
+// which system a price is in, none could compute a distance, and none could click through to
+// TradePage.ShowPricesForTerminal(int), which the Starmap already calls.
+internal sealed record PriceHit(string TerminalName, double WeekAvg, double Instant, DateTime ModifiedUtc, string GameVersion, bool Stale, int TerminalId = 0)
 {
     // The number every surface displays: week average, falling back to instant when week is 0.
     public double Display => WeekAvg > 0 ? WeekAvg : Instant;
@@ -108,7 +119,7 @@ internal static class MarketQueries
             var stale = !string.IsNullOrEmpty(liveGameVersion)
                 && !string.Equals(row.GameVersion, liveGameVersion, StringComparison.OrdinalIgnoreCase);
 
-            var hit = new PriceHit(row.TerminalName, row.SellAvgWeek, row.Sell, row.ModifiedUtc, row.GameVersion, stale);
+            var hit = new PriceHit(row.TerminalName, row.SellAvgWeek, row.Sell, row.ModifiedUtc, row.GameVersion, stale, row.TerminalId);
             if (hit.Display <= 0) continue;
             hits.Add(hit);
         }

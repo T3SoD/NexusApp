@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using static NexusApp.Views.UiHelpers;
 
 namespace NexusApp.Views;
@@ -387,12 +388,32 @@ public partial class MainWindow
         Grid.SetColumn(val, 2);
         g.Children.Add(val);
 
+        // App review 2026-08-01: this used to be a bare terminal NAME, because PriceHit carried no
+        // terminal id and so this row could not resolve a MarketTerminal at all. With the id back,
+        // one shared helper appends the system and, when a live session places the player in that
+        // same system, the distance. Silence rule preserved: an unresolvable terminal returns null
+        // and this renders byte-for-byte as it did before.
+        var where = PriceLocationLabel.Describe(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                                App.Map, App.Player.Current);
         var term = new TextBlock
         {
-            Text = hit.TerminalName, FontFamily = headFont, FontSize = 11, Foreground = dim,
+            Text = where is null ? hit.TerminalName : $"{hit.TerminalName}  ({where})",
+            FontFamily = headFont, FontSize = 11, Foreground = dim,
             TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0),
         };
+        // Click through to the price browser for this exact terminal, the same jump the Starmap
+        // already makes. Mouse-only and not a Tab stop, matching the Trade chips' idiom.
+        if (hit.TerminalId > 0)
+        {
+            term.Cursor = System.Windows.Input.Cursors.Hand;
+            term.ToolTip = $"Show all prices at {hit.TerminalName}.";
+            term.MouseLeftButtonUp += (_, _) =>
+            {
+                SetActivePage("trade");
+                _tradePage?.ShowPricesForTerminal(hit.TerminalId);
+            };
+        }
         Grid.SetColumn(term, 3);
         g.Children.Add(term);
 

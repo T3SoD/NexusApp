@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 using static NexusApp.Views.UiHelpers;
 
@@ -536,11 +537,29 @@ public partial class MainWindow
 
         // Terminal name keeps TextWrapping.Wrap (brief's explicit, deliberate override of the
         // mock's single-line ellipsis - see task-11-report.md fix-round mapping).
+        // App review 2026-08-01: the dossier could only ever name a terminal, because PriceHit
+        // carried no id. With the id back, the shared helper appends the system and (with a live
+        // session in the same system) the distance, and the row clicks through to that terminal's
+        // full price board - the same jump the Starmap already makes. Silence rule: an unresolvable
+        // terminal renders exactly as before, with no click affordance.
+        var where = PriceLocationLabel.Describe(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                                App.Map, App.Player.Current);
         var name = new TextBlock
         {
-            Text = hit.TerminalName, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = nameBrush,
+            Text = where is null ? hit.TerminalName : $"{hit.TerminalName}  ({where})",
+            FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = nameBrush,
             TextWrapping = System.Windows.TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
+        if (hit.TerminalId > 0)
+        {
+            name.Cursor = System.Windows.Input.Cursors.Hand;
+            name.ToolTip = $"Show all prices at {hit.TerminalName}.";
+            name.MouseLeftButtonUp += (_, _) =>
+            {
+                SetActivePage("trade");
+                _tradePage?.ShowPricesForTerminal(hit.TerminalId);
+            };
+        }
         g.Children.Add(name);
 
         // Both value cells carry a unit (owner rulings 2026-07-27): the week average spells out
