@@ -3363,11 +3363,19 @@ public partial class OverlayWindow : Window
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
 
-        TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool mn = false) => new()
+        // FontFamily is NEVER assigned null: WPF rejects it outright with "'' is not a valid value
+        // for property 'FontFamily'", which crashed the app the first time this tab was opened.
+        // Leaving the property unset inherits from the panel, which is what the non-mono lines want.
+        TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool mn = false)
         {
-            Text = text, Foreground = brush, FontSize = size, TextWrapping = TextWrapping.Wrap,
-            FontFamily = mn ? mono : null, Margin = new Thickness(0, 0, 0, 3),
-        };
+            var tb = new TextBlock
+            {
+                Text = text, Foreground = brush, FontSize = size, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 3),
+            };
+            if (mn) tb.FontFamily = mono;
+            return tb;
+        }
 
         // WHERE YOU ARE. Silence when unknown is not an option on a tab this small - an empty panel
         // reads as broken - so this one case says so plainly instead.
