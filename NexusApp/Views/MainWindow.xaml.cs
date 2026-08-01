@@ -706,10 +706,11 @@ public partial class MainWindow : Window
         }
         else
         {
-            // F14: the shard rides the live value ("monitoring · US-E · 042") - it is parsed FROM
-            // Game.log and cannot exist without a live session, so it is session metadata, not a
-            // peer chip. StatusChips.SessionValue drops it from the offline state, where a
-            // last-seen shard would dress a dead reading as current status.
+            // F14: the shard IS the live value ("US-E · 042") - it is parsed FROM Game.log and
+            // cannot exist without a live session, so it is session metadata, not a peer chip.
+            // StatusChips.SessionValue drops it from the offline state, where a last-seen shard
+            // would dress a dead reading as current status, and carries no "monitoring" word
+            // (the owner cut it - the breathing green dot already says alive).
             var s = App.Shards?.Current;
             var shard = s is null ? null : StatusChips.ShardText(s.Region, s.Instance, s.Channel);
             SessionChipText.Text = StatusChips.SessionValue(
@@ -743,19 +744,27 @@ public partial class MainWindow : Window
         if (LocationChipText == null) return;
         var label = App.Player?.Label;
         bool known = !string.IsNullOrWhiteSpace(label);
-        LocationChipText.Text = known ? label : "unknown";
+        // A jurisdiction reading names whose SPACE the player crossed into, not where they stand
+        // (the owner's live pass, 2026-08-01: the chip read "Crusader Industries" at Crusader). Shown
+        // dim with a "space" qualifier and NO cyan pulse - the cyan live treatment is the chip's
+        // claim that the app knows the player's place, and a jurisdiction is not one.
+        bool coarse = known && App.Player!.LabelIsJurisdiction;
+        LocationChipText.Text = !known ? "unknown" : coarse ? $"{label} space" : label;
         // The value is width-capped (long outpost names trim at 130px so the strip cannot crowd
-        // the clock) - the tooltip always carries the full place.
-        LocationChipText.ToolTip = known ? label : null;
-        var brush = known ? Hud.Br("CyanBrush") : Hud.Br("FgDimBrush");
+        // the clock) - the tooltip always carries the full text.
+        LocationChipText.ToolTip = !known ? null
+            : coarse ? $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down."
+            : label;
+        var brush = !known || coarse ? Hud.Br("FgDimBrush") : Hud.Br("CyanBrush");
         LocationChipText.Foreground = brush;
         LocationDot.Fill = brush;
-        Hud.PulseDot(LocationDot, known);
+        Hud.PulseDot(LocationDot, known && !coarse);
         // Log only the flips, not every place change - the tracker already logs the timeline.
-        if (_locationChipKnown != known)
+        bool lit = known && !coarse;
+        if (_locationChipKnown != lit)
         {
-            _locationChipKnown = known;
-            Logger.Info($"[UI] header location: {(known ? label : "unknown")}");
+            _locationChipKnown = lit;
+            Logger.Info($"[UI] header location: {(known ? LocationChipText.Text : "unknown")}");
         }
     }
 

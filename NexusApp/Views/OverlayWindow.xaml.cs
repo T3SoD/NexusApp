@@ -1549,9 +1549,12 @@ public partial class OverlayWindow : Window
         if (_hubLocationLed is null || _hubLocationText is null) return;
         var place = App.Player?.Label;
         bool known = !string.IsNullOrWhiteSpace(place);
-        _hubLocationText.Text = known ? place : "unknown";
-        _hubLocationText.Foreground = known ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
-        SetLedColor(_hubLocationLed, known ? LedLocation : LedOff, pulse: known);
+        // Same jurisdiction honesty as the header chip: an area reading shows dim with a "space"
+        // qualifier and no cyan pulse, never dressed up as a place.
+        bool coarse = known && App.Player!.LabelIsJurisdiction;
+        _hubLocationText.Text = !known ? "unknown" : coarse ? $"{place} space" : place;
+        _hubLocationText.Foreground = known && !coarse ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
+        SetLedColor(_hubLocationLed, known && !coarse ? LedLocation : LedOff, pulse: known && !coarse);
     }
 
     // Read-only HUB status pill (mock .led): a bordered chip with an LED dot + short label, full text in

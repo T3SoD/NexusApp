@@ -723,10 +723,10 @@ public sealed class MapPage : UserControl
 
     // Shared zone chrome: eyebrow header (dash + label, mirrors Hud.Header's own eyebrow
     // construction) over the zone's content, with a bottom hairline separating zones.
-    private static Border Zone(string eyebrow, UIElement content)
+    private static Border Zone(string eyebrow, UIElement content, string? tag = null)
     {
         var stack = new StackPanel();
-        stack.Children.Add(ZoneHeader(eyebrow));
+        stack.Children.Add(ZoneHeader(eyebrow, tag));
         stack.Children.Add(content);
         return new Border
         {
@@ -737,7 +737,7 @@ public sealed class MapPage : UserControl
         };
     }
 
-    private static UIElement ZoneHeader(string eyebrow)
+    private static UIElement ZoneHeader(string eyebrow, string? tag = null)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
         row.Children.Add(new Border
@@ -747,6 +747,22 @@ public sealed class MapPage : UserControl
             Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 },
         });
         row.Children.Add(new TextBlock { Text = eyebrow, Style = (Style)Application.Current.FindResource("Eyebrow") });
+        // Optional status tag beside the title (first use: ROUTE BUILDER's IN DEVELOPMENT). Amber
+        // outline chip, dim enough to read as a caveat rather than a second title.
+        if (tag is not null)
+        {
+            row.Children.Add(new Border
+            {
+                BorderBrush = Hud.Br("AccentStrongBrush"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1),
+                Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = tag, FontFamily = Hud.Font("UiFont"), FontSize = 8, FontWeight = FontWeights.Bold,
+                    Foreground = Hud.Br("AccentBrush"),
+                },
+            });
+        }
         return row;
     }
 
@@ -1536,7 +1552,11 @@ public sealed class MapPage : UserControl
         _sendBtn.MouseLeftButtonUp += (_, _) => OnSendToPlanner();
         stack.Children.Add(_sendBtn);
 
-        return Zone("ROUTE BUILDER", stack);
+        // IN DEVELOPMENT tag (the owner, 2026-08-01): the zone hands a multi-stop draft to a two-field
+        // planner, so intermediate stops are dropped at the handoff (OnSendToPlanner's own note) -
+        // the tag says out loud that this surface is not finished rather than letting that read
+        // as a bug. Same amber chip language as the planner's own MARKET pill family.
+        return Zone("ROUTE BUILDER", stack, tag: "IN DEVELOPMENT");
     }
 
     private static UIElement BuildLegendRow()

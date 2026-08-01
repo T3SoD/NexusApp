@@ -33,19 +33,26 @@ public class StatusChipsTests
         // is a suffix on the session chip rather than its own surface.
         => Assert.Null(StatusChips.ShardText(region, "042", "LIVE"));
 
-    // ── SessionValue: the merged chip's value ──
+    // ── SessionValue: the merged chip's value. No "monitoring" (the owner, 2026-08-01): the breathing
+    // green dot and the SESSION label already say "alive", so live carries only facts. ──
 
     [Fact]
-    public void SessionValue_LiveWithShard_CarriesIt()
-        => Assert.Equal("monitoring · US-E · 042", StatusChips.SessionValue(true, "", "US-E · 042"));
+    public void SessionValue_LiveWithShard_IsJustTheShard()
+        => Assert.Equal("US-E · 042", StatusChips.SessionValue(true, "", "US-E · 042"));
 
     [Fact]
-    public void SessionValue_LiveNoShard_PlainMonitoring()
-        => Assert.Equal("monitoring", StatusChips.SessionValue(true, "", null));
+    public void SessionValue_LiveNoShardNoChannel_IsEmpty()
+        // Correct silence: nothing detected yet means nothing to say - the dot carries "alive".
+        => Assert.Equal("", StatusChips.SessionValue(true, "", null));
 
     [Fact]
-    public void SessionValue_ChannelSuffixRidesBeforeShard()
-        => Assert.Equal("monitoring (PTU) · US-E", StatusChips.SessionValue(true, " (PTU)", "US-E"));
+    public void SessionValue_LiveShardPlusChannelSuffix()
+        // ChipSuffix's real format: empty on LIVE, " · CHANNEL" otherwise (GameChannels).
+        => Assert.Equal("US-E · PTU", StatusChips.SessionValue(true, " · PTU", "US-E"));
+
+    [Fact]
+    public void SessionValue_LiveChannelOnly_DropsTheLeadingSeparator()
+        => Assert.Equal("PTU", StatusChips.SessionValue(true, " · PTU", null));
 
     [Fact]
     public void SessionValue_Offline_NeverCarriesShard()

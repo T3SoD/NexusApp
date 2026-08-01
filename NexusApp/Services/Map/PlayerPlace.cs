@@ -39,6 +39,12 @@ public sealed class PlayerPlace
     /// SAY where the player is should prefer this; callers that want to MEASURE need Current.</summary>
     public string? Label => _locations.LastKnownLocation;
 
+    /// <summary>True when <see cref="Label"/> is a JURISDICTION reading - whose space the player
+    /// crossed into, not a place they are standing (2026-08-01: "Crusader Industries" rendered as
+    /// a location on the header chip). Display surfaces should qualify these, not hide them: a
+    /// coarse reading is still the freshest fact available.</summary>
+    public bool LabelIsJurisdiction => _locations.LastKnownIsJurisdiction;
+
     /// <summary>When that reading was taken. The timeline is sparse and boundary-driven by nature, so
     /// anything shown to the user should be dated rather than implied to be live.</summary>
     public DateTime? SeenUtc => _locations.LastSeenUtc;

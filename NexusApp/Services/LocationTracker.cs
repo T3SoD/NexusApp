@@ -52,6 +52,13 @@ public sealed class LocationTracker : IDisposable
     // signal ingested yet).
     public string? LastKnownRawToken { get; private set; }
 
+    // True when LastKnownLocation came from a JURISDICTION crossing rather than a real place
+    // signal (the owner's live pass, 2026-08-01: the header LOCATION chip read "Crusader Industries"
+    // at Crusader - a jurisdiction names whose SPACE you are in, not where you are). Stored so
+    // display surfaces can say so instead of dressing an area up as a location; the value itself
+    // still stands, since a coarse reading beats none.
+    public bool LastKnownIsJurisdiction { get; private set; }
+
     public DateTime? LastSeenUtc { get; private set; }
     public event Action? Changed;
 
@@ -104,6 +111,7 @@ public sealed class LocationTracker : IDisposable
         LastKnownLocation = display;
         LastKnownUexLocation = LocationAliases.UexLocationForToken(place);
         LastKnownRawToken = place;
+        LastKnownIsJurisdiction = kind == "jurisdiction";
         LastSeenUtc = seenUtc;
         if (!moved) return;
         var suffix = string.Equals(display, place, StringComparison.Ordinal)

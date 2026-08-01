@@ -107,12 +107,13 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- SESSION telemetry chip: Game.log tracking is always on (green = monitoring, red = offline,
-                     amber = no Game.log path found - click through to Settings > GAME to fix it). State,
-                     colours, tooltip and click target are driven by UpdateSessionChip in code-behind.
-                     F14: the old SHARD chip folded in here - the shard is parsed FROM Game.log and cannot
-                     exist without a live session, so it rides the live value as "monitoring · US-E · 042"
-                     (StatusChips.SessionValue) instead of holding its own header slot. -->
+                <!-- SESSION telemetry chip: Game.log tracking is always on (green breathing = live,
+                     red = offline, amber = no Game.log path found - click through to Settings > GAME to
+                     fix it). State, colours, tooltip and click target are driven by UpdateSessionChip in
+                     code-behind. F14: the old SHARD chip folded in here - the shard is parsed FROM
+                     Game.log and cannot exist without a live session, so it IS the live value
+                     ("US-E · 042", StatusChips.SessionValue) instead of holding its own header slot;
+                     the word "monitoring" was cut (the owner) since the breathing dot already says alive. -->
                 <Border x:Name="SessionChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"

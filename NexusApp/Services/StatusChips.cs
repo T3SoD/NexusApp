@@ -1,3 +1,4 @@
+using System;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Services;
@@ -25,13 +26,19 @@ public static class StatusChips
         return text;
     }
 
-    /// <summary>The merged session chip's value text. The shard rides only the live state: with
-    /// the session offline the last-seen shard is history, not status, and appending it would
-    /// dress a dead reading as a current one.</summary>
+    /// <summary>The merged session chip's value text. Live carries only FACTS - the shard and the
+    /// channel suffix - because the breathing green dot and the SESSION label already say "alive";
+    /// the word "monitoring" restated them and the owner cut it (2026-08-01). With nothing detected the
+    /// live value is empty, which is correct silence, not a gap. The shard rides only the live
+    /// state: with the session offline the last-seen shard is history, not status, and appending
+    /// it would dress a dead reading as a current one.</summary>
     public static string SessionValue(bool live, string channelSuffix, string? shard)
-        => live
-            ? "monitoring" + channelSuffix + (shard is null ? "" : $" · {shard}")
-            : "offline" + channelSuffix;
+    {
+        if (!live) return "offline" + channelSuffix;
+        var value = (shard ?? "") + channelSuffix;
+        // A bare channel suffix (" · PTU") would otherwise lead with its separator.
+        return value.StartsWith(" · ", StringComparison.Ordinal) ? value[3..] : value;
+    }
 
     /// <summary>The contract scanner's three-state read, extracted verbatim from the overlay's
     /// SyncHaulingControls so the header AUTO-SCAN chip and the overlay HUB LED can never derive
