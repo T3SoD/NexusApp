@@ -1,11 +1,30 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 using NexusApp.Models;
 
 namespace NexusApp.Services;
 
+// NOTE ON THE MARKER'S position [x,y,z], which this record deliberately no longer carries.
+//
+// The coordinates are NOT universe coordinates and cannot be compared with the geometry catalog's.
+// They are relative to the marker's own zone host, and the line names that host in a separate
+// zoneHostId field. Three real markers from one Stanton session, 2026-07-31, each with a different
+// zoneHostId, make it unarguable:
+//
+//   zoneHostId [729969381133]  position [x: 42908.6,        y: 28314.8,        z: -360.7]
+//   zoneHostId [729968885546]  position [x: 18588852971.4,  y: -22152678616.8, z: 2691106.8]
+//   zoneHostId [729968971474]  position [x: 0.0,            y: 0.0,            z: 0.0]
+//
+// Six orders of magnitude apart, and one sitting exactly on its container's origin. Converting any
+// of them into the frame the map uses would need a zoneHostId -> container map plus the container's
+// own transform, and no such mapping exists anywhere in the app or its data.
+//
+// So the fields were removed (app review G13: written on every leg, read by nothing) instead of
+// being wired into a distance. Anything that placed a haul stop from these numbers would produce a
+// confident, wrong answer - the worst possible failure for a distance. Haul stops are placed by
+// NAME through the geometry catalog, like every other stop. The regex below still MATCHES the
+// position block, because it is a reliable part of the line's shape; it just no longer captures it.
 public record MarkerInfo(string MissionId, string Generator, string Contract, HaulRole Role,
-                         string CargoKey, int LegIndex, string ObjectiveId, double X, double Y, double Z);
+                         string CargoKey, int LegIndex, string ObjectiveId);
 public record DeliverInfo(string MissionId, string ObjectiveId, string Commodity, int TargetScu, string Destination);
 public record AcceptInfo(string MissionId, string Title);
 public record CompletedInfo(string MissionId, string ObjectiveId);
@@ -19,7 +38,7 @@ public static class HaulLogParser
         @"<CLocalMissionPhaseMarker::CreateMarker>.*?missionId \[(?<mid>[0-9a-f-]+)\].*?" +
         @"generator name \[(?<gen>[^\]]+)\].*?contract \[(?<contract>[^\]]+)\].*?" +
         @"objectiveId \[(?<role>pickup|dropoff)_(?<key>[0-9a-f-]+_(?<leg>\d+))\].*?" +
-        @"position \[x: (?<x>[-0-9.]+), y: (?<y>[-0-9.]+), z: (?<z>[-0-9.]+)\]",
+        @"position \[x: [-0-9.]+, y: [-0-9.]+, z: [-0-9.]+\]",
         RegexOptions.Compiled);
 
     private static readonly Regex Deliver = new(
@@ -60,8 +79,7 @@ public static class HaulLogParser
         return new MarkerInfo(
             m.Groups["mid"].Value, m.Groups["gen"].Value, m.Groups["contract"].Value, role,
             m.Groups["key"].Value, int.Parse(m.Groups["leg"].Value),
-            $"{m.Groups["role"].Value}_{m.Groups["key"].Value}",
-            D(m.Groups["x"].Value), D(m.Groups["y"].Value), D(m.Groups["z"].Value));
+            $"{m.Groups["role"].Value}_{m.Groups["key"].Value}");
     }
 
     public static DeliverInfo? ParseDeliver(string raw)
@@ -124,6 +142,4 @@ public static class HaulLogParser
     private static bool IsHaulContract(string contract) =>
         contract.Contains("HaulCargo", StringComparison.OrdinalIgnoreCase) ||
         contract.Contains("Hauling", StringComparison.OrdinalIgnoreCase);
-
-    private static double D(string s) => double.Parse(s, CultureInfo.InvariantCulture);
 }

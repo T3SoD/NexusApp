@@ -18,7 +18,18 @@ public class HaulLogParserTests
         Assert.Equal("pickup_6e9335e8-f62e-4eca-8fc5-a42ab1c3ab7d_0", m.ObjectiveId);
         Assert.Equal("6e9335e8-f62e-4eca-8fc5-a42ab1c3ab7d_0", m.CargoKey);
         Assert.Equal(0, m.LegIndex);
-        Assert.Equal(2281204.528538, m.X, 3);
+    }
+
+    // The marker line's position block still has to be PRESENT for the line to parse - it is part
+    // of the shape that identifies a real marker - but its numbers are deliberately not captured.
+    // They are zone-local, not universe coordinates (see HaulLogParser's own note for the three
+    // real log lines that establish it), so nothing may place a haul stop from them.
+    [Fact]
+    public void ParseMarker_LineWithNoPositionBlock_DoesNotParse()
+    {
+        var noPosition = System.Text.RegularExpressions.Regex.Replace(
+            HaulLogParserFixtures.MarkerPickup, @", position \[x: [^\]]+\]", "");
+        Assert.Null(HaulLogParser.ParseMarker(noPosition));
     }
 
     [Fact]
