@@ -294,11 +294,7 @@ public sealed partial class TradePage
             // to `display` itself only matters before the map is ever populated, and "ANY" always
             // maps to itself.
             var name = _destDisplayToName is not null && _destDisplayToName.TryGetValue(display, out var real) ? real : display;
-            _destSelectedName = name;
-            App.Settings.Current.TradeDestManual = name == AnyDestination ? null : name;
-            App.Settings.Save();
-            Logger.Info($"[UI] trade: destination {name}");
-            RebuildPlanner();
+            SetDest(name);
         };
         destGrp.Children.Add(_destCombo);
         routeRow.Children.Add(destGrp);
@@ -494,6 +490,23 @@ public sealed partial class TradePage
         App.Settings.Current.TradeStartManual = kind;
         App.Settings.Save();
         Logger.Info($"[UI] trade: start {kind}");
+        RebuildPlanner();
+    }
+
+    // DESTINATION's counterpart to SetStart, extracted from the combo's own SelectionChanged so the
+    // map's SEND TO PLANNER has a single path to set a destination (app review: it previously had
+    // none, which is part of why it could only ever send a start). Same no-op-on-unchanged guard, so
+    // re-picking what is already selected never logs or reruns. Null and "" both mean ANY, matching
+    // AppSettings.TradeDestManual's own contract.
+    private void SetDest(string? name)
+    {
+        var chosen = string.IsNullOrEmpty(name) ? AnyDestination : name;
+        if (_destSelectedName == chosen) return;
+
+        _destSelectedName = chosen;
+        App.Settings.Current.TradeDestManual = chosen == AnyDestination ? null : chosen;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: destination {chosen}");
         RebuildPlanner();
     }
 

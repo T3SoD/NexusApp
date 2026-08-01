@@ -776,7 +776,7 @@ public sealed partial class TradePage : UserControl
     // ── MAP tab hooks (Task 8, starmap MAP tab integration) ──────────────────────────────────
     // Session-only pin (not persisted - a route pin is a "what I'm looking at right now" marker,
     // not a saved preference; nothing in AppSettings' fixed contract has room for it either). The
-    // WPF wiring here (PinRoute, the row's PIN chip, PrefillPlannerOriginFromMap's field writes,
+    // WPF wiring here (PinRoute, the row's PIN chip, SendRouteFromMap's field writes,
     // ShowPricesForTerminal's tab switch) is not unit tested - constructing a real TradePage needs
     // a live App/window context, too heavy for a unit test - but the stale-pin DECISION it depends
     // on is: RoutePlanner.PinSurvivesRefresh (Services/RoutePlanner.cs), unit tested directly in
@@ -814,20 +814,40 @@ public sealed partial class TradePage : UserControl
         PinnedRouteChanged?.Invoke();
     }
 
-    /// <summary>Called when the user picks "set as planner start" on a MAP tab terminal pin:
-    /// seeds the ROUTE section's STARTING LOCATION from that terminal's name, switches to the
-    /// Planner flow, and reruns it against the new start. A terminal id that does not resolve (a
-    /// stale pin from a snapshot that has since changed) is a silent no-op - never half-applies.
-    /// Routed through SetStart so the persisted value, the log line, the combo's own selection
-    /// refresh, and the rerun all stay on the one path the combo itself uses; picking a start the
-    /// planner already has is SetStart's own no-op, so this only ever costs the tab switch.</summary>
-    internal void PrefillPlannerOriginFromMap(int terminalId)
+    // PrefillPlannerOriginFromMap was removed 2026-08-01 (app review). It took a single terminal id
+    // and seeded only STARTING LOCATION, and its doc comment described a per-pin "set as planner
+    // start" action that does not exist on the map - its one real caller was SEND TO PLANNER, which
+    // is exactly the path that was dropping every stop after the first. SendRouteFromMap below
+    // replaces it and carries both ends.
+
+    /// <summary>The map's ROUTE BUILDER handing over a whole run: the first stop becomes STARTING
+    /// LOCATION and the last becomes DESTINATION. Added 2026-08-01 (app review) because SEND TO
+    /// PLANNER used to forward only the first stop, so a numbered multi-stop route with per-leg
+    /// distances and a TOTAL arrived as a start with DESTINATION still on ANY - a contract mismatch
+    /// the receiving method's own doc comment ("set as planner start") made visible in the code.
+    /// Either end failing to resolve is a silent no-op on that end only; the start is applied first
+    /// so a resolvable start still lands even if the destination has since fallen out of the
+    /// snapshot. Both go through the same SetStart/SetDest paths the combos use, so persistence,
+    /// logging, combo refresh and the rerun all stay on one road.</summary>
+    internal void SendRouteFromMap(int startTerminalId, int destTerminalId)
     {
         var terminals = App.Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>();
-        if (TradeOriginResolver.OriginNameForTerminal(terminalId, terminals) is not { } name) return;
 
-        Logger.Info($"[UI] trade: start prefilled from map ({name})");
-        SetStart(name);
+        if (TradeOriginResolver.OriginNameForTerminal(startTerminalId, terminals) is { } startName)
+        {
+            Logger.Info($"[UI] trade: start prefilled from map route ({startName})");
+            SetStart(startName);
+        }
+
+        // Reuses OriginNameForTerminal despite the name: it is a plain id-to-MarketTerminal.Name
+        // lookup, and Name is exactly what BOTH pickers persist (TradeStartManual and
+        // TradeDestManual). A second identical method for the destination side would be a copy.
+        if (TradeOriginResolver.OriginNameForTerminal(destTerminalId, terminals) is { } destName)
+        {
+            Logger.Info($"[UI] trade: destination prefilled from map route ({destName})");
+            SetDest(destName);
+        }
+
         SwitchTab(0);
     }
 }

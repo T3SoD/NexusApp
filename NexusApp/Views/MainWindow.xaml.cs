@@ -858,7 +858,7 @@ public partial class MainWindow : Window
             // "guides"/"trade" branches below), synchronously, so the field it populates is ready
             // for the follow-up call the moment SetActivePage returns - no separate Init call needed.
             _mapPage.OpenGuideRequested += id => { SetActivePage("guides"); _guidesPage?.ShowGuideById(id); };
-            _mapPage.OpenPlannerRequested += tid => { SetActivePage("trade"); _tradePage?.PrefillPlannerOriginFromMap(tid); };
+            _mapPage.OpenPlannerRequested += (startTid, destTid) => { SetActivePage("trade"); _tradePage?.SendRouteFromMap(startTid, destTid); };
             _mapPage.OpenPricesRequested += tid => { SetActivePage("trade"); _tradePage?.ShowPricesForTerminal(tid); };
             PageMap.Children.Add(_mapPage);
         }

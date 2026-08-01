@@ -446,6 +446,7 @@ public partial class OverlayWindow : Window
         // SaveBounds, so SaveBounds' size guard stays armed across the whole teardown (see there).
         if (on) { _ghostActive = true; EnterGhost(restore: source == "restore"); }
         else ExitGhost();
+        RefreshCloseGlyphTooltip();
     }
 
     // Ghost transitions shrink the overlay to (or toward) the rail; a Refinery Tracker flyout
@@ -582,6 +583,7 @@ public partial class OverlayWindow : Window
         _ghostMotionGen++;                             // orphan any in-flight slide
         if (_ghostPanelOpen) LeaveActiveTabForGhost();
         _ghostPanelOpen = false;
+        RefreshCloseGlyphTooltip();
         _ghostFlyoutOpen = false;
         // Normal mode's header gear can leave its own flyout state behind when ghost mode engages
         // mid-open (Settings toggle, live from anywhere): reset both here so a later normal-mode
@@ -615,6 +617,7 @@ public partial class OverlayWindow : Window
         var gen = ++_ghostMotionGen;
         var wasOpen = _ghostPanelOpen;
         _ghostPanelOpen = true;
+        RefreshCloseGlyphTooltip();
         var (win, mon, dpi) = GhostContext();
         var s = App.Settings.Current;
         // Where the rail is has to come from the WINDOW's actual footprint, not from _ghostPanelOpen.
@@ -654,6 +657,7 @@ public partial class OverlayWindow : Window
         HideRefineryTrackerForGhost();
         var gen = ++_ghostMotionGen;
         _ghostPanelOpen = false;
+        RefreshCloseGlyphTooltip();
         var tab = _activeTab;
         LeaveActiveTabForGhost();
         GhostRail.SetActive(null);
@@ -1587,11 +1591,29 @@ public partial class OverlayWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
+        // App review 2026-08-01: in ghost mode this header stays visible above an expanded ghost
+        // panel (documented at the header-visibility comment below, and QuickSettings_Click already
+        // branches on _ghostActive the same way one handler up). So this glyph sat on the panel the
+        // user had just opened and killed the WHOLE overlay - which also pauses the scanner, via
+        // MainWindow wiring _overlay.Hidden to PauseScanner. Closing the overlay is already covered
+        // by the rail's own bottom-pinned glyph, which carries a CLOSE OVERLAY tooltip; this one had
+        // no tooltip at all, so the unlabelled control was the destructive one. In ghost mode it now
+        // closes the PANEL and returns to the rail. Normal mode is unchanged.
+        if (_ghostActive && _ghostPanelOpen) { CollapseGhostPanel(); return; }
+
         SaveBounds();
         _woFlyout?.Hide();
         _ordersTicker?.Stop();
         _ordersTicker = null;
         Hide();
+    }
+
+    /// <summary>Keeps the header close glyph's tooltip honest about what it will actually do, which
+    /// differs by mode (see Close_Click). Called from every site that changes ghost state.</summary>
+    private void RefreshCloseGlyphTooltip()
+    {
+        if (CloseBtn == null) return;
+        CloseBtn.ToolTip = _ghostActive && _ghostPanelOpen ? "CLOSE PANEL" : "CLOSE OVERLAY";
     }
 
     // Persists window position/size plus the RECENT strip's current height (the strip is scan-only and

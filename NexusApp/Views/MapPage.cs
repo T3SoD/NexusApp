@@ -125,7 +125,9 @@ public sealed class MapPage : UserControl
     private TextBlock _measureOutLabel = null!;
     private TextBlock _measureOutValue = null!;
 
-    public event Action<int>? OpenPlannerRequested;    // SEND TO PLANNER (first draft stop's terminal id)
+    // SEND TO PLANNER: (first draft stop's terminal id, last draft stop's terminal id). Both ends
+    // travel, not just the first - see OnSendToPlanner.
+    public event Action<int, int>? OpenPlannerRequested;
     public event Action<int>? OpenPricesRequested;     // VIEW PRICES (terminal id)
     public event Action<string>? OpenGuideRequested;   // OPEN GUIDE (GuideCatalog id)
 
@@ -520,21 +522,37 @@ public sealed class MapPage : UserControl
         Logger.Info($"[UI] map: route remove {_catalog.ById(id)?.Name}");
     }
 
+    // App review 2026-08-01: this used to forward ONLY the first stop's terminal, so a numbered
+    // multi-stop route with per-leg distances and a TOTAL row arrived at the planner as a start with
+    // DESTINATION still on ANY - the zone is called ROUTE BUILDER and its hint says "The committed
+    // route stays owned by the TRADE planner", so every stop after the first was silently dropped.
+    // Both ends now travel: first stop becomes STARTING LOCATION, last becomes DESTINATION. That is
+    // the honest contract for a two-field planner; intermediate stops still cannot be expressed
+    // there, which is a planner capability question, not something to paper over here.
     private void OnSendToPlanner()
     {
         if (_draft.Count < 2) return;
 
         var (_, total) = MapSceneBuilder.DraftLegs(_draft, _catalog);
-        if (_pins.TradeTerminalsByObject.TryGetValue(_draft[0], out var terms) && terms.Count > 0)
+        int? startTerm = FirstTradeTerminal(_draft[0]);
+        int? destTerm = FirstTradeTerminal(_draft[^1]);
+
+        if (startTerm is null || destTerm is null)
         {
-            OpenPlannerRequested?.Invoke(terms[0]);
-            Logger.Info($"[UI] map: route send -> planner ({_draft.Count} stops, {MapCatalog.FormatGm(total)})");
+            // Names the end that failed, because "no terminals" on a six-stop route is not
+            // actionable without knowing which end to fix.
+            var which = startTerm is null ? (destTerm is null ? "both ends" : "first stop") : "last stop";
+            Logger.Info($"[UI] map: route send skipped (no trade terminal for {which})");
+            return;
         }
-        else
-        {
-            Logger.Info("[UI] map: route send skipped (no terminals for first stop)");
-        }
+
+        OpenPlannerRequested?.Invoke(startTerm.Value, destTerm.Value);
+        Logger.Info($"[UI] map: route send -> planner ({_draft.Count} stops, {MapCatalog.FormatGm(total)}, "
+                    + $"start {_catalog.ById(_draft[0])?.Name}, dest {_catalog.ById(_draft[^1])?.Name})");
     }
+
+    private int? FirstTradeTerminal(int objectId) =>
+        _pins.TradeTerminalsByObject.TryGetValue(objectId, out var terms) && terms.Count > 0 ? terms[0] : null;
 
     private void OnViewPrices()
     {
