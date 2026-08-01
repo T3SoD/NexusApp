@@ -74,6 +74,7 @@ public partial class OverlayWindow : Window
     // Static-event handlers held as fields so OnClosed can detach them (a recreated overlay must not leak).
     private readonly Action<string> _onOrderReady;
     private readonly Action _onMarketChanged;
+    private readonly Action _onLocationChanged;
 
     public OverlayWindow(MainViewModel vm)
     {
@@ -205,6 +206,15 @@ public partial class OverlayWindow : Window
         // market fan-out follows).
         _onMarketChanged = () => Dispatcher.BeginInvoke(RefreshMarketSellLines);
         App.Market.Changed += _onMarketChanged;
+
+        // Live player location on the TRADE tab (the owner, 2026-08-01: "current location in the overlay
+        // tab does not update live like it does in the main app"). The tab was only ever repainted
+        // on a tab switch or a pin change, so a boundary crossing mid-flight left CURRENT LOCATION
+        // and every band position stale - on the one surface that is actually on screen while
+        // crossing boundaries. Same permanent-subscription-plus-visibility-guard idiom MapPage's
+        // player marker already uses, and Changed fires off the UI thread, so marshal.
+        _onLocationChanged = () => Dispatcher.BeginInvoke(() => { if (IsTabPresented("trade")) RebuildTradePanel(); });
+        App.Locations.Changed += _onLocationChanged;
 
         // Foreground gating: when neither Nexus nor Star Citizen is in front, OCR auto-scans pause.
         // Re-sync the HUB scan LEDs so they flip to/from the yellow paused state as that happens.
@@ -2302,6 +2312,7 @@ public partial class OverlayWindow : Window
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
         App.Market.Changed -= _onMarketChanged;
+        App.Locations.Changed -= _onLocationChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
         App.ContractScan.RunningChanged -= SyncContractFromShared;
         App.ContractScan.StageChanged -= OnContractStageChanged;
