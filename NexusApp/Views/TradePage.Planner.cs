@@ -384,6 +384,7 @@ public sealed partial class TradePage
         BuildPlannerChrome();
         if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
         _plannerResults.Children.Clear();
+        _pinChips.Clear();   // the chips belonged to the rows just dropped
         _plannerExpanded = -1;
 
         var snap = App.Market.Snapshot;
@@ -815,11 +816,10 @@ public sealed partial class TradePage
             // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
             // second effect, and the tooltip below is where that belongs.
             Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
-            Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush"),
         };
-        return new Border
+        var chip = new Border
         {
-            BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush"), BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Cursor = Cursors.Hand,
             Margin = new Thickness(8, 0, 0, 0), Child = text, VerticalAlignment = VerticalAlignment.Center,
             // Reworded 2026-08-01 (app review): the old text promised the route "stays here through
@@ -828,10 +828,37 @@ public sealed partial class TradePage
             // pin's actual payoff is on other surfaces entirely, which no Trade surface mentioned.
             // Reworded again the same day, once several routes could be pinned at once: the chip
             // now names its main destination and the tooltip carries the rest, including the cap.
-            ToolTip = active
-                ? "Stop showing this route in the overlay and on the Starmap."
-                : $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.",
         };
+        ApplyPinChipVisual(chip, active);
+        return chip;
+    }
+
+    // Repaints an existing chip rather than rebuilding it (the owner's live pass, 2026-08-01: "when i
+    // click pin to overlay the main app flashes and lags a bit"). The click handler used to call
+    // RebuildPlanner, which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
+    // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the
+    // flash, the rank plus 25 rebuilds is the lag, and it also collapsed whatever row the user had
+    // expanded. Nothing about the ranking changes when a route is pinned.
+    private static void ApplyPinChipVisual(Border chip, bool active)
+    {
+        ((TextBlock)chip.Child).Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
+        chip.BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush");
+        chip.ToolTip = active
+            ? "Stop showing this route in the overlay and on the Starmap."
+            : $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.";
+    }
+
+    // Every pin chip currently on screen, so a pin can repaint all of them in place. ALL of them,
+    // not just the one clicked: pinning at the cap evicts the OLDEST pin, and that route may be
+    // visible in this same list, so its chip has to go dim in the same gesture.
+    private readonly List<(TradeRoute Route, Border Chip)> _pinChips = new();
+
+    /// <summary>Repaints every pin chip on screen from the current pin list. Internal because the
+    /// overlay's own per-card close reaches it through MainWindow: that path used to call Refresh(),
+    /// which rebuilds all THREE flows (planner, sell, prices) to dim one chip.</summary>
+    internal void RefreshPinChips()
+    {
+        foreach (var (route, chip) in _pinChips) ApplyPinChipVisual(chip, IsPinned(route));
     }
 
     private static TextBlock FieldLabel(string text) => new()
@@ -1009,11 +1036,12 @@ public sealed partial class TradePage
         // three hand-written comparisons.
         // Last in the head row: the informational tags read together, the action sits at the end.
         var pinChip = PinChip(IsPinned(r));
+        _pinChips.Add((r, pinChip));
         pinChip.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;   // never bubble to the row host and toggle the expand band
             PinRoute(r);
-            RebuildPlanner();
+            RefreshPinChips();   // repaint in place; see ApplyPinChipVisual for why not a rebuild
         };
         head.Children.Add(pinChip);
         Grid.SetRow(head, 0); Grid.SetColumn(head, 0);

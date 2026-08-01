@@ -1502,7 +1502,10 @@ public partial class MainWindow : Window
         _overlay.UnpinRouteRequested += pin =>
         {
             _tradePage?.UnpinRoute(pin);
-            if (_activePage == "trade") _tradePage?.Refresh();
+            // Repaint the chips, do NOT Refresh(): that rebuilds the planner, the sell flow and the
+            // price browser to dim one chip, and the planner rebuild alone re-ranks ~2,600 rows and
+            // replays 25 rows of entrance cascade. Same reasoning as the PIN chip's own click.
+            if (_activePage == "trade") _tradePage?.RefreshPinChips();
         };
         PushPinnedRoutesToOverlay();
     }
