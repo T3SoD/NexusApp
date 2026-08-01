@@ -107,6 +107,7 @@ public sealed class MapPage : UserControl
     private TextBlock _distValue = null!;
     private TextBlock _distLabel = null!;
     private WrapPanel _oreRow = null!;
+    private WrapPanel _terminalRow = null!;   // app review F10: one chip per UEX terminal on this object
     private Border _hangarChip = null!;
     private TextBlock _hangarValue = null!;
     private TextBlock _hangarLabel = null!;
@@ -614,8 +615,13 @@ public sealed class MapPage : UserControl
     // Falls back to terms[0] when none is priced, so the action still does what it always did rather
     // than becoming a dead button.
     //
-    // Still arbitrary when several terminals on one object are priced. Surfacing the count and
-    // letting the user pick is the real fix and is a UI change, deliberately not smuggled in here.
+    // App review F10, resolved 2026-08-01: the arbitrary pick is GONE from the prices path - the
+    // SELECTION zone now lists every terminal as its own chip whenever there is more than one, and
+    // VIEW PRICES stands down in that case (RefreshSelectionZone). This remains the picker for
+    // SEND TO PLANNER, where it is not arbitrary in the same way: the planner takes exactly one
+    // stop per end, so something has to choose, and "a terminal that actually has prices" is the
+    // only defensible rule available. It is also still the VIEW PRICES path for the single-terminal
+    // case, where there is nothing to choose between.
     private int? BestTradeTerminal(int objectId)
     {
         if (!_pins.TradeTerminalsByObject.TryGetValue(objectId, out var terms) || terms.Count == 0)
@@ -1275,6 +1281,13 @@ public sealed class MapPage : UserControl
         _oreRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
         content.Children.Add(_oreRow);
 
+        // TERMINALS (app review F10). One map object routinely carries several UEX terminals - a
+        // station's admin office, its cargo deck, its shops - and the panel named none of them,
+        // while VIEW PRICES silently picked one. Now every terminal is a chip and the choice is the
+        // user's. Only built when there is a choice to make; see RefreshSelectionZone.
+        _terminalRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
+        content.Children.Add(_terminalRow);
+
         var hangInner = new StackPanel { Orientation = Orientation.Horizontal };
         _hangarValue = new TextBlock { FontFamily = Hud.Font("MonoFont"), FontSize = 14, Foreground = Hud.Br("DangerBrush") };
         _hangarLabel = new TextBlock { FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -1349,6 +1362,37 @@ public sealed class MapPage : UserControl
         Child = new TextBlock { Text = ore, FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("OkBrush") },
     };
 
+    // One terminal chip (app review F10). Priced terminals read in the trade accent and unpriced
+    // ones stay dim: with several terminals on one station, "which of these actually has prices" is
+    // the first thing the user needs, and it is exactly what BestTradeTerminal used to decide for
+    // them silently. Every chip opens ITS OWN terminal, so the arbitrary pick is gone from this path
+    // entirely rather than being made a bit less arbitrary.
+    private Border BuildTerminalChip(int terminalId, string name, bool priced)
+    {
+        var chip = new Border
+        {
+            Background = priced ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush"),
+            BorderBrush = priced ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 3, 5, 0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = priced ? $"Open prices for {name}." : $"{name} has no priced rows right now. Open it anyway.",
+            Child = new TextBlock
+            {
+                Text = name, FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+                Foreground = priced ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"),
+                MaxWidth = 210, TextTrimming = TextTrimming.CharacterEllipsis,
+            },
+        };
+        chip.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] map: open TRADE prices for terminal {terminalId}");
+            OpenPricesRequested?.Invoke(terminalId);
+        };
+        return chip;
+    }
+
     // Hint copy for a gated TRADE layer. Three genuinely different states hide behind the single
     // TradeGated flag, and one static string cannot serve all three: with the question unanswered
     // the one-click strip is now sitting directly above the map (B7), so pointing at Settings sends
@@ -1415,8 +1459,36 @@ public sealed class MapPage : UserControl
         _hangarChip.Visibility = showHangar ? Visibility.Visible : Visibility.Collapsed;
         if (showHangar) RefreshHangarChip();
 
+        // TERMINALS (app review F10). Shown only when there is genuinely a choice: with one
+        // terminal the VIEW PRICES button already goes to the only place it could, and a lone chip
+        // beside it would be the same action twice.
+        _terminalRow.Children.Clear();
+        var terminalIds = isTrade && _tradeOn && _pins.TradeTerminalsByObject.TryGetValue(obj.Id, out var ids)
+            ? ids : Array.Empty<int>();
+        bool showTerminals = terminalIds.Count > 1;
+        _terminalRow.Visibility = showTerminals ? Visibility.Visible : Visibility.Collapsed;
+        if (showTerminals)
+        {
+            var snapshot = App.Market.Snapshot;
+            var byId = snapshot?.Terminals.Rows.ToDictionary(t => t.Id);
+            var priced = new HashSet<int>();
+            foreach (var r in snapshot?.TradePrices.Rows ?? new List<TradePriceRow>()) priced.Add(r.TerminalId);
+
+            foreach (var id in terminalIds)
+            {
+                // A terminal id with no row in the snapshot cannot be named, and an unnamed chip is
+                // not a choice - skip it rather than offering "Terminal 4812".
+                if (byId is null || !byId.TryGetValue(id, out var terminal) || string.IsNullOrWhiteSpace(terminal.Name))
+                    continue;
+                _terminalRow.Children.Add(BuildTerminalChip(id, TradeOriginResolver.LocationFirst(terminal.Name), priced.Contains(id)));
+            }
+            // Everything got skipped: fall back to the single button rather than an empty row.
+            showTerminals = _terminalRow.Children.Count > 1;
+            _terminalRow.Visibility = showTerminals ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         _addBtn.Visibility = (isTrade && _tradeOn) ? Visibility.Visible : Visibility.Collapsed;
-        _viewPricesBtn.Visibility = (isTrade && _tradeOn) ? Visibility.Visible : Visibility.Collapsed;
+        _viewPricesBtn.Visibility = (isTrade && _tradeOn && !showTerminals) ? Visibility.Visible : Visibility.Collapsed;
         _openGuideBtn.Visibility = (isGuide && _guidesOn) ? Visibility.Visible : Visibility.Collapsed;
         // FOCUS carries no gate; it is always available once something is selected.
     }
