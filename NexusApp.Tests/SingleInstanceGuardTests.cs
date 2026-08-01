@@ -157,8 +157,14 @@ public class SingleInstanceGuardTests
     {
         var (mutexName, eventName) = UniqueNames();
 
+        // Keeps the named mutex object alive for the whole test: the crashed thread's leaked
+        // handle is otherwise its only reference, and a finalization between Join and the acquire
+        // below would destroy the kernel object and silently downgrade this test to a plain
+        // clean-mutex acquire.
+        using var keepAlive = new Mutex(initiallyOwned: false, mutexName);
+
         // Simulate a crashed previous instance: a thread claims the mutex and dies without ever
-        // releasing it. Windows marks the mutex abandoned the instant its owning thread terminates.
+        // releasing it. Windows marks the mutex abandoned when the thread terminates.
         var crashed = new Thread(() =>
         {
             var m = new Mutex(initiallyOwned: false, mutexName);
@@ -168,11 +174,28 @@ public class SingleInstanceGuardTests
         crashed.Start();
         crashed.Join();
 
-        using var guard = new SingleInstanceGuard(mutexName, eventName);
-
+        // Join returns when the thread's MANAGED code finishes, but the kernel only marks the
+        // mutex abandoned when the NATIVE thread finishes terminating. Under full-suite CPU load
+        // that window stretches past the guard's zero-timeout acquire, which then reads the mutex
+        // as held by a live instance - measured at 4-in-2000 on a saturated machine, and the
+        // source of this test's long flake history. So: bounded retry until the abandonment
+        // becomes visible (2 attempts sufficed in 4000 loaded runs; the deadline is headroom).
         // AbandonedMutexException still means WE now hold it (WaitOne grants ownership before it
-        // throws) - this is the same tolerance that keeps the portable self-swap relaunch path safe.
-        Assert.True(guard.TryAcquirePrimary());
+        // throws) - the same tolerance that keeps the portable self-swap relaunch path safe.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        bool acquired = false;
+        while (!acquired)
+        {
+            var guard = new SingleInstanceGuard(mutexName, eventName);
+            acquired = guard.TryAcquirePrimary();
+            guard.Dispose();
+            if (!acquired)
+            {
+                if (DateTime.UtcNow > deadline) break;
+                Thread.Sleep(5);
+            }
+        }
+        Assert.True(acquired, "the abandoned mutex never became acquirable within the deadline");
     }
 
     [Fact]
