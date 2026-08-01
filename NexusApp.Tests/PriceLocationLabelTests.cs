@@ -97,4 +97,36 @@ public class PriceLocationLabelTests
     [Fact]
     public void IdOverload_NoSnapshot_IsSilence()
         => Assert.Null(PriceLocationLabel.Describe(7, null, Map, playerAt: null));
+
+    // ── DistanceOnly: the cramped-surface variant (overlay SCAN line) ──
+
+    [Fact]
+    public void DistanceOnly_SameSystem_IsABareFigure_NoSystemPrefix()
+    {
+        var terminals = new List<MarketTerminal> { Term("Stanton", "Everus Harbor") };
+        var label = PriceLocationLabel.DistanceOnly(7, terminals, Map, At("Stanton", "microTech"));
+
+        Assert.EndsWith(" Gm", label);
+        Assert.DoesNotContain("Stanton", label);
+    }
+
+    [Fact]
+    public void DistanceOnly_IsSilentWhereDescribeWouldStillSaySomething()
+    {
+        // The whole point of the second method. Describe falls back to a bare system name, which is
+        // worth printing on the Codex and work order rows but would only crowd a line read at a
+        // glance mid-flight. Here, anything short of a real number is nothing.
+        var terminals = new List<MarketTerminal> { Term("Stanton", "Everus Harbor") };
+
+        Assert.Null(PriceLocationLabel.DistanceOnly(7, terminals, Map, playerAt: null));                    // no session
+        Assert.Null(PriceLocationLabel.DistanceOnly(7, terminals, Map, At("Pyro", "Ruin Station")));        // another system
+        Assert.NotNull(PriceLocationLabel.Describe(7, terminals, Map, playerAt: null));                     // ...but Describe still speaks
+    }
+
+    [Fact]
+    public void DistanceOnly_UnresolvableTerminal_IsSilent()
+    {
+        var terminals = new List<MarketTerminal> { Term("Stanton", "Nowhere At All") };
+        Assert.Null(PriceLocationLabel.DistanceOnly(7, terminals, Map, At("Stanton", "microTech")));
+    }
 }

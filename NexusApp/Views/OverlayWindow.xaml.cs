@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 
 namespace NexusApp.Views;
@@ -553,6 +554,7 @@ public partial class OverlayWindow : Window
     private void LeaveActiveTabForGhost()
     {
         _guidesHangarLine?.Stop();
+        _hubHangarLine?.Stop();
         _ordersTicker?.Stop();
         _ordersTicker = null;
     }
@@ -1786,6 +1788,13 @@ public partial class OverlayWindow : Window
         { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
         { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        // Where that terminal is, and how far, once PriceHit carries the id (app review). This is
+        // the overlay, so it earns its space only when the player is in the same system and the
+        // answer is a real distance - the bare system name is worth printing on the Codex and the
+        // work order rows, but here it would just crowd a line read at a glance mid-flight.
+        if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                            App.Map, App.Player.Current) is { } away)
+            line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
@@ -2130,6 +2139,13 @@ public partial class OverlayWindow : Window
         // always finds it non-null; the null-conditional is only a defensive guard.
         if (tab == "guides") _guidesHangarLine?.Start();
         else if (prev == "guides") _guidesHangarLine?.Stop();
+
+        // Same lifecycle for the HUB's own copy (app review): built on first entry, ticking only
+        // while HUB is the presented tab. Two independent ExecHangarStatusLine instances is
+        // deliberate - the control owns its own timer, and sharing one across two hosts would mean
+        // reparenting it on every tab switch.
+        if (tab == "stats") { EnsureHubHangarLine(); _hubHangarLine?.Start(); }
+        else if (prev == "stats") _hubHangarLine?.Stop();
 
         if (tab == "orders")
         {
@@ -3306,6 +3322,17 @@ public partial class OverlayWindow : Window
         if (Motion.Reduced)
             foreach (var (s, order) in _orderFillRefs.Values)
                 s.ScaleX = Math.Clamp(order.TimerFraction, 0, 1);
+    }
+
+    // The HUB's Executive Hangar countdown (app review 2026-08-01). Built lazily on first entry to
+    // the tab, like the guides copy, so an overlay that never opens HUB never pays for it.
+    private ExecHangarStatusLine? _hubHangarLine;
+
+    private void EnsureHubHangarLine()
+    {
+        if (_hubHangarLine is not null) return;
+        _hubHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay HUB");
+        HubHangarHost.Content = _hubHangarLine;
     }
 
     // ── TRADE tab ──────────────────────────────────────────────────────────────

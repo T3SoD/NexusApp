@@ -48,6 +48,23 @@ internal static class PriceLocationLabel
             : terminal.System;
     }
 
+    /// <summary>Just the distance, with no system prefix and no cross-system wording. For surfaces
+    /// too cramped to spend space on anything weaker than a real number - the overlay SCAN line is
+    /// read at a glance mid-flight, so a bare system name there would crowd it without helping.
+    /// Null unless the player and the terminal are in the same system and both resolve.</summary>
+    public static string? DistanceOnly(int terminalId, IReadOnlyList<MarketTerminal>? terminals,
+                                       MapCatalog map, MapObject? playerAt)
+    {
+        if (playerAt is null || terminalId <= 0 || terminals is null) return null;
+        var terminal = terminals.FirstOrDefault(t => t.Id == terminalId);
+        if (terminal is null || !string.Equals(playerAt.System, terminal.System, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return map.DistanceMeters(playerAt, map.ResolveTerminal(terminal)) is { } meters
+            ? MapCatalog.FormatGm(meters)
+            : null;
+    }
+
     /// <summary>Convenience over the app singletons for the WPF call sites, which all have a
     /// PriceHit and a snapshot rather than a resolved terminal. Returns null on every miss, so a
     /// caller can append it unconditionally.</summary>
