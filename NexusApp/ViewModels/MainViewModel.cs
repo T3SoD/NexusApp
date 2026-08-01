@@ -360,26 +360,10 @@ public record MatchResult(Resource Resource, int InputRs, int Nodes, bool IsExac
     // Same picker the Codex dossier uses (app review G10). It has to be the same one: two surfaces
     // naming a different "best refinery" for the same ore would be worse than either being wrong.
     // Modifier still decides; the player's position only settles ties.
+    // (RefineryText/RefineryColor, which used to sit here, were removed in the F14 pass: the pill
+    // inventory's repo-wide grep found ZERO bindings to either - dead code that never rendered.)
     public RefineryYield? BestRefinery =>
         NexusApp.Services.Map.RefineryPlaces.Best(Resource.Refineries, App.Map, App.Player.Current);
-    public string RefineryText
-    {
-        get
-        {
-            var b = BestRefinery;
-            if (b == null || b.ModifierPct == 0) return "No refinery modifier";
-            return $"Refinery  {(b.ModifierPct > 0 ? "+" : "")}{b.ModifierPct}% at {b.Station.Split(' ')[0]}";
-        }
-    }
-    public string RefineryColor
-    {
-        get
-        {
-            var b = BestRefinery;
-            if (b == null || b.ModifierPct == 0) return "#8B949E";
-            return b.ModifierPct > 0 ? "#3FB950" : "#EF4444";
-        }
-    }
 }
 
 public enum MatchKind { None, Close, Exact }

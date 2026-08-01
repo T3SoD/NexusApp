@@ -175,7 +175,17 @@ public sealed class CommandPage : UserControl
         {
             if (order.TimerEnd.HasValue) live = true;
             var text = QueueRemainingText(order);
-            if (!string.Equals(cell.Text, text, StringComparison.Ordinal)) cell.Text = text;
+            if (!string.Equals(cell.Text, text, StringComparison.Ordinal))
+            {
+                cell.Text = text;
+                // F14 latent defect (pill inventory P54): the ticker rewrote the text but never
+                // the color, so an order going ready mid-view read "ready" in dim gray until
+                // something forced a full Refresh. The color rule is the row builder's own,
+                // re-applied on the same text-actually-changed guard - 59 no-op ticks in 60
+                // still touch nothing.
+                cell.Foreground = order.Status == WorkOrderStatus.ReadyToCollect
+                    ? UiHelpers.BrushFromHex(order.StatusColorHex) : Br("FgDimBrush");
+            }
         }
         // An order whose timer ran out stops being volatile. Its own status transition is owned
         // elsewhere (WorkOrderEditorPanel raises OrderReadyToCollect, which rebuilds this page), so
