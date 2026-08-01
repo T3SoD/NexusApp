@@ -123,6 +123,9 @@ public sealed class CommandPage : UserControl
         // idiom as TradePage and MapPage's own permanent subscriptions.
         App.Hauls.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
         _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        // The header subtitle now reports where the player was last seen, so a boundary crossing has
+        // to repaint it. Same guard and same idiom MapPage uses for its own player marker.
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
     }
 
     public void Refresh()
@@ -272,8 +275,33 @@ public sealed class CommandPage : UserControl
     {
         var radar = Hud.AmbientGlyph(Hud.Ambient.StatusBoard, 46);
         radar.VerticalAlignment = VerticalAlignment.Center;
-        return Hud.Header("COMMAND", "Operations", "Everything live, in one glance. Drill into any module from the rail.", radar);
+        // The subtitle now says where you are when the app knows. App review: this page had ZERO
+        // references to App.Locations or any geometry catalog, so the landing page could not answer
+        // the most basic live question the app already had the answer to. Possible now that
+        // App.Player exists; before the refactor, position was locked inside two other pages.
+        return Hud.Header("COMMAND", "Operations", HeaderSubtitle(), radar);
     }
+
+    /// <summary>The subtitle, with the player's location folded in when it is known. Pure string
+    /// assembly so the rule is testable: silence when there is no session, which is the normal state
+    /// with the game closed and must not read as an error or a placeholder.</summary>
+    internal static string OperationsSubtitle(string? placeLabel, string? system)
+    {
+        const string Base = "Everything live, in one glance. Drill into any module from the rail.";
+        if (string.IsNullOrWhiteSpace(placeLabel)) return Base;
+
+        // The system is only appended when it is known AND not already implied by the label - the
+        // planet-named jurisdictions ("microTech") would otherwise read "microTech, Stanton" which
+        // is fine, but "Stanton, Stanton" would not be.
+        var where = !string.IsNullOrWhiteSpace(system)
+                    && !string.Equals(system, placeLabel, StringComparison.OrdinalIgnoreCase)
+            ? $"{placeLabel}, {system}"
+            : placeLabel;
+        return $"Last seen at {where}. " + Base;
+    }
+
+    private static string HeaderSubtitle()
+        => OperationsSubtitle(App.Player?.Label, App.Player?.System);
 
     // ── auto-relaunch notice strip: amber alert shown on a render-relaunch start ──
     // Sits between the header and the KPI row, only when this session was auto-relaunched by

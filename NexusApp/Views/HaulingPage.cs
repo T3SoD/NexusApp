@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -344,8 +345,18 @@ public sealed class HaulingPage : UserControl
     {
         var con = App.Hauls.BuildConsolidation();
 
+        // App review 2026-08-01: these stops used to render in dictionary insertion order, which is
+        // the order contracts happened to be accepted in - meaningless to a hauler planning a run.
+        // The app has had real coordinates for these places and a live player position all along and
+        // used neither. Now ordered nearest-first when a session places the player; unchanged when
+        // it does not, because sorting by distance from nowhere would be theatre.
+        var here = App.Player.Current;
+        var pickups = ConsolidationOrder.ByDistanceFrom(con.Pickups, App.Map, here);
+        var dropoffs = ConsolidationOrder.ByDistanceFrom(con.Dropoffs, App.Map, here);
+
         var bodyStack = new StackPanel();
-        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation", "grouped by location"));
+        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation",
+            here is null ? "grouped by location" : "grouped by location, nearest first"));
 
         if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
         {
@@ -365,13 +376,32 @@ public sealed class HaulingPage : UserControl
         AddCell(table, 0, 2, HeaderCell("COMMODITY", false));
         AddCell(table, 0, 3, HeaderCell("SCU", true));
 
+        // The distance is appended to the LOCATION cell only on the first row of each stop, so a
+        // stop with four commodities does not repeat it four times. Null (unplaceable stop, or no
+        // session) renders exactly as before.
         var rowIdx = 1;
-        foreach (var s in con.Pickups)
+        foreach (var s in pickups)
+        {
+            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
+            bool first = true;
             foreach (var item in s.Items)
-                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, true, item.Commodity, item.Scu);
-        foreach (var s in con.Dropoffs)
+            {
+                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
+                                             true, item.Commodity, item.Scu);
+                first = false;
+            }
+        }
+        foreach (var s in dropoffs)
+        {
+            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
+            bool first = true;
             foreach (var item in s.Items)
-                rowIdx = AddConsolidationRow(table, rowIdx, s.Location, false, item.Commodity, item.Scu);
+            {
+                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
+                                             false, item.Commodity, item.Scu);
+                first = false;
+            }
+        }
 
         bodyStack.Children.Add(table);
         return Hud.Panel(bodyStack, padding: new Thickness(0));
