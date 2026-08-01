@@ -65,6 +65,26 @@ public class LocationAliasesTests
         Assert.Equal(expected, LocationAliases.Normalize(token));
     }
 
+    // Added 2026-08-01 after surveying every Location[...] token in the owner's captured sessions rather
+    // than fixing only the one he happened to notice in the log. SM0-13 he named himself; SM0-10 was
+    // the single most frequent unaliased token of all (20 captures) and takes the same pattern.
+    [Theory]
+    [InlineData("Stanton4_Shubin_SM0_13", "Shubin Mining Facility SM0-13")]
+    [InlineData("Stanton4_Shubin_SM0_10", "Shubin Mining Facility SM0-10")]
+    [InlineData("Nyx_Levski", "Levski")]
+    public void Normalize_SurveyedInventoryKeys_ReturnReadableNames(string token, string expected)
+        => Assert.Equal(expected, LocationAliases.Normalize(token));
+
+    [Fact]
+    public void Normalize_UnreadTokenIsNotInvented()
+    {
+        // An outlaw trading post seen 4 times whose token carries no readable name and which nobody
+        // has read off the screen. The raw passthrough is the honest state and the visible prompt to
+        // capture it - exactly how the Shubin gap surfaced in the first place.
+        Assert.Equal("Pyro3_Outpost_col_m_trdpst_otlw_006",
+                     LocationAliases.Normalize("Pyro3_Outpost_col_m_trdpst_otlw_006"));
+    }
+
     [Fact]
     public void Normalize_RestStopToken_ReturnsStationName()
     {

@@ -434,6 +434,28 @@ public class MapCatalogTests
         Assert.NotEqual(stantonSide.Id, nyxSide.Id);
     }
 
+    // The point of naming these tokens is not just a readable pill: both display names match a real
+    // catalog object verbatim, so the player marker can place the player at them too. If a future
+    // starmap patch renames either outpost, this fails rather than silently losing the marker.
+    [Theory]
+    [InlineData("Shubin Mining Facility SM0-13")]
+    [InlineData("Shubin Mining Facility SM0-10")]
+    public void ResolvePlayerLocation_SurveyedShubinOutposts_PlaceTheMarker(string displayName)
+    {
+        var obj = Catalog.ResolvePlayerLocation(displayName, rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Stanton", obj!.System);
+    }
+
+    [Fact]
+    public void ResolvePlayerLocation_Levski_StillDoesNotPlace_AndThatIsTheKnownCatalogGap()
+    {
+        // Levski now reads correctly on the origin pill, but Delamar is absent from the object
+        // catalog - the same gap RefineryPlacesTests pins from the refinery side. Asserting it here
+        // keeps the two halves of that gap described in one voice.
+        Assert.Null(Catalog.ResolvePlayerLocation("Levski", rawToken: null));
+    }
+
     [Fact]
     public void ResolvePlayerLocation_AmbiguousGatewayNameWithNoRawToken_StaysNull()
     {
