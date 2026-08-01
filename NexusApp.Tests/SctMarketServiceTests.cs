@@ -261,6 +261,69 @@ public class SctMarketServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RefreshAsync_EmptyFirstPageWith200_KeepsThePreviousSnapshotAndFile()
+    {
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        t.Responses[PageUrl(0)] = Page0Body;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        await svc.RefreshAsync(manual: true, NowUtc);
+        var good = svc.Snapshot!;
+        var goodJson = File.ReadAllText(snapshotPath);
+        Assert.Equal(4, good.Rows.Count);
+
+        // Second cycle: page 0 itself answers 200 with zero rows (an endpoint hiccup, not a
+        // failure - cycleOk stays true). Publishing would wipe a good snapshot with an empty one.
+        t.Responses[PageUrl(0)] = """{"content":[],"page":{"size":100,"number":0,"totalElements":0,"totalPages":0}}""";
+        var fired = 0;
+        svc.Changed += () => fired++;
+        await svc.RefreshAsync(manual: true, NowUtc.AddHours(1));
+
+        Assert.Same(good, svc.Snapshot);                          // in-memory snapshot untouched
+        Assert.Equal(goodJson, File.ReadAllText(snapshotPath));   // on-disk snapshot untouched
+        Assert.Equal(0, fired);                                   // nothing published, nothing raised
+    }
+
+    [Fact]
+    public async Task RefreshAsync_RuntimeOptIn_HydratesFromDisk_SoTheEmptyPageGuardProtectsTheFile()
+    {
+        // The off-at-launch, toggled-on-later shape: Start's disk load is flag-gated, so a fresh
+        // service reaches RefreshAsync with _snapshot null even though a good cache sits on disk.
+        // Without the late hydration, the zero-rows guard had nothing to protect and an endpoint
+        // hiccup overwrote the good file with a fresh-stamped empty snapshot.
+        var (svc1, t1, settings, snapshotPath) = MakeWithPath(enabled: true);
+        t1.Responses[PageUrl(0)] = Page0Body;
+        t1.Responses[PageUrl(1)] = EmptyPageBody;
+        await svc1.RefreshAsync(manual: true, NowUtc);
+        var goodJson = File.ReadAllText(snapshotPath);
+        svc1.Dispose();
+
+        var t2 = new FakeSctTransport();
+        t2.Responses[PageUrl(0)] = """{"content":[],"page":{"size":100,"number":0,"totalElements":0,"totalPages":0}}""";
+        using var svc2 = new SctMarketService(settings, t2, snapshotPath);
+        await svc2.RefreshAsync(manual: true, NowUtc.AddHours(1));
+
+        Assert.NotNull(svc2.Snapshot);
+        Assert.Equal(4, svc2.Snapshot!.Rows.Count);               // the disk rows, published
+        Assert.Equal(goodJson, File.ReadAllText(snapshotPath));   // on-disk cache untouched
+    }
+
+    [Fact]
+    public async Task RefreshAsync_EmptyFirstPage_NoPreviousSnapshot_StillPublishesTheEmptyResult()
+    {
+        // First-ever fetch: there is nothing to protect, and publishing keeps the honest
+        // "fetched, nothing cached" state stamped so the 6h cadence is not re-armed every tick.
+        var (svc, t, _, snapshotPath) = MakeWithPath(enabled: true);
+        t.Responses[PageUrl(0)] = """{"content":[],"page":{"size":100,"number":0,"totalElements":0,"totalPages":0}}""";
+
+        await svc.RefreshAsync(manual: true, NowUtc);
+
+        Assert.NotNull(svc.Snapshot);
+        Assert.Empty(svc.Snapshot!.Rows);
+        Assert.Equal(NowUtc, svc.Snapshot.FetchedUtc);
+        Assert.True(File.Exists(snapshotPath));
+    }
+
+    [Fact]
     public async Task RefreshAsync_FirstPageFails_DoesNotRaiseChanged()
     {
         var (svc, t, _) = Make(enabled: true);

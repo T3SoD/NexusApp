@@ -118,6 +118,38 @@ public partial class App : Application
         OverlayGhostModeChanged?.Invoke(on, source);
     }
 
+    // SCT consent: single write path so the Settings consent row, the Admin DATA TOOLS card,
+    // and the SCT-reading surfaces can never disagree. A bare OFF used to write the setting and
+    // raise nothing (Sct.Changed only fires when a fetch publishes a snapshot, which OFF never
+    // does), so the sibling toggle kept showing stale ON and TRADE kept its painted SCT badges
+    // until an unrelated rebuild. Writers call SetSctDataEnabled; the enable-side fetch kick
+    // lives here too so both toggles stay one-line callers.
+    public static event System.Action<bool, string>? SctConsentChanged;
+    public static void SetSctDataEnabled(bool on, string source)
+    {
+        if (Settings.Current.SctDataEnabled == on) return;
+        Settings.Current.SctDataEnabled = on;
+        Settings.Save();
+        Logger.Info($"[UI] SCT cross-check {(on ? "on" : "off")} ({source})");
+        SctConsentChanged?.Invoke(on, source);
+        if (on)
+        {
+            // Same start/fetch path both toggles used to kick individually: the layer goes live
+            // immediately, no restart needed. Off needs no teardown call - every public entry
+            // point on SctMarketService checks the flag first and self-gates, live, on every
+            // call, so the setting write above is the whole story.
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                // Type only, no ex argument (the market/SCT layer rule): an escaping exception's
+                // Message can carry a full %AppData% path, and Logger appends a passed exception
+                // verbatim. RefreshAsync logs its own failures in detail; this catch is the
+                // last-resort backstop for whatever escapes it.
+                try { await Sct.RefreshAsync(manual: true); }
+                catch (System.Exception ex) { Logger.Error($"[UI] {source}: SCT fetch failed ({ex.GetType().Name})"); }
+            });
+        }
+    }
+
     // Click-through (issue #7 setting): single write path so the Settings page row and the
     // overlay's quick-settings flyout can never disagree.
     public static event System.Action<bool>? OverlayPassThroughChanged;

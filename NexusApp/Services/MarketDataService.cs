@@ -593,8 +593,11 @@ public sealed class MarketDataService : IDisposable
     // UI handler calling Dispatcher.Invoke while the app is shutting down.
     private void RaiseChanged()
     {
+        // Type only, no ex argument: a subscriber's exception Message can carry a full
+        // %AppData% path (the Windows username) into nexus.log - same rule as the snapshot
+        // file's own reason strings.
         try { Changed?.Invoke(); }
-        catch (Exception ex) { Logger.Error($"{Tag} a market data subscriber threw", ex); }
+        catch (Exception ex) { Logger.Error($"{Tag} a market data subscriber threw ({ex.GetType().Name})"); }
     }
 
     // How long Dispose waits for a cancelled cycle to finish unwinding. Long enough for an

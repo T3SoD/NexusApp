@@ -29,10 +29,13 @@ public sealed partial class TradePage
     private StackPanel _sellInputs = null!;
     private StackPanel _sellResults = null!;
 
-    // Keyed by buyer TERMINAL NAME, not by row index (mock index.html keys the same way): sell rows
-    // re-rank whenever the quantity or a new SCT snapshot changes the effective values, so an index
-    // would point at whatever row later took that slot. A string key survives a re-rank and keeps
-    // the band the user opened open. null = nothing expanded.
+    // Keyed by buyer TERMINAL ("t" + UEX terminal id for ranked rows, the SCT location string for
+    // SCT-only rows), not by row index: sell rows re-rank whenever the quantity or a new SCT
+    // snapshot changes the effective values, so an index would point at whatever row later took
+    // that slot. A stable key survives a re-rank and keeps the band the user opened open. The id
+    // (not the name, which the mock used) is what makes two same-named terminals distinct; the
+    // "t" prefix keeps the two key families collision-free by construction. null = nothing
+    // expanded.
     private string? _sellExpanded;
 
     // A programmatic write to the commodity box (the picker committing a choice, or item H's
@@ -333,13 +336,12 @@ public sealed partial class TradePage
 
     private FrameworkElement BuildBuyerRow(SellLookup.Buyer b, int qty, Dictionary<int, MarketTerminal> terminals, MarketTerminal? originTerm)
         => WrapBuyerRow(BuildBuyerRowContent(b, qty, terminals, originTerm, out var chevron, out var detailHost), chevron, detailHost,
-                        b.Row.TerminalName, sctOnly: false);
+                        "t" + b.Row.TerminalId, sctOnly: false);
 
     // SCT-only row: a listing SCT has at a terminal UEX has no row for at all. Same row chrome,
     // de-emphasized (mock .buyerRow.sctonly, index.html:286/935: opacity 0.82 + the frame's
     // stroke swapped to the "line-strong" token instead of the normal one). Its expansion key is the
-    // SCT location, which by definition names no UEX terminal, so it can never collide with a
-    // ranked buyer's terminal name.
+    // SCT location string, which can never collide with a ranked buyer's "t"-prefixed id key.
     private FrameworkElement BuildSctOnlyBuyerRow(SctListing s, int qty)
         => WrapBuyerRow(BuildSctOnlyBuyerRowContent(s, qty, out var chevron, out var detailHost), chevron, detailHost,
                         s.Location, sctOnly: true);

@@ -115,14 +115,26 @@ public class MarketSnapshotFileTests : IDisposable
         Assert.Equal("Crusader", terminal.Location);
     }
 
+    // Every failure reason is logged verbatim into nexus.log by MarketDataService, and the real
+    // snapshot path lives under %AppData% - so a reason that echoes the path (directly, or via a
+    // file-IO exception's Message, which embeds it) would carry the Windows username into the
+    // log. The temp path used here contains the username the same way, making this assertion an
+    // exact stand-in for the production leak.
+    private static void AssertReasonCarriesNoPath(string path, string? reason)
+    {
+        Assert.NotNull(reason);
+        Assert.NotEmpty(reason);
+        Assert.DoesNotContain(Path.GetTempPath(), reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Path.GetFileName(path), reason, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Load_MissingFile_ReturnsNullWithReason()
     {
         var path = Path.Combine(TempDir(), "missing.json");
         var loaded = MarketSnapshotFile.Load(path, out var reason);
         Assert.Null(loaded);
-        Assert.NotNull(reason);
-        Assert.NotEmpty(reason);
+        AssertReasonCarriesNoPath(path, reason);
     }
 
     [Fact]
@@ -145,8 +157,7 @@ public class MarketSnapshotFileTests : IDisposable
 
         var loaded = MarketSnapshotFile.Load(path, out var reason);
         Assert.Null(loaded);
-        Assert.NotNull(reason);
-        Assert.NotEmpty(reason);
+        AssertReasonCarriesNoPath(path, reason);
     }
 
     [Fact]
@@ -158,8 +169,7 @@ public class MarketSnapshotFileTests : IDisposable
 
         var loaded = MarketSnapshotFile.Load(path, out var reason);
         Assert.Null(loaded);
-        Assert.NotNull(reason);
-        Assert.NotEmpty(reason);
+        AssertReasonCarriesNoPath(path, reason);
     }
 
     [Fact]
@@ -177,8 +187,7 @@ public class MarketSnapshotFileTests : IDisposable
 
         var loaded = MarketSnapshotFile.Load(path, out var reason);
         Assert.Null(loaded);
-        Assert.NotNull(reason);
-        Assert.NotEmpty(reason);
+        AssertReasonCarriesNoPath(path, reason);
     }
 
     [Fact]

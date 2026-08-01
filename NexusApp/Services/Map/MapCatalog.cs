@@ -188,20 +188,25 @@ public sealed class MapCatalog
 
     // Location search (MAP tab search box). Covers every system in the catalog - there is no
     // "active system" concept here, that gating belongs to the caller (MapPage), never this pure
-    // seam. Case-insensitive substring match; a name that STARTS WITH the query ranks above a name
-    // that merely contains it elsewhere (a search for "Ever" surfaces "Everus Harbor" ahead of, say,
-    // "Nevermind"). Ties within the same rank break shorter-name-first, then ordinal name order, so
-    // results are stable and deterministic run to run. Empty/whitespace query (including null) and a
-    // non-positive limit both resolve to an empty list rather than the full catalog or an exception -
-    // never throws.
+    // seam. Case-insensitive substring match over the in-game name AND every UEX alias name the
+    // object carries, so a query typed in UEX vocabulary (say "Pyro Gateway (Stanton)", the way a
+    // trade surface just displayed it) finds the object its in-game name would - results always
+    // render the in-game name regardless of which string matched. A match that STARTS WITH the
+    // query ranks above one that merely contains it elsewhere (a search for "Ever" surfaces
+    // "Everus Harbor" ahead of, say, "Nevermind"). Ties within the same rank break
+    // shorter-name-first, then ordinal name order, so results are stable and deterministic run to
+    // run. Empty/whitespace query (including null) and a non-positive limit both resolve to an
+    // empty list rather than the full catalog or an exception - never throws.
     public IReadOnlyList<MapObject> Search(string query, int limit)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0) return Array.Empty<MapObject>();
 
         string q = query.Trim();
+        bool Contains(string s) => s.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+        bool Starts(string s) => s.StartsWith(q, StringComparison.OrdinalIgnoreCase);
         return _objects
-            .Where(o => o.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
-            .OrderBy(o => o.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .Where(o => Contains(o.Name) || o.Uex.Any(a => Contains(a.Name)))
+            .OrderBy(o => Starts(o.Name) || o.Uex.Any(a => Starts(a.Name)) ? 0 : 1)
             .ThenBy(o => o.Name.Length)
             .ThenBy(o => o.Name, StringComparer.Ordinal)
             .Take(limit)

@@ -547,22 +547,17 @@ public sealed class AdminPage : UserControl
         data.Children.Add(_sctState);
         _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
         {
+            // Single write path (App.SetSctDataEnabled, the SetOverlayGhostMode idiom): it
+            // saves, logs, broadcasts SctConsentChanged so the Settings consent row can never
+            // show stale state after a bare OFF here, and kicks the one-shot fetch on enable.
             OnToggled = on =>
             {
-                App.Settings.Current.SctDataEnabled = on;
-                App.Settings.Save();
-                Logger.Info($"[UI] SCT dark flag {(on ? "on" : "off")}");
-                if (on)
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try { await App.Sct.RefreshAsync(manual: true); }
-                        catch (Exception ex) { Logger.Error("[UI] admin: SCT fetch failed", ex); }
-                    });
-                }
+                App.SetSctDataEnabled(on, "admin");
                 RefreshToolsState();
             },
         };
+        // And the reverse direction: a flip from the Settings row updates this card live too.
+        App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(RefreshToolsState);
         var dataRow = new StackPanel { Orientation = Orientation.Horizontal };
         dataRow.Children.Add(new TextBlock
         {

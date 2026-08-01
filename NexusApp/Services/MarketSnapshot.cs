@@ -438,7 +438,12 @@ internal static class MarketSnapshotFile
         }
         catch (Exception ex)
         {
-            Logger.Error($"Failed to save market snapshot to {path}", ex);
+            // NEITHER the message NOR the exception itself may reach the log: path is always
+            // under %AppData%, so it would carry the Windows username into nexus.log - and .NET
+            // file-IO exception Messages embed that full path, which Logger appends verbatim
+            // (ex.ToString()) whenever an exception object is passed. So: operation plus
+            // exception TYPE only, and no ex argument. Same rule as SctSnapshotFile.
+            Logger.Error($"Failed to save market snapshot ({ex.GetType().Name})");
             return false;
         }
     }
@@ -446,12 +451,16 @@ internal static class MarketSnapshotFile
     // Null when missing, oversized, unparseable, or Schema != 1; reason describes why (for logging).
     public static MarketSnapshot? Load(string path, out string? reason)
     {
+        // reason is logged verbatim by MarketDataService.LoadSnapshotFromDisk ([NET]-tagged), and
+        // path is always under %AppData% - so no reason ever interpolates path, and none
+        // interpolates an exception's own Message either (a .NET file-IO Message embeds the full
+        // path). Both would carry the Windows username into nexus.log; the catch-all below
+        // reports the exception TYPE only. Same rule as SctSnapshotFile.
         reason = null;
 
-        // Check if file exists
         if (!File.Exists(path))
         {
-            reason = $"Market snapshot file not found: {path}";
+            reason = "Market snapshot file not found";
             return null;
         }
 
@@ -460,7 +469,7 @@ internal static class MarketSnapshotFile
             var info = new FileInfo(path);
             if (info.Length > MaxLoadBytes)
             {
-                reason = $"Market snapshot file exceeds max size ({info.Length} > {MaxLoadBytes} bytes): {path}";
+                reason = $"Market snapshot file exceeds max size ({info.Length} > {MaxLoadBytes} bytes)";
                 return null;
             }
 
@@ -469,31 +478,21 @@ internal static class MarketSnapshotFile
 
             if (snapshot == null)
             {
-                reason = $"Failed to deserialize market snapshot: {path}";
+                reason = "Failed to deserialize market snapshot";
                 return null;
             }
 
             if (snapshot.Schema != 1)
             {
-                reason = $"Unsupported market snapshot schema (expected 1, got {snapshot.Schema}): {path}";
+                reason = $"Unsupported market snapshot schema (expected 1, got {snapshot.Schema})";
                 return null;
             }
 
             return snapshot;
         }
-        catch (JsonException ex)
-        {
-            reason = $"Invalid JSON in market snapshot: {path} - {ex.Message}";
-            return null;
-        }
-        catch (ArgumentException ex)
-        {
-            reason = $"Invalid market snapshot: {path} - {ex.Message}";
-            return null;
-        }
         catch (Exception ex)
         {
-            reason = $"Error loading market snapshot: {path} - {ex.Message}";
+            reason = $"Error loading market snapshot: {ex.GetType().Name}";
             return null;
         }
     }

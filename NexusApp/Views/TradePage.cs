@@ -135,6 +135,9 @@ public sealed partial class TradePage : UserControl
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
         // age pill and every corroboration badge waited for the next hourly market tick.
         App.Sct.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
+        // The consent broadcast covers what Sct.Changed cannot: a BARE OFF publishes no snapshot
+        // and so raises no Changed, but the painted SCT badges still have to leave the screen.
+        App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
 
         RebuildPlanner();
         RebuildSell();

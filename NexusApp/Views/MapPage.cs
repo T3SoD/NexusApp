@@ -85,6 +85,7 @@ public sealed class MapPage : UserControl
     // chrome built once, a suppression flag guards programmatic text writes, one commit choke point.
     private TextBox _searchBox = null!;
     private StackPanel _searchGrp = null!;   // the search box plus its results list, built once
+    private UIElement _searchZone = null!;   // the whole SEARCH zone chrome: the click-away anchor
     private Border? _searchResultsMenu;
     private bool _suppressSearchText;
 
@@ -221,6 +222,25 @@ public sealed class MapPage : UserControl
         _scene.PinClicked += OnPinClicked;
         _scene.PinDoubleClicked += OnPinDoubleClicked;
         _scene.MeasurePicked += OnMeasurePicked;
+
+        // Click-away dismiss for the search results list: a click anywhere on the WPF side of the
+        // page that is not inside the SEARCH zone closes it (a result row's own click still lands
+        // first-class - it IS inside the zone). Mouse UP, not down, and deliberately so: the menu
+        // is an in-flow child of the TOP side-panel zone, so closing it reflows every control
+        // below by the menu's height - on mouse-down that reflow lands BETWEEN the down and the
+        // up, and the up then fires on whatever control slid under the cursor (a layer row click
+        // toggling the wrong layer). On preview-mouse-up the event's route is already fixed
+        // (WPF hit-tests once, when the input arrives), so the clicked control still receives
+        // its bubbling up and the reflow happens after the click is spoken for. The 3D scene is
+        // a native WebView2 HWND whose clicks never route through WPF, so scene interactions
+        // dismiss via the pin handlers below instead; a click on EMPTY scene space reaches
+        // neither side and leaves the list open - accepted, it neither blocks the scene nor
+        // holds focus.
+        PreviewMouseUp += (_, e) =>
+        {
+            if (_searchResultsMenu is not null && !IsInsideSearchZone(e.OriginalSource as DependencyObject))
+                CloseSearchResults();
+        };
 
         // Lazy-singleton page, visibility-toggled by MainWindow, never Loaded/Unloaded - the hangar
         // timer's only lifecycle signal (precedent: GuidesPage.cs:71-77).
@@ -448,10 +468,15 @@ public sealed class MapPage : UserControl
         Logger.Info($"[UI] map: jump to me -> {obj.Name}");
     }
 
-    private void OnPinClicked(int id) => Select(id);
+    private void OnPinClicked(int id)
+    {
+        CloseSearchResults();   // the click-away rule, carried across the native-HWND boundary
+        Select(id);
+    }
 
     private void OnPinDoubleClicked(int id)
     {
+        CloseSearchResults();
         Select(id);
         FocusOn(id);
     }
@@ -791,7 +816,11 @@ public sealed class MapPage : UserControl
         _searchBox.TextChanged += (_, _) => { if (!_suppressSearchText) ShowSearchResults(); };
         _searchGrp.Children.Add(_searchBox);
 
-        return Zone("SEARCH", _searchGrp);
+        // The click-away walk anchors on the WHOLE zone (header, padding and all), not just the
+        // inner group: to the user the eyebrow and its padding ARE the SEARCH zone, and a click
+        // there should not read as "away".
+        _searchZone = Zone("SEARCH", _searchGrp);
+        return _searchZone;
     }
 
     // Rebuilt on every keystroke against MapCatalog.Search's case-insensitive, prefix-ranked match -
@@ -851,6 +880,21 @@ public sealed class MapPage : UserControl
         if (_searchResultsMenu is null) return;
         _searchGrp.Children.Remove(_searchResultsMenu);
         _searchResultsMenu = null;
+    }
+
+    // Containment walk for the click-away rule: visual parents where the node is a Visual, logical
+    // parents otherwise (a click can originate on a Run, which is a ContentElement with no visual
+    // parent chain of its own).
+    private bool IsInsideSearchZone(DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, _searchZone)) return true;
+            node = node is System.Windows.Media.Visual v
+                ? System.Windows.Media.VisualTreeHelper.GetParent(v)
+                : LogicalTreeHelper.GetParent(node);
+        }
+        return false;
     }
 
     /// <summary>The one commit path (design decisions a/c): when the pick lives in another system,

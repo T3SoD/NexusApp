@@ -62,7 +62,10 @@ public class SettingsService
         var recovered = false;
         if (settings == null)
         {
-            Logger.Error($"[WIN] settings.json failed to load ({_path}); quarantining and attempting backup recovery");
+            // No path in the message: settings.json lives under %AppData%, whose full path carries
+            // the Windows username into nexus.log (the market/SCT snapshot files' own rule). The
+            // constant file name tells the whole story.
+            Logger.Error("[WIN] settings.json failed to load; quarantining and attempting backup recovery");
             settings = RecoverFromCorrupt();
             recovered = true;
         }
@@ -143,7 +146,9 @@ public class SettingsService
             File.Move(_path, quarantine);
             Logger.Info($"[WIN] corrupt settings.json set aside as {Path.GetFileName(quarantine)}");
         }
-        catch (Exception ex) { Logger.Error($"[WIN] failed to set aside corrupt settings.json at {_path}", ex); }
+        // Type only, no path, no ex argument: both would put the %AppData% path (the Windows
+        // username) into nexus.log - a file-IO exception's own Message embeds the full path.
+        catch (Exception ex) { Logger.Error($"[WIN] failed to set aside corrupt settings.json ({ex.GetType().Name})"); }
 
         var fromBackup = TryReadSettings(_path + ".bak");
         if (fromBackup != null)
@@ -172,7 +177,10 @@ public class SettingsService
             else
                 File.Move(tmp, _path);
         }
-        catch (Exception ex) { Logger.Error($"Failed to save settings to {_path}", ex); }
+        // Type only, no path, no ex argument - same rule as above, and this catch is LIVE on
+        // every market cycle (MarketDataService's finally saves settings), so it must be as
+        // path-clean as the snapshot files it runs beside.
+        catch (Exception ex) { Logger.Error($"Failed to save settings ({ex.GetType().Name})"); }
     }
 
     public void Save() => Save(Current);

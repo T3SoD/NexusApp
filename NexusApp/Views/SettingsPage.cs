@@ -671,26 +671,10 @@ public sealed class SettingsPage : UserControl
             // its own toggle as a one-shot fetch tool for the owner.
             _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
             {
-                OnToggled = on =>
-                {
-                    App.Settings.Current.SctDataEnabled = on;
-                    App.Settings.Save();
-                    Logger.Info("[UI] Toggle: SCT cross-check " + (on ? "on" : "off"));
-                    if (on)
-                    {
-                        // Same start/fetch path the Admin card uses (AdminPage.cs's own SCT
-                        // toggle), so the layer goes live immediately - no restart needed.
-                        _ = Task.Run(async () =>
-                        {
-                            try { await App.Sct.RefreshAsync(manual: true); }
-                            catch (Exception ex) { Logger.Error("[UI] settings: SCT fetch failed", ex); }
-                        });
-                    }
-                    // Off needs no teardown call: every public entry point on SctMarketService
-                    // (Start, RefreshAsync, SnapshotFetchedUtc, Find, SctOnlyBuyers) checks the
-                    // flag first and self-gates, live, on every call - the setting write above is
-                    // the whole story.
-                },
+                // Single write path (App.SetSctDataEnabled, the SetOverlayGhostMode idiom): it
+                // saves, logs, broadcasts SctConsentChanged so the Admin card's sibling toggle
+                // can never show stale state, and kicks the go-live fetch on enable.
+                OnToggled = on => App.SetSctDataEnabled(on, "settings"),
             };
 
             _marketRefreshBtn = GhostButton(MarketNotice.RefreshNow);
@@ -745,6 +729,9 @@ public sealed class SettingsPage : UserControl
 
             RefreshSctRow();
             App.Sct.Changed += () => Dispatcher.BeginInvoke(RefreshSctRow);
+            // The consent broadcast is what covers a BARE OFF from the Admin card: Sct.Changed
+            // only fires when a fetch publishes, which off never does.
+            App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(RefreshSctRow);
         }
 
         return Pane(panel);

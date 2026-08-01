@@ -251,6 +251,24 @@ public sealed class SctMarketService : IDisposable
             Logger.Info($"{Tag} sct refresh started ({(manual ? "manual" : "auto")})");
             var utcNow = nowUtc ?? DateTime.UtcNow;
 
+            // Late disk hydration (review fix, 2026-08-01): a RUNTIME opt-in reaches here with
+            // _snapshot null even when a good cache sits on disk, because Start's disk load is
+            // flag-gated and runs once at launch (off at launch + toggled on later = never
+            // loaded). Without this, the zero-rows guard below had nothing to protect and an
+            // endpoint hiccup could overwrite the good on-disk cache with a fresh-stamped empty
+            // snapshot - the exact wipe the guard exists to prevent. Publishing the disk rows
+            // first also puts cached data on screen immediately instead of after the full fetch.
+            if (_snapshot is null)
+            {
+                var disk = SctSnapshotFile.Load(_snapshotPath, out _);
+                if (disk is not null)
+                {
+                    _snapshot = disk;
+                    Logger.Info($"{Tag} sct snapshot loaded: {disk.Rows.Count} listing(s), fetched {disk.FetchedUtc:yyyy-MM-dd HH:mm} UTC");
+                    RaiseChanged();
+                }
+            }
+
             // Map load happens ONLY here, after the flag check above - "zero map load while off".
             var map = EnsureMapIndex().Map;
 
@@ -270,12 +288,28 @@ public sealed class SctMarketService : IDisposable
                 string body;
                 try
                 {
+                    // Polite spacing between consecutive requests, INSIDE the guarded try (review
+                    // fix): a cancel used to land in an unguarded trailing delay - the widest
+                    // window of the whole loop - and escape RefreshAsync entirely, so a clean
+                    // shutdown logged as "[UI] ...: SCT fetch failed" with a stack trace. Leading
+                    // placement also skips the old pointless wait after the final page.
+                    if (page > 0)
+                        await Task.Delay(PageSpacing, cts.Token).ConfigureAwait(false);
                     body = await _transport.GetStringAsync($"{BaseUrl}{ListingsEndpoint}?page={page}",
                         MaxResponseBytes, cts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    Logger.Error($"{Tag} sct refresh stopped: deadline ({FetchDeadline.TotalMinutes:0}m) reached at page {page}");
+                    // Three distinct producers reach this catch; naming the wrong one sent a
+                    // reader hunting a 10-minute hang that was actually a normal exit (or a
+                    // single slow request). Order matters: the deadline token is linked to
+                    // _life, so shutdown must be ruled out first.
+                    Logger.Error(
+                        _life.IsCancellationRequested
+                            ? $"{Tag} sct refresh stopped: cancelled by shutdown at page {page}"
+                        : cts.IsCancellationRequested
+                            ? $"{Tag} sct refresh stopped: deadline ({FetchDeadline.TotalMinutes:0}m) reached at page {page}"
+                            : $"{Tag} sct refresh stopped: page {page} request timed out");
                     cycleOk = false;
                     break;
                 }
@@ -292,8 +326,6 @@ public sealed class SctMarketService : IDisposable
 
                 all.AddRange(rows);
                 page++;
-                if (page < MaxPages)
-                    await Task.Delay(PageSpacing, cts.Token).ConfigureAwait(false);   // polite spacing
             }
 
             if (!cycleOk)
@@ -301,6 +333,19 @@ public sealed class SctMarketService : IDisposable
                 // The failure itself is already logged above (deadline or page error); this line is
                 // what tells the App Log Monitor that the previous data is still what the UI shows.
                 Logger.Info($"{Tag} sct refresh incomplete after {page} page(s): previous snapshot kept");
+                return;
+            }
+
+            if (all.Count == 0 && _snapshot is { } prev && prev.Rows.Count > 0)
+            {
+                // Page 0 answered 200 with zero rows. The real feed pages ~300 deep on a ledger
+                // whose median listing age is 38 days, so a literal global zero is an endpoint
+                // hiccup (empty body behind a healthy status), not a real "SCT has nothing" -
+                // and publishing it would replace a good snapshot in memory AND on disk with an
+                // empty one stamped fresh. Same preserve rule as the cycleOk branch above. A
+                // first-ever fetch has no snapshot worth protecting and still publishes, keeping
+                // the honest "nothing cached yet" state stamped.
+                Logger.Info($"{Tag} sct refresh returned 0 row(s): previous snapshot kept");
                 return;
             }
 
@@ -399,8 +444,11 @@ public sealed class SctMarketService : IDisposable
     // which already returned above when the flag is off - so this never fires while it is off.
     private void RaiseChanged()
     {
+        // Type only, no ex argument: a subscriber's exception Message can carry a full
+        // %AppData% path (the Windows username) into nexus.log - the same rule every
+        // path-adjacent log line in this file follows.
         try { Changed?.Invoke(); }
-        catch (Exception ex) { Logger.Error($"{Tag} a sct data subscriber threw", ex); }
+        catch (Exception ex) { Logger.Error($"{Tag} a sct data subscriber threw ({ex.GetType().Name})"); }
     }
 
     // Built once (see _mapIndex above) from the embedded SctUexMap: reverse lookups from a UEX id

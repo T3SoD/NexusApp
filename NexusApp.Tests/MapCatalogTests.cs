@@ -336,6 +336,30 @@ public class MapCatalogTests
     }
 
     [Fact]
+    public void Search_UexAliasVocabulary_FindsTheObject()
+    {
+        // "Pyro Gateway (Stanton)" is pure UEX vocabulary - the trade surfaces display it, but the
+        // object's in-game name is "Stanton-Pyro Jump Point", which shares not one useful token
+        // with the query. Before the alias extension this search returned nothing, which read as
+        // "the map does not have the place the trade row just named".
+        var results = Catalog.Search("Pyro Gateway (Stanton)", 10);
+        var hit = Assert.Single(results);
+        Assert.Equal("Stanton-Pyro Jump Point", hit.Name);
+        Assert.Equal("Stanton", hit.System);
+    }
+
+    [Fact]
+    public void Search_AliasHit_StillRendersTheInGameName()
+    {
+        // Alias matching widens what FINDS an object, never what the result list SHOWS: the
+        // returned MapObject is the same one a name search yields, in-game name intact.
+        var byAlias = Catalog.Search("Stanton Gateway (Pyro)", 10);
+        var byName = Catalog.Search("Pyro-Stanton Jump Point", 10);
+        var aliasHit = Assert.Single(byAlias);
+        Assert.Contains(byName, o => o.Id == aliasHit.Id);
+    }
+
+    [Fact]
     public void Search_NeverThrows_OnNullQuery()
     {
         Assert.Empty(Catalog.Search(null!, 10));
