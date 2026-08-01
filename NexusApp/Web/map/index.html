@@ -406,9 +406,15 @@ function clusterPass(){
       }
       p=p.parent!=null? BY_ID.get(p.parent):null;
     }
+    // The player's own location never collapses. A "you are here" marker that only appears once
+    // you have already zoomed into the right planet answers a question you would not be asking:
+    // most live locations are stations/outposts parented to a body, so at system view they would
+    // otherwise always hide inside their parent's cluster. rec.collapsed stays TRUE so the parent
+    // still counts it in its +n badge - only the sprite is forced visible.
+    const isPlayer = state.playerMarker===obj.id;
     rec.collapsed=collapsed;
     const layerHidden=obj.type.startsWith('Asteroid') && !state.layers.asteroids;
-    sprite.visible=!collapsed && !layerHidden;
+    sprite.visible=isPlayer || (!collapsed && !layerHidden);
   });
 }
 function collapsedCounts(obj){ // badge data for a collapsed parent; honors the asteroid toggle

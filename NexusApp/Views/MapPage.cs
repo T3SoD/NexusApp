@@ -292,6 +292,8 @@ public sealed class MapPage : UserControl
         bool changed = resolved?.Id != _playerLocation?.Id;
         _playerLocation = resolved;
 
+        // Only on change: every SendInit path (scene ready, system switch, market delta) already
+        // carries _playerLocation in the init payload, so a rebuild restores the marker by itself.
         if (_sceneReady && changed)
             _scene.PostJson(MapSceneBuilder.BuildPlayerMarker(resolved?.Id));
 
