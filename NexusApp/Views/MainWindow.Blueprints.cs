@@ -253,6 +253,7 @@ public partial class MainWindow
 
     private void RenderBlueprintNav()
     {
+        RefreshBlueprintNetworkCounts();   // one grouped read per render, never one per row (G12)
         BlueprintNavPanel.Children.Clear();
         BlueprintCrumbHost.Content = null;
         _deselectBpRow = null;
@@ -510,6 +511,49 @@ public partial class MainWindow
         return host;
     }
 
+    // ── Network ownership on Library rows (app review G12) ─────────────────────────────────────
+    // The Library had zero references to App.Network: every ownership read was
+    // App.Settings.IsBlueprintOwned, which only ever answers "do I have this". The moment a player
+    // cares who else owns a blueprint is precisely when looking at one they do NOT own, and this
+    // list has a NOT OWNED filter built into it. The question was answerable, but only by leaving
+    // for the Network tab and coming back.
+    //
+    // Counts are batched ONCE per render into this field rather than queried per row: the Library
+    // renders hundreds of rows and OwnerCounts is a single grouped SQL read. Empty for a solo user,
+    // which makes every chip below vanish with no extra branch at the call sites.
+    private IReadOnlyDictionary<string, int> _bpNetworkCounts =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+    private void RefreshBlueprintNetworkCounts()
+        => _bpNetworkCounts = App.Network.MemberCount == 0
+            ? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            : App.Network.OwnerCounts();
+
+    /// <summary>"2 in network" for a blueprint other members own, or null for silence. Null covers
+    /// the solo user, a blueprint nobody else has, and a failed store read - the same absent-not-
+    /// placeholder rule the rest of the app follows. Deliberately counts OTHER members only: the
+    /// row already says whether the player owns it, twice (the accent strip and the tick).</summary>
+    private FrameworkElement? NetworkOwnerChip(string blueprintName)
+    {
+        if (!_bpNetworkCounts.TryGetValue(blueprintName, out var others) || others <= 0) return null;
+
+        var text = new TextBlock
+        {
+            Text = $"{others} in network", FontFamily = Hud.Font("UiFont"), FontSize = 9.5,
+            Foreground = Hud.Br("CyanBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        return new Border
+        {
+            Child = text, Padding = new Thickness(6, 1, 6, 1), CornerRadius = new CornerRadius(3),
+            BorderThickness = new Thickness(1), BorderBrush = Hud.Br("CyanLineBrush"),
+            Background = Hud.Br("CyanDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = others == 1
+                ? "1 other person in your blueprint network owns this."
+                : $"{others} other people in your blueprint network own this.",
+        };
+    }
+
     private FrameworkElement BlueprintRow(NexusApp.Models.Blueprint bp, bool showCategory)
     {
         var fg        = (System.Windows.Media.Brush)FindResource("FgBrush");
@@ -524,6 +568,7 @@ public partial class MainWindow
         var rowGrid = new Grid();
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // ownership accent strip
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name
+        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // network owners (app review G12)
         rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // marker (tick / pill)
 
         var strip = new Border { Width = 3, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 1, 11, 1), Background = owned0 ? _ownedGreen : trans };
@@ -544,7 +589,8 @@ public partial class MainWindow
         pill.Visibility = Visibility.Collapsed;
         marker.Children.Add(tick);
         marker.Children.Add(pill);
-        Grid.SetColumn(marker, 2); rowGrid.Children.Add(marker);
+        if (NetworkOwnerChip(bp.Name) is { } netChip) { Grid.SetColumn(netChip, 2); rowGrid.Children.Add(netChip); }
+        Grid.SetColumn(marker, 3); rowGrid.Children.Add(marker);
 
         // Chamfered HUD row; transparent at rest so the leaf list stays clean, chamfer shows on hover/select.
         var host = Hud.CardFrame(rowGrid, out var frame, out _, chamfer: 7, padding: new Thickness(10, 7, 11, 7));
@@ -944,6 +990,14 @@ public partial class MainWindow
         var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         specs.Children.Add(HeroSpec("INGREDIENTS", full.Ingredients.Count.ToString(), fgB, dimB, monoFont));
         specs.Children.Add(HeroSpec("TOTAL COST", CraftAmount.Format(totalScu, "SCU"), fgB, dimB, monoFont));
+        // Network ownership as a third hero spec (app review G12). The detail panel is where the
+        // player decides whether they need to go get this blueprint, and until now it could not say
+        // that somebody they already share with has it. Counts are read fresh here rather than from
+        // the nav render's batch: one detail panel is one lookup, and the panel can be reached
+        // without a nav render having happened first.
+        RefreshBlueprintNetworkCounts();
+        if (_bpNetworkCounts.TryGetValue(full.Name, out var netOwners) && netOwners > 0)
+            specs.Children.Add(HeroSpec("IN NETWORK", netOwners.ToString(), fgB, dimB, monoFont));
         Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
         var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         heroActions.Children.Add(OwnedToggle(full.Name));
