@@ -7,7 +7,7 @@ namespace NexusApp.Tests;
 
 // SCMDB (scmdb.net) blueprint-tracking export parser (issue #3, historical-backfill import).
 // Ground truth for the export shape is two real user samples in
-// C:\Users\owner\Dev\nexus-assets\scmdb-samples\ (untrusted, kept outside the repo); this
+// a local nexus-assets folder (untrusted, kept outside the repo); this
 // fixture is a sanitized 12-entry stand-in built from real Nexus blueprint names. Parse must
 // never throw - garbage input surfaces as a friendly Result.Error string instead.
 public class ScmdbExportParserTests

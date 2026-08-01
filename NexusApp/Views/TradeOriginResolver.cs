@@ -85,7 +85,7 @@ internal static class TradeOriginResolver
         return TerminalIdForName(startManual, terminals) is { } id ? new HashSet<int> { id } : new HashSet<int>();
     }
 
-    // Location-first DISPLAY flip (the owner's ask, 2026-07-31): UEX terminal names are Shop-first
+    // Location-first DISPLAY flip (owner's ask, 2026-07-31): UEX terminal names are Shop-first
     // ("Admin - ARC-L1", "Platinum Bay - Everus Harbor"), which clumps every station's admin
     // office/trade hub under the same first letter in an alphabetical picker instead of grouping by
     // where it actually is. Verified by the owner against the live snapshot: zero collisions across all

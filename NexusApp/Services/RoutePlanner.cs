@@ -177,7 +177,7 @@ public static class RoutePlanner
             _ => true,
         };
 
-    // A3 (the owner live-use finding): the scope pill and the START/DESTINATION pickers are independent
+    // A3 (owner live-use finding): the scope pill and the START/DESTINATION pickers are independent
     // controls that can be set to two different systems, and nothing stops that. Scope STANTON with
     // a Pyro destination filters every sell leg away, so the planner returns nothing and falls
     // through to "No routes match the current scope and budget" - indistinguishable from a genuine
@@ -240,7 +240,7 @@ public static class RoutePlanner
         && a.SellRow.TerminalId == b.SellRow.TerminalId
         && a.BuyRow.CommodityId == b.BuyRow.CommodityId;
 
-    /// <summary>How many routes may be pinned at once (the owner's call, 2026-08-01, when pinning went
+    /// <summary>How many routes may be pinned at once (owner's call, 2026-08-01, when pinning went
     /// from one route to several). Chosen against the overlay: five Manifest Strip cards fit the
     /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
     internal const int MaxPins = 5;
@@ -294,7 +294,7 @@ public static class RoutePlanner
         return kept;
     }
 
-    /// <summary>Captures a Sell-tab buyer as a sell-only pin (the owner, 2026-08-01: "add a pin to
+    /// <summary>Captures a Sell-tab buyer as a sell-only pin (owner, 2026-08-01: "add a pin to
     /// overlay button for the results in the sell tab"). No buy leg: the identity is (null,
     /// terminal, commodity), PerScuMargin holds the SELL PRICE, and TripQty is the quantity the
     /// user had typed - their own cargo, not a computed trip.</summary>

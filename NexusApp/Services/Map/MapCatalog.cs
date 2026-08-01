@@ -58,7 +58,7 @@ public sealed class MapCatalog
     // irrelevant to the resource name, which always resolves against Data/<filename>).
     private const string ResourceName = "NexusApp.Data.starmap_map.json";
 
-    // Objects belonging to star systems that are not in the game (the owner, 2026-08-01: "star map still
+    // Objects belonging to star systems that are not in the game (owner, 2026-08-01: "star map still
     // mentions terra jump point and it shouldnt" - the same call he made on the gateway aliases).
     // They are in the artifact because it is derived from the game's own object catalog, which
     // carries unreleased content: real data, but not places any player can reach. Left in, they
@@ -79,7 +79,7 @@ public sealed class MapCatalog
     // ruled it out on the same terms as the rest. The destination system is what decides, not the
     // system the object happens to sit in.
     //
-    // TERRA WAS REMOVED FROM THIS LIST 2026-08-01, same day it was added: the owner corrected the
+    // TERRA WAS REMOVED FROM THIS LIST 2026-08-01, same day it was added: The owner corrected the
     // premise - "terra gateway does exist in the game, magnus does not". That also explains the
     // thing that looked wrong at the time, namely UEX carrying 21 real terminals at
     // "Terra Gateway (Stanton)" with priced rows. The data was right and the exclusion was wrong.

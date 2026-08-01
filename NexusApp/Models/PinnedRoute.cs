@@ -1,7 +1,7 @@
 namespace NexusApp.Models;
 
 /// <summary>
-/// A trade route the player pinned, as it is PERSISTED (the owner, 2026-08-01: "lets have trade routes
+/// A trade route the player pinned, as it is PERSISTED (owner, 2026-08-01: "lets have trade routes
 /// pinned persist the same as refinery orders"). Pins shipped session-only that morning on the
 /// reasoning that a pin is a "what I'm running right now" marker; a real run outlives a session, so
 /// that was wrong.
@@ -25,7 +25,7 @@ namespace NexusApp.Models;
 public sealed class PinnedRoute
 {
     // ── identity: what re-attaches this to a live route ──
-    /// <summary>Null means a SELL-ONLY pin (the owner, 2026-08-01: the Sell tab's own PIN TO OVERLAY):
+    /// <summary>Null means a SELL-ONLY pin (owner, 2026-08-01: the Sell tab's own PIN TO OVERLAY):
     /// the player already holds the cargo, so there is no buy leg - the pin is a destination plus
     /// a commodity. Sell-only pins draw no Starmap leg (a leg needs two ends) and their card shows
     /// SELL AT with a live distance instead of FROM/band/TO. Planner pins always carry a value, and

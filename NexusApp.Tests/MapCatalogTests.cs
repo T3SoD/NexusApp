@@ -21,7 +21,7 @@ public class MapCatalogTests
         Assert.Equal(961, Catalog.Objects.Count);
     }
 
-    // ── Unreachable-system exclusions (the owner, 2026-08-01) ──
+    // ── Unreachable-system exclusions (owner, 2026-08-01) ──
 
     [Theory]
     [InlineData("Stanton", "Stanton - Magnus Jump Point")]
@@ -396,7 +396,7 @@ public class MapCatalogTests
     [Fact]
     public void ResolvePlayerLocation_TerraGatewayStationAlias_ResolvesToStantonTerraGateway()
     {
-        // Terra Gateway exists in game (the owner, 2026-08-01) and "Terra Gateway" names an object in
+        // Terra Gateway exists in game (owner, 2026-08-01) and "Terra Gateway" names an object in
         // Stanton ONLY, so a plain display-name alias is correct here - unlike the gateways whose
         // object names repeat across systems and need the raw token to be told apart.
         var obj = Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null);

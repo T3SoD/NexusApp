@@ -90,7 +90,7 @@ public class TradeOriginResolverTests
     public void StartTerminalIds_UnknownName_ReturnsEmpty()
         => Assert.Empty(TradeOriginResolver.StartTerminalIds("Nowhere Station", null, Terminals)!);
 
-    // ---- Live gateway origin fix (the owner's live bug, 2026-07-31). Root cause: LocationTracker
+    // ---- Live gateway origin fix (owner's live bug, 2026-07-31). Root cause: LocationTracker
     // stores the in-game DISPLAY name ("Pyro Gateway Station"), but UEX's own Location/Name
     // vocabulary for the same station is "Pyro Gateway (Stanton)" - a string that appears
     // nowhere inside the display name, so neither the exact nor substring pass above could ever
@@ -185,7 +185,7 @@ public class TradeOriginResolverTests
     public void StartTerminalIds_Live_NoUexLocationHint_UnchangedForNonGatewayLocations()
         => Assert.Equal(new HashSet<int> { 1, 2 }, TradeOriginResolver.StartTerminalIds("LIVE", "Crusader", Terminals));
 
-    // LocationFirst (the owner's ask, 2026-07-31): flips UEX's Shop-first terminal names to
+    // LocationFirst (owner's ask, 2026-07-31): flips UEX's Shop-first terminal names to
     // location-first for DISPLAY only, so the STARTING LOCATION / DESTINATION pickers group by
     // where a terminal actually is instead of clumping every station's "Admin" office together.
     // Never touches persistence or resolution - this is a pure string transform, tested in
@@ -225,7 +225,7 @@ public class TradeOriginResolverTests
         Assert.Equal("", TradeOriginResolver.LocationFirst(""));
     }
 
-    // Collision fixture (the owner verified zero collisions across all 135 live-snapshot terminals):
+    // Collision fixture (owner verified zero collisions across all 135 live-snapshot terminals):
     // a smaller fixture covering the deep-name examples plus a spread of 1/2/3/4-segment shapes,
     // asserting the flip stays injective - no two distinct raw names ever land on the same display.
     private static readonly string[] CollisionFixture =

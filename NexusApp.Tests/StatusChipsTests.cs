@@ -33,7 +33,7 @@ public class StatusChipsTests
         // is a suffix on the session chip rather than its own surface.
         => Assert.Null(StatusChips.ShardText(region, "042", "LIVE"));
 
-    // ── SessionValue: the merged chip's value. No "monitoring" (the owner, 2026-08-01): the breathing
+    // ── SessionValue: the merged chip's value. No "monitoring" (owner, 2026-08-01): the breathing
     // green dot and the SESSION label already say "alive", so live carries only facts. ──
 
     [Fact]

@@ -710,7 +710,7 @@ public partial class MainWindow : Window
             // cannot exist without a live session, so it is session metadata, not a peer chip.
             // StatusChips.SessionValue drops it from the offline state, where a last-seen shard
             // would dress a dead reading as current status, and carries no "monitoring" word
-            // (the owner cut it - the breathing green dot already says alive).
+            // (owner cut it - the breathing green dot already says alive).
             var s = App.Shards?.Current;
             var shard = s is null ? null : StatusChips.ShardText(s.Region, s.Instance, s.Channel);
             SessionChipText.Text = StatusChips.SessionValue(
@@ -745,7 +745,7 @@ public partial class MainWindow : Window
         var label = App.Player?.Label;
         bool known = !string.IsNullOrWhiteSpace(label);
         // A jurisdiction reading names whose SPACE the player crossed into, not where they stand
-        // (the owner's live pass, 2026-08-01: the chip read "Crusader Industries" at Crusader). Shown
+        // (owner's live pass, 2026-08-01: the chip read "Crusader Industries" at Crusader). Shown
         // dim with a "space" qualifier and NO cyan pulse - the cyan live treatment is the chip's
         // claim that the app knows the player's place, and a jurisdiction is not one.
         bool coarse = known && App.Player!.LabelIsJurisdiction;
@@ -778,7 +778,7 @@ public partial class MainWindow : Window
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
-    // AUTO-SCAN telemetry chip (F14): one lamp for BOTH OCR scanners (the owner's amendment on the
+    // AUTO-SCAN telemetry chip (F14): one lamp for BOTH OCR scanners (owner's amendment on the
     // mock). The dot carries the fold (StatusChips.AutoScanCombined - paused outranks on outranks
     // off) and pulses only while the fold is On; the value text spells each scanner out ("RS on ·
     // CT off") so the aggregate never hides which one is in which state. Off renders DIM, not red:
@@ -979,7 +979,7 @@ public partial class MainWindow : Window
         NavPlanner.Visibility = approved ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Owner-only Admin tab. Deliberately gated on the preview-BLIND owner check: the owner
+    // Owner-only Admin tab. Deliberately gated on the preview-BLIND owner check: The owner
     // must never be able to preview themselves out of the way back (Exit preview lives there).
     private void RefreshOwnerTools()
     {
@@ -1520,7 +1520,7 @@ public partial class MainWindow : Window
         _overlay.Hidden += () => _vm.PauseScanner();
         _overlay.Shown  += () => _vm.ResumeScanner();
 
-        // Pinned trade routes (the owner, 2026-08-01). Either side can come into existence first - the
+        // Pinned trade routes (owner, 2026-08-01). Either side can come into existence first - the
         // overlay is lazy and so is TradePage - so the wiring lives here, where the overlay is
         // known to exist, and the push below catches routes pinned before it did. The per-card
         // close routes back through TradePage so one owner still holds the pin list; the Refresh

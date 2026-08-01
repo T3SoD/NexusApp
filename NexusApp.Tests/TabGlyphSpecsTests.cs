@@ -13,7 +13,7 @@ public class TabGlyphSpecsTests
             Assert.NotEmpty(TabGlyphSpecs.PartsFor(id));
     }
 
-    // the owner, 2026-08-01: "the icon does not match the trade icon in the main app". The overlay drew
+    // The owner, 2026-08-01: "the icon does not match the trade icon in the main app". The overlay drew
     // a hand-authored trending-up arrow because the tab predated the Trade page's dock icon. Only
     // shopping - which has no app page - may stay hand-authored; every other tab must resolve
     // through the dock so a regenerated pick can never leave the overlay behind. This is the guard

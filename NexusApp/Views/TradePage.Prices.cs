@@ -206,7 +206,7 @@ public sealed partial class TradePage
         // instant the filter clears (mouse-only dismiss - a plain TextBlock click handler, same
         // idiom as the ORIGIN chip's Manual/Live links, TradePage.cs:704-711 - carries no keyboard
         // path at all: nothing here is a Tab stop or has a key binding).
-        // Location-first display (the owner's ask, 2026-07-31): filterTerm.Name is a raw MarketTerminal
+        // Location-first display (owner's ask, 2026-07-31): filterTerm.Name is a raw MarketTerminal
         // name (Shop-first), unlike the price rows' own TerminalName column below (TradePriceRow.
         // TerminalName is a different UEX vocabulary - see BuildPriceRow's comment). Display only:
         // _pricesTerminalFilter stores the terminal ID, never this label, so nothing here can leak
@@ -420,7 +420,7 @@ public sealed partial class TradePage
             // matches the SCT-only branch's termPanel below) - this column is the widest of the row
             // and carries no trimming, so the tag never wraps or clips.
             //
-            // Location-first display NOT applied here (the owner's ask, 2026-07-31 review): r.TerminalName
+            // Location-first display NOT applied here (owner's ask, 2026-07-31 review): r.TerminalName
             // is TradePriceRow.TerminalName, a DIFFERENT UEX vocabulary from MarketTerminal.Name -
             // already documented in TradePage.cs's TerminalNames doc comment (e.g. "CBD Lorville" vs
             // "CBD - Central Business District - Lorville" for the same terminal, verified against a

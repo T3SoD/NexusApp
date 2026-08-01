@@ -207,7 +207,7 @@ public partial class OverlayWindow : Window
         _onMarketChanged = () => Dispatcher.BeginInvoke(RefreshMarketSellLines);
         App.Market.Changed += _onMarketChanged;
 
-        // Live player location on the TRADE tab (the owner, 2026-08-01: "current location in the overlay
+        // Live player location on the TRADE tab (owner, 2026-08-01: "current location in the overlay
         // tab does not update live like it does in the main app"). The tab was only ever repainted
         // on a tab switch or a pin change, so a boundary crossing mid-flight left CURRENT LOCATION
         // and every band position stale - on the one surface that is actually on screen while
@@ -3496,7 +3496,7 @@ public partial class OverlayWindow : Window
         placeRow.Children.Add(placeDot);
         var placeLabel = new TextBlock
         {
-            // "CURRENT LOCATION", not "YOU" (the owner, 2026-08-01): the panel is read alongside the
+            // "CURRENT LOCATION", not "YOU" (owner, 2026-08-01): the panel is read alongside the
             // planner's own STARTING LOCATION / DESTINATION labels, and a one-word pronoun did not
             // read as the same kind of thing they are.
             Text = "CURRENT LOCATION", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = dim,

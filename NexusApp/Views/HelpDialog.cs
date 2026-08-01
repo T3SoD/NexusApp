@@ -117,7 +117,7 @@ public class HelpDialog : Window
             [
                 "Session tracking and blueprint auto-collect are always on - there's nothing to switch on.",
                 // F14 wording (2026-08-01): the chip is SESSION now, its live value carries the
-                // shard rather than the word "monitoring" (the owner cut it - the breathing green dot
+                // shard rather than the word "monitoring" (owner cut it - the breathing green dot
                 // already says alive), and BLUEPRINTS moved to the Library as AUTO-TRACK.
                 "The header pills show the live state - SESSION breathes green with your shard beside it while Star Citizen runs, and reads offline once it's closed; the Blueprint Library's own AUTO-TRACK chip shows blueprint collection working.",
                 "Each 'Received Blueprint' event marks that blueprint Owned in your Blueprint Library and bumps the session count - quietly, with no popups.",

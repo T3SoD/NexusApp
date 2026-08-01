@@ -28,7 +28,7 @@ public class LocationTrackerTests
         "requested inventory for Location[Stanton4_NewBabbage] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
-    // the owner's real-world live bug (2026-07-31): his Game.log placed him at this raw gateway token.
+    // The owner's real-world live bug (2026-07-31): his Game.log placed him at this raw gateway token.
     private const string PyroGatewayInventoryRequest =
         "<2026-07-29T22:39:34.863Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
         "requested inventory for Location[RR_JP_StantonPyro] " +
@@ -76,7 +76,7 @@ public class LocationTrackerTests
     [Fact]
     public void Ingest_JurisdictionLine_IsMarkedCoarse()
     {
-        // the owner's live find, 2026-08-01: the header LOCATION chip read "Crusader Industries" at
+        // The owner's live find, 2026-08-01: the header LOCATION chip read "Crusader Industries" at
         // Crusader - a jurisdiction names whose SPACE you are in, not where you stand. The flag
         // lets display surfaces qualify it instead of dressing an area up as a place.
         var t = new LocationTracker(new GameLogFeed());
@@ -222,7 +222,7 @@ public class LocationTrackerTests
         Assert.Equal("microTech", t.LastKnownLocation);
     }
 
-    // LastKnownUexLocation (the owner's live gateway bug fix, 2026-07-31): a second, raw-token-keyed
+    // LastKnownUexLocation (owner's live gateway bug fix, 2026-07-31): a second, raw-token-keyed
     // resolution alongside LastKnownLocation's display name, needed because TradeOriginResolver
     // could not connect "Pyro Gateway Station" (the in-game display name) to UEX's own
     // "Pyro Gateway (Stanton)" Location string by exact or substring match - the live planner

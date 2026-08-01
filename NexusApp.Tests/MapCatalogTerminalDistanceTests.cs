@@ -74,7 +74,7 @@ public class MapCatalogTerminalDistanceTests
     }
 
     // ── Terra Gateway ──
-    // Briefly excluded from the map on 2026-08-01 and restored the same day: the owner corrected the
+    // Briefly excluded from the map on 2026-08-01 and restored the same day: The owner corrected the
     // premise with "terra gateway does exist in the game, magnus does not". These pin the corrected
     // state, and the UEX evidence that should have prompted a question before the exclusion.
 

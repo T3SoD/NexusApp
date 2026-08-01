@@ -814,7 +814,7 @@ public sealed partial class TradePage : UserControl
     /// overlay is showing.</summary>
     internal bool IsPinned(TradeRoute r) => PinnedRoutes.Any(p => RoutePlanner.SameHaul(p, r));
 
-    /// <summary>The Sell tab's counterpart (the owner, 2026-08-01): true when a SELL-ONLY pin names
+    /// <summary>The Sell tab's counterpart (owner, 2026-08-01): true when a SELL-ONLY pin names
     /// this buyer terminal + commodity. Planner pins never satisfy this - see SameSellHaul.</summary>
     internal bool IsSellPinned(int terminalId, int commodityId)
         => PinnedRoutes.Any(p => RoutePlanner.SameSellHaul(p, terminalId, commodityId));

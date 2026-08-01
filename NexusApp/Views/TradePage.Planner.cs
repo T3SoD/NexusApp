@@ -67,7 +67,7 @@ public sealed partial class TradePage
     private bool _startSeeded;
     private bool _suppressStartSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
 
-    // Location-first display (the owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
+    // Location-first display (owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
     // LocationFirst's flipped label ("ARC-L1 - Admin") but _startSelectedKind/AppSettings.
     // TradeStartManual must keep the REAL UEX name the whole time (TerminalIdForName/
     // StartTerminalIds only ever resolve real names). Rebuilt fresh every RefreshStartCombo call,
@@ -89,7 +89,7 @@ public sealed partial class TradePage
     private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as the STARTING LOCATION picker above
     private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
 
-    // Location-first display (the owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
+    // Location-first display (owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
     // above: display -> real terminal name ("ANY" maps to itself), rebuilt fresh every
     // RefreshDestCombo call so SelectionChanged can map the combo's displayed text back to the
     // real name that gets persisted into AppSettings.TradeDestManual.
@@ -117,7 +117,7 @@ public sealed partial class TradePage
     // guards the DEBOUNCED call (see _budgetDebounceTimer below), not an immediate one.
     private bool _inBudgetLiveRerank;
 
-    // Debounce for the live re-rank (the owner's live-lag report, 2026-07-31): RoutePlanner.Rank
+    // Debounce for the live re-rank (owner's live-lag report, 2026-07-31): RoutePlanner.Rank
     // bucketizes the WHOLE TradePrices row set (~2,600 rows in a live snapshot) and pairs every
     // buy against every sell PER COMMODITY, then RebuildPlanner rebuilds up to 25 WPF route rows
     // - firing that on every single keystroke stutters at typing speed. Same DispatcherTimer
@@ -222,7 +222,7 @@ public sealed partial class TradePage
         // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
         // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
         //
-        // DEBOUNCED (the owner's live-lag report, 2026-07-31 - see _budgetDebounceTimer's own comment
+        // DEBOUNCED (owner's live-lag report, 2026-07-31 - see _budgetDebounceTimer's own comment
         // above for the cost this avoids): every keystroke restarts the one shared timer instead
         // of rebuilding right away; only the Tick, after BudgetDebounceMs of quiet typing, calls
         // RebuildPlanner. The reentrancy guard (_inBudgetLiveRerank) moves down into the Tick
@@ -547,7 +547,7 @@ public sealed partial class TradePage
         string? liveLoc = App.Locations.LastKnownLocation;
         var terminalNames = TerminalNames(snap);
 
-        // Location-first display (the owner's ask, 2026-07-31): kindToDisplay/displayToKind are
+        // Location-first display (owner's ask, 2026-07-31): kindToDisplay/displayToKind are
         // rebuilt fresh on every refresh from the current terminal list - they never persist
         // anything themselves, they just translate between the real kind (_startSelectedKind,
         // AppSettings.TradeStartManual) and the flipped label shown on screen. "ANY" and the
@@ -744,7 +744,7 @@ public sealed partial class TradePage
     {
         var terminalNames = TerminalNames(snap);
 
-        // Location-first display (the owner's ask, 2026-07-31), same mechanism as RefreshStartCombo
+        // Location-first display (owner's ask, 2026-07-31), same mechanism as RefreshStartCombo
         // above: nameToDisplay/displayToName are rebuilt fresh on every refresh and never touch
         // _destSelectedName or AppSettings.TradeDestManual, which stay the real UEX name the
         // whole time (SelectionChanged persists `name`, never `display`). "ANY" is not a
@@ -833,7 +833,7 @@ public sealed partial class TradePage
     {
         var text = new TextBlock
         {
-            // "PIN TO OVERLAY", not "PIN" (the owner, 2026-08-01): a bare PIN said nothing about where
+            // "PIN TO OVERLAY", not "PIN" (owner, 2026-08-01): a bare PIN said nothing about where
             // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
             // second effect, and the tooltip below is where that belongs.
             Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
@@ -854,7 +854,7 @@ public sealed partial class TradePage
         return chip;
     }
 
-    // Repaints an existing chip rather than rebuilding it (the owner's live pass, 2026-08-01: "when i
+    // Repaints an existing chip rather than rebuilding it (owner's live pass, 2026-08-01: "when i
     // click pin to overlay the main app flashes and lags a bit"). The click handler used to call
     // RebuildPlanner, which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
     // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the

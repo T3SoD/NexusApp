@@ -378,7 +378,7 @@ public sealed partial class TradePage
         // same-system gate, so this is a single call, not a duplicated check.
         double? distanceMeters = _starmap.DistanceMeters(originTerm, term);
 
-        // PIN TO OVERLAY on sell rows (the owner, 2026-08-01), same chip and same repaint-in-place
+        // PIN TO OVERLAY on sell rows (owner, 2026-08-01), same chip and same repaint-in-place
         // rules as the planner's: the click never rebuilds, e.Handled keeps it off the row's own
         // expand toggle, and RefreshPinChips repaints EVERY chip since a cap eviction can dim a
         // chip on either tab. UEX rows only - an SCT-only listing has no terminal id to pin.
@@ -422,7 +422,7 @@ public sealed partial class TradePage
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
     //
-    // Location-first display NOT applied to terminalName here (the owner's ask, 2026-07-31 review):
+    // Location-first display NOT applied to terminalName here (owner's ask, 2026-07-31 review):
     // callers feed this from TradePriceRow.TerminalName (BuildBuyerRowContent's b.Row.TerminalName)
     // or an SCT Location string, both a different UEX vocabulary from MarketTerminal.Name that
     // TradeOriginResolver.LocationFirst's " - " rule was verified against - see the same note on

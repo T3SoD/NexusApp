@@ -15,7 +15,7 @@ public class LocationAliasesTests
     [Fact]
     public void Normalize_JumpPointGatewayToken_ReturnsStationName()
     {
-        // the owner's real-world example: the RR_JP_StantonPyro inventory key at the Pyro-bound gate.
+        // The owner's real-world example: the RR_JP_StantonPyro inventory key at the Pyro-bound gate.
         Assert.Equal("Pyro Gateway Station", LocationAliases.Normalize("RR_JP_StantonPyro"));
     }
 
@@ -113,7 +113,7 @@ public class LocationAliasesTests
         Assert.Null(LocationAliases.Normalize(null!));
     }
 
-    // ---- UexLocationForToken (the owner's live gateway bug fix): raw-token to UEX Location string,
+    // ---- UexLocationForToken (owner's live gateway bug fix): raw-token to UEX Location string,
     // a second table from Normalize's display-name one, keyed by raw token because display names
     // are not unique - see LocationAliases.cs's doc comment on _uexLocations for why.
 
@@ -171,7 +171,7 @@ public class LocationAliasesTests
     [Fact]
     public void StantonSideTerraToken_IsPresentInBothTables()
     {
-        // Excluded on 2026-08-01 and restored the same day: the owner corrected the premise with "terra
+        // Excluded on 2026-08-01 and restored the same day: The owner corrected the premise with "terra
         // gateway does exist in the game, magnus does not". UEX had been carrying 21 terminals with
         // priced rows at this Location the whole time, which was the evidence that should have
         // prompted a question rather than been treated as noise.
@@ -194,7 +194,7 @@ public class LocationAliasesTests
         Assert.Null(LocationAliases.UexLocationForToken(""));
     }
 
-    // Canary (the owner's live gateway bug, 2026-07-31): every uexLocations VALUE committed in
+    // Canary (owner's live gateway bug, 2026-07-31): every uexLocations VALUE committed in
     // location_aliases.json must still name a real, currently-priced UEX terminal Location. This
     // fixture is a snapshot of the real live-UEX Locations verified at the time these three
     // mappings were added; if UEX ever renames one of these gateway Locations and this table is

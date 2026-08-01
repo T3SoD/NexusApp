@@ -47,7 +47,7 @@ public static class StatusChips
     public static ScanIndicator ContractScanState(bool running, bool enabled)
         => running ? ScanIndicator.On : enabled ? ScanIndicator.Paused : ScanIndicator.Off;
 
-    /// <summary>One LED for two scanners (the owner on the mock: "make sure the autoscan represents
+    /// <summary>One LED for two scanners (owner on the mock: "make sure the autoscan represents
     /// both OCR auto scan features"). Paused outranks On because paused is the state worth a
     /// glance - the scanners pause THEMSELVES on foreground rules, and a green lamp while either
     /// is silently paused would be the lamp lying. On outranks Off because something genuinely
