@@ -22,6 +22,11 @@ public class AppSettings
 
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
+    // Trade routes pinned in the planner (the owner, 2026-08-01: "the same as refinery orders"). They
+    // shipped session-only that morning; a run outlives a session, so that was wrong. Order is pin
+    // order, oldest first, and it is load-bearing - the overlay lists cards in it and the cap drops
+    // the oldest. See Models/PinnedRoute.cs for what is stored and what deliberately is not.
+    public List<PinnedRoute> PinnedRoutes { get; set; } = [];
     public bool FirstRunComplete { get; set; }
 
     // BETA Session Tracking - remember whether the watch / auto-collect were on, so they

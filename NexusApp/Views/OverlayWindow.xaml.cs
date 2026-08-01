@@ -3361,17 +3361,17 @@ public partial class OverlayWindow : Window
 
     // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
     // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
-    private IReadOnlyList<TradeRoute> _pinnedRoutes = Array.Empty<TradeRoute>();
+    private IReadOnlyList<PinnedRoute> _pinnedRoutes = Array.Empty<PinnedRoute>();
 
     /// <summary>Raised when a card's close control is clicked. MainWindow routes it back into
     /// TradePage, which owns the pin list - this window never edits it directly, so the planner
     /// chip, the Starmap leg and these cards can never disagree about what is pinned.</summary>
-    public event Action<TradeRoute>? UnpinRouteRequested;
+    public event Action<PinnedRoute>? UnpinRouteRequested;
 
     /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
     /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
     /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
-    public void SetPinnedRoutes(IReadOnlyList<TradeRoute> routes)
+    public void SetPinnedRoutes(IReadOnlyList<PinnedRoute> routes)
     {
         _pinnedRoutes = routes;
         TabStrip.SetBadge("trade", routes.Count);
@@ -3478,18 +3478,16 @@ public partial class OverlayWindow : Window
     // One Manifest Strip card. Every value the owner asked for is on it: start, end, distance,
     // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
     private Border BuildTradeCard(
-        TradeRoute route,
+        PinnedRoute route,
         IReadOnlyDictionary<int, MarketTerminal>? terminals,
         MapObject? here,
         System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,
         System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
         System.Windows.Media.FontFamily mono)
     {
-        var buy = route.BuyRow;
-        var sell = route.SellRow;
         MarketTerminal? buyTerminal = null, sellTerminal = null;
-        terminals?.TryGetValue(buy.TerminalId, out buyTerminal);
-        terminals?.TryGetValue(sell.TerminalId, out sellTerminal);
+        terminals?.TryGetValue(route.BuyTerminalId, out buyTerminal);
+        terminals?.TryGetValue(route.SellTerminalId, out sellTerminal);
 
         var rows = new StackPanel();
 
@@ -3504,9 +3502,9 @@ public partial class OverlayWindow : Window
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var commodity = new TextBlock
         {
-            Text = buy.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
+            Text = route.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
             TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = buy.CommodityName,
+            ToolTip = route.CommodityName,
         };
         head.Children.Add(commodity);
         var scu = new TextBlock
@@ -3518,16 +3516,21 @@ public partial class OverlayWindow : Window
         head.Children.Add(scu);
         var margin = new TextBlock
         {
-            Text = $"{sell.Sell - buy.Buy:N0}/SCU", FontFamily = mono, FontSize = 9.5, Foreground = dim,
+            Text = $"{route.PerScuMargin:N0}/SCU", FontFamily = mono, FontSize = 9.5, Foreground = dim,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 1, 0, 0),
-            ToolTip = "Margin per SCU on this route",
+            // The age is on the card because these numbers are a SNAPSHOT, not a live quote: a
+            // pinned route the current ranking does not contain keeps the figures it had when it
+            // was last ranked, and a margin quoted as though it were current would be the one lie
+            // this panel could tell.
+            ToolTip = $"Margin per SCU when this route was last ranked "
+                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)}).",
         };
         Grid.SetColumn(margin, 2);
         head.Children.Add(margin);
         rows.Children.Add(head);
 
         // Line 2: where the run starts, on its own full-width line.
-        rows.Children.Add(TradeEndLine("FROM", buy.TerminalName, fg, dim));
+        rows.Children.Add(TradeEndLine("FROM", route.BuyTerminalName, fg, dim));
 
         // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far along
         // the player is. With no usable position reading the band stays a bare rail with unlit caps
@@ -3554,9 +3557,9 @@ public partial class OverlayWindow : Window
         foot.Children.Add(distance);
         var to = new TextBlock
         {
-            Text = sell.TerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
+            Text = route.SellTerminalName, FontSize = 11, Foreground = dim, Margin = new Thickness(8, 0, 0, 0),
             TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center, ToolTip = sell.TerminalName,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = route.SellTerminalName,
         };
         Grid.SetColumn(to, 1);
         foot.Children.Add(to);
@@ -3586,7 +3589,7 @@ public partial class OverlayWindow : Window
         close.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;
-            Logger.Info($"[UI] overlay trade: unpin {buy.CommodityName}");
+            Logger.Info($"[UI] overlay trade: unpin {route.CommodityName}");
             UnpinRouteRequested?.Invoke(route);
         };
         body.Children.Add(close);

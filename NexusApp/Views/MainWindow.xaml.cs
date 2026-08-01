@@ -903,7 +903,7 @@ public partial class MainWindow : Window
     {
         var routes = _tradePage?.PinnedRoutes;
         if (routes is null || routes.Count == 0) _mapPage?.ClearPlannerRoute();
-        else _mapPage?.SetPlannerRoutes(routes.Select(r => (r.BuyRow.TerminalId, r.SellRow.TerminalId)).ToList());
+        else _mapPage?.SetPlannerRoutes(routes.Select(r => (r.BuyTerminalId, r.SellTerminalId)).ToList());
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -1499,16 +1499,16 @@ public partial class MainWindow : Window
         // known to exist, and the push below catches routes pinned before it did. The per-card
         // close routes back through TradePage so one owner still holds the pin list; the Refresh
         // repaints the PIN chip on the planner row that card came from.
-        _overlay.UnpinRouteRequested += route =>
+        _overlay.UnpinRouteRequested += pin =>
         {
-            _tradePage?.UnpinRoute(route);
+            _tradePage?.UnpinRoute(pin);
             if (_activePage == "trade") _tradePage?.Refresh();
         };
         PushPinnedRoutesToOverlay();
     }
 
     private void PushPinnedRoutesToOverlay()
-        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<TradeRoute>());
+        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<PinnedRoute>());
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {

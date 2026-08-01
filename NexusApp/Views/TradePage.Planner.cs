@@ -429,13 +429,16 @@ public sealed partial class TradePage
             // a distance it ignored.
             App.Map.DistanceMeters);
 
-        // Stale-pin rule (Task 8): a session-pinned route is identified by its (buy terminal, sell
-        // terminal, commodity) triple, not by object identity - this fresh `routes` list is a
-        // brand new set of TradeRoute instances every rebuild. A pin whose triple no longer exists
-        // in the fresh ranking must not survive it (the Sell-picker desync lesson: a stale
-        // selection surviving a snapshot refresh is worse than an honestly cleared one). Since
-        // 2026-08-01 several routes can be pinned, so each is judged separately.
-        DropStalePins(routes);
+        // Pin refresh (Task 8, resemantic 2026-08-01 when pins began surviving a restart). A pin is
+        // identified by its (buy terminal, sell terminal, commodity) triple, not by object identity:
+        // this `routes` list is a brand new set of TradeRoute instances every rebuild. Any pin the
+        // fresh ranking contains has its trip quantity and margin brought up to date here.
+        //
+        // It no longer DROPS the pins the ranking is missing. That rule was right while a pin lasted
+        // only as long as the session that made it; a ranking is the best 25 routes for the ship,
+        // budget and scope selected right now, so once pins persist, "not in the top 25" would have
+        // silently erased them the first time the user switched ships.
+        RefreshPins(routes);
 
         if (routes.Count == 0)
         {

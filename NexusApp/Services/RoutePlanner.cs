@@ -1,4 +1,5 @@
 using System.Linq;
+using NexusApp.Models;
 
 namespace NexusApp.Services;
 
@@ -244,27 +245,82 @@ public static class RoutePlanner
     /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
     internal const int MaxPins = 5;
 
+    /// <summary>True when a persisted pin and a live route name the same haul.</summary>
+    internal static bool SameHaul(PinnedRoute pin, TradeRoute r) =>
+        pin.BuyTerminalId == r.BuyRow.TerminalId
+        && pin.SellTerminalId == r.SellRow.TerminalId
+        && pin.CommodityId == r.BuyRow.CommodityId;
+
+    /// <summary>Captures a live route as a persistable pin. Display facts only - see
+    /// PinnedRoute for why no price is among them.</summary>
+    internal static PinnedRoute ToPin(TradeRoute r, DateTime nowUtc) => new()
+    {
+        BuyTerminalId = r.BuyRow.TerminalId,
+        SellTerminalId = r.SellRow.TerminalId,
+        CommodityId = r.BuyRow.CommodityId,
+        CommodityName = r.BuyRow.CommodityName,
+        BuyTerminalName = r.BuyRow.TerminalName,
+        SellTerminalName = r.SellRow.TerminalName,
+        TripQty = r.TripQty,
+        PerScuMargin = r.SellRow.Sell - r.BuyRow.Buy,
+        UpdatedUtc = nowUtc,
+        PinnedUtc = nowUtc,
+    };
+
     /// <summary>Pure pin toggle. Pinning a haul that is already pinned UNPINS it (the chip stays a
     /// toggle, exactly as it behaved when only one pin existed); otherwise the route is appended,
     /// and once the list is at <paramref name="cap"/> the OLDEST pin is dropped to make room.
     /// Dropping the oldest rather than refusing the new pin keeps the chip's promise: a click on
     /// PIN always pins. Returns a new list; never mutates the one passed in.</summary>
-    internal static IReadOnlyList<TradeRoute> TogglePin(
-        IReadOnlyList<TradeRoute> pinned, TradeRoute route, int cap = MaxPins)
+    internal static IReadOnlyList<PinnedRoute> TogglePin(
+        IReadOnlyList<PinnedRoute> pinned, TradeRoute route, DateTime nowUtc, int cap = MaxPins)
     {
         var kept = pinned.Where(p => !SameHaul(p, route)).ToList();
         if (kept.Count != pinned.Count) return kept;   // it was pinned: this click unpinned it
 
-        kept.Add(route);
+        kept.Add(ToPin(route, nowUtc));
         while (kept.Count > cap) kept.RemoveAt(0);
         return kept;
     }
 
-    /// <summary>The stale-pin rule applied to the whole list: keeps the pins whose haul still
-    /// exists in a fresh ranking, in their existing order. The single-pin version of this ran once
-    /// per rebuild; with several pins each is judged on its own, so one route falling out of the
-    /// ranking can never take the others down with it.</summary>
-    internal static IReadOnlyList<TradeRoute> SurvivingPins(
-        IReadOnlyList<TradeRoute> pinned, IReadOnlyList<TradeRoute> fresh) =>
-        pinned.Where(p => PinSurvivesRefresh(p, fresh)).ToList();
+    /// <summary>
+    /// Refreshes every pin whose haul appears in a fresh ranking, and LEAVES THE REST ALONE.
+    ///
+    /// <para>This replaced a stale-pin rule that DROPPED any pin missing from the ranking. That was
+    /// right while pins lasted only as long as the session that made them, and wrong the moment they
+    /// began surviving a restart: a ranking is the best 25 routes for the ship, budget and scope
+    /// selected right now, so falling out of one means "not currently top-25", not "no longer
+    /// exists". Under the old rule, changing ship and reopening the planner would have silently
+    /// erased the user's pins - indistinguishable from a bug, and exactly what persistence was asked
+    /// for to prevent.</para>
+    ///
+    /// <para>Returns a new list in the original pin order; never mutates the inputs.</para>
+    /// </summary>
+    internal static IReadOnlyList<PinnedRoute> RefreshPins(
+        IReadOnlyList<PinnedRoute> pinned, IReadOnlyList<TradeRoute> fresh, DateTime nowUtc)
+    {
+        var result = new List<PinnedRoute>(pinned.Count);
+        foreach (var pin in pinned)
+        {
+            var live = fresh.FirstOrDefault(r => SameHaul(pin, r));
+            if (live is null) { result.Add(pin); continue; }
+
+            result.Add(new PinnedRoute
+            {
+                BuyTerminalId = pin.BuyTerminalId,
+                SellTerminalId = pin.SellTerminalId,
+                CommodityId = pin.CommodityId,
+                // Names come from the FRESH row: a terminal or commodity rename upstream should
+                // reach a pinned card rather than leave it quoting a name that no longer exists.
+                CommodityName = live.BuyRow.CommodityName,
+                BuyTerminalName = live.BuyRow.TerminalName,
+                SellTerminalName = live.SellRow.TerminalName,
+                TripQty = live.TripQty,
+                PerScuMargin = live.SellRow.Sell - live.BuyRow.Buy,
+                UpdatedUtc = nowUtc,
+                PinnedUtc = pin.PinnedUtc,   // never moves: it answers "how long have I meant to run this"
+            });
+        }
+        return result;
+    }
 }

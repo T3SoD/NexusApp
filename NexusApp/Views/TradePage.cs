@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using NexusApp.Models;
 using NexusApp.Services;
 using NexusApp.Services.Map;
 
@@ -789,12 +790,14 @@ public sealed partial class TradePage : UserControl
     // RoutePlanner.TogglePin / SurvivingPins / PinSurvivesRefresh (Services/RoutePlanner.cs), unit
     // tested directly in NexusApp.Tests/TradePinnedRouteTests.cs.
     //
-    // MULTI-PIN since 2026-08-01 (the owner: "i would like the ability to pin multiple routes from
+    // MULTI-PIN and PERSISTED since 2026-08-01 (the owner: "i would like the ability to pin multiple routes from
     // planner to display in the overlay with the ability to close each one out from the overlay").
     // Order is pin order, oldest first, and it is load-bearing: the overlay lists pins in it, and
     // TogglePin drops the oldest at the cap.
-    private IReadOnlyList<TradeRoute> _pinnedRoutes = Array.Empty<TradeRoute>();
-    internal IReadOnlyList<TradeRoute> PinnedRoutes => _pinnedRoutes;
+    // PERSISTED since 2026-08-01 (the owner: "lets have trade routes pinned persist the same as refinery
+    // orders"). Backed by AppSettings.PinnedRoutes, which is the live list itself rather than a copy
+    // written back - one owner, so a pin cannot exist in memory and not on disk.
+    internal IReadOnlyList<PinnedRoute> PinnedRoutes => App.Settings.Current.PinnedRoutes;
     internal event Action? PinnedRouteChanged;
 
     /// <summary>A planner route leg's terminal name was clicked (app review G7b). MainWindow
@@ -809,44 +812,53 @@ public sealed partial class TradePage : UserControl
     /// <summary>True when this exact haul (buy terminal, sell terminal, commodity) is pinned. The
     /// row's PIN chip paints from this, so "is this row pinned" can never disagree with what the
     /// overlay is showing.</summary>
-    internal bool IsPinned(TradeRoute r) => RoutePlanner.PinSurvivesRefresh(r, _pinnedRoutes);
+    internal bool IsPinned(TradeRoute r) => PinnedRoutes.Any(p => RoutePlanner.SameHaul(p, r));
 
-    /// <summary>Toggles a session pin: pinning an already-pinned haul unpins it, and pinning past
-    /// the cap drops the oldest (RoutePlanner.TogglePin owns both rules). Passing null clears every
-    /// pin. Raises PinnedRouteChanged only on an actual change.</summary>
+    /// <summary>Toggles a pin: pinning an already-pinned haul unpins it, and pinning past the cap
+    /// drops the oldest (RoutePlanner.TogglePin owns both rules). Passing null clears every pin.
+    /// Raises PinnedRouteChanged and saves only on an actual change.</summary>
     internal void PinRoute(TradeRoute? r)
     {
-        if (r is null) { SetPins(Array.Empty<TradeRoute>()); return; }
-        SetPins(RoutePlanner.TogglePin(_pinnedRoutes, r));
+        if (r is null) { SetPins(new List<PinnedRoute>()); return; }
+        SetPins(RoutePlanner.TogglePin(PinnedRoutes, r, DateTime.UtcNow));
     }
 
     /// <summary>Removes one pin, the overlay's per-card close. Unlike PinRoute this never adds:
     /// a close on a card whose haul is already gone is a no-op, not a re-pin.</summary>
-    internal void UnpinRoute(TradeRoute r)
-    {
-        if (!IsPinned(r)) return;
-        SetPins(_pinnedRoutes.Where(p => !RoutePlanner.SameHaul(p, r)).ToList());
-    }
+    internal void UnpinRoute(PinnedRoute pin)
+        => SetPins(PinnedRoutes.Where(p => !p.SameHaulAs(pin)).ToList());
 
-    /// <summary>The stale-pin path: RebuildPlanner calls this with the fresh ranking so pins whose
-    /// haul no longer exists drop out. Each pin is judged on its own, so one route falling out of
-    /// the ranking never takes the others with it.</summary>
-    internal void DropStalePins(IReadOnlyList<TradeRoute> fresh)
-        => SetPins(RoutePlanner.SurvivingPins(_pinnedRoutes, fresh));
+    /// <summary>Refreshes the display facts of any pin the fresh ranking contains, and leaves the
+    /// rest alone. This USED to drop pins missing from the ranking; see RoutePlanner.RefreshPins for
+    /// why that rule could not survive pins outliving their session.</summary>
+    internal void RefreshPins(IReadOnlyList<TradeRoute> fresh)
+        => SetPins(RoutePlanner.RefreshPins(PinnedRoutes, fresh, DateTime.UtcNow));
 
-    // The single write path, so every change logs once and raises once. A no-op assignment (same
-    // count, same hauls, same order) is swallowed here rather than at each caller - RebuildPlanner
-    // calls DropStalePins on EVERY rebuild, including the hourly market tick, and an event per tick
-    // would repaint the overlay and re-push the map route for nothing.
-    private void SetPins(IReadOnlyList<TradeRoute> next)
+    // The single write path, so every change logs once, saves once and raises once. A no-op
+    // assignment is swallowed here rather than at each caller: RebuildPlanner calls RefreshPins on
+    // EVERY rebuild, including the hourly market tick, and an event per tick would repaint the
+    // overlay and re-push the map route for nothing - and, now that pins are persisted, would write
+    // settings.json on a timer.
+    //
+    // "No-op" compares the display facts too, not just the haul identity: a refresh that moved a
+    // trip quantity or a margin IS a change the overlay has to show, even though the same routes are
+    // pinned in the same order.
+    private void SetPins(IReadOnlyList<PinnedRoute> next)
     {
-        if (next.Count == _pinnedRoutes.Count && next.Zip(_pinnedRoutes).All(p => RoutePlanner.SameHaul(p.First, p.Second)))
-            return;
-        var before = _pinnedRoutes.Count;
-        _pinnedRoutes = next;
-        Logger.Info($"[UI] trade: pinned routes {before} -> {next.Count}");
+        var current = App.Settings.Current.PinnedRoutes;
+        if (next.Count == current.Count && next.Zip(current).All(p => Unchanged(p.First, p.Second))) return;
+
+        var before = current.Count;
+        App.Settings.Current.PinnedRoutes = next.ToList();
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: pinned routes {before} -> {next.Count} (saved)");
         PinnedRouteChanged?.Invoke();
     }
+
+    private static bool Unchanged(PinnedRoute a, PinnedRoute b) =>
+        a.SameHaulAs(b) && a.TripQty == b.TripQty && a.PerScuMargin.Equals(b.PerScuMargin)
+        && a.CommodityName == b.CommodityName
+        && a.BuyTerminalName == b.BuyTerminalName && a.SellTerminalName == b.SellTerminalName;
 
     // PrefillPlannerOriginFromMap was removed 2026-08-01 (app review). It took a single terminal id
     // and seeded only STARTING LOCATION, and its doc comment described a per-pin "set as planner
