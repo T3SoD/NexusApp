@@ -408,9 +408,9 @@ public partial class MainWindow : Window
     }
 
     // ── Market data consent strip ────────────────────────────────────────────
-    // The three price-capable surfaces (RS Decoder, Mining Codex, Refinery Tracker) share one
-    // host above the page stage, so the one-time question is asked once no matter which of them
-    // the user opens first.
+    // Every price-capable surface (RS Decoder, Mining Codex, Refinery Tracker, Trade, and the MAP
+    // tab's trade layer) shares one host above the page stage, so the one-time question is asked
+    // once no matter which of them the user opens first.
     private bool _marketConsentLogged;   // "shown" logged once per session, not on every page switch
 
     /// <summary>
@@ -423,7 +423,10 @@ public partial class MainWindow : Window
     {
         if (MarketConsentHost == null) return;
 
-        var show = _activePage is "scan" or "reference" or "workorders" or "trade"
+        // "map" joins the list (B7): the MAP tab's TRADE layer is gated on exactly the same consent,
+        // and until now it was the only gated surface that could not answer the question in place -
+        // it just pointed at Settings while every sibling offered one click.
+        var show = _activePage is "scan" or "reference" or "workorders" or "trade" or "map"
                    && MarketNotice.ShouldShowConsent(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile);
         if (!show)
         {
@@ -452,6 +455,9 @@ public partial class MainWindow : Window
             // TRADE has to repaint that page too, or all three of its flows keep showing the
             // "Turn on live market data..." message until the fetch's Changed lands.
             if (_activePage == "trade") _tradePage?.Refresh();
+            // MAP needs the identical treatment for the identical reason: its TRADE layer and the
+            // gated hint under SELECTION both read the consent flag, and neither repaints on its own.
+            if (_activePage == "map") _mapPage?.Refresh();
         };
         var decline = Hud.StripButton(MarketNotice.ConsentDecline);
         decline.Click += (_, _) =>

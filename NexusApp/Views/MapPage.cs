@@ -171,6 +171,18 @@ public sealed class MapPage : UserControl
         RefreshPlayerLocation();   // catches a live location change that happened while this tab was hidden, same reasoning as RefreshMarketDelta above
     }
 
+    /// <summary>B7: repaints when the market consent answer flips underneath this page. MainWindow's
+    /// consent strip calls this after "Turn on" is clicked while MAP is the active page, so the trade
+    /// layer and the gated hint fill in place instead of waiting for the next dock re-entry - the same
+    /// fan-out TradePage.Refresh() already gets (MainWindow.xaml.cs). Deliberately separate from
+    /// Activate() so it does not emit a "tab open" line; both share RefreshMarketDelta, whose delta
+    /// check makes a redundant call free.</summary>
+    public void Refresh()
+    {
+        Logger.Info("[UI] map: market consent answered, repainting");
+        RefreshMarketDelta();
+    }
+
     /// <summary>The snapshot/consent delta check shared by Activate() (every dock re-entry) and the
     /// ctor's App.Market.Changed subscription (I-1: every live market tick while this page is
     /// visible). ONE implementation so the two callers cannot drift apart. Rebuilds trade pins and
@@ -1028,7 +1040,7 @@ public sealed class MapPage : UserControl
 
         _hintText = new TextBlock
         {
-            Text = "Trade layer needs market data (Settings).",
+            Text = TradeHint(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile),
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("AccentBrush"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed,
         };
@@ -1147,9 +1159,28 @@ public sealed class MapPage : UserControl
         Child = new TextBlock { Text = ore, FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("OkBrush") },
     };
 
+    // Hint copy for a gated TRADE layer. Three genuinely different states hide behind the single
+    // TradeGated flag, and one static string cannot serve all three: with the question unanswered
+    // the one-click strip is now sitting directly above the map (B7), so pointing at Settings sends
+    // the user the long way round; with consent already granted there is nothing in Settings to
+    // change and the layer is simply waiting on the first fetch. Keyed off MarketNotice's own gate
+    // rather than a second copy of it, so the "strip above" wording cannot outlive the strip -
+    // including in the demo profile, where the strip is suppressed and Settings is right again.
+    // The fourth combination (consent on, snapshot present) is unreachable: TradeGated is false
+    // there and this text never shows. Pure so it is testable without the WPF tree, same idiom as
+    // LayerRowVisible.
+    internal static string TradeHint(bool? consent, bool isDemoProfile) =>
+        MarketNotice.ShouldShowConsent(consent, isDemoProfile)
+            ? "Trade layer needs live market data. Turn it on in the strip above."
+            : consent != true
+                ? "Trade layer needs live market data (Settings)."
+                : "Trade layer is waiting for the first market fetch.";
+
     private void RefreshSelectionZone()
     {
-        _hintText.Visibility = (_tradeOn && TradeGated) ? Visibility.Visible : Visibility.Collapsed;
+        bool gated = _tradeOn && TradeGated;
+        _hintText.Visibility = gated ? Visibility.Visible : Visibility.Collapsed;
+        if (gated) _hintText.Text = TradeHint(App.Settings.Current.MarketDataEnabled, AppPaths.IsDemoProfile);
 
         var obj = _selection.HasValue ? _catalog.ById(_selection.Value) : null;
         if (obj == null)
