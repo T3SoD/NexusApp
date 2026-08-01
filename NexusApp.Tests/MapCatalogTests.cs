@@ -15,8 +15,81 @@ public class MapCatalogTests
     {
         // 4 source placeholder records ("<= UNINITIALIZED =>", Stanton) were filtered out of the
         // extractor's map artifact; ids 419/437/473/515 are gaps, not renumbered.
-        Assert.Equal(963, Catalog.Count);
-        Assert.Equal(963, Catalog.Objects.Count);
+        // 959 = 963 in the artifact minus the 4 objects for systems that are not in the game,
+        // excluded at load (MapCatalog.ExcludedObjects).
+        Assert.Equal(959, Catalog.Count);
+        Assert.Equal(959, Catalog.Objects.Count);
+    }
+
+    // ── Unreachable-system exclusions (the owner, 2026-08-01) ──
+
+    [Theory]
+    [InlineData("Stanton", "Stanton - Terra Jump Point")]
+    [InlineData("Stanton", "Terra Gateway")]
+    [InlineData("Stanton", "Stanton - Magnus Jump Point")]
+    [InlineData("Nyx", "Nyx - Castra Jump Point")]
+    public void UnreachableSystemObjects_AreNotInTheCatalog(string system, string name)
+    {
+        // Terra, Magnus and Castra are not in the game. These rows exist in the artifact only
+        // because it is derived from the game's object catalog, which carries unreleased content.
+        // The Castra case is the one that shows the rule is about the DESTINATION system, not the
+        // system the object sits in: that jump point is physically in Nyx, which is live.
+        Assert.Null(Catalog.ByName(system, name));
+        Assert.DoesNotContain(Catalog.Objects, o => o.Name == name);
+    }
+
+    [Fact]
+    public void StantonGatewayInNyx_Survives_AndIsRerootedOffTheCastraJumpPoint()
+    {
+        // The Nyx-side repeat of the Nyx-Gateway-under-Magnus case: a gateway to a REACHABLE system
+        // was parented to an excluded jump point. Two independent instances is why the re-rooting
+        // pass is a general rule rather than a one-off patch.
+        var obj = Catalog.ByName("Nyx", "Stanton Gateway");
+        Assert.NotNull(obj);
+        Assert.Null(obj!.Parent);
+    }
+
+    [Fact]
+    public void TerraMillsHydroFarm_Survives_ItSharesOnlyTheWord()
+    {
+        // A real Hurston outpost. The exclusion matches full (system, name) keys, never substrings,
+        // specifically so an unrelated name cannot be swept up by the word "Terra".
+        var obj = Catalog.ByName("Stanton", "Terra Mills HydroFarm");
+        Assert.NotNull(obj);
+        Assert.Equal("Outpost", obj!.Type);
+    }
+
+    [Fact]
+    public void NyxGatewayInStanton_Survives_AndIsRerootedOffItsExcludedParent()
+    {
+        // The case that made the second load pass necessary: Stanton's "Nyx Gateway" is parented to
+        // the Stanton-Magnus Jump Point in the source data, and Nyx IS reachable. Excluding the
+        // parent must not orphan the child onto an id that resolves to nothing.
+        var obj = Catalog.ByName("Stanton", "Nyx Gateway");
+        Assert.NotNull(obj);
+        Assert.Null(obj!.Parent);
+    }
+
+    [Fact]
+    public void EveryParentId_Resolves()
+    {
+        // The invariant the re-rooting pass exists to hold, asserted over the whole catalog rather
+        // than just the one known case - any future exclusion gets this check for free.
+        foreach (var obj in Catalog.Objects)
+            if (obj.Parent is { } parentId)
+                Assert.True(Catalog.ById(parentId) != null,
+                    $"{obj.System}/{obj.Name} has parent id {parentId}, which resolves to nothing");
+    }
+
+    [Fact]
+    public void ExcludedTerraJumpPoint_TakesItsUexAliasesWithIt()
+    {
+        // "Stanton - Terra Jump Point" carried the UEX aliases "Terra Gateway (Stanton)" (location
+        // and orbit). Those must go too, or a UEX terminal could still resolve onto a place that is
+        // no longer in the map - and it would stay coherent with location_aliases.json, where the
+        // matching "Terra Gateway (Stanton)" entry was removed in the same ruling.
+        var terminal = new MarketTerminal(1, "Some Terminal", "commodity", false, "Stanton", "Terra Gateway (Stanton)");
+        Assert.Null(Catalog.ResolveTerminal(terminal));
     }
 
     [Fact]

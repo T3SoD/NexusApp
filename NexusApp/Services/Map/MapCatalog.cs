@@ -58,6 +58,34 @@ public sealed class MapCatalog
     // irrelevant to the resource name, which always resolves against Data/<filename>).
     private const string ResourceName = "NexusApp.Data.starmap_map.json";
 
+    // Objects belonging to star systems that are not in the game (the owner, 2026-08-01: "star map still
+    // mentions terra jump point and it shouldnt" - the same call he made on the gateway aliases).
+    // They are in the artifact because it is derived from the game's own object catalog, which
+    // carries unreleased content: real data, but not places any player can reach. Left in, they
+    // turn up in search results and the SELECTION panel and imply the map covers somewhere it does
+    // not.
+    //
+    // Filtered at LOAD rather than deleted from the artifact on purpose. The artifact is generated,
+    // so a regeneration would silently restore them; this exclusion survives that. Keyed by
+    // (system, name) rather than by id for the same reason - ids come from the generator and are
+    // not stable across runs.
+    //
+    // Note what is deliberately absent: "Terra Mills HydroFarm" is a real Hurston outpost that
+    // shares only the word "Terra". Matching is exact, never a substring, precisely so that
+    // an unrelated name cannot be swept up.
+    //
+    // The Castra entry was raised as a question (its object sits in Nyx, which IS live, so an
+    // unactivated jump point might have been something a player could fly to and see) and the owner
+    // ruled it out on the same terms as the rest. The destination system is what decides, not the
+    // system the object happens to sit in.
+    private static readonly HashSet<string> ExcludedObjects = new(StringComparer.OrdinalIgnoreCase)
+    {
+        NameKey("Stanton", "Stanton - Terra Jump Point"),
+        NameKey("Stanton", "Terra Gateway"),
+        NameKey("Stanton", "Stanton - Magnus Jump Point"),
+        NameKey("Nyx", "Nyx - Castra Jump Point"),
+    };
+
     public static MapCatalog LoadEmbedded()
     {
         using var stream = typeof(MapCatalog).Assembly.GetManifestResourceStream(ResourceName)
@@ -86,15 +114,32 @@ public sealed class MapCatalog
                 {
                     if (string.IsNullOrEmpty(o.System) || string.IsNullOrEmpty(o.Name))
                         continue;
+                    if (ExcludedObjects.Contains(NameKey(o.System, o.Name)))
+                        continue;
 
-                    var aliases = BuildAliases(o.Uex);
-                    var obj = new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z, o.Parent, aliases);
+                    objects.Add(new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z,
+                                              o.Parent, BuildAliases(o.Uex)));
+                }
 
-                    objects.Add(obj);
+                // An excluded object can be some SURVIVING object's parent, which would leave a
+                // dangling parent id behind. That is not hypothetical: Stanton's "Nyx Gateway" is
+                // parented to the Stanton-Magnus Jump Point in the source data, and Nyx is a real,
+                // reachable system. Re-root those to the system instead of leaving a reference to
+                // nothing - the scene walks the parent chain to decide cluster collapse and the
+                // SELECTION panel resolves the parent's name, and both should see a catalog whose
+                // every parent id actually resolves.
+                var presentIds = new HashSet<int>();
+                foreach (var o in objects) presentIds.Add(o.Id);
+                for (int i = 0; i < objects.Count; i++)
+                    if (objects[i].Parent is { } parentId && !presentIds.Contains(parentId))
+                        objects[i] = objects[i] with { Parent = null };
+
+                foreach (var obj in objects)
+                {
                     byId[obj.Id] = obj;
                     byName[NameKey(obj.System, obj.Name)] = obj;
 
-                    foreach (var alias in aliases)
+                    foreach (var alias in obj.Uex)
                         byAlias[AliasKey(obj.System, alias.Kind, alias.Name)] = obj;
                 }
             }
