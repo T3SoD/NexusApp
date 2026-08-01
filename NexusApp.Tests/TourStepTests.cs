@@ -7,9 +7,13 @@ namespace NexusApp.Tests;
 
 public class TourStepTests
 {
+    // 16 as of 2026-08-01: the Starmap and Trade steps were added after the app review found the
+    // tour introduced only nine of the eleven default dock tiles. Every_anchored_target_is_used_
+    // exactly_once below is the real guard - it fails automatically when an enum target has no
+    // step - so this count exists to catch an accidental duplicate or deletion, not to gate growth.
     [Fact]
-    public void Tour_has_exactly_14_steps()
-        => Assert.Equal(14, TourController.Steps.Length);
+    public void Tour_has_exactly_16_steps()
+        => Assert.Equal(16, TourController.Steps.Length);
 
     [Fact]
     public void First_and_last_steps_are_centered()

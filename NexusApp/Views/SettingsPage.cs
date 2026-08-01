@@ -86,8 +86,14 @@ public sealed class SettingsPage : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                    // tab strip
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });// pane host
 
+        // Reworded 2026-08-01 (app review). "Everything stays on this machine" predates the update
+        // checker and the two market-data sources, and this same page now hosts all three network
+        // toggles. It was defensible about the USER'S data (update checks send nothing about you,
+        // market fetches are anonymous reads) but read as "this app never goes online", which is no
+        // longer true. Say the honest version instead of the reassuring one.
         var header = Hud.Header("Configuration", "Settings",
-            "Paths and data. Everything stays on this machine.");
+            "Paths and data. Your files stay on this machine; anything that uses the internet is off "
+            + "until you turn it on.");
         Grid.SetRow(header, 0);
         root.Children.Add(header);
 

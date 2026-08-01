@@ -791,7 +791,12 @@ public sealed partial class TradePage
             BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush"), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Cursor = Cursors.Hand,
             Margin = new Thickness(8, 0, 0, 0), Child = text, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = active ? "Unpin this route." : "Pin this route so it stays here through a refresh.",
+            // Reworded 2026-08-01 (app review): the old text promised the route "stays here through
+            // a refresh", which RebuildPlanner never implements - it ranks fresh every time and the
+            // pin's only effect on THIS list is to be cleared when the route falls out of it. The
+            // pin's actual payoff is on another tab entirely (PushPinnedRouteToMap draws the
+            // buy-to-sell leg on the Starmap), which no Trade surface mentioned.
+            ToolTip = active ? "Stop showing this route on the Starmap." : "Show this route on the Starmap.",
         };
     }
 

@@ -153,16 +153,23 @@ public sealed class HaulingPage : UserControl
             nameStack.Children.Add(topo);
         }
 
-        // Max container size the contract delivers in (from the contract OCR). Cyan when detected,
-        // dim placeholder when the panel text has not yielded it yet.
+        // Max container size the contract delivers in. Corrected 2026-08-01 (app review): both the
+        // comment and both tooltips used to credit contract OCR, but OCR is the FALLBACK, not the
+        // source. HaulTracker.ApplyMarker looks the cap up in ContractCapCatalog by the exact
+        // contract token first, and Enrich only lets an OCR value through when the catalog had no
+        // entry. The unknown-case wording was the harmful half: "not found in the scanned text yet"
+        // reads as "be patient", but contract scanning is OFF by default and can only be turned on
+        // from the overlay's HAULING tab, so a player who never enabled it was waiting for
+        // something that would never happen.
         bool capDetected = h.ContainerCap.HasValue;
         var capChip = Hud.Chip(capDetected ? Cyan : Color.FromRgb(0x7C, 0x8A, 0x99),
                                capDetected ? $"Box ≤ {h.ContainerCap} SCU" : "Box size ?");
         capChip.Margin = new Thickness(6, 0, 0, 0);
         capChip.VerticalAlignment = VerticalAlignment.Center;
         capChip.ToolTip = capDetected
-            ? "Max container size this contract delivers in, read from the contract panel."
-            : "The contract's max container size was not found in the scanned text yet.";
+            ? "Max container size this contract delivers in."
+            : "No container size on record for this contract. Turning on contract scanning "
+              + "(overlay, HAULING tab) lets Nexus read it from the contract panel.";
         nameStack.Children.Add(capChip);
 
         Grid.SetColumn(nameStack, 0); titleRow.Children.Add(nameStack);

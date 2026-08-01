@@ -298,8 +298,15 @@ public sealed partial class TradePage : UserControl
             CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2),
             Child = text, VerticalAlignment = VerticalAlignment.Center,
         };
-        chip.ToolTip = "Distance between the buy and sell stops. Closest to farthest: Same Orbit, " +
-                       "Same Planet, Same System, Cross-System.";   // mock:653, verbatim
+        // Reworded 2026-08-01 (app review): the old text was "Distance between the buy and sell
+        // stops", which this chip does not measure. The tier is pure string equality over UEX
+        // hierarchy fields with no geometry at all (ProximityTiers.cs, whose own header says
+        // "Coarse tiers only - no distances, no ETAs"), and the real Gm figure renders inches away
+        // in the same row - so the chip and the number could visibly disagree and read as a bug.
+        // The tier is deliberately NOT derived from real distance; that is a documented spec
+        // decision, so the wording changes instead of the behaviour.
+        chip.ToolTip = "Where the two stops sit relative to each other: same station or orbit, " +
+                       "same planet, same star system, or across a jump. Not a measured distance.";
         return chip;
     }
 
