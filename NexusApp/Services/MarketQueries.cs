@@ -95,6 +95,59 @@ internal static class MarketQueries
         return null;
     }
 
+    // ── Live refinery yields (app review G8) ───────────────────────────────────────────────────
+    // The refineries_yields dataset has been fetched, parsed, cached and persisted since the market
+    // feature shipped, and read by nothing. It is UEX's community-reported refining bonus per
+    // terminal per RAW commodity - the live counterpart of the seed's static RefineryYield - and it
+    // is worth surfacing precisely because it can DISAGREE with the seed.
+    //
+    // It never replaces the seed. Two reasons, both load-bearing: the yield half of the dossier's
+    // VALUE section must survive market data being switched off (that is why the two halves are
+    // gated independently), and these rows are community reports carrying their own date, some of
+    // them months old. Corroboration, shown beside the seed's number, is the honest use - the same
+    // shape the SCT layer already takes against UEX prices.
+
+    /// <summary>One live refining bonus reading at one refinery, for one raw ore.</summary>
+    internal sealed record YieldHit(string Station, int BonusPct, int BonusPctWeek, DateTime ModifiedUtc, int TerminalId);
+
+    /// <summary>UEX names these terminals "Refinement Center - Levski" / "Refinement Processing -
+    /// Stanton Gateway (Pyro)". The seed names the same place "Levski" / "Stanton Gateway (Pyro)".
+    /// Strips any "<something> - " prefix so the two vocabularies can be joined; a name with no
+    /// separator is returned unchanged.</summary>
+    public static string RefineryStationName(string? uexTerminalName)
+    {
+        if (string.IsNullOrWhiteSpace(uexTerminalName)) return "";
+        var cut = uexTerminalName.IndexOf(" - ", StringComparison.Ordinal);
+        return (cut >= 0 ? uexTerminalName[(cut + 3)..] : uexTerminalName).Trim();
+    }
+
+    /// <summary>Live refining bonuses for one seed ore, keyed by station name as the seed spells it.
+    /// Empty on every miss - no snapshot, an unmapped ore, or no reported rows - so a caller can
+    /// look up unconditionally and get silence.</summary>
+    public static IReadOnlyDictionary<string, YieldHit> LiveYieldsByStation(MarketSnapshot? s, string seedResourceName)
+    {
+        var empty = new Dictionary<string, YieldHit>(StringComparer.OrdinalIgnoreCase);
+        if (s is null) return empty;
+
+        // Keyed on the RAW commodity: the bonus applies to what goes INTO the refinery, which is
+        // why this resolves the raw row rather than following the refined link the price queries do.
+        var raw = ResolveRawCommodity(s, seedResourceName);
+        if (raw is null) return empty;
+
+        var byStation = new Dictionary<string, YieldHit>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in s.Yields.Rows)
+        {
+            if (row.CommodityId != raw.Id) continue;
+            var station = RefineryStationName(row.TerminalName);
+            if (station.Length == 0) continue;
+            // First wins. UEX reports one row per terminal per commodity; a duplicate would mean
+            // upstream changed shape, and overwriting silently would hide that.
+            if (!byStation.ContainsKey(station))
+                byStation[station] = new YieldHit(station, row.BonusPct, row.BonusPctWeek, row.ModifiedUtc, row.TerminalId);
+        }
+        return byStation;
+    }
+
     private static void LogMissOnce(string seedResourceName)
     {
         lock (_loggedMisses)

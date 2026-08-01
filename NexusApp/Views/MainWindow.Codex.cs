@@ -615,18 +615,41 @@ public partial class MainWindow
         Margin = new Thickness(0, 4, 0, 8),
     };
 
-    private Border YieldRow(NexusApp.Models.RefineryYield y)
+    // One refinery's yield row. The seed's number is the row's number and always has been; the
+    // optional live reading (app review G8) rides beside it as corroboration, never as a
+    // replacement - see MarketQueries.LiveYieldsByStation for why that direction is load-bearing.
+    private Border YieldRow(NexusApp.Models.RefineryYield y, MarketQueries.YieldHit? live = null)
     {
         var rg = new Grid();
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+        rg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
         rg.Children.Add(new TextBlock { Text = y.Station, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         var sysT = new TextBlock { Text = y.System, FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sysT, 1); rg.Children.Add(sysT);
+
+        // Only shown when it actually differs. A live reading that agrees with the seed adds a
+        // number to every row and tells the reader nothing; a disagreement is the whole signal.
+        if (live is not null && live.BonusPct != y.ModifierPct)
+        {
+            var liveSign = live.BonusPct > 0 ? "+" : "";
+            var reported = new TextBlock
+            {
+                Text = $"reported {liveSign}{live.BonusPct}%", FontSize = 10.5,
+                FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
+                Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                ToolTip = $"Players reported {liveSign}{live.BonusPct}% here "
+                        + $"({MarketNotice.FormatAge(DateTime.UtcNow - live.ModifiedUtc)}). "
+                        + $"Nexus shows its own {(y.ModifierPct > 0 ? "+" : "")}{y.ModifierPct}% figure.",
+            };
+            Grid.SetColumn(reported, 2); rg.Children.Add(reported);
+        }
+
         var sign = y.ModifierPct > 0 ? "+" : "";
         var yld = new TextBlock { Text = $"{sign}{y.ModifierPct}%", FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = ModifierBrush(y.ModifierPct), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(yld, 2); rg.Children.Add(yld);
+        Grid.SetColumn(yld, 3); rg.Children.Add(yld);
         return Hud.RowCard(rg);
     }
 
@@ -1223,8 +1246,13 @@ public partial class MainWindow
                 // rows are already behind one click here, and a second expander inside the first
                 // would hide seed data the dossier shows today.
                 valueDetails.Children.Add(RefSectionLabel($"REFINERY YIELDS  ·  {yields.Count}"));
+                // Live UEX refining bonuses for this ore, joined by station name (app review G8).
+                // Empty whenever market data is off, the snapshot is missing, or nobody has
+                // reported this ore - and an empty lookup makes every row render exactly as it did
+                // before, which is the point: the seed's yields never depend on the network.
+                var liveYields = MarketQueries.LiveYieldsByStation(marketSnap, r.Name);
                 foreach (var y in yields)
-                    valueDetails.Children.Add(YieldRow(y));
+                    valueDetails.Children.Add(YieldRow(y, liveYields.GetValueOrDefault(y.Station)));
             }
 
             ApplyExpanderState(valueDetails, _dossierValueExpanded);
