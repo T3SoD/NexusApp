@@ -4,7 +4,10 @@ namespace NexusApp.Services;
 // restore guard is headlessly testable, the same split SettingsTabs uses for the settings strip.
 public static class OverlayTabs
 {
-    public static readonly string[] Ids = ["stats", "scan", "orders", "shopping", "hauling", "guides"];
+    // "trade" shipped 2026-08-01 (app review: the overlay carried no trade information at all, on
+    // the one surface that is actually on screen while you fly a route). It had been reserved here
+    // with a label and a glyph since the tab strip was built, so turning it on is this one entry.
+    public static readonly string[] Ids = ["stats", "scan", "orders", "shopping", "hauling", "guides", "trade"];
 
     public const string Default = "stats";
 
@@ -13,8 +16,7 @@ public static class OverlayTabs
     public static string NormalizeForRestore(string? saved)
         => saved is not null && Array.IndexOf(Ids, saved) >= 0 ? saved : Default;
 
-    // Display labels for the strip's pill and hover chips. "trade" is the reserved future
-    // commodity trading tab: it has a label and a glyph now, but is not in Ids until it ships.
+    // Display labels for the strip's pill and hover chips.
     public static string LabelFor(string id) => id switch
     {
         "stats" => "HUB",

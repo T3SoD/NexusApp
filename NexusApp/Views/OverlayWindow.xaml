@@ -464,6 +464,15 @@
                     </ScrollViewer>
                 </Grid>
 
+                <!-- TRADE tab: the route pinned in the planner, plus where you are. Deliberately
+                     read-only and tiny - this is read mid-flight, so it answers "what am I running
+                     and where am I in it" and nothing else. Built in code (RebuildTradePanel). -->
+                <Grid x:Name="TradeTabContent" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
+                        <StackPanel x:Name="TradePanelItems"/>
+                    </ScrollViewer>
+                </Grid>
+
                 <!-- HAULING tab: contract scan controls (fixed) + active hauls + consolidation glance (App.Hauls) -->
                 <Grid x:Name="HaulingTabContent" Visibility="Collapsed">
                     <Grid.RowDefinitions>

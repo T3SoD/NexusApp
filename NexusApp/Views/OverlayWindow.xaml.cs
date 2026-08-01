@@ -2100,6 +2100,7 @@ public partial class OverlayWindow : Window
         ShoppingTabContent.Visibility = tab == "shopping" ? Visibility.Visible : Visibility.Collapsed;
         HaulingTabContent.Visibility  = tab == "hauling"  ? Visibility.Visible : Visibility.Collapsed;
         GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
+        TradeTabContent.Visibility    = tab == "trade"    ? Visibility.Visible : Visibility.Collapsed;
 
         // A tab switch is a real content change under the header gear's normal-mode flyout too
         // (issue #27 review): close it rather than let it float over content it no longer relates to.
@@ -2120,6 +2121,7 @@ public partial class OverlayWindow : Window
         if (tab == "scan") SyncScanControls();
         if (tab == "shopping") RebuildShoppingPanel();
         if (tab == "hauling") RebuildHaulingPanel();
+        if (tab == "trade") RebuildTradePanel();
         if (tab == "guides") ShowGuidesTab();
 
         // Executive Hangar (issue #26 amendment): the compact control ticks only while GUIDES is
@@ -3304,6 +3306,80 @@ public partial class OverlayWindow : Window
         if (Motion.Reduced)
             foreach (var (s, order) in _orderFillRefs.Values)
                 s.ScaleX = Math.Clamp(order.TimerFraction, 0, 1);
+    }
+
+    // ── TRADE tab ──────────────────────────────────────────────────────────────
+    // App review 2026-08-01: the overlay carried no trade information at all, on the one surface
+    // actually on screen while a route is being flown, and had zero references to the player's live
+    // position. This tab answers exactly two questions - what am I running, and where am I in it -
+    // and deliberately nothing else. Screen space here is tiny and it is read mid-flight, so it is a
+    // read-only glance, not a second planner.
+
+    // The route TradePage currently has pinned, pushed in by MainWindow on the same event that
+    // already keeps the Starmap's route overlay in sync. Null = nothing pinned.
+    private TradeRoute? _pinnedRoute;
+
+    /// <summary>MainWindow forwards TradePage's pinned route here, mirroring PushPinnedRouteToMap.
+    /// Cheap and idempotent: it only repaints when this tab is the one being presented.</summary>
+    public void SetPinnedRoute(TradeRoute? route)
+    {
+        _pinnedRoute = route;
+        if (IsTabPresented("trade")) RebuildTradePanel();
+    }
+
+    private void RebuildTradePanel()
+    {
+        TradePanelItems.Children.Clear();
+
+        var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+
+        TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool mn = false) => new()
+        {
+            Text = text, Foreground = brush, FontSize = size, TextWrapping = TextWrapping.Wrap,
+            FontFamily = mn ? mono : null, Margin = new Thickness(0, 0, 0, 3),
+        };
+
+        // WHERE YOU ARE. Silence when unknown is not an option on a tab this small - an empty panel
+        // reads as broken - so this one case says so plainly instead.
+        var place = App.Player.Label;
+        TradePanelItems.Children.Add(Line(place is null ? "Location unknown" : $"You: {place}",
+                                          place is null ? dim : fg, 12.5));
+
+        if (_pinnedRoute is not { } r)
+        {
+            TradePanelItems.Children.Add(Line(
+                "No route pinned. Pin one in Trade > Planner and it shows here and on the Starmap.",
+                dim, 11.5));
+            return;
+        }
+
+        var buy = r.BuyRow;
+        var sell = r.SellRow;
+
+        TradePanelItems.Children.Add(Line(buy.CommodityName, accent, 14));
+        TradePanelItems.Children.Add(Line($"BUY   {buy.TerminalName}", fg, 12, mn: true));
+        TradePanelItems.Children.Add(Line($"SELL  {sell.TerminalName}", fg, 12, mn: true));
+
+        // Per-unit margin rather than the trip total: the total depends on a ship and a budget the
+        // player may have changed since pinning, but the margin is a property of the route itself.
+        var perUnit = sell.Sell - buy.Buy;
+        TradePanelItems.Children.Add(Line($"{perUnit:N0} aUEC/SCU   ×{r.TripQty} SCU", dim, 11.5, mn: true));
+
+        // WHICH LEG. Only possible now that App.Player exists, and the single most useful thing this
+        // tab can say mid-flight. Matched by terminal name, since a pinned route carries price rows
+        // rather than resolved terminals, and the player's own label is what the log gave us.
+        if (place is not null)
+        {
+            string? leg =
+                string.Equals(place, buy.TerminalName, StringComparison.OrdinalIgnoreCase) ? "At the BUY stop." :
+                string.Equals(place, sell.TerminalName, StringComparison.OrdinalIgnoreCase) ? "At the SELL stop." :
+                null;
+            if (leg is not null)
+                TradePanelItems.Children.Add(Line(leg, accent, 11.5));
+        }
     }
 
     private void RebuildShoppingPanel()

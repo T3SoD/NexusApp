@@ -23,9 +23,17 @@ public class OverlayGuidesTabTests
     public void NormalizeForRestore_AcceptsGuidesAndGuardsUnknown(string? saved, string expected)
         => Assert.Equal(expected, OverlayTabs.NormalizeForRestore(saved));
 
+    // Seven since 2026-08-01: TRADE shipped (app review - the overlay carried no trade information
+    // at all, on the surface actually on screen while a route is being flown). It had been reserved
+    // with a label and a glyph since the strip was built, so enabling it was one array entry.
+    // Order is asserted, not just membership: it is the left-to-right order of the tab strip.
     [Fact]
-    public void Ids_AreTheSixTabs()
-        => Assert.Equal(new[] { "stats", "scan", "orders", "shopping", "hauling", "guides" }, OverlayTabs.Ids);
+    public void Ids_AreTheSevenTabs()
+        => Assert.Equal(new[] { "stats", "scan", "orders", "shopping", "hauling", "guides", "trade" }, OverlayTabs.Ids);
+
+    [Fact]
+    public void TradeTab_HasItsOwnLabel_NotTheFallbackUppercasing()
+        => Assert.Equal("TRADE", OverlayTabs.LabelFor("trade"));
 
     [Fact]
     public void Every_id_restores_to_itself()

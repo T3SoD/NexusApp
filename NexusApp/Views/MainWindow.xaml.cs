@@ -854,6 +854,9 @@ public partial class MainWindow : Window
             // with whatever TradePage has pinned, no matter which of the two pages the user is
             // currently standing on. Subscribed once, here, at construction time.
             _tradePage.PinnedRouteChanged += PushPinnedRouteToMap;
+            // ...and to the overlay's TRADE tab, which is the surface actually on screen while the
+            // route is being flown (app review). Same event, same forwarding shape.
+            _tradePage.PinnedRouteChanged += () => _overlay?.SetPinnedRoute(_tradePage?.PinnedRoute);
         }
         _tradePage.Refresh();
     }
