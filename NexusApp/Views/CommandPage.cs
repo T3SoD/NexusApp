@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using NexusApp.Models;
 using NexusApp.Services;
 using NexusApp.ViewModels;
@@ -126,7 +127,66 @@ public sealed class CommandPage : UserControl
         // The header subtitle now reports where the player was last seen, so a boundary crossing has
         // to repaint it. Same guard and same idiom MapPage uses for its own player marker.
         App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+
+        // REMAINING countdown (app review F11). Every other trigger on this page is a DATA change,
+        // and a countdown has none - the number goes stale purely because time passed. So the
+        // refinery rows sat frozen at whatever they said when the page was last rebuilt.
+        //
+        // IsVisible, not Loaded: Operations is a lazy singleton kept permanently in MainWindow's
+        // tree, and page switches are pure Visibility toggling, so Loaded/Unloaded never fire for it
+        // (the same trap GuidesPage documents for its own hangar line).
+        IsVisibleChanged += (_, _) => { if (IsVisible) StartQueueTicker(); else _queueTicker?.Stop(); };
     }
+
+    // ── REMAINING countdown (app review F11) ───────────────────────────────────────────────────
+    // Deliberately NOT a page Refresh on a timer. Refresh rebuilds the entire dashboard's visual
+    // tree, which at one hertz would be indefensible for a number that changes once a minute. This
+    // rewrites the one TextBlock per row that is actually volatile, and only when its text really
+    // changed - WorkOrder.TimerRemainingShort has minute resolution, so 59 ticks in 60 are no-ops
+    // and must not touch the property at all, or WPF invalidates layout for nothing.
+    private readonly List<(WorkOrder Order, TextBlock Cell)> _queueCells = new();
+    private DispatcherTimer? _queueTicker;
+
+    private void StartQueueTicker()
+    {
+        // Nothing counting down means nothing to tick. A queue of orders that are all ready to
+        // collect, or have no timer at all, leaves the timer stopped rather than spinning.
+        if (!_queueCells.Any(c => c.Order.TimerEnd.HasValue))
+        {
+            _queueTicker?.Stop();
+            return;
+        }
+
+        _queueTicker ??= MakeQueueTicker();
+        _queueTicker.Start();
+    }
+
+    private DispatcherTimer MakeQueueTicker()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) => TickQueueCells();
+        return timer;
+    }
+
+    private void TickQueueCells()
+    {
+        var live = false;
+        foreach (var (order, cell) in _queueCells)
+        {
+            if (order.TimerEnd.HasValue) live = true;
+            var text = QueueRemainingText(order);
+            if (!string.Equals(cell.Text, text, StringComparison.Ordinal)) cell.Text = text;
+        }
+        // An order whose timer ran out stops being volatile. Its own status transition is owned
+        // elsewhere (WorkOrderEditorPanel raises OrderReadyToCollect, which rebuilds this page), so
+        // all this has to do is stop burning a tick once nothing is counting.
+        if (!live) _queueTicker?.Stop();
+    }
+
+    private static string QueueRemainingText(WorkOrder o) =>
+        !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort
+        : o.Status == WorkOrderStatus.ReadyToCollect ? "ready"
+        : "-";
 
     public void Refresh()
     {
@@ -897,8 +957,11 @@ public sealed class CommandPage : UserControl
     {
         var sp = new StackPanel();
         sp.Children.Add(PanelHead("REFINERY QUEUE", "Open tracker", "workorders"));
+        // Rebuilt every Refresh, so the old TextBlocks are dropped with the tree they belonged to;
+        // holding them would tick controls that are no longer on screen (F11).
+        _queueCells.Clear();
         var active = App.Data.GetWorkOrders().Where(o => o.Status != WorkOrderStatus.Complete).ToList();
-        if (active.Count == 0) { sp.Children.Add(Empty("No active work orders.")); return sp; }
+        if (active.Count == 0) { sp.Children.Add(Empty("No active work orders.")); _queueTicker?.Stop(); return sp; }
 
         sp.Children.Add(TableRow(Th("ORDER"), Th("STATION"), Th("STATUS"), Th("REMAINING", right: true), header: true));
         foreach (var o in active)
@@ -910,10 +973,11 @@ public sealed class CommandPage : UserControl
             };
             var station = new TextBlock { Text = !string.IsNullOrWhiteSpace(o.Refinery) ? o.Refinery : o.Location, FontFamily = Ui, FontSize = 12, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
             var chipHolder = new ContentControl { Content = Hud.StatusChip(o.Status), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            var remTxt = !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort : (o.Status == WorkOrderStatus.ReadyToCollect ? "ready" : "-");
-            var rem = new TextBlock { Text = remTxt, FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            var rem = new TextBlock { Text = QueueRemainingText(o), FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            _queueCells.Add((o, rem));
             sp.Children.Add(TableRow(order, station, chipHolder, rem));
         }
+        StartQueueTicker();
         return sp;
     }
 
