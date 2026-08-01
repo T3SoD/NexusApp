@@ -39,7 +39,10 @@ public sealed class MapPage : UserControl
 
     private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
 
-    private readonly MapCatalog _catalog = MapCatalog.LoadEmbedded();
+    // The app-wide catalog (App.Map), not a private load. Kept as a local alias so the ~200 call
+    // sites in this file read unchanged; the point of the promotion is that this page no longer OWNS
+    // the geometry, not that it stops using it.
+    private readonly MapCatalog _catalog = App.Map;
     private readonly IReadOnlyList<Resource> _resources;
     private readonly MapWebView _scene = new();
 

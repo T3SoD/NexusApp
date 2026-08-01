@@ -11,6 +11,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.Services.Cargo;
 using NexusApp.Models.Cargo;
 
@@ -971,7 +972,7 @@ public sealed partial class TradePage
         // same system - DistanceMeters already encodes both the resolution and the same-system
         // gate, so this is a single call, not a duplicated check.
         if (_starmap.DistanceMeters(buyTerm, sellTerm) is { } routeDistanceM
-            && DistanceTag(StarmapCatalog.FormatGm(routeDistanceM)) is { } routeDistTag)
+            && DistanceTag(MapCatalog.FormatGm(routeDistanceM)) is { } routeDistTag)
         {
             head.Children.Add(routeDistTag);
         }

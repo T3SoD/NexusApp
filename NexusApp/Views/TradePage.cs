@@ -8,6 +8,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -65,7 +66,13 @@ public sealed partial class TradePage : UserControl
 
     // Datamined starmap positions (owner's ask, 2026-07-30), shared by the Planner and Sell flows'
     // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
-    private readonly StarmapCatalog _starmap = StarmapCatalog.LoadEmbedded();
+    // Was a second, near-duplicate geometry catalog of its own (StarmapCatalog, 215 places, its own
+    // 59 KB embed, its own copy of Resolve and FormatGm). Retired 2026-08-01 in favour of the one
+    // app-wide catalog: the two shipped byte-identical 215-triple alias sets and agreed on
+    // coordinates to within 0.81 m, so this is a visual no-op for the Gm figures while deleting a
+    // whole duplicated resolver. MapCatalog.DistanceMeters(MarketTerminal, MarketTerminal) is a
+    // deliberate same-shape replacement for StarmapCatalog's, so the call sites did not change form.
+    private MapCatalog _starmap => App.Map;
 
     public TradePage()
     {

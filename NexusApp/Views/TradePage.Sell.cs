@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp.Views;
 
@@ -422,7 +423,7 @@ public sealed partial class TradePage
         if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(0, 0, 10, 1); top.Children.Add(tag); }
         top.Children.Add(new TextBlock { Text = $"{price:n0}/SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 12.5, Foreground = Hud.Br("GoldBrush"), Margin = new Thickness(0, 0, 10, 0) });
         if (tier is { } t) top.Children.Add(TierChip(t));
-        if (distanceMeters is { } dm && DistanceTag(StarmapCatalog.FormatGm(dm)) is { } distTag) top.Children.Add(distTag);
+        if (distanceMeters is { } dm && DistanceTag(MapCatalog.FormatGm(dm)) is { } distTag) top.Children.Add(distTag);
         if (badge is not null) { badge.Margin = new Thickness(8, 0, 0, 0); top.Children.Add(badge); }
         left.Children.Add(top);
 

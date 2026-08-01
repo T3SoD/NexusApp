@@ -207,7 +207,10 @@ public class MapCatalogTests
         var hurston = Catalog.ByName("Stanton", "Hurston");
         Assert.Null(Catalog.DistanceMeters(hurston, null));
         Assert.Null(Catalog.DistanceMeters(null, hurston));
-        Assert.Null(Catalog.DistanceMeters(null, null));
+        // Explicitly typed: DistanceMeters is now overloaded for MapObject and MarketTerminal (the
+        // latter is the seam Trade uses since it retired StarmapCatalog), so a bare (null, null)
+        // is ambiguous. This case belongs to the MapObject overload.
+        Assert.Null(Catalog.DistanceMeters((MapObject?)null, (MapObject?)null));
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 
 namespace NexusApp;
 
@@ -48,6 +49,19 @@ public partial class App : Application
     // Dark SCT (SC Trade Tools) second-source cache. Inert unless Settings.Current.SctDataEnabled
     // is true (owner-only Admin toggle, Task 9) - Start() itself checks the flag first.
     public static SctMarketService Sct { get; private set; } = null!;
+
+    // The app's ONE geometry catalog: every named object across Stanton, Pyro and Nyx with real
+    // positions, hierarchy and UEX terminal joins. Promoted to app-level 2026-08-01 (app review):
+    // it used to be a private field of the lazily-created MAP page while TRADE loaded a SECOND,
+    // near-duplicate catalog of its own, so nothing else in the app could ask where anything is.
+    // Immutable and read-only once loaded, so one instance is safely shared by every consumer.
+    public static Services.Map.MapCatalog Map { get; private set; } = null!;
+
+    // "Where is the player, and how far is that from X" - the small seam over Map + Locations that
+    // makes live position usable by any surface instead of only the two views that happened to hold
+    // a LocationTracker reference. Current == null is a first-class "we do not know", which callers
+    // render as silence rather than a placeholder.
+    public static PlayerPlace Player { get; private set; } = null!;
 
     // The app version that ran LAST session (null on fresh installs), captured before this
     // session overwrites LastSeenVersion. Drives the one-time "updated to" strip.
@@ -373,6 +387,14 @@ public partial class App : Application
             GameLogFeed,
             channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
         Locations = new LocationTracker(GameLogFeed);
+
+        // Geometry + the player-position seam. Created right after Locations because PlayerPlace
+        // reads both. Loading the catalog here rather than in a page constructor is the whole point:
+        // it is ~135 KB of embedded JSON parsed once at startup instead of once per page that wants
+        // a position, and it means Operations, the overlay and the Codex can consult it at all.
+        Map = Services.Map.MapCatalog.LoadEmbedded();
+        Player = new PlayerPlace(Map, Locations);
+        Logger.Info($"[MAP] geometry catalog loaded: {Map.Count} objects");
 
         // Session Tracking + Auto-Track Blueprints are ALWAYS ON; there is no user toggle. The saved
         // Game.log path is already on the feed, so SetAutoMark(true) both enables auto-collect and

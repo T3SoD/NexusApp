@@ -40,13 +40,20 @@ public sealed class MapCatalog
     // object - a planet's planetOrMoon alias and its orbit alias must both resolve.
     private readonly Dictionary<string, MapObject> _byAlias;
 
+    // UEX aliases belonging to objects kept OUT of the map surface (ExcludedObjects). Consulted only
+    // by ResolveTerminalForDistance, never by ResolveTerminal - so a terminal at an unreachable place
+    // still gets a real distance while never earning a pin in a scene that does not contain it.
+    private readonly Dictionary<string, MapObject> _byAliasExcluded;
+
     private MapCatalog(List<MapObject> objects, Dictionary<int, MapObject> byId,
-        Dictionary<string, MapObject> byName, Dictionary<string, MapObject> byAlias)
+        Dictionary<string, MapObject> byName, Dictionary<string, MapObject> byAlias,
+        Dictionary<string, MapObject> byAliasExcluded)
     {
         _objects = objects;
         _byId = byId;
         _byName = byName;
         _byAlias = byAlias;
+        _byAliasExcluded = byAliasExcluded;
     }
 
     public IReadOnlyList<MapObject> Objects => _objects;
@@ -107,6 +114,7 @@ public sealed class MapCatalog
             var byId = new Dictionary<int, MapObject>();
             var byName = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
             var byAlias = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
+            var byAliasExcluded = new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase);
 
             if (raw.Objects is not null)
             {
@@ -114,11 +122,25 @@ public sealed class MapCatalog
                 {
                     if (string.IsNullOrEmpty(o.System) || string.IsNullOrEmpty(o.Name))
                         continue;
+
+                    var aliases = BuildAliases(o.Uex);
                     if (ExcludedObjects.Contains(NameKey(o.System, o.Name)))
+                    {
+                        // Excluded from the MAP SURFACE, but its UEX aliases still index for
+                        // DISTANCE. The exclusion answers "should a player see a place they cannot
+                        // fly to", not "should we refuse to measure a terminal UEX still lists".
+                        // Exactly one excluded object carries aliases - "Stanton - Terra Jump Point",
+                        // whose "Terra Gateway (Stanton)" location covers 21 real UEX terminals, 2 of
+                        // them priced. Dropping those from geometry would have silently removed the
+                        // distance figure the Trade planner has always shown for them.
+                        foreach (var alias in aliases)
+                            byAliasExcluded[AliasKey(o.System, alias.Kind, alias.Name)] =
+                                new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z, null, aliases);
                         continue;
+                    }
 
                     objects.Add(new MapObject(o.Id, o.System, o.Name, o.Type ?? "", o.X, o.Y, o.Z,
-                                              o.Parent, BuildAliases(o.Uex)));
+                                              o.Parent, aliases));
                 }
 
                 // An excluded object can be some SURVIVING object's parent, which would leave a
@@ -144,11 +166,12 @@ public sealed class MapCatalog
                 }
             }
 
-            return new MapCatalog(objects, byId, byName, byAlias);
+            return new MapCatalog(objects, byId, byName, byAlias, byAliasExcluded);
         }
         catch (Exception)
         {
             return new MapCatalog(new List<MapObject>(), new Dictionary<int, MapObject>(),
+                new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, MapObject>(StringComparer.OrdinalIgnoreCase));
         }
@@ -281,18 +304,40 @@ public sealed class MapCatalog
     // catalog also falls through to the next level rather than failing the whole resolution -
     // same fallback semantics as StarmapCatalog.Resolve (StarmapCatalog.cs:84). Scoped to
     // t.System throughout: this never crosses systems.
-    public MapObject? ResolveTerminal(MarketTerminal? t)
+    public MapObject? ResolveTerminal(MarketTerminal? t) => ResolveTerminal(t, includeExcluded: false);
+
+    /// <summary>Resolution for GEOMETRY ONLY: identical to ResolveTerminal but also matches objects
+    /// held off the map surface by ExcludedObjects. Callers that place something in the 3D scene must
+    /// use ResolveTerminal, or they will pin an object the scene does not contain; callers that only
+    /// want a position or a distance should use this, so an unreachable-system place that UEX still
+    /// lists terminals for keeps the distance figure it has always had.</summary>
+    public MapObject? ResolveTerminalForDistance(MarketTerminal? t) => ResolveTerminal(t, includeExcluded: true);
+
+    private MapObject? ResolveTerminal(MarketTerminal? t, bool includeExcluded)
     {
         if (t is null || string.IsNullOrEmpty(t.System)) return null;
 
-        if (!string.IsNullOrEmpty(t.Location) && _byAlias.TryGetValue(AliasKey(t.System, "location", t.Location), out var loc))
-            return loc;
-        if (!string.IsNullOrEmpty(t.PlanetOrMoon) && _byAlias.TryGetValue(AliasKey(t.System, "planetOrMoon", t.PlanetOrMoon), out var pom))
-            return pom;
-        if (!string.IsNullOrEmpty(t.Orbit) && _byAlias.TryGetValue(AliasKey(t.System, "orbit", t.Orbit), out var orb))
-            return orb;
+        return Look("location", t.Location) ?? Look("planetOrMoon", t.PlanetOrMoon) ?? Look("orbit", t.Orbit);
 
-        return null;
+        MapObject? Look(string kind, string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            var key = AliasKey(t.System, kind, value);
+            if (_byAlias.TryGetValue(key, out var hit)) return hit;
+            return includeExcluded && _byAliasExcluded.TryGetValue(key, out var ex) ? ex : null;
+        }
+    }
+
+    /// <summary>Straight-line meters between two market terminals, or null when either fails to
+    /// resolve or they sit in different systems (jump travel is not Euclidean, so a cross-system
+    /// "distance" would be meaningless and is never computed). This is the seam that let Trade drop
+    /// its own second geometry catalog: same contract as the StarmapCatalog.DistanceMeters it
+    /// replaces, resolving through the excluded-aware path so no terminal loses a distance it had.</summary>
+    public double? DistanceMeters(MarketTerminal? a, MarketTerminal? b)
+    {
+        if (a is null || b is null) return null;
+        if (!string.Equals(a.System, b.System, StringComparison.OrdinalIgnoreCase)) return null;
+        return DistanceMeters(ResolveTerminalForDistance(a), ResolveTerminalForDistance(b));
     }
 
     // Straight-line meters between two objects, or null when either is null or the two objects
