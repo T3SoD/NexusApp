@@ -130,6 +130,39 @@ public static class RoutePlanner
             _ => true,
         };
 
+    // A3 (the owner live-use finding): the scope pill and the START/DESTINATION pickers are independent
+    // controls that can be set to two different systems, and nothing stops that. Scope STANTON with
+    // a Pyro destination filters every sell leg away, so the planner returns nothing and falls
+    // through to "No routes match the current scope and budget" - indistinguishable from a genuine
+    // dry spell. The user then goes off changing ship, budget and demand filter trying to fix a
+    // contradiction none of those controls can express.
+    //
+    // Returns the system the chosen terminals actually sit in when NOT ONE of them is inside the
+    // active scope, else null. Callers use a non-null result to name the conflict instead of
+    // reporting an absence of routes.
+    //
+    // Null for a null or empty set on purpose: "no constraint" (ANY) and "the picker's name could
+    // not be resolved" are different states that already own their own messages, and neither is a
+    // scope conflict. Also null when every chosen terminal has no recorded system - InScope treats
+    // those as out of scope, but there is no system to name, so the generic message is the honest
+    // one. Pure so the planner's empty-state ladder is testable without a WPF tree.
+    public static string? ChosenSystemOutsideScope(IReadOnlySet<int>? terminalIds,
+        IReadOnlyDictionary<int, MarketTerminal> terminals, string scope)
+    {
+        if (terminalIds is null || terminalIds.Count == 0) return null;
+        if (string.IsNullOrEmpty(scope) || string.Equals(scope, "ALL", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        string? outside = null;
+        foreach (var id in terminalIds)
+        {
+            if (!terminals.TryGetValue(id, out var terminal)) continue;
+            if (InScope(terminal, scope)) return null;   // one reachable choice is enough: no conflict
+            if (outside is null && !string.IsNullOrEmpty(terminal.System)) outside = terminal.System;
+        }
+        return outside;
+    }
+
     // "ALL" (case-insensitive) passes every terminal; anything else must match the terminal's
     // star system by name. A terminal with no recorded system is excluded once a specific scope
     // is chosen (an unknown system can never honestly be said to match one).

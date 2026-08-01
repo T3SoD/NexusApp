@@ -434,11 +434,32 @@ public sealed partial class TradePage
 
         if (routes.Count == 0)
         {
+            // Empty-state ladder, most specific cause first. The two scope-conflict rungs (A3) sit
+            // above the generic messages because a contradiction between the scope pill and a
+            // picker is not an absence of routes, and reporting it as one sends the user off
+            // adjusting ship, budget and demand filter to fix something none of those can reach.
+            // DESTINATION is tested before STARTING LOCATION only to pick one when both conflict:
+            // the message stays short, and fixing the first surfaces the second on the next run.
+            var scope = App.Settings.Current.TradeScope;
             string message;
             if (originUnknown)
             {
                 message = "Starting location unknown - pick one above, or set it to ANY.";
                 Logger.Info("[UI] Trade planner run: 0 routes, origin unknown");
+            }
+            else if (RoutePlanner.ChosenSystemOutsideScope(destIds, terminals, scope) is { } destSystem)
+            {
+                // Named with the same location-first label the user picked from the dropdown, not
+                // the raw UEX name, so the message points at something they recognize.
+                message = $"{TradeOriginResolver.LocationFirst(_destSelectedName)} is in {destSystem}, "
+                        + $"but your scope is {scope}. Widen the scope to ALL, or pick a destination in {scope}.";
+                Logger.Info($"[UI] Trade planner run: 0 routes, destination outside scope {scope} (in {destSystem})");
+            }
+            else if (RoutePlanner.ChosenSystemOutsideScope(originIds, terminals, scope) is { } startSystem)
+            {
+                message = $"Your starting location is in {startSystem}, but your scope is {scope}. "
+                        + $"Widen the scope to ALL, or start from somewhere in {scope}.";
+                Logger.Info($"[UI] Trade planner run: 0 routes, starting location outside scope {scope} (in {startSystem})");
             }
             else
             {
