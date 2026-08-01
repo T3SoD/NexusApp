@@ -106,6 +106,23 @@ public sealed class CommandPage : UserControl
         // pick this up live - same UI-thread contract as the shard/update wiring above (the
         // watcher's DispatcherTimer already raises on the UI thread, per GameLogFeed.cs).
         App.GameLogFeed.ChannelChanged += _ => Refresh();
+
+        // App review 2026-08-01: the page subtitle promises "Everything live, in one glance" and the
+        // class comment above asserts the dashboard "rebuilds its content statically on every live
+        // data tick", but the only triggers were the three subscriptions above plus tab activation.
+        // Nothing listened for hauls or work orders, so accepting a contract in game did not move
+        // CARGO IN TRANSIT or ACTIVE HAULS, and the refinery rows sat frozen. HaulTracker was
+        // already raising the Changed event nobody had subscribed to. Unfinished wiring, not a
+        // decision - the entrance cascade is separately gated behind _entrancePlayed, so a Refresh
+        // on a data tick has always been the intended mechanism and never replays the animation.
+        //
+        // Guarded on IsVisible, unlike the three above, because hauls and work orders tick far more
+        // often than a shard or channel change and rebuilding a hidden page's whole visual tree for
+        // each one is pure waste. Nothing is missed: MainWindow's SetActivePage calls Refresh on
+        // every activation, so a page that skipped updates while hidden catches up on open. Same
+        // idiom as TradePage and MapPage's own permanent subscriptions.
+        App.Hauls.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
     }
 
     public void Refresh()

@@ -534,8 +534,8 @@ public sealed class MapPage : UserControl
         if (_draft.Count < 2) return;
 
         var (_, total) = MapSceneBuilder.DraftLegs(_draft, _catalog);
-        int? startTerm = FirstTradeTerminal(_draft[0]);
-        int? destTerm = FirstTradeTerminal(_draft[^1]);
+        int? startTerm = BestTradeTerminal(_draft[0]);
+        int? destTerm = BestTradeTerminal(_draft[^1]);
 
         if (startTerm is null || destTerm is null)
         {
@@ -551,14 +551,38 @@ public sealed class MapPage : UserControl
                     + $"start {_catalog.ById(_draft[0])?.Name}, dest {_catalog.ById(_draft[^1])?.Name})");
     }
 
-    private int? FirstTradeTerminal(int objectId) =>
-        _pins.TradeTerminalsByObject.TryGetValue(objectId, out var terms) && terms.Count > 0 ? terms[0] : null;
+    // Which terminal a trade pin's actions should target. A single map object routinely carries
+    // SEVERAL UEX terminals (a station's admin office, its cargo deck, shops), and both actions used
+    // to take terms[0] - whichever the snapshot happened to list first, which is frequently one with
+    // no commodity prices at all. Preferring a terminal that actually has price rows makes VIEW
+    // PRICES land on something to read and SEND TO PLANNER hand over a stop the planner can rank.
+    // Falls back to terms[0] when none is priced, so the action still does what it always did rather
+    // than becoming a dead button.
+    //
+    // Still arbitrary when several terminals on one object are priced. Surfacing the count and
+    // letting the user pick is the real fix and is a UI change, deliberately not smuggled in here.
+    private int? BestTradeTerminal(int objectId)
+    {
+        if (!_pins.TradeTerminalsByObject.TryGetValue(objectId, out var terms) || terms.Count == 0)
+            return null;
+        if (terms.Count == 1) return terms[0];
+
+        var rows = App.Market.Snapshot?.TradePrices.Rows;
+        if (rows is { Count: > 0 })
+        {
+            var priced = new HashSet<int>();
+            foreach (var r in rows) priced.Add(r.TerminalId);
+            foreach (var id in terms)
+                if (priced.Contains(id)) return id;
+        }
+        return terms[0];
+    }
 
     private void OnViewPrices()
     {
         if (_selection is not int id) return;
-        if (_pins.TradeTerminalsByObject.TryGetValue(id, out var terms) && terms.Count > 0)
-            OpenPricesRequested?.Invoke(terms[0]);
+        if (BestTradeTerminal(id) is { } terminalId)
+            OpenPricesRequested?.Invoke(terminalId);
 
         Logger.Info($"[UI] map: open TRADE prices {_catalog.ById(id)?.Name}");
     }

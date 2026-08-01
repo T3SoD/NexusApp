@@ -196,6 +196,8 @@ public partial class MainWindow : Window
         // single rebuild instead of running the full gallery pass N+1 times per save.
         _vm.WorkOrders.CollectionChanged += (s, e) => ScheduleWorkOrderRebuild();
 
+        WireNavBadgeUpdates();
+
         Loaded += (s, e) => MaybeShowFirstRunWizard();
         Loaded += (s, e) => App.MaybeStartUpdateCheck();
     }
@@ -782,6 +784,18 @@ public partial class MainWindow : Window
                 ScanChipText.Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush");
                 break;
         }
+    }
+
+    /// <summary>Keeps the dock's Refinery and Hauling count badges live. Wired in the constructor to
+    /// the same two signals Operations listens to (app review): before this, UpdateNavBadges ran only
+    /// from SetActivePage, so accepting a contract or finishing a refine left the dock badges stale
+    /// until the user happened to change pages. Unlike the page subscriptions this one has no
+    /// IsVisible guard - the dock rail is always on screen, whichever page is active.</summary>
+    private void WireNavBadgeUpdates()
+    {
+        if (App.Hauls != null)
+            App.Hauls.Changed += () => Dispatcher.BeginInvoke(UpdateNavBadges);
+        _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateNavBadges);
     }
 
     // Active-count badge on the Refinery rail item.
