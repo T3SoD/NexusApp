@@ -935,6 +935,15 @@ public partial class MainWindow
                 TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
             });
+            // Where that refinery actually is (app review G10). The line named a station and a
+            // percentage and nothing else, so a +8% refinery a jump away read exactly like a +8%
+            // one next door. Same words the price surfaces use, and silent when it cannot place it.
+            if (RefineryPlaces.Describe(bestYield, App.Map, App.Player.Current) is { } where)
+                right.Children.Add(new TextBlock
+                {
+                    Text = where, FontSize = 11, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 7, 0),
+                });
             right.Children.Add(new TextBlock
             {
                 Text = $"{(bestYield.ModifierPct > 0 ? "+" : "")}{bestYield.ModifierPct}%", FontSize = 13,
@@ -1168,7 +1177,10 @@ public partial class MainWindow
         if (topHit is not null || yields.Count > 0)
         {
             ReferenceDetailPanel.Children.Add(RefSectionLabel(MarketNotice.ValueSection));
-            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, yields.Count > 0 ? yields[0] : null));
+            // The headline pick is RefineryPlaces.Best, not yields[0] (app review G10): the modifier
+            // still decides it, but ties - and this seed has many, ten stations deep for some ores -
+            // now go to the nearest rather than to whichever the seed listed first.
+            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, RefineryPlaces.Best(r.Refineries, App.Map, App.Player.Current)));
 
             var valueDetails = new StackPanel { ClipToBounds = true };   // clips mid-reveal, like the work order sell rows
             if (priceHits.Count > 0)

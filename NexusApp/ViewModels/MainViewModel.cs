@@ -357,8 +357,11 @@ public record MatchResult(Resource Resource, int InputRs, int Nodes, bool IsExac
     public string CardColor => IsExact ? "#3FB950" : "#E3B341";
     public bool IsInCart { get; set; }
 
+    // Same picker the Codex dossier uses (app review G10). It has to be the same one: two surfaces
+    // naming a different "best refinery" for the same ore would be worse than either being wrong.
+    // Modifier still decides; the player's position only settles ties.
     public RefineryYield? BestRefinery =>
-        Resource.Refineries.Count == 0 ? null : Resource.Refineries.OrderByDescending(x => x.ModifierPct).First();
+        NexusApp.Services.Map.RefineryPlaces.Best(Resource.Refineries, App.Map, App.Player.Current);
     public string RefineryText
     {
         get

@@ -18,10 +18,6 @@ namespace NexusApp.Services.Map;
 /// </summary>
 internal static class PriceLocationLabel
 {
-    // Comma rather than a middle dot or bullet: this text is appended inline after a terminal name,
-    // sometimes at 10px in the overlay, and a comma renders identically in every font the app ships.
-    private const string Sep = ", ";
-
     /// <summary>Builds the label for a terminal, given where the player currently is.</summary>
     /// <param name="terminal">The resolved market terminal, or null when the id did not resolve.</param>
     /// <param name="map">The app-wide geometry catalog.</param>
@@ -29,24 +25,9 @@ internal static class PriceLocationLabel
     /// game closed, and the reason the distance half is always optional.</param>
     /// <returns>"Stanton", "Stanton, 12.4 Gm", "Stanton, another system", or null for silence.</returns>
     public static string? Describe(MarketTerminal? terminal, MapCatalog map, MapObject? playerAt)
-    {
-        if (terminal is null || string.IsNullOrWhiteSpace(terminal.System)) return null;
-
-        // The system alone is worth showing even with no live session, and it is the half that
-        // needed no geometry at all - which is why it works the moment the terminal id exists.
-        if (playerAt is null) return terminal.System;
-
-        // Deliberately WORDS, not a number. DistanceMeters returns null across systems because jump
-        // travel is not Euclidean, and a blank there would read as "we failed to measure" rather
-        // than "this is somewhere else entirely".
-        if (!string.Equals(playerAt.System, terminal.System, StringComparison.OrdinalIgnoreCase))
-            return terminal.System + Sep + "another system";
-
-        var target = map.ResolveTerminal(terminal);
-        return map.DistanceMeters(playerAt, target) is { } meters
-            ? terminal.System + Sep + MapCatalog.FormatGm(meters)
-            : terminal.System;
-    }
+        => terminal is null
+            ? null
+            : PlaceLabel.Describe(terminal.System, map.ResolveTerminal(terminal), map, playerAt);
 
     /// <summary>Just the distance, with no system prefix and no cross-system wording. For surfaces
     /// too cramped to spend space on anything weaker than a real number - the overlay SCAN line is
@@ -74,5 +55,42 @@ internal static class PriceLocationLabel
         if (terminalId <= 0 || terminals is null) return null;
         var terminal = terminals.FirstOrDefault(t => t.Id == terminalId);
         return Describe(terminal, map, playerAt);
+    }
+}
+
+/// <summary>
+/// The "where is this" rule itself, with no opinion about what kind of thing is being placed. Split
+/// out of PriceLocationLabel when refineries needed the same sentence (app review G10) - a refinery
+/// is not a market terminal and resolves differently, but the words the user reads must be identical
+/// or the app is speaking two dialects of the same fact.
+/// </summary>
+internal static class PlaceLabel
+{
+    // Comma rather than a middle dot or bullet: this text is appended inline after a place name,
+    // sometimes at 10px in the overlay, and a comma renders identically in every font the app ships.
+    private const string Sep = ", ";
+
+    /// <param name="system">The system the thing is in. Empty means we know nothing: silence.</param>
+    /// <param name="target">The thing's resolved map object, or null when it does not resolve. A
+    /// null still yields the system name - knowing the system needs no geometry at all.</param>
+    /// <param name="playerAt">Where the player is, or null when unknown.</param>
+    /// <returns>"Stanton", "Stanton, 12.4 Gm", "Stanton, another system", or null for silence.</returns>
+    public static string? Describe(string? system, MapObject? target, MapCatalog map, MapObject? playerAt)
+    {
+        if (string.IsNullOrWhiteSpace(system)) return null;
+
+        // The system alone is worth showing even with no live session, and it is the half that
+        // needs no geometry - which is why it works the moment a system name exists.
+        if (playerAt is null) return system;
+
+        // Deliberately WORDS, not a number. DistanceMeters returns null across systems because jump
+        // travel is not Euclidean, and a blank there would read as "we failed to measure" rather
+        // than "this is somewhere else entirely".
+        if (!string.Equals(playerAt.System, system, StringComparison.OrdinalIgnoreCase))
+            return system + Sep + "another system";
+
+        return map.DistanceMeters(playerAt, target) is { } meters
+            ? system + Sep + MapCatalog.FormatGm(meters)
+            : system;
     }
 }
