@@ -99,7 +99,7 @@ internal sealed class HttpUpdateTransport : IUpdateTransport
 
 // The update subsystem is the only code in the app that touches the network, and this class
 // (with its transport above) is where that happens. Owns the update state machine,
-// the 24-hour auto-check throttle, single-flight, and the temp download area.
+// the on-launch auto-check gate, single-flight, and the temp download area.
 public sealed class UpdateService
 {
     public const string Tag = "[UPDATE]";
@@ -109,8 +109,6 @@ public sealed class UpdateService
     // A P-256 signature is 64 bytes, 88 as base64; 4 KB tolerates whitespace without
     // letting a hostile response waste memory.
     internal const int MaxSignatureBytes = 4 * 1024;
-
-    public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
 
     private readonly SettingsService _settings;
     private readonly IUpdateTransport _transport;
@@ -197,18 +195,15 @@ public sealed class UpdateService
         _relaunchPath = relaunchPathProvider ?? (() => Environment.ProcessPath);
     }
 
-    // Pure gate for the on-launch check: consent must be an explicit yes, the demo profile
-    // is always inert, and a completed check inside the last 24h suppresses another.
-    internal static bool ShouldAutoCheck(bool? enabled, DateTime? lastCheckUtc, DateTime nowUtc, bool isDemoProfile)
-    {
-        if (isDemoProfile || enabled != true) return false;
-        if (lastCheckUtc is not { } last) return true;
-        var utc = last.Kind == DateTimeKind.Local ? last.ToUniversalTime() : DateTime.SpecifyKind(last, DateTimeKind.Utc);
-        // Self-heal a stamp in the future (clock rollback, or a skewed stamp written while the
-        // clock was wrong): otherwise the subtraction stays negative and auto-checks freeze forever.
-        if (utc > nowUtc) return true;
-        return nowUtc - utc >= CheckInterval;
-    }
+    // Pure gate for the on-launch check: consent must be an explicit yes, and the demo profile
+    // is always inert. The 24-hour throttle that used to live here died on the owner's ask
+    // (2026-08-01, "change it to check on each launch of the app"): launch is the only auto
+    // trigger, so a same-day relaunch now checks again instead of silently sitting on a
+    // yesterday-stamped result - one signed-manifest HEAD-sized fetch per launch is nothing,
+    // and it took the clock-rollback self-heal with it (no stamp comparison, nothing to heal).
+    // LastUpdateCheckUtc is still stamped after every completed attempt: Settings shows it.
+    internal static bool ShouldAutoCheck(bool? enabled, bool isDemoProfile)
+        => !isDemoProfile && enabled == true;
 
     // Assets come from the VERSIONED release path built from the verified manifest version
     // (never releases/latest, which could race a newer release mid-flow) and a whitelisted

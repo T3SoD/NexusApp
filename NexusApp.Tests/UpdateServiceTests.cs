@@ -348,32 +348,19 @@ public class UpdateServiceTests : IDisposable
         Assert.Empty(t.Requested);
     }
 
+    // The 24h throttle (and its clock-rollback self-heal) died 2026-08-01 at the owner's ask: launch
+    // is the only auto trigger, and every launch now checks. The gate is consent + demo, nothing
+    // else - no time arithmetic left to get wrong.
     [Theory]
     [InlineData(null, false)]            // not asked: no auto-check
     [InlineData(false, false)]           // declined: no auto-check
-    [InlineData(true, true)]             // enabled, never checked: check
+    [InlineData(true, true)]             // enabled: every launch checks
     public void ShouldAutoCheck_ConsentMatrix(bool? enabled, bool expected) =>
-        Assert.Equal(expected, UpdateService.ShouldAutoCheck(enabled, null, DateTime.UtcNow, isDemoProfile: false));
+        Assert.Equal(expected, UpdateService.ShouldAutoCheck(enabled, isDemoProfile: false));
 
     [Fact]
-    public void ShouldAutoCheck_ThrottleAndDemo()
-    {
-        var now = new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc);
-        Assert.False(UpdateService.ShouldAutoCheck(true, now.AddHours(-23), now, false));  // inside 24h
-        Assert.True(UpdateService.ShouldAutoCheck(true, now.AddHours(-25), now, false));   // outside 24h
-        Assert.False(UpdateService.ShouldAutoCheck(true, null, now, true));                // demo: never
-    }
-
-    [Fact]
-    public void ShouldAutoCheck_FutureStamp_SelfHeals()
-    {
-        // A clock rollback (or a stamp written while the clock was wrong) leaves lastCheck in
-        // the future. Without the self-heal the elapsed span stays negative and auto-checks
-        // never run again on that machine.
-        var now = new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc);
-        Assert.True(UpdateService.ShouldAutoCheck(true, now.AddDays(400), now, false));
-        Assert.True(UpdateService.ShouldAutoCheck(true, now.AddMinutes(1), now, false));
-    }
+    public void ShouldAutoCheck_DemoProfile_NeverChecks() =>
+        Assert.False(UpdateService.ShouldAutoCheck(true, isDemoProfile: true));
 
     [Fact]
     public void AssetUrl_IsPinnedToTheVersionedReleasePath() =>

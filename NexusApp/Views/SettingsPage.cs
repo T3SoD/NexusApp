@@ -618,7 +618,7 @@ public sealed class SettingsPage : UserControl
 
             panel.Children.Add(SectionPanel("Updates", false,
                 SettingRow("Check for updates automatically",
-                    "Once a day when Nexus starts, Nexus asks github.com for the latest version " +
+                    "Each time Nexus starts, it asks github.com for the latest version " +
                     "number. Nothing about you or your data is sent. Downloads and installs always " +
                     "ask first.",
                     checkToggle, last: false),

@@ -9,7 +9,7 @@ public static class UpdateNotice
 {
     public const string ConsentEyebrow = "UPDATE CHECKS";
     public const string ConsentBody =
-        "Nexus can check for new versions when it starts, at most once a day. It contacts " +
+        "Nexus can check for new versions each time it starts. It contacts " +
         "GitHub only and sends nothing about you. You can change this anytime in " +
         "Settings > Updates.";
     public const string ConsentEnable = "Enable";

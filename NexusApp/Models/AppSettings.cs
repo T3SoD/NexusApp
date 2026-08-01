@@ -103,11 +103,12 @@ public class AppSettings
 
     // Auto-update consent: null = the one-time opt-in strip has not been answered yet (and no
     // network call ever happens), true/false = the user's standing choice, changeable anytime
-    // in Settings > Updates. The check itself is throttled to once per 24h by UpdateService.
+    // in Settings > Updates. With consent on, the check runs on every launch (the 24h throttle
+    // died 2026-08-01 at the owner's ask).
     public bool? UpdateCheckEnabled { get; set; }
 
-    // UTC instant of the last completed update check (success or failure), driving both the
-    // 24-hour auto-check throttle and the "Last checked" row. Null until the first check ever.
+    // UTC instant of the last completed update check (success or failure), driving the
+    // "Last checked" row in Settings > Updates. Null until the first check ever.
     public DateTime? LastUpdateCheckUtc { get; set; }
 
     // Live market data consent: null = the one-time strip has not been answered, true/false =

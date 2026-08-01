@@ -131,12 +131,12 @@ public partial class App : Application
     }
 
     // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
-    // never inside the 24-hour throttle, never in the demo profile. Fire-and-forget is safe:
-    // CheckAsync owns all its failure paths and reports through State/Changed.
+    // never in the demo profile. Every launch checks (the owner, 2026-08-01 - the 24h throttle is
+    // gone). Fire-and-forget is safe: CheckAsync owns all its failure paths and reports
+    // through State/Changed.
     public static void MaybeStartUpdateCheck()
     {
-        if (!UpdateService.ShouldAutoCheck(Settings.Current.UpdateCheckEnabled,
-                Settings.Current.LastUpdateCheckUtc, DateTime.UtcNow, AppPaths.IsDemoProfile)) return;
+        if (!UpdateService.ShouldAutoCheck(Settings.Current.UpdateCheckEnabled, AppPaths.IsDemoProfile)) return;
         _ = Update.CheckAsync(manual: false);
     }
 
