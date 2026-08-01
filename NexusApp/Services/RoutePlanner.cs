@@ -24,7 +24,14 @@ public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 // (ties broken by Net descending), surfacing high-margin small-qty routes that a raw-net sort
 // buries under high-net bulk hauls; a zero-TripQty route (nobody can actually run it) sorts to
 // the bottom under either mode, since 0 is the lowest per-SCU value any route can have.
-public enum RankMode { Profit, ProfitPerScu }
+// ProfitPerGm (app review 2026-08-01) ranks by profit per Gm of straight-line travel. The planner
+// has always COMPUTED and DISPLAYED that distance as a dim decoration on every row while ranking
+// purely on money: from the shipped positions, Area 18 to ARC-L1 is 2.89 Gm and Area 18 to ARC-L3 is
+// 56.96 Gm, so a route paying 3% more at ARC-L3 outranked the near one and a hauler lost the
+// difference twenty times over. Deliberately a measured-distance RATIO and not credits-per-hour or
+// an ETA: turning it into time would need a speed model the app does not have, and would contradict
+// the ProximityTiers spec line "no invented ETAs".
+public enum RankMode { Profit, ProfitPerScu, ProfitPerGm }
 
 // Pairs a Buy>0 row with a Sell>0 row of the same commodity, at two DIFFERENT terminals (a
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
@@ -51,7 +58,12 @@ public static class RoutePlanner
     public static IReadOnlyList<TradeRoute> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int shipScu, int shipMaxBox, double? budget,
         IReadOnlySet<int>? originTerminalIds, string scope, int take, StockFilter stockFilter = StockFilter.Any,
-        IReadOnlySet<int>? destTerminalIds = null, RankMode rankMode = RankMode.Profit)
+        IReadOnlySet<int>? destTerminalIds = null, RankMode rankMode = RankMode.Profit,
+        // Distance source for RankMode.ProfitPerGm, injected as a delegate rather than a catalog so
+        // this stays a pure ranking layer with no geometry dependency and tests can feed synthetic
+        // distances. Null under any other mode, and a null-returning call is a first-class "cannot
+        // measure" (cross-system, unresolved terminal) rather than a failure.
+        Func<MarketTerminal?, MarketTerminal?, double?>? distanceMeters = null)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -101,10 +113,44 @@ public static class RoutePlanner
             }
         }
 
-        return (rankMode == RankMode.ProfitPerScu
-                ? result.OrderByDescending(r => r.TripQty > 0 ? r.Net / r.TripQty : 0).ThenByDescending(r => r.Net)
-                : result.OrderByDescending(r => r.Net))
-            .Take(take).ToList();
+        return rankMode switch
+        {
+            RankMode.ProfitPerScu =>
+                result.OrderByDescending(r => r.TripQty > 0 ? r.Net / r.TripQty : 0)
+                      .ThenByDescending(r => r.Net).Take(take).ToList(),
+
+            // Rows whose distance cannot be measured (cross-system pairs, unresolved terminals) sort
+            // LAST and are never dropped - the same absence convention the per-row distance tag
+            // already follows. Dropping them would silently hide every cross-system route the moment
+            // this mode is picked, which is the opposite of what a hauler comparing runs wants.
+            RankMode.ProfitPerGm when distanceMeters is not null =>
+                result.Select(r => (Route: r, Gm: RouteGm(r, terminals, distanceMeters)))
+                      .OrderBy(x => x.Gm.HasValue ? 0 : 1)
+                      .ThenByDescending(x => x.Gm switch
+                      {
+                          // Two terminals that resolve to the SAME map object (a station's admin
+                          // office and its cargo deck, say) are a genuinely free move, so they are
+                          // the best possible ratio rather than a divide-by-zero.
+                          null => 0,
+                          0 => double.PositiveInfinity,
+                          var gm => x.Route.Net / gm,
+                      })
+                      .ThenByDescending(x => x.Route.Net)
+                      .Select(x => x.Route).Take(take).ToList(),
+
+            // ProfitPerGm with no distance source available falls back to plain profit rather than
+            // returning an arbitrary order. The UI only offers the pill when a catalog is wired, so
+            // this is a guard, not a user-reachable state.
+            _ => result.OrderByDescending(r => r.Net).Take(take).ToList(),
+        };
+    }
+
+    private static double? RouteGm(TradeRoute r, IReadOnlyDictionary<int, MarketTerminal> terminals,
+                                   Func<MarketTerminal?, MarketTerminal?, double?> distanceMeters)
+    {
+        terminals.TryGetValue(r.BuyRow.TerminalId, out var buy);
+        terminals.TryGetValue(r.SellRow.TerminalId, out var sell);
+        return distanceMeters(buy, sell) is { } meters ? meters / 1_000_000_000.0 : null;
     }
 
     // Applied per pair, inside the pairing loop, before the take cutoff - a route that fails

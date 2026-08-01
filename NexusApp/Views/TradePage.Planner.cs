@@ -44,6 +44,7 @@ public sealed partial class TradePage
     private Border _demandTwoXPill = null!;
     private Border _rankProfitPill = null!;
     private Border _rankProfitPerScuPill = null!;
+    private Border _rankProfitPerGmPill = null!;
     private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
     private int _plannerExpanded = -1;
 
@@ -331,10 +332,13 @@ public sealed partial class TradePage
         var rankModeRow = new StackPanel { Orientation = Orientation.Horizontal };
         _rankProfitPill = ScopePill("PROFIT");
         _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
+        _rankProfitPerGmPill = ScopePill("PROFIT PER Gm");
         _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
         _rankProfitPerScuPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerScu);
+        _rankProfitPerGmPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerGm);
         rankModeRow.Children.Add(_rankProfitPill);
         rankModeRow.Children.Add(_rankProfitPerScuPill);
+        rankModeRow.Children.Add(_rankProfitPerGmPill);
         rankModeGrp.Children.Add(rankModeRow);
         bottomRow.Children.Add(rankModeGrp);
 
@@ -419,7 +423,11 @@ public sealed partial class TradePage
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
             ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
-            ParseRankMode(App.Settings.Current.TradeRankMode));
+            ParseRankMode(App.Settings.Current.TradeRankMode),
+            // The same measurement this page already renders per row as a dim decoration - now it
+            // can also do the ranking, instead of the planner sorting purely on money while showing
+            // a distance it ignored.
+            App.Map.DistanceMeters);
 
         // Stale-pin rule (Task 8): a session-pinned route is identified by its (buy terminal, sell
         // terminal, commodity) triple, not by object identity - this fresh `routes` list is a
@@ -681,11 +689,13 @@ public sealed partial class TradePage
         var active = ParseRankMode(App.Settings.Current.TradeRankMode);
         SetPillOn(_rankProfitPill, active == RankMode.Profit);
         SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
+        SetPillOn(_rankProfitPerGmPill, active == RankMode.ProfitPerGm);
     }
 
     private static string RankModeLabel(RankMode mode) => mode switch
     {
         RankMode.ProfitPerScu => "PROFIT PER SCU",
+        RankMode.ProfitPerGm => "PROFIT PER GM",
         _ => "PROFIT",
     };
 
@@ -694,6 +704,7 @@ public sealed partial class TradePage
     private static RankMode ParseRankMode(string? value) => value switch
     {
         "PROFIT PER SCU" => RankMode.ProfitPerScu,
+        "PROFIT PER GM" => RankMode.ProfitPerGm,
         _ => RankMode.Profit,
     };
 

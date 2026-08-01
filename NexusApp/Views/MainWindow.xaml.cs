@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 using static NexusApp.Views.UiHelpers;
 
@@ -1388,6 +1389,12 @@ public partial class MainWindow : Window
         { Foreground = hit.Stale ? dim : Hud.Br("GoldBrush") });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AtTerminal(hit.TerminalName))
         { Foreground = hit.Stale ? dim : Hud.Br("FgBrush") });
+        // The last of the four PriceHit surfaces to get the terminal id back (app review). This is a
+        // single decode line rather than a table row, so it takes the overlay's cramped variant: a
+        // real distance or nothing, never a bare system name.
+        if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
+                                            App.Map, App.Player.Current) is { } away)
+            line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
 
