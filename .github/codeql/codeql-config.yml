@@ -1,0 +1,10 @@
+name: CodeQL config
+
+# Vendored third-party libraries are excluded from analysis: they are upstream
+# code shipped verbatim for offline use, and findings inside them are not
+# actionable here (e.g. Three.js generateUUID uses Math.random by design).
+paths-ignore:
+  - NexusApp/Web/cargo/three.module.js
+  - NexusApp/Web/cargo/OrbitControls.js
+  - NexusApp/Web/map/three.module.js
+  - NexusApp/Web/map/OrbitControls.js
