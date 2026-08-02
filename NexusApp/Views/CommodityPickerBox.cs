@@ -96,6 +96,12 @@ internal sealed class CommodityPickerBox : Grid
         };
         _box.LostKeyboardFocus += (_, _) => { if (!_popup.IsOpen) InteractionEnded?.Invoke(); };
 
+        // A picker that leaves the screen takes its popup with it: the popup is its own HWND, so a
+        // ghost-collapse or tab switch hiding the host panel would otherwise leave the list
+        // floating over the game. Benign on the desktop pages (their pickers hide only on page
+        // switches, where an open popup is equally wrong).
+        IsVisibleChanged += (_, _) => { if (!IsVisible) _popup.IsOpen = false; };
+
         Children.Add(_box);
         Children.Add(chevronHost);
         Children.Add(_popup);
@@ -112,13 +118,40 @@ internal sealed class CommodityPickerBox : Grid
 
     /// <summary>Optional sentinel row (the planner's "ANY") pinned above the alphabetical list in
     /// browse mode and matched like any name when typing. Never part of SetItems' list; a click on
-    /// it commits through the same path as every other row.</summary>
+    /// it commits through the same path as every other row. Superseded by PinnedItems when that is
+    /// set (non-null) - see PinnedItems below.</summary>
     public string? PinnedFirst { get; set; }
+
+    /// <summary>Optional pinned ROW LIST (overlay planner spec R2, Task B: the start picker pins
+    /// "ANY" and "LIVE" together, in that order, above the priced terminal names) - the
+    /// generalization of PinnedFirst's single sentinel, backed by CommoditySuggest.Filter's list
+    /// overload. Wins over PinnedFirst whenever it is set (non-null), even an empty list; each row
+    /// keeps its given order, leads the alphabetical list in browse mode, and is matched like any
+    /// other name when typing. Never part of SetItems' list; a click on a pinned row commits
+    /// through the same path as every other row.</summary>
+    public IReadOnlyList<string>? PinnedItems { get; set; }
 
     /// <summary>True while the user is mid-interaction (box keyboard-focused or popup open) - the
     /// window in which callers must not push list updates or write the text back (the Prices
     /// flow's defer-to-next-rebuild rule).</summary>
     public bool IsInteracting => _box.IsKeyboardFocused || _popup.IsOpen;
+
+    /// <summary>Overlay mode (owner's live-pass find, 2026-08-02: overlay dropdowns collapsed the
+    /// instant they were clicked). In a Topmost window, StaysOpen=false's capture-based auto-close
+    /// misfires - the activation/capture churn of clicking the overlay dismisses the popup within
+    /// the same click. When true, the popup opens with StaysOpen=true and the HOST window owns
+    /// outside-click dismissal: it must close still-open popups from its own PreviewMouseDown when
+    /// the pointer is over neither the picker nor its popup (see IsMouseOverPopup). The desktop
+    /// pages keep the default false and the original StaysOpen=false behavior.</summary>
+    public bool HostManagedClose { get; set; }
+
+    /// <summary>Whether the pointer is currently over the OPEN popup's content - the popup is its
+    /// own visual tree, so the host's IsMouseOver never covers it. Host-managed dismissal checks
+    /// this plus the picker's own IsMouseOver before closing.</summary>
+    public bool IsMouseOverPopup => _popup.IsOpen && _popup.Child is FrameworkElement c && c.IsMouseOver;
+
+    /// <summary>True while the suggestion popup is open.</summary>
+    public bool IsPopupOpen => _popup.IsOpen;
 
     /// <summary>Replaces the backing name list. Deliberately does NOT touch an already-open
     /// popup's rows: they refilter on the next keystroke or chevron open, so a mid-interaction
@@ -140,7 +173,11 @@ internal sealed class CommodityPickerBox : Grid
         // toggle even if that routing ever changes.
         if (viaChevron && _popup.IsOpen) { _popup.IsOpen = false; return; }
 
-        var matches = CommoditySuggest.Filter(_names, query, PinnedFirst);
+        // PinnedItems wins over PinnedFirst when set (its own doc comment's contract) - falls back
+        // to wrapping the single sentinel into a one-row list so both properties funnel through
+        // the same Filter overload.
+        var pinned = PinnedItems ?? (PinnedFirst is null ? null : new[] { PinnedFirst });
+        var matches = CommoditySuggest.Filter(_names, query, pinned);
         if (matches.Count == 0) { _popup.IsOpen = false; return; }
 
         _list.Children.Clear();
@@ -153,6 +190,10 @@ internal sealed class CommodityPickerBox : Grid
         var k = UiScaleService.AppScale;
         if (_popup.Child is FrameworkElement child) UiScaleService.ApplyTransform(child, k);
         _popup.Width = _box.ActualWidth * k;
+
+        // Applied per open so the flag can be set any time after construction. See HostManagedClose:
+        // the overlay popup must not auto-close via capture, the host dismisses it instead.
+        _popup.StaysOpen = HostManagedClose;
 
         bool wasOpen = _popup.IsOpen;
         _popup.IsOpen = true;

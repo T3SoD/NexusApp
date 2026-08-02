@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using NexusApp.Services;
 using Xunit;
@@ -103,5 +104,56 @@ public class CommoditySuggestTests
     {
         var result = CommoditySuggest.Filter(Names, "gold", pinnedFirst: "ANY");
         Assert.Equal(new[] { "Gold", "Golden Medmon" }, result);
+    }
+
+    // pinned LIST generalization (R2 Task A: Task B's start picker needs ANY and LIVE pinned
+    // together, in that order, above the priced terminal names). The old single-sentinel
+    // pinnedFirst overload keeps working (bridged onto the list overload) and every case above
+    // stays green unmodified - these tests only pin down the NEW multi-row behavior.
+
+    [Fact]
+    public void Filter_PinnedList_BrowseMode_KeepsGivenOrder()
+    {
+        var result = CommoditySuggest.Filter(Names, "", pinned: new[] { "ANY", "LIVE" });
+        Assert.Equal(new[] { "ANY", "LIVE" }, result.Take(2));
+        Assert.Equal(Names, result.Skip(2));
+    }
+
+    [Fact]
+    public void Filter_PinnedList_TypingMode_IncludesOnlyMatchingPinnedInGivenOrder()
+    {
+        // "an" matches the pinned "ANY" case-insensitively but not "LIVE", plus the two names
+        // that contain "an" - the matching pinned row must still lead, in the given order.
+        var result = CommoditySuggest.Filter(Names, "an", pinned: new[] { "ANY", "LIVE" });
+        Assert.Equal(new[] { "ANY", "Laranite", "Quantanium" }, result);
+    }
+
+    [Fact]
+    public void Filter_PinnedList_TypingMode_ExcludesEveryNonMatchingPinnedRow()
+    {
+        var result = CommoditySuggest.Filter(Names, "gold", pinned: new[] { "ANY", "LIVE" });
+        Assert.Equal(new[] { "Gold", "Golden Medmon" }, result);
+    }
+
+    [Fact]
+    public void Filter_NullPinnedList_SameAsNoPinned()
+    {
+        var result = CommoditySuggest.Filter(Names, "", pinned: null);
+        Assert.Equal(Names, result);
+    }
+
+    [Fact]
+    public void Filter_EmptyPinnedList_SameAsNoPinned()
+    {
+        var result = CommoditySuggest.Filter(Names, "", pinned: Array.Empty<string>());
+        Assert.Equal(Names, result);
+    }
+
+    [Fact]
+    public void Filter_SinglePinnedList_MatchesOldPinnedFirstBehavior()
+    {
+        var viaList = CommoditySuggest.Filter(Names, "an", pinned: new[] { "ANY" });
+        var viaLegacy = CommoditySuggest.Filter(Names, "an", pinnedFirst: "ANY");
+        Assert.Equal(viaLegacy, viaList);
     }
 }

@@ -825,27 +825,37 @@ public sealed partial class TradePage : UserControl
     // instance event through this, so the row builders stay static and stateless.
     private void RaiseShowOnMap(int objectId) => ShowOnMapRequested?.Invoke(objectId);
 
-    // ── Overlay sync (overlay planner spec, 2026-08-02) ──────────────────────────────────────
-    /// <summary>Raised after a SHARED trade setting (TradeScope, TradeCommodityFilter) is
-    /// persisted by this page, so MainWindow can nudge the overlay planner to re-rank. The
-    /// overlay's own writes arrive through ResyncSharedTradeSettings instead - the two never
-    /// loop because neither handler writes settings back.</summary>
+    // ── Overlay sync (overlay planner spec, 2026-08-02; generalized R2, same day) ────────────
+    /// <summary>Raised after a SHARED trade setting (scope, commodity, ship, start, dest, demand,
+    /// rank - every setter on this page that persists one of these now raises it) is persisted by
+    /// this page, so MainWindow can nudge the overlay planner to re-rank. The overlay's own writes
+    /// arrive through ResyncSharedTradeSettings instead - the two never loop because neither
+    /// handler writes settings back.</summary>
     internal event Action? SharedTradeSettingsChanged;
 
-    /// <summary>The overlay wrote TradeScope/TradeCommodityFilter (overlay planner spec,
-    /// 2026-08-02): drop this page's session copies of those values and rebuild from what is
-    /// persisted. The commodity picker seeds once per session by design, so an external write
-    /// must explicitly re-arm the seed. RefreshScopePills is called explicitly because neither
-    /// Refresh() nor RebuildPlanner() touches the context row's scope pills themselves (only
-    /// SetScope does, in its own call list) - without it the pills would keep showing the scope
-    /// this page had before the overlay's write. The full Refresh() is gated on IsVisible, not
-    /// IsLoaded: a page hidden behind another tab stays loaded (SetActivePage only collapses
-    /// the host), so every overlay scope or commodity click would otherwise re-rank all three
-    /// flows synchronously on the UI thread for nobody. The cheap state fixes always run; the
-    /// rebuild waits for re-entry, which always calls Refresh() via MainWindow.InitTradePage.</summary>
+    /// <summary>The overlay wrote a shared trade setting (overlay planner spec, 2026-08-02;
+    /// generalized R2 to cover ship/start/dest/demand/rank alongside scope/commodity): drop this
+    /// page's session copies of those values and rebuild from what is persisted. The start, dest
+    /// and commodity pickers each seed once per session by design, so an external write must
+    /// explicitly re-arm their seed (ResyncStartFromSettings/ResyncDestFromSettings/
+    /// ResyncCommodityFromSettings); the ship combo has no per-rebuild refresh of its own, so
+    /// ResyncShipFromSettings re-seeds its SelectedIndex immediately instead. Demand and rank need
+    /// no session copy to reset: RefreshDemandFilterPills/RefreshRankModePills already read
+    /// AppSettings directly on every rebuild. RefreshScopePills is called explicitly because
+    /// neither Refresh() nor RebuildPlanner() touches the context row's scope pills themselves
+    /// (only SetScope does, in its own call list) - without it the pills would keep showing the
+    /// scope this page had before the overlay's write. The full Refresh() is gated on IsVisible,
+    /// not IsLoaded: a page hidden behind another tab stays loaded (SetActivePage only collapses
+    /// the host), so every overlay click would otherwise re-rank all three flows synchronously on
+    /// the UI thread for nobody. The cheap state fixes (including the ship combo's immediate
+    /// re-seed) always run; the rebuild waits for re-entry, which always calls Refresh() via
+    /// MainWindow.InitTradePage.</summary>
     internal void ResyncSharedTradeSettings()
     {
         ResyncCommodityFromSettings();
+        ResyncStartFromSettings();
+        ResyncDestFromSettings();
+        ResyncShipFromSettings();
         RefreshScopePills();
         if (IsVisible) Refresh();
     }

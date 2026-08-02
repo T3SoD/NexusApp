@@ -38,6 +38,7 @@ internal static class TradeBarMath
 public sealed partial class TradePage
 {
     private ComboBox _shipCombo = null!;
+    private bool _suppressShipSelection;   // in-place SelectedIndex writes (overlay resync) are not user picks
     private TextBox _budgetBox = null!;
     private Border _demandAnyPill = null!;
     private Border _demandMinPill = null!;
@@ -67,6 +68,16 @@ public sealed partial class TradePage
     private bool _startSeeded;
     private bool _suppressStartSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
 
+    // Overlay sync (overlay planner spec, 2026-08-02): forget the session pick and re-seed from
+    // the persisted TradeStartManual on the next refresh, same idiom as ResyncCommodityFromSettings
+    // below - RefreshStartCombo re-runs SeedStartKind once _startSeeded is false again. Internal
+    // seam for TradePage.ResyncSharedTradeSettings.
+    private void ResyncStartFromSettings()
+    {
+        _startSeeded = false;
+        _startSelectedKind = null;
+    }
+
     // Location-first display (owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
     // LocationFirst's flipped label ("ARC-L1 - Admin") but _startSelectedKind/AppSettings.
     // TradeStartManual must keep the REAL UEX name the whole time (TerminalIdForName/
@@ -88,6 +99,15 @@ public sealed partial class TradePage
     private string? _destSelectedName;         // mirrors the ComboBox's SelectedItem; null only before the first seed; ALWAYS the real UEX name
     private bool _destSeeded;                   // seeds once from TradeDestManual, same idiom as the STARTING LOCATION picker above
     private bool _suppressDestSelection;        // in-place ItemsSource/SelectedItem writes are not user picks
+
+    // Overlay sync (overlay planner spec, 2026-08-02): forget the session pick and re-seed from
+    // the persisted TradeDestManual on the next refresh, same idiom as ResyncStartFromSettings
+    // above. Internal seam for TradePage.ResyncSharedTradeSettings.
+    private void ResyncDestFromSettings()
+    {
+        _destSeeded = false;
+        _destSelectedName = null;
+    }
 
     // Location-first display (owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
     // above: display -> real terminal name ("ANY" maps to itself), rebuilt fresh every
@@ -115,6 +135,24 @@ public sealed partial class TradePage
     {
         _commoditySeeded = false;
         _commoditySelectedName = null;
+    }
+
+    // Overlay sync (overlay planner spec, 2026-08-02): the ship combo has no per-rebuild refresh
+    // method of its own (unlike Start/Dest/Commodity, BuildPlannerChrome seeds it once and it is
+    // otherwise only touched by a direct user pick), so an external write needs its own immediate
+    // re-seed here rather than deferring to the next rebuild - the same reasoning
+    // ResyncSharedTradeSettings already documents for calling RefreshScopePills unconditionally.
+    // Suppressed the same way the Start/Dest combos suppress their own in-place ItemsSource/
+    // SelectedItem writes (_suppressShipSelection, declared with _shipCombo above), so this can
+    // never re-persist, re-log or re-rank on its own. Internal seam for
+    // TradePage.ResyncSharedTradeSettings.
+    private void ResyncShipFromSettings()
+    {
+        int idx = _shipCatalog.Ships.ToList().FindIndex(s => s.Id == App.Settings.Current.TradeShipId);
+        idx = idx >= 0 ? idx : 0;
+        if (_shipCombo.SelectedIndex == idx) return;
+        _suppressShipSelection = true;
+        try { _shipCombo.SelectedIndex = idx; } finally { _suppressShipSelection = false; }
     }
 
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
@@ -217,10 +255,12 @@ public sealed partial class TradePage
         _shipCombo.SelectedIndex = shipIdx >= 0 ? shipIdx : 0;
         _shipCombo.SelectionChanged += (_, _) =>
         {
+            if (_suppressShipSelection) return;
             var ship = _shipCatalog.Ships.ElementAt(_shipCombo.SelectedIndex);
             App.Settings.Current.TradeShipId = ship.Id;
             App.Settings.Save();
             Logger.Info($"[UI] Trade planner: ship {ship.Id}");
+            SharedTradeSettingsChanged?.Invoke();
             RebuildPlanner();
         };
         shipGrp.Children.Add(_shipCombo);
@@ -567,6 +607,7 @@ public sealed partial class TradePage
         App.Settings.Current.TradeStartManual = kind;
         App.Settings.Save();
         Logger.Info($"[UI] trade: start {kind}");
+        SharedTradeSettingsChanged?.Invoke();
         RebuildPlanner();
     }
 
@@ -584,6 +625,7 @@ public sealed partial class TradePage
         App.Settings.Current.TradeDestManual = chosen == AnyDestination ? null : chosen;
         App.Settings.Save();
         Logger.Info($"[UI] trade: destination {chosen}");
+        SharedTradeSettingsChanged?.Invoke();
         RebuildPlanner();
     }
 
@@ -622,6 +664,21 @@ public sealed partial class TradePage
     // display item is temporarily absent (no live session right now) - the same way the old FROM
     // HERE anchor stayed selected through a gap in live location data; only a terminal-name pick
     // that drops out of the currently offered list falls back to ANY.
+    //
+    // Final review 2026-08-02: both stale-name fallbacks below (the seed's fall to LIVE and the
+    // re-validate's fall to ANY) persist the downgrade and raise SharedTradeSettingsChanged, the
+    // commodity picker's stale-clear idiom (RefreshPlannerCommodityPicker). The ranking
+    // (RebuildPlanner) and the overlay planner both read the PERSISTED kind, so a session-only
+    // downgrade left the combo claiming one thing while both surfaces ranked another. No log
+    // either time: a programmatic correction, not a user pick. Staleness is judged only against a
+    // REAL list (the commodity picker's empty-list rule: no priced terminals yet means "not
+    // loaded", never "stale"), so a pre-fetch rebuild can never wipe a valid saved value. The
+    // raises cannot ping-pong: SharedTradeSettingsChanged's one subscriber relays to
+    // OverlayWindow.OnSharedTradeSettingsChanged, which only re-ranks its own panel and never
+    // writes settings; the overlay-to-desktop direction (TradeSettingsChangedByOverlay ->
+    // ResyncSharedTradeSettings) only re-arms these seeds, and a re-run of either fallback is
+    // then a no-op - the persisted value is already the downgraded one, so the guard skips the
+    // Save and the raise.
     private void RefreshStartCombo(MarketSnapshot? snap)
     {
         string? liveLoc = App.Locations.LastKnownLocation;
@@ -670,12 +727,36 @@ public sealed partial class TradePage
             {
                 _startSeeded = true;
                 _startSelectedKind = seed;
+                // SeedStartKind is pure, so its stale-name fall to LIVE lands here: the seed can
+                // only differ from a non-empty persisted value when that value was a terminal
+                // name a REAL list no longer offers (ANY/LIVE/found names seed as themselves; an
+                // empty list defers with null and never reaches this branch). Not seed-display-
+                // only, so it must persist: RebuildPlanner ranks from the persisted kind, and
+                // without this write the combo showed LIVE while both this page and the overlay
+                // kept restricting to the dead name. null/"" stays untouched - it is not a stale
+                // name but the unconstrained default StartTerminalIds already treats as ANY.
+                if (App.Settings.Current.TradeStartManual is { Length: > 0 } persisted && persisted != seed)
+                {
+                    App.Settings.Current.TradeStartManual = seed;
+                    App.Settings.Save();
+                    SharedTradeSettingsChanged?.Invoke();
+                }
             }
         }
-        else if (_startSelectedKind is null ||
-                 (_startSelectedKind != AnyStart && _startSelectedKind != "LIVE" && !terminalNames.Contains(_startSelectedKind)))
+        else if (_startSelectedKind is null)
+        {
+            _startSelectedKind = AnyStart;   // defensive only: null cannot follow a consumed seed
+        }
+        else if (_startSelectedKind != AnyStart && _startSelectedKind != "LIVE"
+                 && terminalNames.Count > 0 && !terminalNames.Contains(_startSelectedKind))
         {
             _startSelectedKind = AnyStart;
+            if (App.Settings.Current.TradeStartManual != AnyStart)
+            {
+                App.Settings.Current.TradeStartManual = AnyStart;
+                App.Settings.Save();
+                SharedTradeSettingsChanged?.Invoke();
+            }
         }
 
         // The combo shows nothing selected while the kind is LIVE but no live item exists this
@@ -738,6 +819,7 @@ public sealed partial class TradePage
         App.Settings.Current.TradeStockFilter = persisted;
         App.Settings.Save();
         Logger.Info($"[UI] trade: demand filter {DemandFilterPillText(filter)}");
+        SharedTradeSettingsChanged?.Invoke();
         RebuildPlanner();
     }
 
@@ -775,6 +857,7 @@ public sealed partial class TradePage
         App.Settings.Current.TradeRankMode = label;
         App.Settings.Save();
         Logger.Info($"[UI] trade: rank mode {label}");
+        SharedTradeSettingsChanged?.Invoke();
         RebuildPlanner();
     }
 
@@ -800,6 +883,13 @@ public sealed partial class TradePage
     // TradeDestManual setting (null/"" falls back to ANY); every later call revalidates the
     // CURRENT selection against the CURRENT terminal list instead of re-reading the setting, so a
     // live user pick this session is never clobbered by what was last saved.
+    //
+    // Final review 2026-08-02: a stale name's drop to ANY (both the seed's and the re-validate's)
+    // persists the downgrade (TradeDestManual = null, SetDest's own ANY contract) and raises
+    // SharedTradeSettingsChanged - the commodity picker's stale-clear idiom, judged only against
+    // a REAL list. See RefreshStartCombo's comment above for the full rationale and the
+    // no-ping-pong argument; without the persist the overlay kept restricting sell legs to the
+    // dead persisted name while this combo showed ANY.
     private void RefreshDestCombo(MarketSnapshot? snap)
     {
         var terminalNames = TerminalNames(snap);
@@ -829,10 +919,30 @@ public sealed partial class TradePage
             _destSeeded = true;
             var persisted = App.Settings.Current.TradeDestManual;
             _destSelectedName = !string.IsNullOrEmpty(persisted) && terminalNames.Contains(persisted) ? persisted : AnyDestination;
+            // Stale-clear persist (see the method comment): only when a REAL list rejected a
+            // saved name. An empty list is the pre-fetch rebuild, where "not offered" means
+            // "not loaded yet" - the saved value may be perfectly valid once data lands, so
+            // wiping it there would destroy it on every planner open that beats the fetch.
+            if (terminalNames.Count > 0 && !string.IsNullOrEmpty(persisted) && _destSelectedName == AnyDestination)
+            {
+                App.Settings.Current.TradeDestManual = null;
+                App.Settings.Save();
+                SharedTradeSettingsChanged?.Invoke();
+            }
         }
-        else if (_destSelectedName is null || (_destSelectedName != AnyDestination && !terminalNames.Contains(_destSelectedName)))
+        else if (_destSelectedName is null)
+        {
+            _destSelectedName = AnyDestination;   // defensive only: null cannot follow a consumed seed
+        }
+        else if (_destSelectedName != AnyDestination && terminalNames.Count > 0 && !terminalNames.Contains(_destSelectedName))
         {
             _destSelectedName = AnyDestination;
+            if (!string.IsNullOrEmpty(App.Settings.Current.TradeDestManual))
+            {
+                App.Settings.Current.TradeDestManual = null;
+                App.Settings.Save();
+                SharedTradeSettingsChanged?.Invoke();
+            }
         }
 
         string display = _destSelectedName == AnyDestination

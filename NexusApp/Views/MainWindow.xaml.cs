@@ -1585,6 +1585,9 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            // Log BEFORE the dialog (owner's live find, 2026-08-02: an overlay build error showed
+            // only the dialog and left nexus.log blind, so the diagnostic snapshot had nothing).
+            Logger.Error("[WIN] overlay toggle failed - discarding the instance", ex);
             MessageBox.Show($"Overlay error:\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
                             "Overlay Error", MessageBoxButton.OK, MessageBoxImage.Error);
             // Cheap hardening only (low-priority finding, needs a double fault to matter): log a
