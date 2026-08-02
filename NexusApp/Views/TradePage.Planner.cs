@@ -95,6 +95,19 @@ public sealed partial class TradePage
     // real name that gets persisted into AppSettings.TradeDestManual.
     private Dictionary<string, string>? _destDisplayToName;
 
+    // COMMODITY picker (issue #41, planner half; owner's revision: the same type-or-browse
+    // CommodityPickerBox the SELL and PRICES fields use, not a plain dropdown): same
+    // seed-once/revalidate-per-rebuild idiom as the DESTINATION picker above, minus the display
+    // map - commodity names are not terminal names, so LocationFirst never applies and the items
+    // are shown as-is. "ANY" rides as the picker's pinned first row and is the sentinel for "no
+    // constraint"; AppSettings.TradeCommodityFilter persists null for that same state, mirroring
+    // TradeDestManual's contract. Committed is the only selection path (typing never commits), so
+    // no suppress flag is needed here - programmatic Text writes are suppressed inside the control.
+    private const string AnyCommodity = "ANY";
+    private CommodityPickerBox _plannerCommodityPicker = null!;
+    private string? _commoditySelectedName;         // the active pick ("ANY" = unconstrained); null only before the first seed
+    private bool _commoditySeeded;                  // seeds once from TradeCommodityFilter, same idiom as the DESTINATION picker above
+
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
     // Before this, every rebuild started with PlannerHost.Children.Clear(), so the budget box's own
@@ -280,8 +293,9 @@ public sealed partial class TradePage
 
         // DESTINATION picker (task 6): a plain ComboBox, same idiom as the ORIGIN combo the
         // context row used to have before task 10 made it display-only - "ANY" is always the first
-        // item, selecting it means no constraint.
-        var destGrp = new StackPanel();
+        // item, selecting it means no constraint. Right margin since issue #41 seated the
+        // COMMODITY picker after it - the same 16px gap every other non-last group in a row gets.
+        var destGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
         destGrp.Children.Add(FieldLabel("Destination"));
         _destCombo = new ComboBox
         {
@@ -300,6 +314,26 @@ public sealed partial class TradePage
         };
         destGrp.Children.Add(_destCombo);
         routeRow.Children.Add(destGrp);
+
+        // COMMODITY picker (issue #41; owner's revision: type-or-browse, matching the SELL tab's
+        // commodity field). "ANY" is the pinned first row, selecting it means no constraint. No
+        // display map: the rows ARE the persisted names. Width matches the other two
+        // CommodityPickerBox instances so the control feels identical across the trade tabs.
+        var commodityGrp = new StackPanel { Width = 220 };
+        commodityGrp.Children.Add(FieldLabel("Commodity"));
+        _plannerCommodityPicker = new CommodityPickerBox { PinnedFirst = AnyCommodity };
+        _plannerCommodityPicker.Opened += () => Logger.Info("[UI] trade: commodity list opened");
+        _plannerCommodityPicker.Committed += name => SetCommodityFilter(name);
+        // Abandoned-query cleanup, same contract as the Prices flow: once the user walks away
+        // without committing, the box reverts to naming the active filter.
+        _plannerCommodityPicker.InteractionEnded += () =>
+        {
+            var expect = _commoditySelectedName ?? "";
+            if (!string.Equals(_plannerCommodityPicker.Text, expect, StringComparison.Ordinal))
+                _plannerCommodityPicker.Text = expect;
+        };
+        commodityGrp.Children.Add(_plannerCommodityPicker);
+        routeRow.Children.Add(commodityGrp);
 
         routeSection.Children.Add(routeRow);
         _plannerInputs.Children.Add(routeSection);
@@ -390,6 +424,7 @@ public sealed partial class TradePage
         var snap = App.Market.Snapshot;
         RefreshStartCombo(snap);
         RefreshDestCombo(snap);
+        RefreshPlannerCommodityPicker(snap);
         RefreshDemandFilterPills();
         RefreshRankModePills();
 
@@ -428,7 +463,7 @@ public sealed partial class TradePage
             // The same measurement this page already renders per row as a dim decoration - now it
             // can also do the ranking, instead of the planner sorting purely on money while showing
             // a distance it ignored.
-            App.Map.DistanceMeters);
+            App.Map.DistanceMeters, CommodityFilterName());
 
         // Pin refresh (Task 8, resemantic 2026-08-01 when pins began surviving a restart). A pin is
         // identified by its (buy terminal, sell terminal, commodity) triple, not by object identity:
@@ -470,6 +505,14 @@ public sealed partial class TradePage
                         + $"Widen the scope to ALL, or start from somewhere in {scope}.";
                 Logger.Info($"[UI] Trade planner run: 0 routes, starting location outside scope {scope} (in {startSystem})");
             }
+            // A COMMODITY filter that produced nothing is the next most specific cause (issue
+            // #41): the list was deliberately narrowed to one commodity, so name it rather than
+            // reporting a generic absence of routes the other controls cannot explain.
+            else if (CommodityFilterName() is { } commodity)
+            {
+                message = $"No routes haul {commodity} with the current settings. Set Commodity to ANY, or widen the scope.";
+                Logger.Info($"[UI] Trade planner run: 0 routes, commodity {commodity}");
+            }
             else
             {
                 message = originIds is not null
@@ -491,7 +534,7 @@ public sealed partial class TradePage
             _plannerResults.Children.Add(row);
         }
 
-        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, start {App.Settings.Current.TradeStartManual ?? "LIVE"}, dest {_destSelectedName ?? AnyDestination}");
+        Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, start {App.Settings.Current.TradeStartManual ?? "LIVE"}, dest {_destSelectedName ?? AnyDestination}, commodity {_commoditySelectedName ?? AnyCommodity}");
     }
 
     // Starting Location (task 10): mirrors SetDemandFilter's no-op-on-unchanged guard - a pick that
@@ -520,6 +563,21 @@ public sealed partial class TradePage
         App.Settings.Current.TradeDestManual = chosen == AnyDestination ? null : chosen;
         App.Settings.Save();
         Logger.Info($"[UI] trade: destination {chosen}");
+        RebuildPlanner();
+    }
+
+    // The COMMODITY picker's counterpart to SetDest (issue #41): same no-op-on-unchanged guard, so
+    // re-picking what is already selected never logs or reruns. Null and "" both mean ANY,
+    // matching AppSettings.TradeCommodityFilter's own contract.
+    private void SetCommodityFilter(string? name)
+    {
+        var chosen = string.IsNullOrEmpty(name) ? AnyCommodity : name;
+        if (_commoditySelectedName == chosen) return;
+
+        _commoditySelectedName = chosen;
+        App.Settings.Current.TradeCommodityFilter = chosen == AnyCommodity ? null : chosen;
+        App.Settings.Save();
+        Logger.Info($"[UI] trade: commodity {chosen}");
         RebuildPlanner();
     }
 
@@ -806,6 +864,77 @@ public sealed partial class TradePage
             ? new HashSet<int> { id }
             : new HashSet<int>();
     }
+
+    // COMMODITY picker refresh (issue #41): same re-validate-on-every-rebuild rule as
+    // RefreshDestCombo above, minus the display map (commodity names are shown as-is). The item
+    // list is the shared CommodityNames derivation (TradePage.cs, also the Prices flow's list);
+    // "ANY" rides as the picker's own pinned first row, never as a list entry. Names match
+    // case-insensitively, adopting the list's canonical casing on a hit (Rank filters
+    // OrdinalIgnoreCase and the Prices flow revalidates the same way, so a snapshot that merely
+    // re-cases a name must not drop the filter). A persisted or selected name the snapshot truly
+    // no longer offers falls back to ANY silently - a programmatic correction, not a user pick,
+    // so it never logs or rebuilds - and the stale persisted value is cleared with it so it
+    // cannot resurrect next launch. Staleness is never judged against an EMPTY list (the planner
+    // opening before the first market fetch - the A5 rule from RefreshStartCombo): a
+    // commodity-name seed defers to the next refresh instead of guessing, and the box honestly
+    // shows its empty-state placeholder meanwhile.
+    private void RefreshPlannerCommodityPicker(MarketSnapshot? snap)
+    {
+        var commodities = CommodityNames(snap);
+
+        if (!_commoditySeeded)
+        {
+            var persisted = App.Settings.Current.TradeCommodityFilter;
+            if (string.IsNullOrEmpty(persisted))
+            {
+                _commoditySeeded = true;   // null/"" means ANY and needs no list to seed against
+                _commoditySelectedName = AnyCommodity;
+            }
+            else if (commodities.Count > 0)
+            {
+                _commoditySeeded = true;
+                var match = commodities.Find(c => string.Equals(c, persisted, StringComparison.OrdinalIgnoreCase));
+                _commoditySelectedName = match ?? AnyCommodity;
+                if (match is null)
+                {
+                    App.Settings.Current.TradeCommodityFilter = null;
+                    App.Settings.Save();
+                }
+            }
+        }
+        else if (commodities.Count > 0 && _commoditySelectedName is not null && _commoditySelectedName != AnyCommodity)
+        {
+            var match = commodities.Find(c => string.Equals(c, _commoditySelectedName, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                _commoditySelectedName = AnyCommodity;
+                App.Settings.Current.TradeCommodityFilter = null;
+                App.Settings.Save();
+            }
+            else if (!string.Equals(match, _commoditySelectedName, StringComparison.Ordinal))
+            {
+                // Re-cased, not removed: adopt the canonical casing so the suppressed
+                // SelectedItem write below still lands on a real ItemsSource entry.
+                _commoditySelectedName = match;
+            }
+        }
+
+        // The backing list is pushed even mid-interaction (same contract as the other two picker
+        // instances): SetItems never touches an open popup's rows or the box text. The write-back
+        // below defers while the user is typing or browsing; InteractionEnded (wired in
+        // BuildPlannerChrome) catches the abandoned-query case.
+        _plannerCommodityPicker.SetItems(commodities);
+        if (_plannerCommodityPicker.IsInteracting) return;
+        var expect = _commoditySelectedName ?? "";
+        if (!string.Equals(_plannerCommodityPicker.Text, expect, StringComparison.Ordinal))
+            _plannerCommodityPicker.Text = expect;
+    }
+
+    // Resolves the COMMODITY combo's current pick to RoutePlanner's filter argument. "ANY" (the
+    // default, and the literal first combo item) means no constraint - null, the same sentinel
+    // the buy and sell terminal sets already use for "unrestricted".
+    private string? CommodityFilterName() =>
+        _commoditySelectedName is null || _commoditySelectedName == AnyCommodity ? null : _commoditySelectedName;
 
     // Small dim note (task 6, brief's "results header" fallback: no persistent header line exists
     // in the planner results area to append onto, so this is a standalone TextBlock shown above the

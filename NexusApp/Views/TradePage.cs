@@ -686,6 +686,18 @@ public sealed partial class TradePage : UserControl
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>The commodity names the trade pickers offer, in the order they offer them: every
+    /// distinct commodity the snapshot prices, sorted OrdinalIgnoreCase. One shared derivation
+    /// for the planner's COMMODITY filter and the Prices flow's picker (issue #41) so the dedup
+    /// and ordering rules cannot drift apart (the Sell flow's CommodityChoices stays separate:
+    /// it needs id+name pairs). Internal static so it is unit-testable against a hand-built
+    /// snapshot; null snapshot yields an empty list.</summary>
+    internal static List<string> CommodityNames(MarketSnapshot? snap) =>
+        snap is null
+            ? new List<string>()
+            : snap.TradePrices.Rows.Select(r => r.CommodityName).Distinct()
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>The SELL flow's origin, for SellLookup's proximity-tier math (task 10 scope
     /// ripple, approved): live-only. The manual origin dropdown that used to back this when no
     /// session was live is gone (the ORIGIN chip is display-only now; the route planner's own

@@ -64,7 +64,13 @@ public static class RoutePlanner
         // this stays a pure ranking layer with no geometry dependency and tests can feed synthetic
         // distances. Null under any other mode, and a null-returning call is a first-class "cannot
         // measure" (cross-system, unresolved terminal) rather than a failure.
-        Func<MarketTerminal?, MarketTerminal?, double?>? distanceMeters = null)
+        Func<MarketTerminal?, MarketTerminal?, double?>? distanceMeters = null,
+        // Commodity filter (issue #41, planner half): null = ANY (no constraint, the planner's
+        // original behavior, default parameter so every pre-existing call site is untouched); a
+        // non-null name keeps only rows whose CommodityName matches it case-insensitively. A name
+        // matching nothing yields zero routes rather than silently widening back to ANY - the same
+        // no-silent-fallback contract the origin/destination sets above already keep.
+        string? commodityName = null)
     {
         var result = new List<TradeRoute>();
         if (rows is null || rows.Count == 0 || take <= 0) return result;
@@ -74,6 +80,8 @@ public static class RoutePlanner
         {
             if (!terminals.TryGetValue(row.TerminalId, out var terminal)) continue;   // unresolvable: no tier, no pairing
             if (!InScope(terminal, scope)) continue;
+            if (commodityName is not null
+                && !string.Equals(row.CommodityName, commodityName, StringComparison.OrdinalIgnoreCase)) continue;
 
             if (!byCommodity.TryGetValue(row.CommodityId, out var lists))
             {
