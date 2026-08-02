@@ -36,8 +36,8 @@
             <!-- Left: logo + title + version badges. ClipToBounds (F14 follow-up, the owner's live pass:
                  the widened strip painted over the clock): a StackPanel arranges children at full
                  desired size and PAINTS past its star column into the clock's Auto column when the
-                 window is narrow - clipping keeps the cut on our side of the boundary. The chips
-                 themselves carry trim caps (SESSION, LOCATION) so the cut is rare. -->
+                 window is narrow - clipping keeps the cut on our side of the boundary. The SESSION
+                 chip carries its own trim cap so the cut is rare. -->
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0" ClipToBounds="True">
                 <views:NexusBeamIcon Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
@@ -125,23 +125,6 @@
                              shorter label buys back width the shard suffix spends. -->
                         <TextBlock Text="SESSION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
                         <TextBlock x:Name="SessionChipText" Text="..." FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
-                    </StackPanel>
-                </Border>
-                <!-- LOCATION telemetry chip (F14, new): where Game.log last placed the player. The one
-                     signal every distance in the app hangs off (Codex, work orders, Trade ranking, the
-                     map marker, overlay route bands) and it had no global lamp. Cyan is the app's
-                     live-location identity (Trade ORIGIN dot, map player marker) - reserved, so this is
-                     the only header chip allowed to wear it. Driven by UpdateLocationChip.
-                     (The old BLUEPRINTS chip that held this slot moved to the Blueprint Library header:
-                     session AND a Settings toggle is a single-feature derivation, not app health.) -->
-                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
-                        Background="{StaticResource Bg2NavBrush}"
-                        BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
-                        ToolTip="Where Game.log last placed you. Distances across the app measure from here.">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="LocationDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="LOCATION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="LocationChipText" Text="unknown" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" MaxWidth="130" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Border>
                 <!-- MARKET telemetry chip (live market data). Hidden entirely while the feature is
@@ -458,7 +441,18 @@
                         </Grid>
                     </ScrollViewer>
 
-                    <!-- dock foot: operator -->
+                    <!-- dock foot: operator + location. The LOCATION line (F14; relocated from the
+                         header strip for issue #40, owner's placement call: the caption slot under
+                         the operator name) is where Game.log last placed the player - the one signal
+                         every distance in the app hangs off (Codex, work orders, Trade ranking, the
+                         map marker, overlay route bands), seated under the operator it describes.
+                         Cyan is the app's live-location identity (Trade ORIGIN dot, map player
+                         marker) - reserved, so this is the only dock element allowed to wear it.
+                         Driven by UpdateLocationChip. The value's 136px trim cap is OperatorName's
+                         150px cap minus the dot and its margin, so the line never outgrows the name
+                         above it. Caption-slot lineage: the LinkDot "ONLINE . SECURE LINK" line
+                         (retired at F14 as a third session lamp claiming a link the offline-by-design
+                         app does not have), then the static "NEXUS TERMINAL" text this replaces. -->
                     <views:ChamferPanel Grid.Row="2" Chamfer="8" Padding="11,9" Margin="0,10,0,0" Background="{DynamicResource BgBrush}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <views:ChamferPanel Chamfer="6" Width="32" Height="32" Padding="0"
@@ -469,11 +463,12 @@
                             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                 <TextBlock x:Name="OperatorName" Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11"
                                            Foreground="{DynamicResource FgBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
-                                <!-- F14: static identity chrome. The old LinkDot + "ONLINE . SECURE LINK"
-                                     line was a third rendering of the session boolean in this viewport,
-                                     and claimed a "secure link" the offline-by-design app does not have. -->
-                                <TextBlock Text="NEXUS TERMINAL" FontFamily="{StaticResource MonoFont}" FontSize="8"
-                                           Foreground="{DynamicResource FgDimBrush}" Margin="0,2,0,0"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
+                                            ToolTip="Where Game.log last placed you. Distances across the app measure from here.">
+                                    <Ellipse x:Name="LocationDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="LocationChipText" Text="unknown" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                               Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" MaxWidth="136" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </views:ChamferPanel>

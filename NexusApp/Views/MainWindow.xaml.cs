@@ -750,8 +750,8 @@ public partial class MainWindow : Window
         // claim that the app knows the player's place, and a jurisdiction is not one.
         bool coarse = known && App.Player!.LabelIsJurisdiction;
         LocationChipText.Text = !known ? "unknown" : coarse ? $"{label} space" : label;
-        // The value is width-capped (long outpost names trim at 130px so the strip cannot crowd
-        // the clock) - the tooltip always carries the full text.
+        // The value is width-capped (long outpost names trim at 136px so the line never outgrows
+        // the operator name above it) - the tooltip always carries the full text.
         LocationChipText.ToolTip = !known ? null
             : coarse ? $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down."
             : label;
@@ -764,7 +764,7 @@ public partial class MainWindow : Window
         if (_locationChipKnown != lit)
         {
             _locationChipKnown = lit;
-            Logger.Info($"[UI] header location: {(known ? LocationChipText.Text : "unknown")}");
+            Logger.Info($"[UI] dock location: {(known ? LocationChipText.Text : "unknown")}");
         }
     }
 

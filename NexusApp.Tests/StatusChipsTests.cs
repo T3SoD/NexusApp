@@ -4,7 +4,7 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// StatusChips (F14 header consolidation): the pure decisions behind the four-lamp status strip.
+// StatusChips (F14 header consolidation): the pure decisions behind the header status strip's lamps.
 // SessionValue pins what the merged GAME SESSION chip says once the SHARD chip folds into it;
 // AutoScanCombined pins how two scanner states fold into one LED (the owner: the chip must represent
 // BOTH OCR auto-scan features).

@@ -5,11 +5,12 @@ namespace NexusApp.Services;
 
 /// <summary>
 /// Pure composition seams for the header status strip (F14 pill consolidation, 2026-08-01).
-/// The strip went from five chips of mixed importance to four multi-feature lamps: GAME SESSION
-/// (absorbing the SHARD chip as its value suffix), LOCATION (new - the fact every distance in
-/// the app hangs off had no global lamp), UEX (the MARKET chip, renamed to match the Trade
-/// page's pill for the same feed), and AUTO-SCAN (one chip for BOTH OCR scanners, the owner's
-/// amendment on the mock). These seams are the parts of that rework that are decisions rather
+/// The strip went from five chips of mixed importance to multi-feature lamps: GAME SESSION
+/// (absorbing the SHARD chip as its value suffix), UEX (the MARKET chip, renamed to match the
+/// Trade page's pill for the same feed), and AUTO-SCAN (one chip for BOTH OCR scanners, the
+/// owner's amendment on the mock). The LOCATION readout born in the same pass lives in the dock
+/// foot operator panel now (issue #40). These seams are the parts of that rework that are
+/// decisions rather
 /// than plumbing, so they are pure and tested; the WPF painting stays in MainWindow.
 /// </summary>
 public static class StatusChips
