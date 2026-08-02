@@ -885,6 +885,14 @@ public partial class MainWindow : Window
             // The return leg of the map's own SEND TO PLANNER (app review G7b): a route leg's
             // terminal name opens that stop on the Starmap.
             _tradePage.ShowOnMapRequested += id => { SetActivePage("map"); _mapPage?.ShowObject(id); };
+            // Overlay planner sync (overlay planner spec, 2026-08-02): the TradePage-side half of
+            // the wiring in EnsureOverlay above, attached here at construction time for the same
+            // reason PinnedRouteChanged is - the overlay may not exist yet, so every call below is
+            // null-guarded. The initial SetPlannerBudget push mirrors EnsureOverlay's own initial
+            // push, covering the case where the overlay already exists when TradePage shows up.
+            _tradePage.SharedTradeSettingsChanged += () => _overlay?.OnSharedTradeSettingsChanged();
+            _tradePage.SessionBudgetChanged += budget => _overlay?.SetPlannerBudget(budget);
+            _overlay?.SetPlannerBudget(_tradePage.CurrentSessionBudget);
         }
         _tradePage.Refresh();
     }
@@ -1533,6 +1541,31 @@ public partial class MainWindow : Window
             // replays 25 rows of entrance cascade. Same reasoning as the PIN chip's own click.
             if (_activePage == "trade") _tradePage?.RefreshPinChips();
         };
+
+        // Overlay planner (overlay planner spec, 2026-08-02). Same shape as the pin wiring above:
+        // both sides are lazy, so the overlay-side subscriptions live here (the TradePage-side
+        // half lives at InitTradePage, mirroring PinnedRouteChanged) and the initial budget push
+        // below catches a session budget that existed before the overlay did.
+        _overlay.PinRouteRequested += route =>
+        {
+            // Guarantee the pin owner exists before routing (task review finding, 2026-08-02): a
+            // PLANNER card in the overlay ranks off App.Market alone, so a PIN click here could
+            // land before the user ever opened the desktop Trade page, and the null-conditional
+            // below would silently drop it (nothing saved, PushPinnedRoutesToOverlay pushing back
+            // an empty list). InitTradePage is the same single-entry construction point
+            // SetActivePage("trade") already uses; only called when _tradePage does not exist yet
+            // so an already-constructed page never pays for another Refresh() on every pin click.
+            // It does not touch PageTrade.Visibility (SetActivePage alone owns that), so building
+            // the page here never shows it or switches away from whatever page is active.
+            if (_tradePage == null) InitTradePage();
+            _tradePage!.PinRoute(route);
+            if (_activePage == "trade") _tradePage.RefreshPinChips();
+            // No explicit overlay push: PinRoute's own PinnedRouteChanged (a toggle always
+            // changes the list) already runs PushPinnedRoutesToOverlay, subscribed at InitTradePage.
+        };
+        _overlay.TradeSettingsChangedByOverlay += () => _tradePage?.ResyncSharedTradeSettings();
+        _overlay.SetPlannerBudget(_tradePage?.CurrentSessionBudget);
+
         PushPinnedRoutesToOverlay();
     }
 

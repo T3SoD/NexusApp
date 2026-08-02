@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Services.Cargo;
 using NexusApp.Services.Map;
 using NexusApp.ViewModels;
 
@@ -203,8 +204,14 @@ public partial class OverlayWindow : Window
         // Live market prices on the scan cards: repaint the sell lines already on screen when a
         // fetch cycle publishes a new snapshot, instead of leaving an hour-old price up until the
         // next decode. Changed fires off the UI thread, so marshal (the same contract MainWindow's
-        // market fan-out follows).
-        _onMarketChanged = () => Dispatcher.BeginInvoke(RefreshMarketSellLines);
+        // market fan-out follows). The same publish also re-ranks a presented overlay planner
+        // (overlay planner spec, 2026-08-02): the hourly fetch is one of its re-rank triggers, and
+        // it rides this existing subscription rather than adding a timer of its own.
+        _onMarketChanged = () => Dispatcher.BeginInvoke(() =>
+        {
+            RefreshMarketSellLines();
+            if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
+        });
         App.Market.Changed += _onMarketChanged;
 
         // Live player location on the TRADE tab (owner, 2026-08-01: "current location in the overlay
@@ -3414,6 +3421,23 @@ public partial class OverlayWindow : Window
     // nexus-design-lab/overlay-trade, candidate B of four, picked for pins-per-screen because this
     // panel gets a two-second read mid-flight. Three lines a card: commodity + SCU, the run itself
     // on one rail, distance + margin. Each card closes itself.
+    //
+    // Overlay planner spec, 2026-08-02: the "not a second planner" ruling above was revisited by
+    // the owner. The tab now carries two modes - PLANNER (default: the top 5 routes from the live
+    // location, ranked with the exact settings the main planner persists) and PINNED (the card
+    // list above, unchanged). Still a glance surface: the planner mode has no ship picker, no
+    // budget field and no expand bands; those stay on the main window, whose shared settings this
+    // view consumes read-mostly (scope and commodity are the two it can write back).
+
+    // PLANNER | PINNED mode (overlay planner spec, 2026-08-02). Session-remembered, defaults to
+    // PLANNER: the new view is the reason the tab is opened in game; pins keep the badge.
+    private string _tradeMode = "PLANNER";
+    private double? _plannerBudget;             // pushed in by MainWindow; null = unconstrained
+    private readonly CargoShipCatalog _plannerShips = CargoShipCatalog.LoadEmbedded();
+    private CommodityPickerBox? _overlayCommodityPicker;
+    // Scope pill labels, mirroring the main page's Scopes literal (TradePage.cs:60) so the two
+    // surfaces can never offer different vocabularies for the same persisted TradeScope.
+    private static readonly string[] OverlayTradeScopes = { "ALL", "STANTON", "PYRO", "NYX" };
 
     // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
     // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
@@ -3424,6 +3448,17 @@ public partial class OverlayWindow : Window
     /// chip, the Starmap leg and these cards can never disagree about what is pinned.</summary>
     public event Action<PinnedRoute>? UnpinRouteRequested;
 
+    /// <summary>Raised after this window persists a SHARED trade setting (TradeScope or
+    /// TradeCommodityFilter), so MainWindow can hand TradePage a ResyncSharedTradeSettings.
+    /// The counterpart of TradePage.SharedTradeSettingsChanged - the two never loop because
+    /// neither handler writes settings back (overlay planner spec, 2026-08-02).</summary>
+    public event Action? TradeSettingsChangedByOverlay;
+
+    /// <summary>Raised when a planner card's PIN chip is clicked. MainWindow routes it into
+    /// TradePage, which owns the pin list - the same one-owner rule UnpinRouteRequested
+    /// documents above, in the opposite direction.</summary>
+    public event Action<TradeRoute>? PinRouteRequested;
+
     /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
     /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
     /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
@@ -3433,6 +3468,22 @@ public partial class OverlayWindow : Window
         TabStrip.SetBadge("trade", routes.Count);
         GhostRail.SetBadge("trade", routes.Count);   // ghost mode carries the same counts (issue #27)
         if (IsTabPresented("trade")) RebuildTradePanel();
+    }
+
+    /// <summary>MainWindow pushes TradePage's session budget here (overlay planner spec):
+    /// the budget is deliberately session-only, so it travels the same push-in road as pins.</summary>
+    public void SetPlannerBudget(double? budget)
+    {
+        if (_plannerBudget == budget) return;
+        _plannerBudget = budget;
+        if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
+    }
+
+    /// <summary>MainWindow relays TradePage's shared-setting changes here so a desktop scope or
+    /// commodity change re-ranks a presented overlay planner.</summary>
+    public void OnSharedTradeSettingsChanged()
+    {
+        if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
     }
 
     // Band metrics, from the mock's CSS (.D .band and friends). The band runs the full width of the
@@ -3450,7 +3501,46 @@ public partial class OverlayWindow : Window
     private void RebuildTradePanel()
     {
         TradePanelItems.Children.Clear();
+        BuildTradeModeToggle();
+        if (_tradeMode == "PLANNER") BuildPlannerSection();
+        else BuildPinnedSection();
+    }
 
+    // The PLANNER | PINNED switch at the top of the tab, in the overlay's own pill idiom
+    // (BuildOverlayHistoryFilterPills: AccentButton marks the option in force). A click on the
+    // mode already showing is a no-op - no log, no rebuild - the same no-op-on-unchanged guard
+    // every trade-setting setter keeps.
+    private void BuildTradeModeToggle()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        foreach (var mode in new[] { "PLANNER", "PINNED" })
+        {
+            var m = mode;
+            var btn = new Button
+            {
+                Content = m,
+                Style = (Style)FindResource(_tradeMode == m ? "AccentButton" : "NexusButton"),
+                Padding = new Thickness(5, 1, 5, 1),
+                Margin = new Thickness(0, 0, 3, 0),
+                FontSize = 8,
+                Height = 18,
+            };
+            btn.Click += (_, __) =>
+            {
+                if (_tradeMode == m) return;
+                _tradeMode = m;
+                Logger.Info($"[UI] overlay trade: mode {_tradeMode}");
+                RebuildTradePanel();
+            };
+            row.Children.Add(btn);
+        }
+        TradePanelItems.Children.Add(row);
+    }
+
+    // PINNED mode: the pre-planner body of RebuildTradePanel, moved here verbatim (overlay
+    // planner spec, 2026-08-02) - the mode dispatch above is the only reason for the split.
+    private void BuildPinnedSection()
+    {
         var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
         var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
@@ -3782,6 +3872,306 @@ public partial class OverlayWindow : Window
         HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Center,
         IsHitTestVisible = false,
     };
+
+    // ── PLANNER mode (overlay planner spec, 2026-08-02) ────────────────────────
+    // The top 5 routes from the live location, ranked with the exact persisted settings the main
+    // planner uses (TradePlanArgs is the shared interpretation seam, so the two surfaces cannot
+    // drift). Origin is ALWAYS "LIVE" here - this surface exists mid-flight, where "from where I
+    // stand" is the only origin worth a card - while ship, budget, demand, destination and rank
+    // mode ride the main window's settings untouched. Scope and commodity are the two controls
+    // worth overlay space; both write the SAME persisted setting the main page reads, announced
+    // via TradeSettingsChangedByOverlay so the desktop follows along.
+    private void BuildPlannerSection()
+    {
+        var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+
+        // Same dim-note idiom as the PINNED empty state (Line, BuildPinnedSection).
+        TextBlock Note(string text) => new()
+        {
+            Text = text, Foreground = dim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 3),
+        };
+
+        // Consent gate before any control renders: with market data off there is nothing the
+        // scope pills or the picker could honestly filter (FillMarketSell's own gate idiom).
+        if (App.Settings.Current.MarketDataEnabled != true)
+        {
+            TradePanelItems.Children.Add(Note("Live market data is off. Enable it in Trade on the main window."));
+            return;
+        }
+
+        // Controls row: scope pills (labels mirror the main page - OverlayTradeScopes) and the
+        // commodity picker, rendered even while the snapshot is empty so the settings stay
+        // reachable from here.
+        var scopeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+        foreach (var scope in OverlayTradeScopes)
+        {
+            var s = scope;
+            var btn = new Button
+            {
+                Content = s,
+                Style = (Style)FindResource(App.Settings.Current.TradeScope == s ? "AccentButton" : "NexusButton"),
+                Padding = new Thickness(5, 1, 5, 1),
+                Margin = new Thickness(0, 0, 3, 0),
+                FontSize = 8,
+                Height = 18,
+            };
+            btn.Click += (_, __) => SetOverlayTradeScope(s);
+            scopeRow.Children.Add(btn);
+        }
+        TradePanelItems.Children.Add(scopeRow);
+
+        _overlayCommodityPicker ??= MakeOverlayCommodityPicker();
+        var picker = _overlayCommodityPicker;
+        // Fresh names every rebuild; the box text only when the user is not mid-interaction (the
+        // Prices flow's defer-to-next-rebuild rule - see CommodityPickerBox.IsInteracting).
+        picker.SetItems(TradePage.CommodityNames(App.Market.Snapshot));
+        if (!picker.IsInteracting) picker.Text = App.Settings.Current.TradeCommodityFilter ?? "ANY";
+        // The picker instance survives rebuilds (an open popup or a typed query must outlive a
+        // repaint), so detach it from the cleared old row before re-adding.
+        if (picker.Parent is Panel oldHost) oldHost.Children.Remove(picker);
+        TradePanelItems.Children.Add(picker);
+
+        var snap = App.Market.Snapshot;
+        if (snap is null || snap.TradePrices.Rows.Count == 0)
+        {
+            // Serve-stale-with-age (EmptyOrStaleNote's exact rule, TradePage.Planner.cs).
+            TradePanelItems.Children.Add(Note(snap is null || snap.TradePrices.FetchedUtc == default
+                ? "No trade price data yet. It refreshes about once an hour while Nexus is open."
+                : $"No trade routes to show right now (data from {MarketNotice.FormatAge(DateTime.UtcNow - snap.TradePrices.FetchedUtc)})."));
+            return;
+        }
+
+        var terminals = snap.Terminals.Rows.ToDictionary(t => t.Id);
+        var originIds = TradeOriginResolver.StartTerminalIds("LIVE",
+            App.Locations.LastKnownLocation, snap.Terminals.Rows, App.Locations.LastKnownUexLocation);
+        if (originIds is { Count: 0 })
+        {
+            TradePanelItems.Children.Add(Note("No live location - open an inventory in game to pin it down."));
+            return;
+        }
+        var ship = _plannerShips.ById(App.Settings.Current.TradeShipId) ?? _plannerShips.Ships.First();
+        // Null and "" both mean ANY (AppSettings.TradeCommodityFilter's own contract), so the
+        // persisted value is normalized once and Rank and the zero-route note below judge the
+        // same thing. destIds is hoisted for the same reason: its non-null EMPTY set is the
+        // "saved destination no longer resolves" signal the ladder below diagnoses.
+        var commodityFilter = App.Settings.Current.TradeCommodityFilter;
+        if (string.IsNullOrEmpty(commodityFilter)) commodityFilter = null;
+        var destIds = TradePlanArgs.DestTerminalIds(App.Settings.Current.TradeDestManual, snap.Terminals.Rows);
+        var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
+            _plannerBudget, originIds, App.Settings.Current.TradeScope, take: 5,
+            TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter),
+            destIds,
+            TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode),
+            App.Map.DistanceMeters, commodityFilter);
+        Logger.Info($"[UI] overlay trade planner run: {routes.Count} routes, scope {App.Settings.Current.TradeScope}, commodity {commodityFilter ?? "ANY"}");
+
+        if (routes.Count == 0)
+        {
+            // A commodity filter that produced nothing gets named (the main ladder's rule), then
+            // a saved DESTINATION the snapshot no longer resolves (DestTerminalIds' non-null
+            // EMPTY set, which forbids every route) - more specific than the generic rung, and
+            // pointed at the main window because no control here can reset it. The full
+            // most-specific-cause ladder stays on the main window, where the controls that can
+            // fix the remaining causes actually live.
+            TradePanelItems.Children.Add(Note(
+                commodityFilter is { } commodity ? $"No routes haul {commodity} with the current settings."
+                : destIds is { Count: 0 } ? "Saved destination is not in the current price data. Reset Destination on the main Trade tab."
+                : "No profitable routes from here right now."));
+            return;
+        }
+
+        foreach (var route in routes)
+            TradePanelItems.Children.Add(BuildPlannerCard(route, terminals, fg, dim, gold, accent, mono));
+    }
+
+    // Scope click: the same persist-guard-log-notify-rebuild shape as the picker's commit path.
+    private void SetOverlayTradeScope(string scope)
+    {
+        if (App.Settings.Current.TradeScope == scope) return;
+        App.Settings.Current.TradeScope = scope;
+        App.Settings.Save();
+        Logger.Info($"[UI] overlay trade: scope {scope}");
+        TradeSettingsChangedByOverlay?.Invoke();
+        RebuildTradePanel();
+    }
+
+    // Built once per overlay lifetime (the field survives rebuilds, so an open popup or a typed
+    // query is never torn down by a repaint). A row click is the ONLY write path; InteractionEnded
+    // reverts abandoned query text to the persisted selection, and "ANY" persists as null -
+    // AppSettings.TradeCommodityFilter's own contract.
+    private CommodityPickerBox MakeOverlayCommodityPicker()
+    {
+        var picker = new CommodityPickerBox { PinnedFirst = "ANY", Margin = new Thickness(0, 0, 0, 8) };
+        picker.Opened += () => Logger.Info("[UI] overlay trade: commodity list opened");
+        picker.Committed += name =>
+        {
+            var persisted = name == "ANY" ? null : name;
+            if (App.Settings.Current.TradeCommodityFilter == persisted) return;
+            App.Settings.Current.TradeCommodityFilter = persisted;
+            App.Settings.Save();
+            Logger.Info($"[UI] overlay trade: commodity {name}");
+            TradeSettingsChangedByOverlay?.Invoke();
+            RebuildTradePanel();
+        };
+        picker.InteractionEnded += () =>
+        {
+            var expect = App.Settings.Current.TradeCommodityFilter ?? "ANY";
+            if (!string.Equals(picker.Text, expect, StringComparison.Ordinal)) picker.Text = expect;
+        };
+        return picker;
+    }
+
+    // One compact planner card, in the pinned cards' Manifest Strip grammar (BuildTradeCard is
+    // the reference, deliberately not modified): commodity + trip SCU + net on the head line,
+    // then the run itself as two full-width BUY/SELL lines. No band - a ranked candidate has no
+    // progress to show - and the SELL line carries the haul leg's distance instead, when the two
+    // ends measure (the same null-means-silence rule as everywhere else). The PIN chip is the
+    // card's one action: MainWindow routes it into TradePage, which owns the pin list.
+    private Border BuildPlannerCard(
+        TradeRoute route,
+        IReadOnlyDictionary<int, MarketTerminal> terminals,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
+        System.Windows.Media.FontFamily mono)
+    {
+        terminals.TryGetValue(route.BuyRow.TerminalId, out var buyTerminal);
+        terminals.TryGetValue(route.SellRow.TerminalId, out var sellTerminal);
+
+        var rows = new StackPanel();
+
+        // Head line: what to haul, how much, what the trip nets. Net wears the money color the
+        // main planner's own PROFIT / TRIP figure uses; "/trip" mirrors the pinned card's
+        // "/SCU" suffix grammar.
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 7) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var commodity = new TextBlock
+        {
+            Text = route.BuyRow.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = route.BuyRow.CommodityName,
+        };
+        head.Children.Add(commodity);
+        var scu = new TextBlock
+        {
+            Text = $"{route.TripQty} SCU", FontFamily = mono, FontSize = 11, FontWeight = FontWeights.Bold,
+            Foreground = accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        };
+        Grid.SetColumn(scu, 1);
+        head.Children.Add(scu);
+        var net = new TextBlock
+        {
+            Text = $"{route.Net:N0}/trip", FontFamily = mono, FontSize = 9.5, Foreground = accent,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 1, 0, 0),
+            ToolTip = "Net profit for one full trip at the current prices.",
+        };
+        Grid.SetColumn(net, 2);
+        head.Children.Add(net);
+        var pin = BuildPlannerPinChip(route, dim);
+        Grid.SetColumn(pin, 3);
+        head.Children.Add(pin);
+        rows.Children.Add(head);
+
+        rows.Children.Add(PlannerRunLine("BUY", route.BuyRow.TerminalName, null, fg, dim, mono));
+        var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
+        rows.Children.Add(PlannerRunLine("SELL", route.SellRow.TerminalName,
+            legMeters is { } m ? MapCatalog.FormatGm(m) : null, fg, dim, mono));
+
+        return new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("Bg2Brush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 9, 8),
+            Margin = new Thickness(0, 0, 0, 7), Child = rows,
+        };
+    }
+
+    // The card's PIN chip: the main planner chip's geometry (1px border, radius 3, padding
+    // 7,2,7,2, 9px bold label). TradePage.PinRoute is a TOGGLE, so the chip derives its state
+    // from _pinnedRoutes (RoutePlanner.SameHaul, the one triple rule) and says which way the
+    // next click goes: gold PINNED when the haul is pinned, dim PIN when it is not - gold is
+    // the pin identity color everywhere (TradePage.ApplyPinChipVisual), and hover previews it.
+    // No local state to keep fresh: the SetPinnedRoutes push-back after every toggle rebuilds
+    // this whole panel, so the chip always repaints from the current truth.
+    private Border BuildPlannerPinChip(TradeRoute route, System.Windows.Media.Brush dim)
+    {
+        var pinned = _pinnedRoutes.Any(p => RoutePlanner.SameHaul(p, route));
+        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
+        var restingFg = pinned ? gold : dim;
+        var restingBorder = pinned ? gold : (System.Windows.Media.Brush)FindResource("BorderBrush");
+        var text = new TextBlock { Text = pinned ? "PINNED" : "PIN", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = restingFg };
+        var chip = new Border
+        {
+            BorderBrush = restingBorder, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Padding = new Thickness(7, 2, 7, 2), Cursor = Cursors.Hand,
+            Margin = new Thickness(8, 0, 0, 0), Child = text, VerticalAlignment = VerticalAlignment.Center,
+            Background = System.Windows.Media.Brushes.Transparent,
+            // The main chip's own toggle vocabulary (ApplyPinChipVisual), worded for this
+            // surface: PINNED is the mode strip one click away, not another window.
+            ToolTip = pinned
+                ? "Stop showing this route in PINNED here and on the Starmap."
+                : "Pin this route: it shows in PINNED here and on the Starmap.",
+        };
+        chip.MouseEnter += (_, _) =>
+        {
+            text.Foreground = gold;
+            chip.BorderBrush = gold;
+        };
+        chip.MouseLeave += (_, _) =>
+        {
+            text.Foreground = restingFg;
+            chip.BorderBrush = restingBorder;
+        };
+        chip.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] overlay trade: {(pinned ? "unpin" : "pin")} requested {route.BuyRow.CommodityName} {route.BuyRow.TerminalName} -> {route.SellRow.TerminalName}");
+            PinRouteRequested?.Invoke(route);
+        };
+        return chip;
+    }
+
+    // TradeEndLine's grammar (eyebrow key + full-width name) plus an optional dim mono tail for
+    // the SELL line's leg distance. Its own method rather than a TradeEndLine change: the pinned
+    // card builders stay untouched.
+    private static FrameworkElement PlannerRunLine(string key, string name, string? tail,
+        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim, System.Windows.Media.FontFamily mono)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(new TextBlock
+        {
+            Text = key, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = dim,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+        });
+        var value = new TextBlock
+        {
+            Text = name, FontSize = 11, Foreground = fg, TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = name,
+        };
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(value);
+        if (tail is not null)
+        {
+            var tailBlock = new TextBlock
+            {
+                Text = tail, FontFamily = mono, FontSize = 9.5, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+            };
+            Grid.SetColumn(tailBlock, 2);
+            grid.Children.Add(tailBlock);
+        }
+        return grid;
+    }
 
     private void RebuildShoppingPanel()
     {

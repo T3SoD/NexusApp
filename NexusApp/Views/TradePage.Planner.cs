@@ -108,6 +108,15 @@ public sealed partial class TradePage
     private string? _commoditySelectedName;         // the active pick ("ANY" = unconstrained); null only before the first seed
     private bool _commoditySeeded;                  // seeds once from TradeCommodityFilter, same idiom as the DESTINATION picker above
 
+    // Overlay sync (overlay planner spec, 2026-08-02): forget the session pick and re-seed from
+    // the persisted TradeCommodityFilter on the next refresh. Internal seam for
+    // TradePage.ResyncSharedTradeSettings.
+    private void ResyncCommodityFromSettings()
+    {
+        _commoditySeeded = false;
+        _commoditySelectedName = null;
+    }
+
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
     // Before this, every rebuild started with PlannerHost.Children.Clear(), so the budget box's own
@@ -160,7 +169,7 @@ public sealed partial class TradePage
             timer.Stop();
             if (_inBudgetLiveRerank) return;
             _inBudgetLiveRerank = true;
-            try { RebuildPlanner(); }
+            try { RebuildPlanner(); SessionBudgetChanged?.Invoke(CurrentBudget()); }
             finally { _inBudgetLiveRerank = false; }
         };
         return timer;
@@ -174,6 +183,17 @@ public sealed partial class TradePage
         var digits = new string((_budgetBox?.Text ?? "").Where(char.IsDigit).ToArray());
         return digits.Length > 0 && double.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : null;
     }
+
+    // Overlay planner spec, 2026-08-02: the overlay's initial push (on attach, before either
+    // budget commit point has fired this session) needs the current parsed budget, not just
+    // future changes - so this reads straight through CurrentBudget rather than caching its own
+    // copy that could go stale relative to the box's live text.
+    internal double? CurrentSessionBudget => CurrentBudget();
+
+    // Raised at both budget commit points below (the debounce tick and the LostFocus commit),
+    // never per keystroke - a keystroke only restarts the debounce timer, it does not reach
+    // either commit point until the timer fires or the box loses focus.
+    internal event Action<double?>? SessionBudgetChanged;
 
     // Built once, on the first RebuildPlanner. Everything here survives every later rebuild: the
     // controls keep their identity, so a click that moved focus off the budget box lands on a live
@@ -224,6 +244,7 @@ public sealed partial class TradePage
             _budgetText = _budgetBox.Text;
             Logger.Info("[UI] Trade planner: budget updated");
             RebuildPlanner();   // results only: the control the user just clicked is still alive
+            SessionBudgetChanged?.Invoke(CurrentBudget());
         };
         // Live re-rank per keystroke, same fix as the Sell tab's quantity box (TradePage.Sell.cs,
         // item C): budget used to apply only on blur, so nothing re-ranked until the user typed a
@@ -458,8 +479,8 @@ public sealed partial class TradePage
         var destIds = DestTerminalIds(snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
-            ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
-            ParseRankMode(App.Settings.Current.TradeRankMode),
+            TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
+            TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode),
             // The same measurement this page already renders per row as a dim decoration - now it
             // can also do the ranking, instead of the planner sorting purely on money while showing
             // a distance it ignored.
@@ -578,6 +599,7 @@ public sealed partial class TradePage
         App.Settings.Current.TradeCommodityFilter = chosen == AnyCommodity ? null : chosen;
         App.Settings.Save();
         Logger.Info($"[UI] trade: commodity {chosen}");
+        SharedTradeSettingsChanged?.Invoke();
         RebuildPlanner();
     }
 
@@ -721,7 +743,7 @@ public sealed partial class TradePage
 
     private void RefreshDemandFilterPills()
     {
-        var active = ParseDemandFilter(App.Settings.Current.TradeStockFilter);
+        var active = TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter);
         SetPillOn(_demandAnyPill, active == StockFilter.Any);
         SetPillOn(_demandMinPill, active == StockFilter.CoversTrip);
         SetPillOn(_demandTwoXPill, active == StockFilter.CoversTwoTrips);
@@ -744,17 +766,6 @@ public sealed partial class TradePage
         _ => "ANY",
     };
 
-    // Fail-open: an unrecognized persisted value (corrupt settings.json, a future rollback) falls
-    // back to Any. Also accepts the pre-task-10 "COVERS TRIP"/"COVERS 2X" strings, so a
-    // settings.json written before this rename still resolves to the same tier instead of silently
-    // resetting to Any.
-    private static StockFilter ParseDemandFilter(string? value) => value switch
-    {
-        "MIN" or "COVERS TRIP" => StockFilter.CoversTrip,
-        "2X" or "COVERS 2X" => StockFilter.CoversTwoTrips,
-        _ => StockFilter.Any,
-    };
-
     // Same no-op-on-unchanged guard as SetDemandFilter: a click on the pill that is already active
     // never logs or rebuilds.
     private void SetRankMode(RankMode mode)
@@ -769,7 +780,7 @@ public sealed partial class TradePage
 
     private void RefreshRankModePills()
     {
-        var active = ParseRankMode(App.Settings.Current.TradeRankMode);
+        var active = TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode);
         SetPillOn(_rankProfitPill, active == RankMode.Profit);
         SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
         SetPillOn(_rankProfitPerGmPill, active == RankMode.ProfitPerGm);
@@ -780,15 +791,6 @@ public sealed partial class TradePage
         RankMode.ProfitPerScu => "PROFIT PER SCU",
         RankMode.ProfitPerGm => "PROFIT PER GM",
         _ => "PROFIT",
-    };
-
-    // Any stored value that isn't a recognized label (corrupt settings.json, a future rollback)
-    // falls back to Profit - the planner's original ordering, same fail-open idiom as ParseDemandFilter.
-    private static RankMode ParseRankMode(string? value) => value switch
-    {
-        "PROFIT PER SCU" => RankMode.ProfitPerScu,
-        "PROFIT PER GM" => RankMode.ProfitPerGm,
-        _ => RankMode.Profit,
     };
 
     // Re-validate on every rebuild, same rule as the Prices flow's RefreshPricesCommodityBox: an
@@ -857,13 +859,9 @@ public sealed partial class TradePage
     // fails to resolve (TerminalIdForName returns null - a stale persisted name no live terminal
     // matches) yields an EMPTY set rather than falling back to ANY, mirroring OriginTerminalIds'
     // contract: an unresolved constraint restricts to nothing, it never silently widens back out.
-    private IReadOnlySet<int>? DestTerminalIds(IReadOnlyList<MarketTerminal> terminals)
-    {
-        if (_destSelectedName is null || _destSelectedName == AnyDestination) return null;
-        return TradeOriginResolver.TerminalIdForName(_destSelectedName, terminals) is { } id
-            ? new HashSet<int> { id }
-            : new HashSet<int>();
-    }
+    private IReadOnlySet<int>? DestTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
+        TradePlanArgs.DestTerminalIds(
+            _destSelectedName == AnyDestination ? null : _destSelectedName, terminals);
 
     // COMMODITY picker refresh (issue #41): same re-validate-on-every-rebuild rule as
     // RefreshDestCombo above, minus the display map (commodity names are shown as-is). The item
@@ -874,7 +872,11 @@ public sealed partial class TradePage
     // re-cases a name must not drop the filter). A persisted or selected name the snapshot truly
     // no longer offers falls back to ANY silently - a programmatic correction, not a user pick,
     // so it never logs or rebuilds - and the stale persisted value is cleared with it so it
-    // cannot resurrect next launch. Staleness is never judged against an EMPTY list (the planner
+    // cannot resurrect next launch. Clearing the persisted value is still a SHARED-setting write,
+    // so both clears raise SharedTradeSettingsChanged (the event's contract): a presented overlay
+    // must not keep ranking with the dead filter name. No loop: the overlay's handler only
+    // re-ranks its own panel (OnSharedTradeSettingsChanged), it never writes settings back.
+    // Staleness is never judged against an EMPTY list (the planner
     // opening before the first market fetch - the A5 rule from RefreshStartCombo): a
     // commodity-name seed defers to the next refresh instead of guessing, and the box honestly
     // shows its empty-state placeholder meanwhile.
@@ -899,6 +901,7 @@ public sealed partial class TradePage
                 {
                     App.Settings.Current.TradeCommodityFilter = null;
                     App.Settings.Save();
+                    SharedTradeSettingsChanged?.Invoke();
                 }
             }
         }
@@ -910,6 +913,7 @@ public sealed partial class TradePage
                 _commoditySelectedName = AnyCommodity;
                 App.Settings.Current.TradeCommodityFilter = null;
                 App.Settings.Save();
+                SharedTradeSettingsChanged?.Invoke();
             }
             else if (!string.Equals(match, _commoditySelectedName, StringComparison.Ordinal))
             {
@@ -1187,7 +1191,7 @@ public sealed partial class TradePage
         // Rank mode (task 7): only while RANK BY is set to PROFIT PER SCU, name the per-SCU figure
         // routes are actually being sorted by - otherwise the ranking looks arbitrary next to the
         // PROFIT / TRIP headline, which always shows raw Net regardless of rank mode.
-        if (ParseRankMode(App.Settings.Current.TradeRankMode) == RankMode.ProfitPerScu)
+        if (TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode) == RankMode.ProfitPerScu)
         {
             head.Children.Add(RankPerScuTag(r.Net, r.TripQty));
         }
