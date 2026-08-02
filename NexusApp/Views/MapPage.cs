@@ -824,7 +824,7 @@ public sealed class MapPage : UserControl
     }
 
     // Rebuilt on every keystroke against MapCatalog.Search's case-insensitive, prefix-ranked match -
-    // same search-first shape as TradePage.Sell.cs's ShowCommodityPicker. Guards the empty/no-result
+    // same search-first shape as CommodityPickerBox's suggest popup. Guards the empty/no-result
     // state itself: an empty box or an all-miss query removes any prior list rather than rendering
     // an empty results box.
     private void ShowSearchResults()

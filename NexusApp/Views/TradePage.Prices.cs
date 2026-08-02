@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -17,7 +16,7 @@ public sealed partial class TradePage
     // alongside the sort helper itself - moved out of this class (owner live-pass ask, 2026-07-30,
     // item 2) so PriceSort.SortRows and its unit tests can build rows without a WPF UserControl.
 
-    private ComboBox _pricesCommodityCombo = null!;
+    private CommodityPickerBox _pricesCommodityPicker = null!;   // shared type-or-browse field (issue #41), replaces the plain ComboBox
     private readonly bool[] _priceCols = { true, true, true, false };   // STOCK, STATUS, AGE, +WEEK AVG - session only, not persisted (task brief: "persist nothing new")
     private static readonly string[] PriceColLabels = { "STOCK", "STATUS", "AGE", "+WEEK AVG" };
     private string? _pricesSelectedCommodity;
@@ -36,14 +35,13 @@ public sealed partial class TradePage
     private PriceSortColumn _pricesSortColumn = PriceSortColumn.Sell;
     private bool _pricesSortDescending = true;
 
-    // Input area (commodity ComboBox + the four column-toggle chips) built ONCE, results the only
-    // thing rebuilt - same reasoning as the other two flows. The chips' visuals and the ComboBox's
+    // Input area (commodity picker + the four column-toggle chips) built ONCE, results the only
+    // thing rebuilt - same reasoning as the other two flows. The chips' visuals and the picker's
     // items are updated in place from here on, so a column toggle or an hourly refresh no longer
     // rebuilds the control the user is interacting with (an open dropdown included).
     private StackPanel _pricesInputs = null!;
     private StackPanel _pricesResults = null!;
-    private List<string>? _pricesCommodityNames;   // the list currently bound to the ComboBox
-    private bool _suppressPricesSelection;          // in-place ItemsSource/SelectedItem writes are not user picks
+    private List<string>? _pricesCommodityNames;   // the list currently pushed into the picker
 
     private void BuildPricesChrome()
     {
@@ -57,40 +55,37 @@ public sealed partial class TradePage
         // Planner/Sell inputs dodge this only because they live in horizontal rows. Pin it Left.
         var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 0, 16), HorizontalAlignment = HorizontalAlignment.Left };
         pickerGrp.Children.Add(FieldLabel("Commodity"));
-        // Left-aligned text (owner's live-pass ask, 2026-07-30, item 3): fixed at this usage site
-        // only, NOT in the shared NexusComboBox style (GameTheme.xaml) - other pages depend on that
-        // style's current look. ItemTemplate below still drives the OPEN dropdown rows correctly
-        // (ComboBoxItem's own default template binds its ContentPresenter's ContentTemplate via a
-        // direct, ordinary TemplateBinding to ItemTemplate - reliable), but the owner confirmed this
-        // alone did NOT fix the CLOSED box: that box is painted by a different, unnamed-in-XAML path
-        // (GameTheme.xaml:548-553, x:Name="contentPresenter" - Content/ContentTemplate bound to
-        // SelectionBoxItem/SelectionBoxItemTemplate, which WPF mirrors from ItemTemplate itself,
-        // off-XAML, inside ComboBox's private UpdateSelectionBoxItem() on selection-changed events -
-        // nothing in this file or GameTheme.xaml declares that mirror, so its timing is invisible
-        // and unverifiable from here, and evidently did not paint the closed box left-aligned live).
-        // Item E's real fix (below, on Loaded) stops depending on that mirror: it grabs the actual
-        // "contentPresenter" element once the template has applied and forces it left directly, so
-        // the closed box renders correctly regardless of whether SelectionBoxItemTemplate ever gets
-        // populated.
-        _pricesCommodityCombo = new ComboBox
+        // Shared type-or-browse picker (issue #41): replaces the plain NexusComboBox, which had no
+        // typable area at all (that style's template declares no PART_EditableTextBox, so
+        // IsEditable would render nothing to type into - and the style is shared with other pages,
+        // so it stays untouched; this also retires the old left-alignment template workarounds,
+        // since the TextBox renders its own text left-aligned natively). Committed is the ONLY
+        // path that changes the selection: typing just filters the popup, so clearing the text
+        // never silently drops the active commodity, and the terminal-browse null state (Task 8)
+        // survives because nothing here forces a pick.
+        _pricesCommodityPicker = new CommodityPickerBox();
+        _pricesCommodityPicker.Opened += () => Logger.Info("[UI] Trade prices: commodity list opened");
+        _pricesCommodityPicker.Committed += name =>
         {
-            Style = (Style)Application.Current.FindResource("NexusComboBox"),
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            ItemTemplate = LeftAlignedComboItemTemplate,
-        };
-        _pricesCommodityCombo.Loaded += (_, _) =>
-        {
-            if (_pricesCommodityCombo.Template?.FindName("contentPresenter", _pricesCommodityCombo) is ContentPresenter cp)
-                cp.HorizontalAlignment = HorizontalAlignment.Left;
-        };
-        _pricesCommodityCombo.SelectionChanged += (_, _) =>
-        {
-            if (_suppressPricesSelection) return;
-            _pricesSelectedCommodity = _pricesCommodityCombo.SelectedItem as string;
-            if (_pricesSelectedCommodity is not null) Logger.Info($"[UI] Trade prices: commodity {_pricesSelectedCommodity}");
+            // Same-row re-click is a no-op (the old ComboBox never re-fired SelectionChanged for
+            // the already-selected item, and the planner's SetCommodityFilter guards the same way):
+            // no duplicate log, no rebuild, no lost scroll position.
+            if (string.Equals(name, _pricesSelectedCommodity, StringComparison.Ordinal)) return;
+            _pricesSelectedCommodity = name;
+            Logger.Info($"[UI] Trade prices: commodity {name}");
             RebuildPrices();
         };
-        pickerGrp.Children.Add(_pricesCommodityCombo);
+        // Abandoned-query cleanup: once the user walks away without committing (popup dismissed or
+        // focus gone), the box reverts to naming the commodity the rows actually render. Without
+        // this, IsKeyboardFocused can pin the deferred write-back off for a whole pane visit,
+        // because nothing else on this pane takes keyboard focus.
+        _pricesCommodityPicker.InteractionEnded += () =>
+        {
+            var expect = _pricesSelectedCommodity ?? "";
+            if (!string.Equals(_pricesCommodityPicker.Text, expect, StringComparison.Ordinal))
+                _pricesCommodityPicker.Text = expect;
+        };
+        pickerGrp.Children.Add(_pricesCommodityPicker);
         _pricesInputs.Children.Add(pickerGrp);
 
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
@@ -116,10 +111,11 @@ public sealed partial class TradePage
 
     // Re-validate on every rebuild (Task 14 rule, and the Sell flow now does the same): an hourly
     // snapshot refresh can drop the previously selected commodity, and a one-time seed would leave
-    // the field stuck on a name no longer in `commodities`, producing a blank ComboBox selection and
-    // a permanent "0 terminals" render. The ComboBox is updated in place afterwards so the box
-    // visibly shows the commodity that was actually rendered - suppressed, since neither write is a
-    // user pick, and skipped entirely when nothing changed (an open dropdown must survive a tick).
+    // the field stuck on a name no longer in `commodities`, producing a blank selection and a
+    // permanent "0 terminals" render. The picker is updated in place afterwards so the box visibly
+    // shows the commodity that was actually rendered - the control suppresses its own programmatic
+    // writes (never a user pick, never a popup reopen), and the push is skipped entirely when
+    // nothing changed.
     //
     // Task 8 addition: while the MAP tab's terminal filter is active, an invalid/null selection
     // falls back to null (no forced pick) instead of the first commodity - that null is the
@@ -133,18 +129,25 @@ public sealed partial class TradePage
         if (!stillValid)
             _pricesSelectedCommodity = _pricesTerminalFilter is null ? commodities.FirstOrDefault() : null;
 
-        _suppressPricesSelection = true;
-        try
+        // The backing list is pushed even mid-interaction: SetItems never touches an open popup's
+        // rows or the box text (its own doc), and skipping it here would leave the next chevron
+        // browse or typed query filtering against commodities the snapshot no longer prices (the
+        // Sell flow already pushes unconditionally every rebuild).
+        if (_pricesCommodityNames is null || !_pricesCommodityNames.SequenceEqual(commodities, StringComparer.Ordinal))
         {
-            if (_pricesCommodityNames is null || !_pricesCommodityNames.SequenceEqual(commodities, StringComparer.Ordinal))
-            {
-                _pricesCommodityNames = commodities;
-                _pricesCommodityCombo.ItemsSource = commodities;
-            }
-            if (!string.Equals(_pricesCommodityCombo.SelectedItem as string, _pricesSelectedCommodity, StringComparison.Ordinal))
-                _pricesCommodityCombo.SelectedItem = _pricesSelectedCommodity;
+            _pricesCommodityNames = commodities;
+            _pricesCommodityPicker.SetItems(commodities);
         }
-        finally { _suppressPricesSelection = false; }
+
+        // Never during typing (issue #41): while the box has keyboard focus or the suggestion
+        // popup is open, a text write-back would stomp the query mid-keystroke. The selection
+        // above still revalidates (the results below always render something real); the box
+        // catches up when the interaction ends (InteractionEnded, wired in BuildPricesChrome)
+        // or on the next non-interacting rebuild.
+        if (_pricesCommodityPicker.IsInteracting) return;
+
+        if (!string.Equals(_pricesCommodityPicker.Text, _pricesSelectedCommodity ?? "", StringComparison.Ordinal))
+            _pricesCommodityPicker.Text = _pricesSelectedCommodity ?? "";
     }
 
     private void RebuildPrices()
@@ -154,10 +157,7 @@ public sealed partial class TradePage
         _pricesResults.Children.Clear();
 
         var snap = App.Market.Snapshot;
-        var commodities = snap?.TradePrices.Rows
-            .Select(r => r.CommodityName).Distinct()
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
-            ?? new List<string>();
+        var commodities = CommodityNames(snap);
 
         RefreshPricesCommodityBox(commodities);
 
@@ -370,20 +370,6 @@ public sealed partial class TradePage
         Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
         RenderTransform = new RotateTransform(descending ? 90 : -90),
     };
-
-    // ItemTemplate for the commodity ComboBox's left-alignment fix (item 3 above): a plain
-    // left-aligned TextBlock bound directly to the item (a string) via an empty Binding path.
-    // Static/shared - stateless, so one instance safely serves every rebuild.
-    private static readonly DataTemplate LeftAlignedComboItemTemplate = BuildLeftAlignedComboItemTemplate();
-
-    private static DataTemplate BuildLeftAlignedComboItemTemplate()
-    {
-        var factory = new FrameworkElementFactory(typeof(TextBlock));
-        factory.SetBinding(TextBlock.TextProperty, new Binding());
-        factory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
-        factory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        return new DataTemplate { VisualTree = factory };
-    }
 
     private static Border ColumnToggleChip(string label, bool on)
     {

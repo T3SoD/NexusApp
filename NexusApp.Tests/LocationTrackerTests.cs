@@ -76,7 +76,7 @@ public class LocationTrackerTests
     [Fact]
     public void Ingest_JurisdictionLine_IsMarkedCoarse()
     {
-        // The owner's live find, 2026-08-01: the header LOCATION chip read "Crusader Industries" at
+        // The owner's live find, 2026-08-01: the LOCATION chip read "Crusader Industries" at
         // Crusader - a jurisdiction names whose SPACE you are in, not where you stand. The flag
         // lets display surfaces qualify it instead of dressing an area up as a place.
         var t = new LocationTracker(new GameLogFeed());

@@ -440,6 +440,99 @@ public class RoutePlannerTests
         Assert.Equal(0, byPerScu[^1].TripQty);
     }
 
+    // Commodity filter (issue #41, planner half): null (or the parameter omitted) means ANY - no
+    // constraint, the planner's original behavior. A non-null name keeps only routes hauling that
+    // one commodity, matched case-insensitively against TradePriceRow.CommodityName (the same
+    // string the picker's own items come from); a name matching nothing yields zero routes rather
+    // than silently widening back to ANY, the same contract every other picker on this page keeps.
+    [Fact]
+    public void Rank_CommodityNameFilter_KeepsOnlyThatCommodity_CaseInsensitive()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"), [3] = Term(3, "Stanton"), [4] = Term(4, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 10, buy: 100, sell: 0, buyStock: 100),
+            Row(2, 10, buy: 0, sell: 300, sellDemand: 100),   // Commodity 10: net 20,000
+            Row(3, 20, buy: 100, sell: 0, buyStock: 100),
+            Row(4, 20, buy: 0, sell: 150, sellDemand: 100),   // Commodity 20: net 5,000
+        };
+
+        // Row() synthesizes CommodityName as "Commodity {id}"; the lowercase query must still match.
+        var routes = RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10,
+            commodityName: "commodity 20");
+
+        var route = Assert.Single(routes);
+        Assert.Equal(20, route.BuyRow.CommodityId);
+        Assert.Equal(5000, route.Net);
+    }
+
+    [Fact]
+    public void Rank_CommodityNameFilter_UnknownName_YieldsZeroRoutes()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 50),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 50),
+        };
+
+        Assert.Empty(RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10,
+            commodityName: "Commodity 99"));
+    }
+
+    [Fact]
+    public void Rank_NullCommodityName_MeansUnconstrained()
+    {
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"), [3] = Term(3, "Stanton"), [4] = Term(4, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 10, buy: 100, sell: 0, buyStock: 100),
+            Row(2, 10, buy: 0, sell: 300, sellDemand: 100),
+            Row(3, 20, buy: 100, sell: 0, buyStock: 100),
+            Row(4, 20, buy: 0, sell: 150, sellDemand: 100),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 100, 32, null, null, "ALL", 10,
+            commodityName: null);
+
+        Assert.Equal(2, routes.Count);   // both commodities' routes survive
+    }
+
+    [Fact]
+    public void Rank_NullCommodityName_MatchesOmittedParameterOnRealFixtureData()
+    {
+        var rows = MarketParse.ParseTradePriceRows(TradePricesFixture.LoadSampleJson(), out _)
+            .Where(r => r.CommodityId == 47).ToList();
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [rows.Single(r => r.TerminalName == "HDMS-Lathan").TerminalId] = Term(33, "Stanton", "Lyria"),
+            [rows.Single(r => r.TerminalName == "TDD Area 18").TerminalId] = Term(12, "Stanton", "Area 18"),
+        };
+
+        var omittedRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10);
+        var explicitNullRoutes = RoutePlanner.Rank(rows, terminals, shipScu: 100, shipMaxBox: 32, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10, commodityName: null);
+
+        Assert.Equal(omittedRoutes.Count, explicitNullRoutes.Count);
+        for (int i = 0; i < omittedRoutes.Count; i++)
+        {
+            Assert.Equal(omittedRoutes[i].BuyRow, explicitNullRoutes[i].BuyRow);
+            Assert.Equal(omittedRoutes[i].SellRow, explicitNullRoutes[i].SellRow);
+            Assert.Equal(omittedRoutes[i].TripQty, explicitNullRoutes[i].TripQty);
+            Assert.Equal(omittedRoutes[i].Gross, explicitNullRoutes[i].Gross);
+            Assert.Equal(omittedRoutes[i].Net, explicitNullRoutes[i].Net);
+            Assert.Equal(omittedRoutes[i].Tier, explicitNullRoutes[i].Tier);
+            Assert.Equal(omittedRoutes[i].TripParts, explicitNullRoutes[i].TripParts);
+        }
+    }
+
     [Fact]
     public void Rank_DefaultRankMode_MatchesExplicitProfitOnRealFixtureData()
     {

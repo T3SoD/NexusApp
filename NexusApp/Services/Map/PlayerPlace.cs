@@ -41,7 +41,7 @@ public sealed class PlayerPlace
 
     /// <summary>True when <see cref="Label"/> is a JURISDICTION reading - whose space the player
     /// crossed into, not a place they are standing (2026-08-01: "Crusader Industries" rendered as
-    /// a location on the header chip). Display surfaces should qualify these, not hide them: a
+    /// a location on the LOCATION chip). Display surfaces should qualify these, not hide them: a
     /// coarse reading is still the freshest fact available.</summary>
     public bool LabelIsJurisdiction => _locations.LastKnownIsJurisdiction;
 

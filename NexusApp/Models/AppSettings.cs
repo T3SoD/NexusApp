@@ -173,6 +173,12 @@ public class AppSettings
     // location" concept, so null is the honest default rather than an empty string sentinel.
     public string? TradeDestManual { get; set; }
 
+    // Route planner COMMODITY picker (issue #41): a commodity name restricting routes to that one
+    // commodity, same persistence contract as TradeDestManual. Null (or "") = ANY, the planner's
+    // original unconstrained behavior. Revalidated against the live snapshot's commodity list on
+    // every rebuild; a stale name falls back to ANY.
+    public string? TradeCommodityFilter { get; set; }
+
     // MAP tab: the star system the user was last looking at. Null = never set, so the map opens on
     // its built-in default. Validated against the catalog on load - a system that no longer exists
     // (a renamed or removed one) falls back to the default rather than opening on nothing.

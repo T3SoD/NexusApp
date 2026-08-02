@@ -15,10 +15,8 @@ namespace NexusApp.Views;
 
 public sealed partial class TradePage
 {
-    private TextBox _commodityBox = null!;
+    private CommodityPickerBox _commodityPicker = null!;   // shared type-or-browse field (issue #41), replaces the old inline picker
     private TextBox _qtyBox = null!;
-    private Border? _pickerMenu;
-    private StackPanel _pickerGrp = null!;        // the commodity box plus the search picker below it
     private ContentControl _prefillSlot = null!;   // the APPLY WORK ORDER chip's slot (chip presence is data-dependent)
     private string? _prefillChipName;              // the commodity the CURRENT chip names; null = no chip rendered
 
@@ -37,11 +35,6 @@ public sealed partial class TradePage
     // "t" prefix keeps the two key families collision-free by construction. null = nothing
     // expanded.
     private string? _sellExpanded;
-
-    // A programmatic write to the commodity box (the picker committing a choice, or item H's
-    // fallback write-back) must not be read as the user typing: TextChanged would otherwise reopen
-    // the search picker on top of a selection that was just made.
-    private bool _suppressCommodityText;
 
     // Session-typed commodity/quantity (architect resolution for this task: in-memory page
     // fields, not AppSettings - same precedent as TradePage.Planner.cs's _budgetText.
@@ -77,13 +70,24 @@ public sealed partial class TradePage
         _sellInputs = new StackPanel();
         var inputRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
 
-        _pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 16, 0) };
-        _pickerGrp.Children.Add(FieldLabel("Commodity"));
-        _commodityBox = new TextBox { Style = (Style)Application.Current.FindResource("NexusTextBox"), Text = SellCommodity };
-        _commodityBox.TextChanged += (_, _) => { if (!_suppressCommodityText) ShowCommodityPicker(); };
-        _commodityBox.LostFocus += (_, _) => { /* commit happens via picker item click, not free text - see ShowCommodityPicker */ };
-        _pickerGrp.Children.Add(_commodityBox);
-        inputRow.Children.Add(_pickerGrp);
+        // Shared type-or-browse picker (issue #41): same typing-commits-nothing contract as the old
+        // inline picker (Committed fires only on a row click), plus the chevron browse the Prices
+        // tab's dropdown had. The control owns the suppress flag and the LostFocus-stays-a-no-op
+        // ordering guarantee - see CommodityPickerBox's class comment.
+        var pickerGrp = new StackPanel { Width = 220, Margin = new Thickness(0, 0, 16, 0) };
+        pickerGrp.Children.Add(FieldLabel("Commodity"));
+        _commodityPicker = new CommodityPickerBox { Text = SellCommodity };
+        _commodityPicker.Opened += () => Logger.Info("[UI] Trade sell: commodity list opened");
+        _commodityPicker.Committed += name =>
+        {
+            // Box, field and picker all together (SetCommodity): the box is built once, so a commit
+            // has to write the full name into it - the rebuild never re-creates the box.
+            SetCommodity(name);
+            Logger.Info($"[UI] Trade sell: commodity {name}");
+            RebuildSell();
+        };
+        pickerGrp.Children.Add(_commodityPicker);
+        inputRow.Children.Add(pickerGrp);
 
         var qtyGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
         qtyGrp.Children.Add(FieldLabel("Quantity"));
@@ -171,15 +175,14 @@ public sealed partial class TradePage
 
     /// <summary>Commits a commodity choice: the field the ranking reads AND the box the user sees,
     /// always together (the UI must never name one commodity while ranking another). The box write
-    /// is suppressed so it does not reopen the search picker, and any open picker closes - the
-    /// commodity has just been decided, so a stale filtered list under the box would be wrong.</summary>
+    /// is suppressed inside the control so it does not reopen the suggestion popup, and any open
+    /// popup closes - the commodity has just been decided, so a stale filtered list under the box
+    /// would be wrong.</summary>
     private void SetCommodity(string commodityName)
     {
         _sellCommodityText = commodityName;
-        _suppressCommodityText = true;
-        try { _commodityBox.Text = commodityName; }
-        finally { _suppressCommodityText = false; }
-        CloseCommodityPicker();
+        _commodityPicker.Text = commodityName;
+        _commodityPicker.ClosePopup();
     }
 
     private void RebuildSell()
@@ -191,6 +194,11 @@ public sealed partial class TradePage
 
         var snap = App.Market.Snapshot;
         var commodities = CommodityChoices();
+        // Fresh-per-use list, pushed into the shared picker each rebuild (the old inline picker read
+        // CommodityChoices per keystroke). SetItems only swaps the backing list - it never rebuilds
+        // an open popup's rows or touches the box text, so a mid-typing rebuild (hourly tick, qty
+        // keystroke re-rank) cannot steal the query or a pending row click.
+        _commodityPicker.SetItems(commodities.Select(c => c.CommodityName).ToList());
         RefreshPrefillChip(snap, commodities);
 
         if (snap is null || commodities.Count == 0) { _sellResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc)); return; }
@@ -257,50 +265,6 @@ public sealed partial class TradePage
 
         string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
         Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}{sctSuffix}");
-    }
-
-    // Search-first picker: filters the full commodity list against the box's live text (case-
-    // insensitive substring, top 8), rebuilt on every keystroke. Selection commits only via an
-    // item click (MouseLeftButtonUp), never via free text or LostFocus - that ordering matters:
-    // clicking an item first steals focus from the TextBox (firing its LostFocus), and if that
-    // handler tore the menu down there, the pending click on the now-detached item would never
-    // resolve. Leaving LostFocus a no-op (see BuildSellChrome above) is what keeps the click reliable.
-    private void ShowCommodityPicker()
-    {
-        CloseCommodityPicker();
-        var query = _commodityBox.Text ?? "";
-        var matches = CommodityChoices().Where(c => c.CommodityName.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(8).ToList();
-        if (matches.Count == 0) return;
-        var list = new StackPanel();
-        foreach (var m in matches)
-        {
-            var item = new Border { Padding = new Thickness(12, 8, 12, 8), Cursor = Cursors.Hand, Child = new TextBlock { Text = m.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush") } };
-            item.MouseEnter += (_, _) => item.Background = Hud.Br("AccentFaintBrush");
-            item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
-            item.MouseLeftButtonUp += (_, _) =>
-            {
-                // Box, field and picker all together (SetCommodity): the box is built once now, so a
-                // commit has to write the full name into it here - the rebuild no longer re-creates
-                // the box from the field, nor destroys the menu as a side effect of clearing the host.
-                SetCommodity(m.CommodityName);
-                Logger.Info($"[UI] Trade sell: commodity {m.CommodityName}");
-                RebuildSell();
-            };
-            list.Children.Add(item);
-        }
-        _pickerMenu = new Border
-        {
-            Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(0, 0, 6, 6), Child = list,
-        };
-        _pickerGrp.Children.Add(_pickerMenu);
-    }
-
-    private void CloseCommodityPicker()
-    {
-        if (_pickerMenu is null) return;
-        _pickerGrp.Children.Remove(_pickerMenu);
-        _pickerMenu = null;
     }
 
     // Prefill resolution, per this task's architect override of the brief's ASSUMED
