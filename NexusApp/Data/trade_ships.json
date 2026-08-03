@@ -1,0 +1,660 @@
+[
+ {
+  "id": "orig-100i",
+  "name": "100i",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 2,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "orig-125a",
+  "name": "125a",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 2,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "orig-135c",
+  "name": "135c",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "orig-300i",
+  "name": "300i",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 8,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "orig-315p",
+  "name": "315p",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 12,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "orig-325a",
+  "name": "325a",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 4,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "orig-350r",
+  "name": "350r",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 4,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "orig-400i",
+  "name": "400i",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 42,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "orig-600i",
+  "name": "600i",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 44,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "orig-600i-touring",
+  "name": "600i Touring",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 20,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "orig-890-jump",
+  "name": "890 Jump",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 388,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "crus-a2-hercules",
+  "name": "A2 Hercules",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 216,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-apollo-medivac",
+  "name": "Apollo Medivac",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 32,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "rsi-apollo-triage",
+  "name": "Apollo Triage",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 32,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "anvl-asgard",
+  "name": "Asgard",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 180,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-aurora-mk-i-cl",
+  "name": "Aurora Mk I CL",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 6,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-i-es",
+  "name": "Aurora Mk I ES",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 3,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-i-ln",
+  "name": "Aurora Mk I LN",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 3,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-i-lx",
+  "name": "Aurora Mk I LX",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 3,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-i-mr",
+  "name": "Aurora Mk I MR",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 3,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-i-se",
+  "name": "Aurora Mk I SE",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 6,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-aurora-mk-ii",
+  "name": "Aurora Mk II",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 2,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "aegs-avenger-titan",
+  "name": "Avenger Titan",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 8,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "aegs-avenger-titan-renegade",
+  "name": "Avenger Titan Renegade",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 8,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "crus-c1-spirit",
+  "name": "C1 Spirit",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 64,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "crus-c2-hercules",
+  "name": "C2 Hercules",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 696,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "anvl-c8-pisces",
+  "name": "C8 Pisces",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "anvl-c8x-pisces-expedition",
+  "name": "C8X Pisces Expedition",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "anvl-carrack",
+  "name": "Carrack",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 456,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "anvl-carrack-expedition",
+  "name": "Carrack Expedition",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 456,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "drak-caterpillar",
+  "name": "Caterpillar",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 576,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "drak-clipper",
+  "name": "Clipper",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 12,
+  "maxBoxScu": 8
+ },
+ {
+  "id": "rsi-constellation-andromeda",
+  "name": "Constellation Andromeda",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 96,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-constellation-aquila",
+  "name": "Constellation Aquila",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 96,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-constellation-phoenix",
+  "name": "Constellation Phoenix",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 80,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-constellation-phoenix-emerald",
+  "name": "Constellation Phoenix Emerald",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 80,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-constellation-taurus",
+  "name": "Constellation Taurus",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 174,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "drak-corsair",
+  "name": "Corsair",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 72,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "drak-cutlass-black",
+  "name": "Cutlass Black",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 46,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "drak-cutlass-blue",
+  "name": "Cutlass Blue",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 12,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "drak-cutlass-red",
+  "name": "Cutlass Red",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 12,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "drak-cutter",
+  "name": "Cutter",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "drak-cutter-rambler",
+  "name": "Cutter Rambler",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 2,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "drak-cutter-scout",
+  "name": "Cutter Scout",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 2,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "anvl-f7c-hornet-mk-ii",
+  "name": "F7C Hornet Mk II",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 2,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "misc-fortune",
+  "name": "Fortune",
+  "manufacturer": "MISC",
+  "totalScu": 16,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "misc-freelancer",
+  "name": "Freelancer",
+  "manufacturer": "MISC",
+  "totalScu": 66,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "misc-freelancer-dur",
+  "name": "Freelancer DUR",
+  "manufacturer": "MISC",
+  "totalScu": 36,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "misc-freelancer-max",
+  "name": "Freelancer MAX",
+  "manufacturer": "MISC",
+  "totalScu": 120,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "misc-freelancer-mis",
+  "name": "Freelancer MIS",
+  "manufacturer": "MISC",
+  "totalScu": 36,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "drak-golem-ox",
+  "name": "Golem OX",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 64,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "aegs-hammerhead",
+  "name": "Hammerhead",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 40,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "rsi-hermes",
+  "name": "Hermes",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 288,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "misc-hull-a",
+  "name": "Hull A",
+  "manufacturer": "MISC",
+  "totalScu": 64,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "misc-hull-b",
+  "name": "Hull B",
+  "manufacturer": "MISC",
+  "totalScu": 512,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "misc-hull-c",
+  "name": "Hull C",
+  "manufacturer": "MISC",
+  "totalScu": 4608,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "aegs-idris-m",
+  "name": "Idris-M",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 1326,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "aegs-idris-p",
+  "name": "Idris-P",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 1374,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "crus-intrepid",
+  "name": "Intrepid",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 8,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "drak-ironclad",
+  "name": "Ironclad",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 2200,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "drak-ironclad-assault",
+  "name": "Ironclad Assault",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 1440,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "crus-m2-hercules",
+  "name": "M2 Hercules",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 522,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "orig-m80",
+  "name": "M80",
+  "manufacturer": "Origin Jumpworks",
+  "totalScu": 2,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "crus-mercury-star-runner",
+  "name": "Mercury Star Runner",
+  "manufacturer": "Crusader Industries",
+  "totalScu": 114,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "argo-mole",
+  "name": "MOLE",
+  "manufacturer": "Argo Astronautics",
+  "totalScu": 32,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "argo-moth",
+  "name": "MOTH",
+  "manufacturer": "Argo Astronautics",
+  "totalScu": 224,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "cnou-mustang-alpha",
+  "name": "Mustang Alpha",
+  "manufacturer": "Consolidated Outland",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "cnou-nomad",
+  "name": "Nomad",
+  "manufacturer": "Consolidated Outland",
+  "totalScu": 24,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "anvl-paladin",
+  "name": "Paladin",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 4,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "rsi-perseus",
+  "name": "Perseus",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 96,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-polaris",
+  "name": "Polaris",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 576,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "espr-prowler-utility",
+  "name": "Prowler Utility",
+  "manufacturer": "Esperia",
+  "totalScu": 32,
+  "maxBoxScu": 16
+ },
+ {
+  "id": "argo-raft",
+  "name": "RAFT",
+  "manufacturer": "Argo Astronautics",
+  "totalScu": 192,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "gama-railen",
+  "name": "Railen",
+  "manufacturer": "Gatac",
+  "totalScu": 640,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "aegs-reclaimer",
+  "name": "Reclaimer",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 420,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "aegs-redeemer",
+  "name": "Redeemer",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 2,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "misc-reliant-kore",
+  "name": "Reliant Kore",
+  "manufacturer": "MISC",
+  "totalScu": 6,
+  "maxBoxScu": 2
+ },
+ {
+  "id": "misc-reliant-tana",
+  "name": "Reliant Tana",
+  "manufacturer": "MISC",
+  "totalScu": 1,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "aegs-retaliator",
+  "name": "Retaliator",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 36,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "rsi-salvation",
+  "name": "Salvation",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 6,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "grey-shiv",
+  "name": "Shiv",
+  "manufacturer": "Grey's Market",
+  "totalScu": 32,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "argo-srv",
+  "name": "SRV",
+  "manufacturer": "Argo Astronautics",
+  "totalScu": 12,
+  "maxBoxScu": 4
+ },
+ {
+  "id": "misc-starfarer",
+  "name": "Starfarer",
+  "manufacturer": "MISC",
+  "totalScu": 291,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "misc-starfarer-gemini",
+  "name": "Starfarer Gemini",
+  "manufacturer": "MISC",
+  "totalScu": 291,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "misc-starlancer-max",
+  "name": "Starlancer MAX",
+  "manufacturer": "MISC",
+  "totalScu": 224,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "misc-starlancer-tac",
+  "name": "Starlancer TAC",
+  "manufacturer": "MISC",
+  "totalScu": 96,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "gama-syulen",
+  "name": "Syulen",
+  "manufacturer": "Gatac Manufacture",
+  "totalScu": 6,
+  "maxBoxScu": 1
+ },
+ {
+  "id": "aegs-tiburon",
+  "name": "Tiburon",
+  "manufacturer": "Aegis Dynamics",
+  "totalScu": 64,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "gama-tyilui",
+  "name": "Tyilui",
+  "manufacturer": "Gatac Manufacture",
+  "totalScu": 96,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "anvl-valkyrie",
+  "name": "Valkyrie",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 90,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "anvl-valkyrie-liberator",
+  "name": "Valkyrie Liberator",
+  "manufacturer": "Anvil Aerospace",
+  "totalScu": 90,
+  "maxBoxScu": 24
+ },
+ {
+  "id": "drak-vulture",
+  "name": "Vulture",
+  "manufacturer": "Drake Interplanetary",
+  "totalScu": 12,
+  "maxBoxScu": 8
+ },
+ {
+  "id": "rsi-zeus-mk-ii-cl",
+  "name": "Zeus Mk II CL",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 128,
+  "maxBoxScu": 32
+ },
+ {
+  "id": "rsi-zeus-mk-ii-es",
+  "name": "Zeus Mk II ES",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 32,
+  "maxBoxScu": 16
+ }
+]

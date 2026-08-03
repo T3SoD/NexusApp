@@ -183,7 +183,7 @@ public sealed class MarketDataService : IDisposable
         try
         {
             _timer = new System.Windows.Threading.DispatcherTimer { Interval = RefreshInterval };
-            _timer.Tick += (_, _) => MaybeAutoRefresh();
+            _timer.Tick += (_, _) => { MaybeAutoRefresh(); RaiseAutoRefreshTick(); };
             _timer.Start();
         }
         catch (Exception ex)
@@ -192,6 +192,20 @@ public sealed class MarketDataService : IDisposable
             // snapshot already on disk both still work.
             Logger.Error($"{Tag} market refresh timer could not start", ex);
         }
+    }
+
+    /// <summary>The one market refresh tick, announced so a sibling feed can ride the same clock
+    /// instead of running a second timer (owner, 2026-08-03: "combined to the same toggle and
+    /// refresh timer"). Deliberately just "the cycle ran" and not "data changed" - a subscriber
+    /// decides for itself whether it is due, so this service knows nothing about who listens.</summary>
+    public event Action? AutoRefreshTick;
+
+    // A subscriber must never be able to fault the cycle, same fail-closed contract RaiseChanged
+    // documents. Type only in the log line: an exception Message can carry a %AppData% path.
+    private void RaiseAutoRefreshTick()
+    {
+        try { AutoRefreshTick?.Invoke(); }
+        catch (Exception ex) { Logger.Error($"{Tag} an auto-refresh tick subscriber threw ({ex.GetType().Name})"); }
     }
 
     // The disk half of Start, exposed as an internal seam so the load path is testable without

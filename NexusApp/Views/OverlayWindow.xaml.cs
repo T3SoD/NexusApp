@@ -3455,7 +3455,10 @@ public partial class OverlayWindow : Window
     // PLANNER: the new view is the reason the tab is opened in game; pins keep the badge.
     private string _tradeMode = "PLANNER";
     private double? _plannerBudget;             // pushed in by MainWindow OR set by the BUDGET pills; null = unconstrained
-    private readonly CargoShipCatalog _plannerShips = CargoShipCatalog.LoadEmbedded();
+    // Same TRADE ship list the desktop planner uses (~90 flyable hulls with cargo), not the
+    // 15-hull grid catalog: the two planners share persisted settings, so they must offer the
+    // same ships or a selection made on one would not resolve on the other.
+    private readonly TradeShipCatalog _plannerShips = TradeShipCatalog.LoadEmbedded();
     private CommodityPickerBox? _overlayCommodityPicker;
 
     // Every planner picker, for the ctor's host-managed popup dismissal sweep. Nullable: pickers
@@ -4075,6 +4078,14 @@ public partial class OverlayWindow : Window
             App.Map.DistanceMeters, commodityFilter);
         Logger.Info($"[UI] overlay trade planner run: {routes.Count} routes, scope {App.Settings.Current.TradeScope}, commodity {commodityFilter ?? "ANY"}");
 
+        // Same snap telemetry as the desktop planner (TradePage.Planner.cs), one line per rebuild
+        // and silent when nothing snapped: a user working entirely from the overlay would otherwise
+        // generate zero evidence of the container snap for the App Log Monitor and diagnostic
+        // snapshot to read.
+        var snappedCount = routes.Count(r => r.TripQty < r.PlannedQty);
+        if (snappedCount > 0)
+            Logger.Info($"[UI] overlay trade planner run: {snappedCount} of {routes.Count} routes snapped to buyable containers, {routes.Sum(r => r.PlannedQty - r.TripQty)} SCU trimmed");
+
         if (routes.Count == 0)
         {
             // A commodity filter that produced nothing gets named (the main ladder's rule), then
@@ -4101,7 +4112,7 @@ public partial class OverlayWindow : Window
     // of the settings the cards were ranked with, so the glance surface stays a glance surface;
     // the expanded state lives in _plannerFiltersExpanded (session field), so an hourly tick or
     // a ghost collapse/expand never resets it.
-    private void BuildPlannerFilters(MarketSnapshot? snap, NexusApp.Models.Cargo.ShipCargoDef ship,
+    private void BuildPlannerFilters(MarketSnapshot? snap, TradeShip ship,
         System.Windows.Media.Brush dim)
     {
         var header = new Border
@@ -4181,7 +4192,7 @@ public partial class OverlayWindow : Window
     // idiom (SetItems each rebuild, text write-back only outside interaction, InteractionEnded
     // revert, commit = persist under no-op guard + log + notify + rebuild), pills the scope
     // row's (AccentButton marks the option in force).
-    private void BuildPlannerFilterStack(MarketSnapshot? snap, NexusApp.Models.Cargo.ShipCargoDef ship,
+    private void BuildPlannerFilterStack(MarketSnapshot? snap, TradeShip ship,
         System.Windows.Media.Brush dim)
     {
         // One grid cell (mock: border line-nav radius 3, padding 4px 7px, bg2 fill; eyebrow

@@ -46,7 +46,7 @@ public partial class App : Application
     // Update so the consent gate and throttle read real values; inert in the demo profile.
     public static MarketDataService Market { get; private set; } = null!;
 
-    // Dark SCT (SC Trade Tools) second-source cache. Inert unless Settings.Current.SctDataEnabled
+    // SCT (SC Trade Tools) second-source cache. Inert unless Settings.Current.MarketDataEnabled
     // is true (owner-only Admin toggle, Task 9) - Start() itself checks the flag first.
     public static SctMarketService Sct { get; private set; } = null!;
 
@@ -118,36 +118,23 @@ public partial class App : Application
         OverlayGhostModeChanged?.Invoke(on, source);
     }
 
-    // SCT consent: single write path so the Settings consent row, the Admin DATA TOOLS card,
-    // and the SCT-reading surfaces can never disagree. A bare OFF used to write the setting and
-    // raise nothing (Sct.Changed only fires when a fetch publishes a snapshot, which OFF never
-    // does), so the sibling toggle kept showing stale ON and TRADE kept its painted SCT badges
-    // until an unrelated rebuild. Writers call SetSctDataEnabled; the enable-side fetch kick
-    // lives here too so both toggles stay one-line callers.
-    public static event System.Action<bool, string>? SctConsentChanged;
-    public static void SetSctDataEnabled(bool on, string source)
+    // SCT rides the market consent and the market clock (owner, 2026-08-03: "combined to the
+    // same toggle and refresh timer... all or nothing"). The separate SetSctDataEnabled write path
+    // and SctConsentChanged broadcast are gone with the toggle that needed them: there is nothing
+    // left that can turn one feed on without the other, so the two surfaces can no longer disagree.
+    // Turning market data on kicks an immediate SCT fetch so the layer goes live without a restart,
+    // exactly as the old enable path did - see MainWindow's consent strip.
+    public static void KickSctFetch(string source)
     {
-        if (Settings.Current.SctDataEnabled == on) return;
-        Settings.Current.SctDataEnabled = on;
-        Settings.Save();
-        Logger.Info($"[UI] SCT cross-check {(on ? "on" : "off")} ({source})");
-        SctConsentChanged?.Invoke(on, source);
-        if (on)
+        _ = System.Threading.Tasks.Task.Run(async () =>
         {
-            // Same start/fetch path both toggles used to kick individually: the layer goes live
-            // immediately, no restart needed. Off needs no teardown call - every public entry
-            // point on SctMarketService checks the flag first and self-gates, live, on every
-            // call, so the setting write above is the whole story.
-            _ = System.Threading.Tasks.Task.Run(async () =>
-            {
-                // Type only, no ex argument (the market/SCT layer rule): an escaping exception's
-                // Message can carry a full %AppData% path, and Logger appends a passed exception
-                // verbatim. RefreshAsync logs its own failures in detail; this catch is the
-                // last-resort backstop for whatever escapes it.
-                try { await Sct.RefreshAsync(manual: true); }
-                catch (System.Exception ex) { Logger.Error($"[UI] {source}: SCT fetch failed ({ex.GetType().Name})"); }
-            });
-        }
+            // Type only, no ex argument (the market/SCT layer rule): an escaping exception's
+            // Message can carry a full %AppData% path, and Logger appends a passed exception
+            // verbatim. RefreshAsync logs its own failures in detail; this catch is the
+            // last-resort backstop for whatever escapes it.
+            try { await Sct.RefreshAsync(manual: true); }
+            catch (System.Exception ex) { Logger.Error($"[UI] {source}: SCT fetch failed ({ex.GetType().Name})"); }
+        });
     }
 
     // Click-through (issue #7 setting): single write path so the Settings page row and the
@@ -353,13 +340,16 @@ public partial class App : Application
         Market = new MarketDataService(Settings, () => App.IsForegroundRelevant);
         Market.Start();
 
-        // Dark SCT cache: fully inert unless SctDataEnabled is on (Start() checks it first).
-        // Constructed unconditionally so the Settings/Admin toggle always has a live instance to
-        // call into, exactly like Market above. Foreground-gated (2026-07-30, trading tab
-        // cadence): the 6h auto-refresh reuses the same foreground facility as Market so it does
-        // not poll while neither Nexus nor Star Citizen has focus.
+        // SCT cache: fully inert unless market data is on (Start() checks it first). Constructed
+        // unconditionally so the consent flow always has a live instance to call into, exactly
+        // like Market above, and foreground-gated through the same facility.
+        //
+        // It owns no timer. Riding Market's tick is what makes "one refresh timer" true rather
+        // than merely two timers with the same interval; SCT's own 6h RefreshInterval still gates
+        // each attempt, so an hourly CHECK is not an hourly FETCH.
         Sct = new SctMarketService(Settings, () => App.IsForegroundRelevant);
         Sct.Start();
+        Market.AutoRefreshTick += () => Sct.MaybeAutoRefresh();
 
         // Compatibility escape hatch: render on the CPU instead of the GPU, for machines whose
         // game/driver crashes keep killing WPF's render thread (0x88980406). Must be set before

@@ -37,8 +37,10 @@ internal static class TradeBarMath
 
 public sealed partial class TradePage
 {
-    private ComboBox _shipCombo = null!;
-    private bool _suppressShipSelection;   // in-place SelectedIndex writes (overlay resync) are not user picks
+    private CommodityPickerBox _shipPicker = null!;
+    // Committed display row -> catalog id. Built with the rows in BuildPlannerChrome so the two can
+    // never disagree; a display string must never reach TradeShipId.
+    private Dictionary<string, string> _shipDisplayToId = new(StringComparer.Ordinal);
     private TextBox _budgetBox = null!;
     private Border _demandAnyPill = null!;
     private Border _demandMinPill = null!;
@@ -46,8 +48,10 @@ public sealed partial class TradePage
     private Border _rankProfitPill = null!;
     private Border _rankProfitPerScuPill = null!;
     private Border _rankProfitPerGmPill = null!;
-    private readonly CargoShipCatalog _shipCatalog = CargoShipCatalog.LoadEmbedded();
-    private int _plannerExpanded = -1;
+    // The TRADE ship list, not the grid catalog: every flyable hull with cargo space (~90), where
+    // CargoShipCatalog carries only the 15 whose 3D grids are reviewed and signed off. The planner
+    // needs totals and a max container size, never geometry. See TradeShipCatalog's class comment.
+    private readonly TradeShipCatalog _shipCatalog = TradeShipCatalog.LoadEmbedded();
 
     // STARTING LOCATION picker (task 10): replaces the old FROM HERE/ANYWHERE anchor pills
     // entirely (SetAnchor/_fromHerePill/_anywherePill are gone). "ANY" is the literal first
@@ -142,18 +146,23 @@ public sealed partial class TradePage
     // otherwise only touched by a direct user pick), so an external write needs its own immediate
     // re-seed here rather than deferring to the next rebuild - the same reasoning
     // ResyncSharedTradeSettings already documents for calling RefreshScopePills unconditionally.
-    // Suppressed the same way the Start/Dest combos suppress their own in-place ItemsSource/
-    // SelectedItem writes (_suppressShipSelection, declared with _shipCombo above), so this can
-    // never re-persist, re-log or re-rank on its own. Internal seam for
-    // TradePage.ResyncSharedTradeSettings.
+    // The picker's Text setter is a programmatic write it suppresses internally (it never reopens
+    // the popup and never raises Committed), so unlike the old ComboBox this needs no reentrancy
+    // flag of its own. Internal seam for TradePage.ResyncSharedTradeSettings.
+    //
+    // Deliberately skipped while the user is mid-interaction: writing the box during a typed query
+    // would stomp what they are halfway through, which is the same defer-to-InteractionEnded rule
+    // the commodity fields follow. The overlay's write still lands on the next quiet moment.
     private void ResyncShipFromSettings()
     {
-        int idx = _shipCatalog.Ships.ToList().FindIndex(s => s.Id == App.Settings.Current.TradeShipId);
-        idx = idx >= 0 ? idx : 0;
-        if (_shipCombo.SelectedIndex == idx) return;
-        _suppressShipSelection = true;
-        try { _shipCombo.SelectedIndex = idx; } finally { _suppressShipSelection = false; }
+        if (_shipPicker is null || _shipPicker.IsInteracting) return;
+        var expect = ShipRowText(CurrentShip());
+        if (!string.Equals(_shipPicker.Text, expect, StringComparison.Ordinal)) _shipPicker.Text = expect;
     }
+
+    // One place builds a ship row's text, so the picker's items, its seeded text, the abandoned-
+    // query revert and the overlay's own rows can never drift into different phrasings.
+    private static string ShipRowText(TradeShip s) => $"{s.DisplayName} - {s.TotalScu} SCU";
 
     // The input area (ship combo, budget box, route pickers, caption) is built ONCE and only its
     // properties are updated afterwards; _plannerResults is the ONLY thing RebuildPlanner clears.
@@ -213,7 +222,7 @@ public sealed partial class TradePage
         return timer;
     }
 
-    private ShipCargoDef CurrentShip() =>
+    private TradeShip CurrentShip() =>
         _shipCatalog.ById(App.Settings.Current.TradeShipId) ?? _shipCatalog.Ships.First();
 
     private double? CurrentBudget()
@@ -244,26 +253,48 @@ public sealed partial class TradePage
 
         var topRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
 
-        var shipGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        // SHIP: type-or-browse, the same CommodityPickerBox the commodity fields and the overlay's
+        // own ship picker use. It replaced a plain NexusComboBox when the catalog went from 15 hulls
+        // to ~90 (owner, 2026-08-03: "allow the user to type in the search bar just like the
+        // commodities") - at that length a scroll-only dropdown is unusable. Rows are the SAME
+        // "{DisplayName} - {TotalScu} SCU" strings the overlay builds, so the two surfaces share one
+        // vocabulary; _shipDisplayToId maps a committed row back to the catalog id TradeShipId
+        // persists, because a display string must never be persisted.
+        var shipGrp = new StackPanel { Margin = new Thickness(0, 0, 16, 0), Width = 220 };
         shipGrp.Children.Add(FieldLabel("Ship"));
-        _shipCombo = new ComboBox
+        _shipPicker = new CommodityPickerBox();
+        var shipRows = new List<string>(_shipCatalog.Ships.Count);
+        _shipDisplayToId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var s in _shipCatalog.Ships)
         {
-            Style = (Style)Application.Current.FindResource("NexusComboBox"), MinWidth = 200,
-            ItemsSource = _shipCatalog.Ships.Select(s => $"{s.DisplayName} - {s.TotalScu} SCU").ToList(),
-        };
-        int shipIdx = _shipCatalog.Ships.ToList().FindIndex(s => s.Id == App.Settings.Current.TradeShipId);
-        _shipCombo.SelectedIndex = shipIdx >= 0 ? shipIdx : 0;
-        _shipCombo.SelectionChanged += (_, _) =>
+            var rowText = ShipRowText(s);
+            shipRows.Add(rowText);
+            _shipDisplayToId[rowText] = s.Id;
+        }
+        _shipPicker.SetItems(shipRows);
+        _shipPicker.Text = ShipRowText(CurrentShip());
+        _shipPicker.Opened += () => Logger.Info("[UI] Trade planner: ship list opened");
+        _shipPicker.Committed += display =>
         {
-            if (_suppressShipSelection) return;
-            var ship = _shipCatalog.Ships.ElementAt(_shipCombo.SelectedIndex);
-            App.Settings.Current.TradeShipId = ship.Id;
+            // An unmapped row cannot happen (rows and map come from one loop above) but fails safe
+            // as a no-op rather than persisting a display string.
+            if (!_shipDisplayToId.TryGetValue(display, out var id)) return;
+            if (App.Settings.Current.TradeShipId == id) return;   // same-row re-click: no log, no rebuild
+            App.Settings.Current.TradeShipId = id;
             App.Settings.Save();
-            Logger.Info($"[UI] Trade planner: ship {ship.Id}");
+            Logger.Info($"[UI] Trade planner: ship {id}");
             SharedTradeSettingsChanged?.Invoke();
             RebuildPlanner();
         };
-        shipGrp.Children.Add(_shipCombo);
+        // Abandoned-query cleanup, same contract as the commodity fields: walking away without
+        // committing reverts the box to naming the ship the routes were actually ranked with.
+        _shipPicker.InteractionEnded += () =>
+        {
+            var expect = ShipRowText(CurrentShip());
+            if (!string.Equals(_shipPicker.Text, expect, StringComparison.Ordinal))
+                _shipPicker.Text = expect;
+        };
+        shipGrp.Children.Add(_shipPicker);
         topRow.Children.Add(shipGrp);
 
         var budgetGrp = new StackPanel();
@@ -480,7 +511,6 @@ public sealed partial class TradePage
         if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
         _plannerResults.Children.Clear();
         _pinChips.Clear();   // the chips belonged to the rows just dropped
-        _plannerExpanded = -1;
 
         var snap = App.Market.Snapshot;
         RefreshStartCombo(snap);
@@ -517,7 +547,7 @@ public sealed partial class TradePage
             App.Locations.LastKnownLocation, snap.Terminals.Rows, App.Locations.LastKnownUexLocation);
         bool originUnknown = originIds is { Count: 0 };
         var destIds = DestTerminalIds(snap.Terminals.Rows);
-        var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
+        var routes = RoutePlanner.Rank(BuildSourcePairs(snap.TradePrices.Rows), terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
             TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
             TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode),
@@ -596,6 +626,13 @@ public sealed partial class TradePage
         }
 
         Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, start {App.Settings.Current.TradeStartManual ?? "LIVE"}, dest {_destSelectedName ?? AnyDestination}, commodity {_commoditySelectedName ?? AnyCommodity}");
+
+        // One line per rebuild, not per route: enough for the App Log Monitor and the diagnostic
+        // snapshot to answer "is the container snap biting in the field", without turning a
+        // 25-route rebuild into 25 log lines. Silent when nothing snapped, which is the common case.
+        var snappedCount = routes.Count(r => r.TripQty < r.PlannedQty);
+        if (snappedCount > 0)
+            Logger.Info($"[UI] Trade planner run: {snappedCount} of {routes.Count} routes snapped to buyable containers, {routes.Sum(r => r.PlannedQty - r.TripQty)} SCU trimmed");
     }
 
     // Starting Location (task 10): mirrors SetDemandFilter's no-op-on-unchanged guard - a pick that
@@ -1249,20 +1286,17 @@ public sealed partial class TradePage
             new DoubleAnimation(target, TimeSpan.FromMilliseconds(Motion.DrillMs)) { EasingFunction = Motion.Reveal });
     }
 
-    private FrameworkElement BuildRouteRow(TradeRoute r, int index, ShipCargoDef ship, Dictionary<int, MarketTerminal> terminals)
+    // Every route card renders its full detail inline (owner, 2026-08-03: "I do not like the click
+    // to expand for additional details on each of the planner route, can you just show it all
+    // within each routes hero card"). So there is no chevron, no click handler and no per-row open
+    // state here any more; the card is a readout, not a control. The Sell tab keeps its expander -
+    // its rows are a long browse list where collapsing is what makes it scannable, and it was not
+    // part of this ask. The shared ChevronGlyph/SetChevronOpen/DetailBand helpers therefore stay.
+    private FrameworkElement BuildRouteRow(TradeRoute r, int index, TradeShip ship, Dictionary<int, MarketTerminal> terminals)
     {
-        var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, terminals, out var chevron, out var detailHost),
+        var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, terminals),
             out var cardFrame, out _, chamfer: 8, padding: new Thickness(16, 13, 18, 13));
-        frame.Children.Add(PositionChevron(chevron));
-        var host = new Border { Cursor = Cursors.Hand, Child = frame, Margin = new Thickness(0, 0, 0, 10) };
-        host.MouseLeftButtonUp += (_, _) =>
-        {
-            bool nowOpen = _plannerExpanded != index;
-            _plannerExpanded = nowOpen ? index : -1;
-            detailHost.Visibility = nowOpen ? Visibility.Visible : Visibility.Collapsed;
-            SetChevronOpen(chevron, nowOpen);
-        };
-        return host;
+        return new Border { Child = frame, Margin = new Thickness(0, 0, 0, 10) };
     }
 
     private static Grid PositionChevron(Path chevron)
@@ -1272,14 +1306,16 @@ public sealed partial class TradePage
         return grid;
     }
 
-    private UIElement BuildRouteRowContent(TradeRoute r, int index, ShipCargoDef ship, Dictionary<int, MarketTerminal> terminals, out Path chevron, out Border detailHost)
+    private UIElement BuildRouteRowContent(TradeRoute r, int index, TradeShip ship, Dictionary<int, MarketTerminal> terminals)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition());
         grid.RowDefinitions.Add(new RowDefinition());
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // source picker
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // purchase block
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // detail band
 
         // Terminal lookups for both legs, resolved once and reused below both for the System tags
         // and for the optional distance tag next to the tier chip (never a second linear scan).
@@ -1346,32 +1382,115 @@ public sealed partial class TradePage
         string? sellSystem = sellTerm?.System;
 
         var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, buyTerm, RaiseShowOnMap));
+        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, isBuy: true, SctDeltasFor(r.BuyRow, "buy"), ToggleFor(r.BuyRow, true), out var applyBuy, buyTerm, RaiseShowOnMap));
         legs.Children.Add(new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
         });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, sellTerm, RaiseShowOnMap));
+        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, isBuy: false, SctDeltasFor(r.SellRow, "sell"), ToggleFor(r.SellRow, false), out var applySell, sellTerm, RaiseShowOnMap));
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 
-        bool fits = TradeMath.BoxFits(r.BuyRow.ContainerSizes, ship.MaxContainerScu);   // RoutePlanner already
-                                                                                          // filters incompatible pairs, so this is always true for a
-                                                                                          // returned row - kept explicit rather than assumed silently.
-        detailHost = DetailBand(new Thickness(0, 12, 0, 0), new Thickness(0, 12, 0, 0));
+        // ONE picker for the whole route (owner: "one toggle per route so if you switch to sct both
+        // stock and demand show SCT and vice versa"), moving QUANTITIES ONLY - prices stay UEX's on
+        // both legs. It drives both legs together through the repaint hooks they handed back, so
+        // the card never shows one leg's stock from one feed beside the other's from the other.
+        //
+        // Shown as soon as EITHER leg has a second opinion. A leg with only UEX simply does not
+        // move, which is honest: the alternative would be hiding the control on a route where half
+        // of it is genuinely switchable.
+        if (applyBuy is not null || applySell is not null)
+        {
+            var srcRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            srcRow.Children.Add(new TextBlock
+            {
+                Text = "STOCK AND DEMAND FROM", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            });
+            void ShowSource(bool sct)
+            {
+                applyBuy?.Invoke(sct);
+                applySell?.Invoke(sct);
+                srcRow.Children.RemoveRange(1, srcRow.Children.Count - 1);
+                srcRow.Children.Add(RouteSourcePill("UEX", active: !sct, ranked: true, onClick: () => ShowSource(false)));
+                srcRow.Children.Add(RouteSourcePill("SCT", active: sct, ranked: false, onClick: () => ShowSource(true)));
+            }
+            ShowSource(false);   // UEX is what the route was ranked and priced on, so it opens there
+            Grid.SetRow(srcRow, 2); Grid.SetColumnSpan(srcRow, 2);
+            grid.Children.Add(srcRow);
+        }
+
+        // The purchase block lives on its OWN full-width row, not inside the buy leg. It used to
+        // sit in the leg, where a StackPanel sizes to its widest child, so a four-size plan made
+        // the buy column as wide as its chip row and shoved the sell leg and the profit block
+        // across the card (owner, 2026-08-03, with a screenshot of two cards whose legs did not
+        // line up). Wrapping the chips was not enough - the leg still measured them. Out here it
+        // spans both columns and cannot influence any other element's width or placement, however
+        // many containers it lists.
+        // PLANNED, not TripQty. TripQty is already snapped to what this menu can supply, so planning
+        // against it would report a shortfall of zero on every card and delete the one line that
+        // explains why a 46 SCU hull is only hauling 40 (issue #31).
+        if (ContainerPlanner.Plan(r.BuyRow.ContainerSizes, ship.MaxContainerScu, r.PlannedQty) is { } plan)
+        {
+            // Stretches deliberately: on its own row it drives nothing, and the chip WrapPanel
+            // inside needs a real width to wrap against. Left-aligning here would give it infinite
+            // available width and it would never wrap, just overrun the card.
+            var purchase = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+            // Both bounds read off the plan itself rather than the raw menu, so this line and the
+            // containers under it always describe the same set of sizes. The range is the
+            // terminal's menu filtered to what this hull can load: advertising a 32 SCU container
+            // to a ship that tops out at 16 would name a size you cannot buy.
+            purchase.Children.Add(LabelledValueLine("MIN/MAX SCU CONTAINER SIZE FOR PURCHASE",
+                plan.SingleSize ? $"{plan.MaxContainerScu:n0} SCU"
+                                : $"{plan.MinContainerScu:n0} / {plan.MaxContainerScu:n0} SCU",
+                // Said in words when the terminal, not the hull, is the binding limit: the run is
+                // forced into more and smaller containers than the ship could otherwise carry.
+                warnNote: plan.MaxContainerScu < ship.MaxContainerScu ? "TERMINAL LIMIT" : null,
+                warnTip: $"The largest container this terminal sells is {plan.MaxContainerScu:n0} SCU, below the "
+                       + $"{ship.MaxContainerScu:n0} SCU this ship can load, so the run needs more containers than it otherwise would."));
+            purchase.Children.Add(CratePlanLine(plan, r.PlannedQty));
+            Grid.SetRow(purchase, 3); Grid.SetColumnSpan(purchase, 2);
+            grid.Children.Add(purchase);
+        }
+
+        // Always visible: same divider-above-and-padding geometry DetailBand gives the Sell rows,
+        // minus the collapse and minus the click-swallowing handler that only existed to stop a
+        // click inside the band from toggling the card shut.
+        var detailHost = new Border
+        {
+            Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(0, 12, 0, 0),
+            BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
+        };
         var detail = new StackPanel();
-        var fitLine = new StackPanel { Orientation = Orientation.Horizontal };
-        fitLine.Children.Add(new Path { Data = Geometry.Parse("M5,13 L10,18 L19,6"), Width = 15, Height = 15, Stroke = Hud.Br("OkBrush"), StrokeThickness = 1.7, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent, Margin = new Thickness(0, 0, 8, 0) });
-        fitLine.Children.Add(new TextBlock { Text = fits ? $"Box size OK for {ship.DisplayName} ({ship.MaxContainerScu} SCU crates)" : "Container size mismatch for this ship", FontFamily = Hud.Font("UiFont"), FontSize = 12, Foreground = Hud.Br("FgBrush") });
-        detail.Children.Add(fitLine);
-        detail.Children.Add(new TextBlock { Text = $"Trip size {r.TripQty:n0} SCU = smallest of: {string.Join(", ", r.TripParts)}", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 9, 0, 0) });
-        var feeLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 9, 0, 0) };
-        feeLine.Children.Add(FeePart("Gross", r.Gross, Hud.Br("FgBrush")));
-        if (r.Gross - r.Net != 0) feeLine.Children.Add(FeePart("Fees", r.Gross - r.Net, Hud.Br("FgBrush")));
-        feeLine.Children.Add(FeePart("Net profit/trip", r.Net, Hud.Br("AccentBrush")));
-        detail.Children.Add(feeLine);
+        // The old first line here read "Box size OK for {ship} ({N} SCU crates)" with a tick.
+        // Removed, not reworded (owner, 2026-08-03: it is "vague and the wrong terminology"): it
+        // was also always true, because RoutePlanner already drops any pair whose crates this hull
+        // cannot take, so it confirmed a condition that can never be false on a row you can see.
+        // What the owner actually wanted from it - which containers to buy - is the buy leg's
+        // RECOMMENDED CONTAINERS line, stated where the purchase happens.
+        //
+        // The "Trip size N SCU = smallest of: ship N, stock N" line lived here too and is gone at
+        // the owner's request: the same figure is already the STOCK bar's whole point on the buy
+        // leg, and the RECOMMENDED CONTAINERS line now states what that quantity actually buys.
+        //
+        // The profit block is gone as well. Gross, Fees and Net were rendered unconditionally
+        // while RoutePlanner sets Net == Gross with no fee provider, so the card carried the same
+        // figure twice under two labels; collapsing it to one number then simply repeated the
+        // card head's own PROFIT / TRIP readout (owner: "now we show profit/trip twice"). Only a
+        // real fee split adds anything the head does not already say, so that is the only thing
+        // rendered here, and it returns by itself the day a fee provider lands (the datamined
+        // auto-load ladder is the obvious first one). Net stays out of it: the head is Net.
+        double fees = r.Gross - r.Net;
+        if (fees != 0)
+        {
+            var feeLine = new StackPanel { Orientation = Orientation.Horizontal };
+            feeLine.Children.Add(FeePart("Gross", r.Gross, Hud.Br("FgBrush")));
+            feeLine.Children.Add(FeePart("Fees", fees, Hud.Br("FgBrush")));
+            detail.Children.Add(feeLine);
+        }
 
         // Corroboration narration: only when BOTH legs reconcile to Corroborated (mock:802,
         // gate `sct && r.corrob` - the planner's only corroboration surface, no head badge here
@@ -1392,11 +1511,15 @@ public sealed partial class TradePage
             detail.Children.Add(corrLine);
         }
 
-        detailHost.Child = detail;
-        Grid.SetRow(detailHost, 2); Grid.SetColumnSpan(detailHost, 2);
-        grid.Children.Add(detailHost);
-
-        chevron = ChevronGlyph();
+        // Only mounted when it has something to say. With no fee split and no corroboration the
+        // band is empty, and mounting it anyway would draw its divider rule under a card with
+        // nothing beneath the line.
+        if (detail.Children.Count > 0)
+        {
+            detailHost.Child = detail;
+            Grid.SetRow(detailHost, 4); Grid.SetColumnSpan(detailHost, 2);
+            grid.Children.Add(detailHost);
+        }
         return grid;
     }
 
@@ -1423,7 +1546,272 @@ public sealed partial class TradePage
         return p;
     }
 
-    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime modifiedUtc, string containerSizes, int shipMaxContainerScu, MarketTerminal? terminal = null, Action<int>? onShowOnMap = null)
+    /// <summary>What SCT said about one side, kept beside the UEX row so a card can offer both.</summary>
+    private readonly record struct SidePair(double SctPrice, int SctQuantity, DateTime SctUtc);
+
+    // Keyed by (terminal, commodity, player-buy) from the last rank. Absent means only UEX reported
+    // this side, in which case the row already carries everything there is to show.
+    private Dictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SidePair> _sidePairs = new();
+
+    /// <summary>
+    /// Records what SCT says about every side and returns the rows UNCHANGED.
+    ///
+    /// UEX alone prices and ranks the routes (owner: "for prices lets just stick with UEX"), so no
+    /// figure is substituted here. This exists only so a card can offer SCT's stock and demand
+    /// beside it. Choosing whichever feed observed a side more recently was built and then backed
+    /// out: with one toggle per route, a route fresher on SCT for its buy leg and on UEX for its
+    /// sell leg has no honest two-state default, and the profit would have come from a mixture the
+    /// card could not display.
+    ///
+    /// Container sizes, terminal identity and commodity identity are UEX's regardless - SCT
+    /// publishes none of them.
+    /// </summary>
+    private IReadOnlyList<TradePriceRow> BuildSourcePairs(IReadOnlyList<TradePriceRow> rows)
+    {
+        _sidePairs = new Dictionary<(int, int, bool), SidePair>();
+        // One walk of the SCT snapshot instead of a scan per row: this runs on every rebuild, and
+        // the budget box re-ranks while the user types.
+        var sct = App.Sct.SideIndex();
+        if (sct.Count == 0) return rows;
+
+        foreach (var row in rows)
+        {
+            RecordPair(row, sct, playerBuy: true);
+            RecordPair(row, sct, playerBuy: false);
+        }
+        return rows;
+    }
+
+    // Stores SCT's own figures for a side the two feeds share. UEX's stay on the row itself,
+    // untouched, because UEX is what the card shows and what the route was ranked on.
+    private void RecordPair(TradePriceRow row,
+        IReadOnlyDictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SctListing> sct,
+        bool playerBuy)
+    {
+        if (!sct.TryGetValue((row.TerminalId, row.CommodityId, playerBuy), out var listing)) return;
+        _sidePairs[(row.TerminalId, row.CommodityId, playerBuy)] =
+            new SidePair(listing.Price, listing.Quantity, listing.TimestampUtc);
+    }
+
+    /// <summary>
+    /// Both feeds' readings for one side, so a card can show either on demand.
+    ///
+    /// A VIEWER, not a planning input (owner: "i dont want it to re rank, i want it to just show
+    /// what SCT or UEX is displaying for that commodity with that route"). Switching swaps the
+    /// price, the quantity, the coverage bar and the age; the route keeps the position and the
+    /// profit UEX gave it.
+    /// </summary>
+    private readonly record struct SourceToggle(
+        double UexPrice, int UexQuantity, DateTime UexUtc,
+        double SctPrice, int SctQuantity, DateTime SctUtc);
+
+    private SourceToggle? ToggleFor(TradePriceRow row, bool playerBuy)
+    {
+        if (!_sidePairs.TryGetValue((row.TerminalId, row.CommodityId, playerBuy), out var pair)) return null;
+        return new SourceToggle(
+            playerBuy ? row.Buy : row.Sell,
+            playerBuy ? row.BuyStockScu : row.SellDemandScu,
+            row.ModifiedUtc,
+            pair.SctPrice, pair.SctQuantity, pair.SctUtc);
+    }
+
+    /// <summary>
+    /// The signed SCT-vs-UEX margin notes for one leg: price, then stock or demand. Null when
+    /// there is nothing honest to compare.
+    /// <para>
+    /// Gated on the reconciler's own state rather than merely on an SCT row existing, so the two
+    /// surfaces can never disagree about whether a second source counts. Corroborated and Disagree
+    /// are precisely the states where both sides are present AND fresh; UexOnly covers a missing
+    /// SCT row, a stale one, and the ship-ammunition carve-out, none of which should print a delta.
+    /// </para>
+    /// </summary>
+    private (double? Price, double? Quantity) SctDeltasFor(TradePriceRow row, string side)
+    {
+        bool playerBuy = side == "buy";
+        if (!_sidePairs.TryGetValue((row.TerminalId, row.CommodityId, playerBuy), out var pair)) return (null, null);
+
+        // Still gated on the reconciler, so a stale second source prints no delta at all: it is the
+        // same bar the CORROBORATED line uses, and the two must not disagree about whether a second
+        // opinion counts.
+        var rec = Reconcile(row, side);
+        if (rec is null || (rec.State != PriceSourceState.Corroborated && rec.State != PriceSourceState.Disagree))
+            return (null, null);
+
+        return (SctDelta.Pct(playerBuy ? row.Buy : row.Sell, pair.SctPrice),
+                SctDelta.Pct(playerBuy ? row.BuyStockScu : row.SellDemandScu, pair.SctQuantity));
+    }
+
+    /// <summary>A "SCT +3.2%" margin note. UEX remains the figure it sits beside; this only ever
+    /// says how far the second source is from it. Amber once the price gap passes the same 3%
+    /// agreement bar the corroboration state uses, dim otherwise - including for every quantity
+    /// delta, because stock disagreement between the two feeds is the norm rather than a warning
+    /// (they matched on 8 of 631 overlapping sell rows when measured).</summary>
+    private static TextBlock? SctDeltaNote(double? pct, bool amberOverThreshold, string what, string otherSource)
+    {
+        if (pct is not { } p) return null;
+        bool amber = amberOverThreshold && Math.Abs(p) > PriceReconciler.AgreeThresholdPct;
+        return new TextBlock
+        {
+            Text = $"{otherSource} {SctDelta.Format(p)}",
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = amber ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"),
+            Margin = new Thickness(7, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+            ToolTip = $"{(otherSource == "SCT" ? "SC Trade Tools" : "UEX")} reports {what} "
+                    + $"{SctDelta.Format(p)} against the figure shown, which is the fresher of the "
+                    + "two and the one this route is ranked on.",
+        };
+    }
+
+    /// <summary>One half of a route's source picker. Carries no age of its own: the two legs can
+    /// have been observed at different times by the same feed, so a single age here would be wrong
+    /// for at least one of them. Each leg keeps its own freshness pill, which follows whichever
+    /// feed is showing.</summary>
+    private static Border RouteSourcePill(string name, bool active, bool ranked, Action onClick)
+    {
+        var pill = new Border
+        {
+            Background = active ? Hud.Br("AccentFaintBrush") : Hud.Br("Bg2NavBrush"),
+            BorderBrush = active ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(9, 2, 9, 2), Margin = new Thickness(0, 0, 6, 0),
+            Cursor = active ? null : Cursors.Hand,
+            Child = new TextBlock
+            {
+                Text = name, FontFamily = Hud.Font("UiFont"), FontSize = 9.5, FontWeight = FontWeights.Bold,
+                Foreground = active ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush"),
+            },
+            // Only UEX prices and ranks the routes, so a reader looking at SCT has to be told the
+            // profit above did not come from it.
+            // Only stock and demand move. Prices, the trip size, the profit and the ordering are
+            // all UEX's whichever half is selected, so this must not imply otherwise.
+            ToolTip = ranked
+                ? $"Stock and demand as {name} reports them. Prices, trip size and profit are always UEX's."
+                : $"Show stock and demand as {name} reports them, for comparison. Prices, trip size "
+                + "and profit stay UEX's.",
+        };
+        if (!active) pill.MouseLeftButtonUp += (_, _) => onClick();
+        return pill;
+    }
+
+    /// <summary>One "LABEL   value" line in the buy leg's purchase block, so the two lines there
+    /// share exactly one layout and cannot drift apart in spacing or type.</summary>
+    private static StackPanel LabelledValueLine(string label, string value, string? warnNote = null, string? warnTip = null)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0),
+                                   HorizontalAlignment = HorizontalAlignment.Left };
+        row.Children.Add(new TextBlock
+        {
+            Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        });
+        // The value is always neutral. It used to turn amber to flag "the terminal caps you below
+        // your hull", which meant an identical, purely factual range read white on one card and
+        // amber on the next with nothing on screen saying why (owner, 2026-08-03). A measurement is
+        // not a warning; the warning gets its own words below.
+        row.Children.Add(new TextBlock
+        {
+            Text = value, FontFamily = Hud.Font("MonoFont"), FontSize = 11,
+            Foreground = Hud.Br("FgBrush"),
+            Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = warnTip,
+        });
+        if (warnNote is not null)
+            row.Children.Add(new TextBlock
+            {
+                Text = warnNote, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = Hud.Br("AccentBrush"), Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center, ToolTip = warnTip,
+            });
+        return row;
+    }
+
+    /// <summary>The buy leg's container plan: which sizes to actually buy here to reach the
+    /// quantity the planner wanted, and an amber shortfall when this kiosk's sizes cannot reach
+    /// it. Takes the PRE-SNAP quantity deliberately: TradeRoute.TripQty is already snapped to
+    /// what this menu can supply, so planning against it would report a shortfall of zero on
+    /// every card. Shares the LabelledValueLine geometry so it sits flush under the largest-size
+    /// line above it.</summary>
+    private static Panel CratePlanLine(ContainerPlan plan, int plannedQty)
+    {
+        // WrapPanel, left-aligned: a four-size plan (real: a Cutlass Black needing 16+16+8+4+2)
+        // would otherwise run the leg as wide as its longest chip row and drag every sibling with
+        // it - which is what stretched the freshness pill (owner, 2026-08-03: "have it isolated so
+        // it doesnt affect the freshness pill length"). Wrapping keeps the block inside the card
+        // and off the other rows' geometry.
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0),
+                                  HorizontalAlignment = HorizontalAlignment.Left };
+        row.Children.Add(new TextBlock
+        {
+            // Says what it is, in the game's own noun. The line it replaced ("Box size OK for...")
+            // was called out as vague and wrong terminology; "RECOMMENDED CONTAINERS" then became
+            // "OPTIMAL CONTAINER PURCHASE COUNT" (owner, 2026-08-03) because the number that
+            // matters is how many of each to buy, not merely which sizes are recommended.
+            Text = "OPTIMAL CONTAINER PURCHASE COUNT", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        if (plan.Empty)
+        {
+            // A real answer, not a gap: every container this kiosk sells is bigger than the whole trip.
+            row.Children.Add(new TextBlock
+            {
+                Text = $"none sold here small enough for {plannedQty:n0} SCU",
+                FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("AccentBrush"),
+                Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            });
+            return row;
+        }
+
+        // One chip per size instead of "21 x 32 SCU + 1 x 24 SCU" (owner, 2026-08-03: "it looks
+        // like a math equation rather than easy to digest information"). The plus signs were the
+        // worst of it - they read as a sum to be evaluated rather than a shopping list, and a
+        // four-size plan (real: 2x16 + 1x8 + 1x4 + 1x2 for a Cutlass Black) read as arithmetic.
+        // Discrete chips are the page's own idiom for a set of small facts.
+        var tip = $"{plan.BoxCount} container{(plan.BoxCount == 1 ? "" : "s")} to load. "
+                + "Fewer, larger containers load faster and cost less to auto-load.";
+        foreach (var p in plan.Picks)
+        {
+            var chip = new Border
+            {
+                Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("NavBorderBrush"),
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(7, 2, 7, 2), Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center, ToolTip = tip,
+            };
+            var inner = new StackPanel { Orientation = Orientation.Horizontal };
+            // Count leads and carries the emphasis, because it is the thing being counted out at
+            // the kiosk; the size follows dim as the qualifier.
+            inner.Children.Add(new TextBlock
+            {
+                Text = $"{p.Count:n0}", FontFamily = Hud.Font("MonoFont"), FontSize = 11.5,
+                Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+            });
+            inner.Children.Add(new TextBlock
+            {
+                Text = p.Count == 1 ? $"container, {p.Scu:n0} SCU" : $"containers, {p.Scu:n0} SCU each",
+                FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            });
+            chip.Child = inner;
+            row.Children.Add(chip);
+        }
+
+        // Only shown when it is true: a silent shortfall is exactly the surprise this feature
+        // exists to remove.
+        if (!plan.HitsTarget)
+            row.Children.Add(new TextBlock
+            {
+                // Says the consequence in words rather than leaving "40 of 46" to be subtracted.
+                Text = $"{plan.ShortfallScu:n0} SCU short of the {plannedQty:n0} planned",
+                FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("AccentBrush"),
+                Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = $"This terminal sells no combination of container sizes that reaches "
+                        + $"{plannedQty:n0} SCU, so the run loads {plan.TotalScu:n0} SCU instead.",
+            });
+        return row;
+    }
+
+    private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime asOfUtc, string containerSizes, int shipMaxContainerScu, bool isBuy, (double? Price, double? Quantity) sctDelta, SourceToggle? sourceToggle, out Action<bool>? applySource, MarketTerminal? terminal = null, Action<int>? onShowOnMap = null)
     {
         var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
@@ -1465,26 +1853,87 @@ public sealed partial class TradePage
         // this fix's 10-12px ask so the two clusters (name+tag vs price) read as clearly distinct.
         if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(6, 0, 12, 1); Grid.SetColumn(tag, 1); top.Children.Add(tag); }
         var priceRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        // UEX, always (owner, 2026-08-03: "for prices lets just stick with UEX for those"). The
+        // source toggle below moves stock and demand only, so this never changes after it is drawn
+        // and needs no host to swap it through.
         priceRow.Children.Add(new TextBlock { Text = price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush") });
         priceRow.Children.Add(new TextBlock { Text = "/SCU", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(3, 0, 0, 0) });
+        if (SctDeltaNote(sctDelta.Price, amberOverThreshold: true, "this price as", "SCT") is { } priceDelta)
+            priceRow.Children.Add(priceDelta);
         Grid.SetColumn(priceRow, 2); top.Children.Add(priceRow);
         leg.Children.Add(top);
 
-        string tier = TradeBarMath.Tier(qty, tripQty);
         var barRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
         var bar = new Grid { Width = 90 };
-        bar.Children.Add(TripBar(TradeBarMath.FillFraction(qty, tripQty), TradeBarMath.Color(tier),
-            $"This bar shows how much of your trip the {(qtyLabel == "STOCK" ? "stock" : "demand")} covers. Green: covers your full trip. Amber: covers at least half. Red: less than half."));
+        var barTip = $"This bar shows how much of your trip the {(qtyLabel == "STOCK" ? "stock" : "demand")} covers. Green: covers your full trip. Amber: covers at least half. Red: less than half.";
+        void PaintBar(int amount)
+        {
+            bar.Children.Clear();
+            bar.Children.Add(TripBar(TradeBarMath.FillFraction(amount, tripQty),
+                                     TradeBarMath.Color(TradeBarMath.Tier(amount, tripQty)), barTip));
+        }
+        PaintBar(qty);
         barRow.Children.Add(bar);
-        barRow.Children.Add(new TextBlock { Text = $"{qtyLabel} {qty:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0) });
+        var qtyValue = new TextBlock { Text = $"{qtyLabel} {qty:n0} SCU", FontFamily = Hud.Font("MonoFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 0) };
+        barRow.Children.Add(qtyValue);
+        var qtyStamp = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("CyanBrush"), Margin = new Thickness(7, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+            ToolTip = "How long ago SC Trade Tools observed this quantity. The price beside it is "
+                    + "UEX's and is dated by the pill below.",
+        };
+        barRow.Children.Add(qtyStamp);
+        var qtyDeltaHost = new ContentControl { VerticalAlignment = VerticalAlignment.Bottom };
+        qtyDeltaHost.Content = SctDeltaNote(sctDelta.Quantity, amberOverThreshold: false, qtyLabel == "STOCK" ? "stock as" : "demand as", "SCT");
+        barRow.Children.Add(qtyDeltaHost);
         // Max container size (task 2): AccentBrush warning when this leg's biggest box is smaller
         // than the ship's best - the trip needs smaller crates than the ship could otherwise carry.
         var legMaxScu = TradeMath.MaxContainerScu(containerSizes);
-        if (MaxContainerChip(legMaxScu, warning: legMaxScu is { } m && m < shipMaxContainerScu) is { } maxChip) barRow.Children.Add(maxChip);
+        // On the SELL leg the chip stays beside DEMAND where it always was. On the BUY leg it moves
+        // down to sit directly above RECOMMENDED CONTAINERS (owner, 2026-08-03), because the two are
+        // one thought: the biggest container this kiosk sells, then what to actually buy with it.
+        if (!isBuy && MaxContainerChip(legMaxScu, warning: legMaxScu is { } m && m < shipMaxContainerScu) is { } maxChip)
+            barRow.Children.Add(maxChip);
         leg.Children.Add(barRow);
 
-        var age = DateTime.UtcNow - modifiedUtc;
-        leg.Children.Add(FreshChip(FreshChipAge(age), age.TotalHours >= 24));   // shared idiom, see FreshChipAge
+        var age = DateTime.UtcNow - asOfUtc;
+        // Left-aligned here rather than inside FreshChip (which the Sell and Prices flows share):
+        // a Border in a vertical StackPanel stretches to the panel's width by default, so the pill
+        // was inheriting the width of whatever the widest row below it happened to be.
+        // Dates the PRICE, which is UEX's and never moves. The quantity carries its own tag when
+        // it is showing SCT, because one pill cannot honestly date two figures from two feeds.
+        var freshChip = FreshChip(FreshChipAge(age), age.TotalHours >= 24);
+        freshChip.HorizontalAlignment = HorizontalAlignment.Left;
+        leg.Children.Add(freshChip);
+
+        // Repaints THIS LEG's stock or demand only. Handed back so ONE toggle on the card can drive
+        // both legs together (owner: "have toggle only affect stock and demand quantities"). Null
+        // when only UEX reports this side, which is what lets a card with a single switchable leg
+        // still offer the toggle without pretending the other moved.
+        applySource = null;
+        if (sourceToggle is { } tog)
+            applySource = sct =>
+            {
+                var shownQty = sct ? tog.SctQuantity : tog.UexQuantity;
+                qtyValue.Text = $"{qtyLabel} {shownQty:n0} SCU";
+                PaintBar(shownQty);
+                // The margin note always quotes the feed NOT on screen, so it flips with it.
+                qtyDeltaHost.Content = SctDeltaNote(
+                    SctDelta.Pct(shownQty, sct ? tog.UexQuantity : tog.SctQuantity),
+                    amberOverThreshold: false, qtyLabel == "STOCK" ? "stock as" : "demand as", sct ? "UEX" : "SCT");
+                // When the figure beside it is no longer UEX's, say when SCT saw it - the leg's
+                // freshness pill is dating the price and would otherwise be read as covering both.
+                var sctAge = DateTime.UtcNow - tog.SctUtc;
+                qtyStamp.Text = sct ? $"SCT {FreshChipAge(sctAge)}" : "";
+                qtyStamp.Visibility = sct ? Visibility.Visible : Visibility.Collapsed;
+            };
+
+        // The purchase block, seated UNDER the freshness pill at the owner's request: it is the
+        // leg's conclusion, so it reads last rather than interrupting the price/stock/freshness run.
+        // Buy leg only - the sell leg unloads cargo the ship already holds, so both "largest size
+        // for purchase" and a container plan would be advice about a purchase already made.
         return leg;
     }
 }

@@ -117,7 +117,7 @@ public class SctMarketServiceTests : IDisposable
         var dir = Directory.CreateTempSubdirectory("nexus-sct-test").FullName;
         _tempDirs.Add(dir);
         var settings = new SettingsService(Path.Combine(dir, "settings.json"));
-        settings.Current.SctDataEnabled = enabled;
+        settings.Current.MarketDataEnabled = enabled;
         var t = new FakeSctTransport();
         var snapshotPath = Path.Combine(dir, "sct_snapshot.json");
         var svc = new SctMarketService(settings, t, snapshotPath, isForegroundRelevant);
@@ -194,7 +194,7 @@ public class SctMarketServiceTests : IDisposable
         var dir = Directory.CreateTempSubdirectory("nexus-sct-test").FullName;
         _tempDirs.Add(dir);
         var settings = new SettingsService(Path.Combine(dir, "settings.json"));
-        settings.Current.SctDataEnabled = true;
+        settings.Current.MarketDataEnabled = true;
         var snapshotPath = Path.Combine(dir, "sct_snapshot.json");
         var unwindDelay = TimeSpan.FromMilliseconds(300);
         var t = new FakeSctTransport { GateUrl = PageUrl(0), CancelUnwindDelay = unwindDelay };
@@ -371,7 +371,7 @@ public class SctMarketServiceTests : IDisposable
         await svc.RefreshAsync(manual: true, NowUtc);
         Assert.NotNull(svc.SnapshotFetchedUtc);
 
-        settings.Current.SctDataEnabled = false;   // toggled off later, same session, data still cached
+        settings.Current.MarketDataEnabled = false;   // toggled off later, same session, data still cached
 
         Assert.Null(svc.SnapshotFetchedUtc);
     }
@@ -415,7 +415,7 @@ public class SctMarketServiceTests : IDisposable
 
         // Earlier run: fetches and persists a snapshot to disk.
         var earlierSettings = new SettingsService(settingsPath);
-        earlierSettings.Current.SctDataEnabled = true;
+        earlierSettings.Current.MarketDataEnabled = true;
         var earlierTransport = new FakeSctTransport();
         earlierTransport.Responses[PageUrl(0)] = Page0Body;
         earlierTransport.Responses[PageUrl(1)] = EmptyPageBody;
@@ -425,7 +425,7 @@ public class SctMarketServiceTests : IDisposable
         // This run: a fresh instance over the same disk state, never itself fetched. Start()
         // loading the previous cycle's snapshot must still notify subscribers.
         var settings = new SettingsService(settingsPath);
-        settings.Current.SctDataEnabled = true;
+        settings.Current.MarketDataEnabled = true;
         var svc = new SctMarketService(settings, new FakeSctTransport(), snapshotPath);
         var fired = 0;
         svc.Changed += () => fired++;
@@ -446,7 +446,10 @@ public class SctMarketServiceTests : IDisposable
 
         // Stanton > MIC L2 > MIC-L2 Long Forest Station = UEX terminal 55 (general trade);
         // Waste = UEX commodity 79 (both confirmed against Data/sct_uex_map.json).
-        var found = svc.Find(terminalId: 55, commodityId: 79, side: "SELL");
+        //
+        // The fixture row is tagged SELLS, which is the SHOP selling - i.e. the PLAYER's BUY side.
+        // This asked for "SELL" until 2026-08-03, which is what the inverted Find made pass.
+        var found = svc.Find(terminalId: 55, commodityId: 79, side: "BUY");
 
         Assert.NotNull(found);
         Assert.Equal("waste", found!.Commodity);
@@ -462,8 +465,43 @@ public class SctMarketServiceTests : IDisposable
         t.Responses[PageUrl(1)] = EmptyPageBody;
         await svc.RefreshAsync(manual: true, NowUtc);
 
-        // The only Waste row at this terminal is a SELLS; asking for the BUY side must not match it.
-        Assert.Null(svc.Find(terminalId: 55, commodityId: 79, side: "BUY"));
+        // The only Waste row at this terminal is a SELLS, which serves the player's BUY side, so
+        // the player's SELL side has nothing to match.
+        Assert.Null(svc.Find(terminalId: 55, commodityId: 79, side: "SELL"));
+    }
+
+    // Regression pin for the side-polarity bug fixed 2026-08-03. SCT labels rows from the SHOP's
+    // point of view and UEX from the PLAYER's, so the two vocabularies are mirrored: SELLS serves a
+    // UEX buy, BUYS serves a UEX sell. Find compared the words directly and therefore paired every
+    // row with its opposite. Against the shipped snapshots that produced 0 matches, where the
+    // correct pairing produces 233 (buy) and 716 (sell) at a 0.0% median price delta - so nothing
+    // was ever corroborated and no disagreement was ever raised.
+    //
+    // Both sides are asserted from ONE fixture holding both rows at the same terminal+commodity, so
+    // a future inversion cannot pass by flipping a single expectation.
+    [Fact]
+    public async Task Find_MapsShopPerspectiveRowsToThePlayersSide()
+    {
+        const string bothSides = """
+        {"content":[
+          {"location":"stanton > mic l2 > mic-l2 long forest station","transaction":"SELLS","commodity":"waste","price":115,"quantity":1,"saturation":0.5,"boxSizesInScu":null,"batchId":"a1","timestamp":"2026-07-29T10:32:38-04:00"},
+          {"location":"stanton > mic l2 > mic-l2 long forest station","transaction":"BUYS","commodity":"waste","price":88,"quantity":42,"saturation":0.5,"boxSizesInScu":null,"batchId":"a2","timestamp":"2026-07-29T10:32:38-04:00"}
+        ],"page":{"size":100,"number":0,"totalElements":2,"totalPages":1}}
+        """;
+        var (svc, t, _) = Make(enabled: true);
+        t.Responses[PageUrl(0)] = bothSides;
+        t.Responses[PageUrl(1)] = EmptyPageBody;
+        await svc.RefreshAsync(manual: true, NowUtc);
+
+        // The shop SELLS to you at 115: that is what the player pays, the UEX buy side.
+        var playerBuy = svc.Find(terminalId: 55, commodityId: 79, side: "BUY");
+        Assert.NotNull(playerBuy);
+        Assert.Equal(115, playerBuy!.Price);
+
+        // The shop BUYS from you at 88: that is what the player receives, the UEX sell side.
+        var playerSell = svc.Find(terminalId: 55, commodityId: 79, side: "SELL");
+        Assert.NotNull(playerSell);
+        Assert.Equal(88, playerSell!.Price);
     }
 
     [Fact]
@@ -485,11 +523,14 @@ public class SctMarketServiceTests : IDisposable
         t.Responses[PageUrl(0)] = Page0Body;
         t.Responses[PageUrl(1)] = EmptyPageBody;
         await svc.RefreshAsync(manual: true, NowUtc);
-        Assert.NotNull(svc.Find(terminalId: 55, commodityId: 79, side: "SELL"));
+        // BUY, because the fixture row is a SELLS: the shop selling is the player buying. The side
+        // is incidental to what this test is about (consent hides cached data), it just has to be
+        // the one that actually resolves.
+        Assert.NotNull(svc.Find(terminalId: 55, commodityId: 79, side: "BUY"));
 
-        settings.Current.SctDataEnabled = false;
+        settings.Current.MarketDataEnabled = false;
 
-        Assert.Null(svc.Find(terminalId: 55, commodityId: 79, side: "SELL"));
+        Assert.Null(svc.Find(terminalId: 55, commodityId: 79, side: "BUY"));
     }
 
     [Fact]
@@ -517,7 +558,7 @@ public class SctMarketServiceTests : IDisposable
         await svc.RefreshAsync(manual: true, NowUtc);
         Assert.NotEmpty(svc.SctOnlyBuyers(commodityId: 22));
 
-        settings.Current.SctDataEnabled = false;
+        settings.Current.MarketDataEnabled = false;
 
         Assert.Empty(svc.SctOnlyBuyers(commodityId: 22));
     }
@@ -600,7 +641,7 @@ public class SctMarketServiceTests : IDisposable
         svc.Start();
         Assert.Empty(t.Requested);   // flag off at launch: Start() kicks nothing
 
-        settings.Current.SctDataEnabled = true;   // opted in later, e.g. via the Settings row
+        settings.Current.MarketDataEnabled = true;   // opted in later, e.g. via the Settings row
         svc.MaybeAutoRefresh();                   // the tick's own entry point, no second Start()
 
         Assert.True(SpinWait.SpinUntil(() => t.Requested.Count > 0, TimeSpan.FromSeconds(2)));

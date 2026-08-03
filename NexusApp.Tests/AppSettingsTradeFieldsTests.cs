@@ -20,7 +20,7 @@ public class AppSettingsTradeFieldsTests
         Assert.Null(s.TradeCommodityFilter);        // issue #41: null = ANY, no commodity constraint
         Assert.Equal("ALL", s.TradeScope);
         Assert.True(s.TradeAnchorFromHere);          // dormant since task 10, kept for compatibility
-        Assert.False(s.SctDataEnabled);
+        Assert.Null(s.MarketDataEnabled);   // one market consent covers UEX and SCT; unasked by default
         Assert.Empty(s.PinnedRoutes);   // pinning is opt-in; a fresh profile has none
     }
 
