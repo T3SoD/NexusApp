@@ -470,6 +470,9 @@ public partial class MainWindow : Window
             App.Settings.Save();
             Logger.Info("[NET] market consent: enabled");
             App.Market.MaybeAutoRefresh();
+            // One consent covers both feeds now, so the SCT half has to go live on the same click
+            // rather than waiting for the first hourly tick to notice.
+            App.KickSctFetch("market consent");
             RefreshMarketConsent();
             RefreshCodexPrices();
             RefreshMarketPill();   // the pill appears the moment the feature is turned on

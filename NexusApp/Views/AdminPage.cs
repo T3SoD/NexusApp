@@ -31,7 +31,6 @@ public sealed class AdminPage : UserControl
     private TextBlock _previewBannerText = null!;
     private TextBlock _previewState = null!;
     private TextBlock _demoState = null!;
-    private Hud.ToggleSwitch _sctToggle = null!;
     private TextBlock _sctState = null!;
     private int _activeIndex = -1;
 
@@ -524,18 +523,19 @@ public sealed class AdminPage : UserControl
         demo.Children.Add(demoButtons);
         stack.Children.Add(Section("DEMO PROFILE", demo));
 
-        // Data tools card: the SCT (SC Trade Tools) second-source flag. Graduated (2026-07-30) to a
-        // real Settings consent row now that the SCT maintainer has approved in-app use of their
-        // endpoints - this card stays too, as the owner's one-shot fetch tool, reading/writing the
-        // same AppSettings.SctDataEnabled field Settings does.
+        // Data tools card. The SCT toggle that lived here is gone: live market data is now a
+        // single consent covering UEX and SCT together (owner, 2026-08-03: "get rid of the
+        // separate toggles... all or nothing"), so there is nothing owner-specific left to switch.
+        // What survives is the one-shot fetch, which was the genuinely useful half of this card -
+        // SCT rides the hourly market tick but only actually refetches every 6h, so an owner
+        // wanting to see a change now still needs a way to force it.
         var data = new StackPanel();
         data.Children.Add(new TextBlock
         {
-            Text = "SCT second source: crowdsourced price listings from SC Trade Tools, used only "
-                 + "to corroborate UEX prices on the trading tab. Off by default and fully inert "
-                 + "while off - no network call, no data load. Also a Settings consent row now; "
-                 + "this card is an owner convenience for a one-shot fetch. Turning this on "
-                 + "immediately kicks one fetch so you can see it working.",
+            Text = "SCT second source: crowdsourced price listings from SC Trade Tools, used "
+                 + "alongside UEX on the trading tab. It follows the Settings market-data consent "
+                 + "and is fully inert while that is off - no network call, no data load. Auto "
+                 + "refresh is every 6 hours; this button forces one now.",
             FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
         });
@@ -545,28 +545,20 @@ public sealed class AdminPage : UserControl
             Margin = new Thickness(0, 0, 0, 10),
         };
         data.Children.Add(_sctState);
-        _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
+        data.Children.Add(Btn("Fetch SCT now", () =>
         {
-            // Single write path (App.SetSctDataEnabled, the SetOverlayGhostMode idiom): it
-            // saves, logs, broadcasts SctConsentChanged so the Settings consent row can never
-            // show stale state after a bare OFF here, and kicks the one-shot fetch on enable.
-            OnToggled = on =>
+            // No-ops safely while consent is off - every SctMarketService entry point self-gates -
+            // but saying so beats a button that silently does nothing.
+            if (App.Settings.Current.MarketDataEnabled != true)
             {
-                App.SetSctDataEnabled(on, "admin");
-                RefreshToolsState();
-            },
-        };
-        // And the reverse direction: a flip from the Settings row updates this card live too.
-        App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(RefreshToolsState);
-        var dataRow = new StackPanel { Orientation = Orientation.Horizontal };
-        dataRow.Children.Add(new TextBlock
-        {
-            Text = "SCT second source", FontFamily = Hud.Font("UiFont"), FontSize = 12.5,
-            Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
-        });
-        dataRow.Children.Add(_sctToggle);
-        data.Children.Add(dataRow);
+                _sctState.Text = "SCT: off (turn on live market data in Settings first)";
+                return;
+            }
+            App.KickSctFetch("admin");
+            RefreshToolsState();
+        }));
+        // Keeps the state line honest when the consent is flipped in Settings while this pane is open.
+        App.Sct.Changed += () => Dispatcher.BeginInvoke(RefreshToolsState);
         stack.Children.Add(Section("DATA TOOLS", data));
 
         // Folders card.
@@ -590,9 +582,8 @@ public sealed class AdminPage : UserControl
         _demoState.Text = DemoProfile.IsSeeded(AppPaths.DemoRoot)
             ? "Demo profile: seeded (relaunches resume its session state)."
             : "Demo profile: not seeded yet (created on first launch).";
-        _sctToggle.SetOnSilently(App.Settings.Current.SctDataEnabled);
-        _sctState.Text = App.Settings.Current.SctDataEnabled
-            ? "SCT: on (also a Settings consent row)"
+        _sctState.Text = App.Settings.Current.MarketDataEnabled == true
+            ? $"SCT: on with live market data (last fetch {(App.Sct.SnapshotFetchedUtc is { } f ? f.ToLocalTime().ToString("g") : "none yet")})"
             : "SCT: off (fully inert - no network call, no data load)";
     }
 

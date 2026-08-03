@@ -61,9 +61,6 @@ public sealed partial class TradePage : UserControl
     private Border _uexPill = null!;
     private TextBlock _uexAgeValue = null!;
     private Ellipse _uexPillDot = null!;
-    private Border _sctAgePill = null!;
-    private TextBlock _sctAgeValue = null!;
-    private Ellipse _sctPillDot = null!;
 
     // Datamined starmap positions (owner's ask, 2026-07-30), shared by the Planner and Sell flows'
     // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
@@ -92,7 +89,7 @@ public sealed partial class TradePage : UserControl
 
         BuildStrip();
         var stripPills = BuildStripPills();   // must exist before BuildContextRow() below, whose trailing
-                                                // RefreshContextRow() call reads _uexPill/_sctAgePill
+                                                // RefreshContextRow() call reads _uexPill
         var stripRow = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(stripPills, Dock.Right);
         stripRow.Children.Add(stripPills);
@@ -135,9 +132,10 @@ public sealed partial class TradePage : UserControl
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
         // age pill and every corroboration badge waited for the next hourly market tick.
         App.Sct.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
-        // The consent broadcast covers what Sct.Changed cannot: a BARE OFF publishes no snapshot
-        // and so raises no Changed, but the painted SCT badges still have to leave the screen.
-        App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
+        // The old SctConsentChanged subscription is gone with the separate toggle. Turning market
+        // data off publishes no snapshot and so raises no Changed, but the painted SCT badges still
+        // have to leave the screen - MainWindow's consent strip calls Refresh() on this page for
+        // exactly that reason, on both the accept and the decline branch.
 
         RebuildPlanner();
         RebuildSell();
@@ -161,12 +159,13 @@ public sealed partial class TradePage : UserControl
         RebuildPrices();
     }
 
-    /// <summary>The surfaces a new SCT snapshot changes: the age pill, plus every flow's results
-    /// (the planner's corroboration line, the sell flow's badges and SCT-only rows, the price
-    /// browser's merged SCT-only rows). The UEX-sourced context row readouts are untouched.</summary>
+    /// <summary>The surfaces a new SCT snapshot changes: the shared TRADE DATA pill (its tooltip
+    /// carries the SCT age), plus every flow's results (the planner's corroboration line and delta
+    /// notes, the sell flow's badges and SCT-only rows, the price browser's merged SCT-only rows).
+    /// The UEX-sourced context row readouts are untouched.</summary>
     private void RefreshSctSurfaces()
     {
-        RefreshSctAgePill();
+        RefreshContextRow();
         RebuildPlanner();
         RebuildSell();
         RebuildPrices();
@@ -226,10 +225,10 @@ public sealed partial class TradePage : UserControl
     // ── SCT corroboration (Task 15) ───────────────────────────────────────────────────────────
     // Real, id-based lookup surface (SctMarketService.Find/SctOnlyBuyers): TradePriceRow already
     // carries both TerminalId/CommodityId, so this needs no name-based resolution. The outer flag
-    // check is kept even though Find/SctOnlyBuyers both self-gate on SctDataEnabled - "zero UI
+    // check is kept even though Find/SctOnlyBuyers both self-gate on the market consent - "zero UI
     // trace while dark" is checked live at every call site, not assumed from the service alone.
     private static SctListing? FindSctListing(TradePriceRow row, string side) =>
-        App.Settings.Current.SctDataEnabled ? App.Sct.Find(row.TerminalId, row.CommodityId, side) : null;
+        App.Settings.Current.MarketDataEnabled == true ? App.Sct.Find(row.TerminalId, row.CommodityId, side) : null;
 
     internal static ReconciledPrice? Reconcile(TradePriceRow row, string side) =>
         PriceReconciler.Reconcile(row, side, FindSctListing(row, side), DateTime.UtcNow);
@@ -434,21 +433,22 @@ public sealed partial class TradePage : UserControl
 
     // ── Data source pills, docked right of the tab strip (owner's ask, 2026-07-31: moved out of the
     // context row so they read as strip chrome, not a row 2 filter) - built here so the fields exist
-    // before BuildContextRow()'s trailing RefreshContextRow()/RefreshSctAgePill() calls run. Moved
-    // verbatim out of BuildContextRow: same BuildPill() calls, same SCT margin, same Collapsed default.
+    // before BuildContextRow()'s trailing RefreshContextRow() call runs. Moved
+    // verbatim out of BuildContextRow: same BuildPill() call.
     // VerticalAlignment=Center on the wrapper so the LEDs line up with the tab labels.
     private StackPanel BuildStripPills()
     {
         var pills = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
-        _uexPill = BuildPill("UEX", out _uexAgeValue, out _uexPillDot);
+        // ONE pill for both feeds (owner, 2026-08-03: "update all pills pertaining to UEX and SCT
+        // to be one uniform pill that says Trade Data"). Two pills made sense while the sources had
+        // separate consents; with a single toggle they turned on and off together, so a reader was
+        // being asked to track two lamps that could never disagree about being present. The value
+        // is UEX's age because UEX is the feed the app shows and ranks on; the tooltip carries both
+        // ages so the SCT half is still inspectable.
+        _uexPill = BuildPill(MarketNotice.PillLabel, out _uexAgeValue, out _uexPillDot);
         _uexPill.ToolTip = "";   // set live in RefreshContextRow (age changes the tooltip text)
         pills.Children.Add(_uexPill);
-
-        _sctAgePill = BuildPill("SCT", out _sctAgeValue, out _sctPillDot);
-        _sctAgePill.Margin = new Thickness(8, 0, 0, 0);
-        _sctAgePill.Visibility = Visibility.Collapsed;   // Task 11 also owns this pill's absence rule
-        pills.Children.Add(_sctAgePill);
 
         return pills;
     }
@@ -593,7 +593,7 @@ public sealed partial class TradePage : UserControl
     // Freshness LED color rule (item 4), consistent with FreshChip's existing 24h staleness cutoff:
     // OkBrush under 24h, AccentBrush (amber) at/after 24h, DangerBrush when the pill is rendered but
     // there is no data at all yet (age is null - consent on, nothing fetched). Static fill only,
-    // called fresh on every RefreshContextRow/RefreshSctAgePill pass.
+    // called fresh on every RefreshContextRow pass.
     private static void SetFreshnessDot(Ellipse dot, TimeSpan? age)
     {
         dot.Fill = age is null ? Hud.Br("DangerBrush")
@@ -767,35 +767,17 @@ public sealed partial class TradePage : UserControl
         _uexAgeValue.Text = uexAge is null ? "no data" : MarketNotice.FormatAge(uexAge.Value);
         // mock:1120 base sentence, extended with the LED rule (item 4: "extend each pill's existing
         // tooltip ... stating the rule in one sentence").
-        _uexPill.ToolTip = $"UEX: community price feed, last updated {_uexAgeValue.Text}. " +
-                           "LED: green under 24h, amber older, red no data.";
+        // Both ages in the one tooltip: the pill shows UEX's because that is the number on screen,
+        // but SCT is fetched on the same consent and a reader has no other way to see its age now.
+        var sctFetched = App.Sct.SnapshotFetchedUtc;
+        TimeSpan? sctAge = sctFetched is null ? null : DateTime.UtcNow - sctFetched.Value;
+        var sctText = sctAge is null ? "no data" : MarketNotice.FormatAge(sctAge.Value);
+        _uexPill.ToolTip = $"Live trade data. UEX (the prices shown and ranked on) last updated "
+                         + $"{_uexAgeValue.Text}; SC Trade Tools (cross-check) {sctText}. "
+                         + "LED: green under 24h, amber older, red no data.";
         SetFreshnessDot(_uexPillDot, uexAge);
-
-        RefreshSctAgePill();
     }
 
-    // SCT age pill: shown whenever SctDataEnabled is on (item 1's graduation, 2026-07-30) - this
-    // used to ALSO require a snapshot to already exist, which hid the pill entirely during the gap
-    // between turning the flag on and the first fetch landing. That gap is now a real state instead
-    // (LED red, value "no data" - the same shape the UEX pill's own no-data state already uses), so
-    // the pill's only absence rule left is the flag itself: no pill at all while SctDataEnabled is
-    // off (mock manifest: "Nothing renders as a placeholder while off - it is absent, not gray",
-    // index.html:1161-1163 - "off" here is the flag, not "no data yet"). The LED only exists inside
-    // a rendered pill, so there is still zero SCT trace on this row while the flag is off.
-    private void RefreshSctAgePill()
-    {
-        bool show = App.Settings.Current.SctDataEnabled;
-        _sctAgePill.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show) return;
-
-        var fetchedUtc = App.Sct.SnapshotFetchedUtc;
-        TimeSpan? age = fetchedUtc is null ? null : DateTime.UtcNow - fetchedUtc.Value;
-        _sctAgeValue.Text = age is null ? "no data" : MarketNotice.FormatAge(age.Value);
-        // mock:1127 base sentence, extended with the LED rule (item 4).
-        _sctAgePill.ToolTip = $"SCT: SC Trade Tools, a secondary price source, last updated {_sctAgeValue.Text}. " +
-                              "LED: green under 24h, amber older, red no data.";
-        SetFreshnessDot(_sctPillDot, age);
-    }
 
     // ── MAP tab hooks (Task 8, starmap MAP tab integration) ──────────────────────────────────
     // Session-only pins (not persisted - a route pin is a "what I'm running right now" marker, not

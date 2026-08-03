@@ -50,14 +50,19 @@ internal sealed class HttpSctTransport : ISctTransport
 }
 
 // The SCT (SC Trade Tools) crowdsource-listings cache. FULLY INERT while
-// AppSettings.SctDataEnabled is false: every public entry point (Start, RefreshAsync,
+// AppSettings.MarketDataEnabled is not true: every public entry point (Start, RefreshAsync,
 // SnapshotFetchedUtc, Find, SctOnlyBuyers) checks the flag FIRST and returns null/empty/no-ops
 // before touching the network, the embedded map, or disk - live-checked on every call, not just
-// "never populated while off," so flipping the flag off after data was already cached hides it
-// again immediately. Graduated (2026-07-30) from an owner-only Admin-tab flag to a real Settings
-// consent row, now that the SCT maintainer has approved in-app use of their endpoints - the Admin
-// card keeps its own toggle too, as a one-shot fetch tool for the owner. See
-// docs/superpowers/specs/2026-07-29-trade-api-recon-uex.md for the original recon.
+// "never populated while off," so declining market data after data was already cached hides it
+// again immediately.
+//
+// ONE CONSENT, ONE CLOCK (owner, 2026-08-03: "combined to the same toggle and refresh timer...
+// all or nothing"). This used to carry its own AppSettings.SctDataEnabled toggle, shown in both
+// Settings and the Admin card, and its own 6h DispatcherTimer. Both are gone: live market data is
+// now a single yes/no covering both feeds, and this one rides MarketDataService's tick. What did
+// NOT change is RefreshInterval - see Start().
+//
+// See docs/superpowers/specs/2026-07-29-trade-api-recon-uex.md for the original recon.
 public sealed class SctMarketService : IDisposable
 {
     public const string Tag = "[NET]";
@@ -98,10 +103,9 @@ public sealed class SctMarketService : IDisposable
     private volatile SctSnapshot? _snapshot;
     private volatile bool _disposed;
     private bool _started;
-    private System.Windows.Threading.DispatcherTimer? _timer;
 
     // Cached once, lazily, and only from a code path already gated by the flag check (never
-    // touched while SctDataEnabled is false - "zero map load while off" applies here too, not
+    // touched while market data is off - "zero map load while off" applies here too, not
     // just to RefreshAsync's own load). A benign race (two callers both building it at once) is
     // acceptable: the embedded resource never changes at runtime, so both builds are identical.
     private volatile SctMapIndex? _mapIndex;
@@ -113,12 +117,12 @@ public sealed class SctMarketService : IDisposable
     // Start()) has ever produced a snapshot yet. Read live on every access, matching Find/
     // SctOnlyBuyers below - not cached at construction time.
     public DateTime? SnapshotFetchedUtc =>
-        _settings.Current.SctDataEnabled == true ? _snapshot?.FetchedUtc : null;
+        _settings.Current.MarketDataEnabled == true ? _snapshot?.FetchedUtc : null;
 
     // Raised on a worker thread (RefreshAsync) or the caller's own thread (Start's disk load)
     // after a new snapshot is published; UI subscribers marshal with Dispatcher.Invoke themselves
     // (the MarketDataService.Changed contract). Both call sites that raise it are themselves only
-    // reachable when the flag is on, so this never fires while SctDataEnabled is false.
+    // reachable when the flag is on, so this never fires while market data is off.
     public event Action? Changed;
 
     public SctMarketService(SettingsService settings, Func<bool>? isForegroundRelevant = null)
@@ -164,21 +168,21 @@ public sealed class SctMarketService : IDisposable
         if (_started || _disposed) return;
         _started = true;
 
-        try
-        {
-            _timer = new System.Windows.Threading.DispatcherTimer { Interval = RefreshInterval };
-            _timer.Tick += (_, _) => MaybeAutoRefresh();
-            _timer.Start();
-        }
-        catch (Exception ex)
-        {
-            // A missing dispatcher costs the 6h tick, not the feature: manual refresh (the Admin
-            // one-shot button) and the snapshot already on disk both still work
-            // (MarketDataService.Start's own rationale).
-            Logger.Error($"{Tag} sct refresh timer could not start", ex);
-        }
+        // No timer of its own any more. This feed rides MarketDataService's hourly tick
+        // (App wires AutoRefreshTick), so the app has ONE market clock and ONE consent
+        // (owner, 2026-08-03: "combined to the same toggle and refresh timer... all or nothing").
+        //
+        // RefreshInterval still applies and is still 6h: ShouldAutoRefresh gates every attempt on
+        // it, so being CHECKED hourly does not mean being FETCHED hourly. That spacing is
+        // deliberate and must not be shortened to match the market cadence - an SCT refresh is a
+        // paged crawl (PageSpacing, FetchDeadline) against endpoints approved for in-app use, and
+        // hammering it hourly would abuse that approval.
+        //
+        // The launch kick stays at the BOTTOM of this method, after the disk load. Calling it up
+        // here instead makes the staleness check read a still-null snapshot and fetch on every
+        // launch even with a fresh cache on disk.
 
-        if (_settings.Current.SctDataEnabled != true)
+        if (_settings.Current.MarketDataEnabled != true)
         {
             Logger.Info($"{Tag} sct: dark flag off, not starting");
             return;
@@ -196,10 +200,9 @@ public sealed class SctMarketService : IDisposable
             RaiseChanged();
         }
 
-        // Fetch-on-launch-when-stale (2026-07-30): the same 6h staleness check the timer above
-        // applies on every tick, so a fresh disk cache never triggers a network call on startup,
-        // but a missing or 6h+ old one is topped up right away instead of waiting for the first
-        // tick.
+        // Fetch-on-launch-when-stale (2026-07-30): the same 6h staleness check every market tick
+        // now applies, so a fresh disk cache never triggers a network call on startup, but a
+        // missing or 6h+ old one is topped up right away instead of waiting for the first tick.
         MaybeAutoRefresh();
     }
 
@@ -209,7 +212,7 @@ public sealed class SctMarketService : IDisposable
     public void MaybeAutoRefresh()
     {
         if (_disposed) return;
-        if (_settings.Current.SctDataEnabled != true) return;   // every public entry point checks first
+        if (_settings.Current.MarketDataEnabled != true) return;   // every public entry point checks first
 
         // Trading tab (2026-07-30): no background polling while neither Nexus nor Star Citizen
         // has focus. Reuses the existing foreground facility (App.IsForegroundRelevant) the same
@@ -239,7 +242,7 @@ public sealed class SctMarketService : IDisposable
     // to run (the same reasoning as Logger.WriteTo's testable nowUtc parameter).
     public async Task RefreshAsync(bool manual, DateTime? nowUtc = null)
     {
-        if (_settings.Current.SctDataEnabled != true) return;   // every public entry point checks first
+        if (_settings.Current.MarketDataEnabled != true) return;   // every public entry point checks first
         if (Interlocked.Exchange(ref _busy, 1) != 0) return;    // single-flight
 
         // Published before any await so a Dispose racing this call always finds the cycle it
@@ -351,9 +354,18 @@ public sealed class SctMarketService : IDisposable
 
             var fresh = SctListingParser.Fresh(all, MaxListingAge, utcNow);
 
+            // SCT is user-submitted and unvalidated, so a mistyped price arrives looking exactly
+            // like a real one and - because a lookup takes the newest listing per terminal - one
+            // typo becomes the number on screen. Rejected at ingest so the cached snapshot never
+            // holds it. See SctOutlierFilter for the measurement behind the threshold.
+            var (plausible, droppedOutliers) = SctOutlierFilter.Apply(fresh);
+            if (droppedOutliers > 0)
+                Logger.Info($"{Tag} sct: {droppedOutliers} implausible price(s) dropped " +
+                            $"(beyond {SctOutlierFilter.Multiple:0}x their commodity median)");
+
             var kept = new List<SctListing>();
             int droppedUnmapped = 0;
-            foreach (var r in fresh)
+            foreach (var r in plausible)
             {
                 if (map.Terminals.ContainsKey(r.Location)) kept.Add(r);
                 else droppedUnmapped++;
@@ -365,6 +377,7 @@ public sealed class SctMarketService : IDisposable
             SctSnapshotFile.Save(_snapshotPath, _snapshot);
             Logger.Info($"{Tag} sct refresh finished: {page} page(s), {all.Count} raw row(s) " +
                         $"({totalSkippedRows} row(s) skipped), {fresh.Count} within {MaxListingAge.TotalDays:0}d, " +
+                        $"{droppedOutliers} implausible, " +
                         $"{kept.Count} kept, {droppedUnmapped} unmapped");
             RaiseChanged();
         }
@@ -386,7 +399,7 @@ public sealed class SctMarketService : IDisposable
     // either id is unknown to the map, or no kept row matches.
     public SctListing? Find(int terminalId, int commodityId, string side)
     {
-        if (_settings.Current.SctDataEnabled != true) return null;
+        if (_settings.Current.MarketDataEnabled != true) return null;
         var snap = _snapshot;
         if (snap is null || snap.Rows.Count == 0) return null;
 
@@ -394,13 +407,13 @@ public sealed class SctMarketService : IDisposable
         if (!idx.TerminalIdToLocation.TryGetValue(terminalId, out var location)) return null;
         if (!idx.CommodityIdToName.TryGetValue(commodityId, out var commodityName)) return null;
 
-        var wantBuy = IsBuySide(side);
+        var wantPlayerBuy = IsBuySide(side);
         SctListing? best = null;
         foreach (var r in snap.Rows)
         {
             if (!string.Equals(r.Location, location, StringComparison.OrdinalIgnoreCase)) continue;
             if (!string.Equals(r.Commodity, commodityName, StringComparison.OrdinalIgnoreCase)) continue;
-            if (IsBuySide(r.Transaction) != wantBuy) continue;
+            if (SctRowIsPlayerBuy(r.Transaction) != wantPlayerBuy) continue;
             if (best is null || r.TimestampUtc > best.TimestampUtc) best = r;
         }
         return best;
@@ -413,9 +426,57 @@ public sealed class SctMarketService : IDisposable
     // source)" on the sell-lookup flow. Every kept row's Location is already guaranteed present in
     // the map (RefreshAsync's own join filters on exactly that), so the map lookup below never
     // misses for real cached data.
+    /// <summary>
+    /// Every SCT listing that maps onto a UEX (terminal, commodity, side), keyed for O(1) lookup.
+    ///
+    /// Exists because the planner needs a reading for EVERY priced row on every rebuild, and
+    /// <see cref="Find"/> scans the whole snapshot per call - roughly ten million string
+    /// comparisons across a full rank, on a path the budget box re-runs while the user types.
+    /// This walks the snapshot once instead. The key's bool is the PLAYER's buy side, so callers
+    /// never have to think about SCT's shop-perspective wording (see SctRowIsPlayerBuy).
+    ///
+    /// Empty while market data is off, matching every other entry point here.
+    /// </summary>
+    public IReadOnlyDictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SctListing> SideIndex()
+    {
+        var empty = new Dictionary<(int, int, bool), SctListing>();
+        if (_settings.Current.MarketDataEnabled != true) return empty;
+        var snap = _snapshot;
+        if (snap is null || snap.Rows.Count == 0) return empty;
+
+        var idx = EnsureMapIndex();
+        var locationToTerminals = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (terminalId, location) in idx.TerminalIdToLocation)
+        {
+            if (!locationToTerminals.TryGetValue(location, out var ids))
+                locationToTerminals[location] = ids = new List<int>();
+            ids.Add(terminalId);
+        }
+        var nameToCommodity = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (commodityId, name) in idx.CommodityIdToName) nameToCommodity.TryAdd(name, commodityId);
+
+        var result = new Dictionary<(int, int, bool), SctListing>();
+        foreach (var r in snap.Rows)
+        {
+            if (!locationToTerminals.TryGetValue(r.Location, out var terminalIds)) continue;
+            if (!nameToCommodity.TryGetValue(r.Commodity, out var commodityId)) continue;
+            var playerBuy = SctRowIsPlayerBuy(r.Transaction);
+            // A station can map to more than one UEX terminal (general trade and refinery ore
+            // sales share one SCT path), and the newest listing wins - the same tie-break Find
+            // applies when several rows match.
+            foreach (var terminalId in terminalIds)
+            {
+                var key = (terminalId, commodityId, playerBuy);
+                if (!result.TryGetValue(key, out var best) || r.TimestampUtc > best.TimestampUtc)
+                    result[key] = r;
+            }
+        }
+        return result;
+    }
+
     public IReadOnlyList<SctListing> SctOnlyBuyers(int commodityId)
     {
-        if (_settings.Current.SctDataEnabled != true) return Array.Empty<SctListing>();
+        if (_settings.Current.MarketDataEnabled != true) return Array.Empty<SctListing>();
         var snap = _snapshot;
         if (snap is null || snap.Rows.Count == 0) return Array.Empty<SctListing>();
 
@@ -437,7 +498,29 @@ public sealed class SctMarketService : IDisposable
     // "BUY"/"BUYS" (any case) is a buy side; anything else (including "SELL"/"SELLS") is a sell
     // side. Used both for a caller's side argument and for the raw feed's own Transaction string,
     // so the two compare on the same rule.
+    /// <summary>Reads a UEX-side word ("buy"/"sell"), which is written from the PLAYER's point of
+    /// view: "buy" is the price the player pays.</summary>
     private static bool IsBuySide(string side) => side.StartsWith("BUY", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Does this SCT row describe the PLAYER's buy side? SCT labels its rows from the SHOP's point
+    /// of view, which is the opposite of UEX's: a row tagged SELLS is the shop selling to you (your
+    /// BUY), and BUYS is the shop buying from you (your SELL).
+    /// <para>
+    /// Until 2026-08-03 Find compared the two words directly, pairing every UEX row with SCT's
+    /// opposite side and matching nothing at all. Measured against the shipped snapshots: UEX buy
+    /// vs SCT BUYS produced 0 matches, while the correct pairings produced 233 and 716 with a
+    /// median price delta of 0.0%. So no price was ever corroborated and no disagreement was ever
+    /// raised - the feed was fetched, parsed, stored and then cross-checked into nothing.
+    /// </para>
+    /// <para>
+    /// Note this is deliberately NOT the helper SctOnlyBuyers uses. That one wants SCT's own word
+    /// read literally (a "buyer" is a shop that buys from you), and it was always correct. One
+    /// helper serving both meanings is what let the inversion hide.
+    /// </para>
+    /// </summary>
+    private static bool SctRowIsPlayerBuy(string transaction) =>
+        transaction.StartsWith("SELL", StringComparison.OrdinalIgnoreCase);
 
     // A subscriber must never be able to fault the fetch cycle or Start (fail-closed), same
     // MarketDataService.RaiseChanged contract. Only ever called from Start/RefreshAsync, both of
@@ -492,8 +575,6 @@ public sealed class SctMarketService : IDisposable
         // Stop must run on the timer's own dispatcher thread; on shutdown from anywhere else it
         // throws, and a failed stop on a service that is going away is not worth an error
         // (MarketDataService.Dispose's own rationale).
-        try { _timer?.Stop(); } catch { /* best effort */ }
-        _timer = null;
 
         var pending = _cycleDone?.Task;   // captured BEFORE the cancel, which may clear the field
         // Cancels the in-flight refresh through its linked source. _life is deliberately NOT

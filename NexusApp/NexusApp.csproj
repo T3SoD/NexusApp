@@ -54,6 +54,8 @@
     <EmbeddedResource Include="Data\components.ini" />
     <None Remove="Data\cargo_ships.json" />
     <EmbeddedResource Include="Data\cargo_ships.json" />
+    <None Remove="Data\trade_ships.json" />
+    <EmbeddedResource Include="Data\trade_ships.json" />
     <None Remove="Data\contract_caps.json" />
     <EmbeddedResource Include="Data\contract_caps.json" />
     <None Remove="Data\sct_uex_map.json" />
@@ -115,6 +117,9 @@
     <Resource Include="Assets\Guides\**\*.png" />
     <!-- Official "Powered by UEX" attribution badge (Task 13), unmodified brand asset. -->
     <Resource Include="Assets\uex_badge.png" />
+    <!-- SC Trade Tools attribution badge, unmodified brand asset, same treatment as UEX above:
+         both sources are named wherever the app says where its trade data comes from. -->
+    <Resource Include="Assets\sct_badge.png" />
     <!-- UI overhaul type system: Rajdhani (display), JetBrains Mono (data) -->
     <Resource Include="Assets\Fonts\Rajdhani-Medium.ttf" />
     <Resource Include="Assets\Fonts\Rajdhani-SemiBold.ttf" />

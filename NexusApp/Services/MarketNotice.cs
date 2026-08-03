@@ -4,14 +4,14 @@ namespace NexusApp.Services;
 internal static class MarketNotice
 {
     public const string ConsentEyebrow = "Live market data";
-    public const string ConsentBody = "Nexus can show live sell prices from UEX, a community-run price database. This uses the internet while Nexus is open. You can change this anytime in Settings.";
+    public const string ConsentBody = "Nexus can show live market prices from UEX and SC Trade Tools, two community-run price databases. This uses the internet while Nexus is open. You can change this anytime in Settings.";
     public const string ConsentEnable = "Turn on";
     public const string ConsentDecline = "Not now";
     public const string SettingsTitle = "MARKET DATA";
     public const string SettingsToggleTitle = "Show live market prices";
-    public const string SettingsToggleDesc = "Sell prices for ores and refined goods from UEX community reports. Refreshed about once an hour while Nexus is open.";
+    public const string SettingsToggleDesc = "Prices, stock and demand from UEX and SC Trade Tools community reports. One switch covers both. Refreshed about once an hour while Nexus is open.";
     public const string RefreshNow = "Refresh now";
-    public const string SourceNote = "Data: UEX community reports";
+    public const string SourceNote = "Data: UEX and SC Trade Tools community reports";
     // Shown in the Settings status area, under the last-refresh line: the cadence is a promise
     // about network activity, so it belongs where a reader checking on the feature is already
     // looking and not only in the toggle description (owner ruling 2026-07-27).
@@ -40,7 +40,11 @@ internal static class MarketNotice
     // UEX pill reports, and one feed does not get two names and two palettes).
     // The pill is not rendered at all when the feature is off, so there is no "off" string here:
     // silence over placeholder, the same rule every price surface follows.
-    public const string PillLabel = "UEX";
+    // One label for every pill that reports the live trade feeds (owner, 2026-08-03: "update all
+    // pills pertaining to UEX and SCT to be one uniform pill that says Trade Data"). The header
+    // chip and the Trade page's own strip pill both use it, so the two can never drift, and it no
+    // longer names one source while quietly carrying both.
+    public const string PillLabel = "TRADE DATA";
     public const string PillOffline = "offline";   // a cycle failed: the dot also goes DangerColor
     public const string PillSyncing = "syncing";   // a first-ever cycle is running, no clock to show yet
     public const string PillNoData = "no data";    // enabled, nothing fetched yet, nothing failed yet

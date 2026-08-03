@@ -32,6 +32,11 @@ internal sealed class CommodityPickerBox : Grid
     private IReadOnlyList<string> _names = Array.Empty<string>();
     private bool _suppressText;   // programmatic Text writes are not the user typing
     private bool _committing;     // a row click is mid-commit: its popup close is not the user walking away
+    // True between a chevron press and its release. The chevron opens on the RELEASE (see its
+    // handlers), and this is what tells a genuine open from the tail of a click that just dismissed
+    // an open popup: in the latter the popup's own capture swallows the press, so it never sets.
+    // Cleared on every close as well, so a press abandoned by dragging away cannot leave it armed.
+    private bool _pressedChevron;
 
     /// <summary>Raised only by a row click - the single commit path. Callers log and rebuild.</summary>
     public event Action<string>? Committed;
@@ -75,12 +80,28 @@ internal sealed class CommodityPickerBox : Grid
             Width = 24, Background = Brushes.Transparent, Cursor = Cursors.Hand,
             HorizontalAlignment = HorizontalAlignment.Right, Child = ChevronGlyphDown(),
         };
-        // Toggle on DOWN, not up, mirroring NexusComboBox's own ClickMode=Press: while the popup is
-        // open it holds the mouse capture (StaysOpen=false), so the down that lands here is eaten
-        // by the capture and closes the popup WITHOUT reaching this handler - that IS the "click
-        // chevron to close" half of the toggle. An up handler would fire after that capture-close
-        // and immediately reopen the popup the same click just dismissed.
-        chevronHost.MouseLeftButtonDown += (_, e) => { e.Handled = true; RefreshPopup("", viaChevron: true); };
+        // Open on UP, not down. Opening on the down was the "dropdown closes the instant you click
+        // it" bug (owner, 2026-08-02, on both the overlay and the desktop pages): a StaysOpen=false
+        // Popup takes the mouse capture the moment it opens, so opening it mid-gesture meant the
+        // user's own button RELEASE was delivered to that fresh capture as the dismissing click.
+        // Instrumentation caught it precisely - every close logged mouseL=Released with a
+        // sinceOpen equal to how long the button was held, and holding the button kept the list up.
+        //
+        // The down still marks itself handled so the TextBox underneath never takes the caret from
+        // a chevron click.
+        chevronHost.MouseLeftButtonDown += (_, e) => { e.Handled = true; _pressedChevron = true; };
+        chevronHost.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            // Toggle-close half, decided by an exact signal rather than a timing guess. When the
+            // popup is open it holds the capture, so the DOWN of this same click is eaten by that
+            // capture and never reaches the handler above - so _pressedChevron is still false and
+            // this UP is the tail of a dismissal, not a request to reopen. When the popup was
+            // closed, the DOWN did reach us, and this is a genuine open.
+            if (!_pressedChevron) return;
+            _pressedChevron = false;
+            RefreshPopup("", viaChevron: true);
+        };
 
         // InteractionEnded wiring (see the event doc). The Closed check reads the live mouse-button
         // state: a StaysOpen=false dismissal fires Closed synchronously inside the outside
@@ -89,6 +110,10 @@ internal sealed class CommodityPickerBox : Grid
         // button down and, mid-typing, with the box still focused).
         _popup.Closed += (_, _) =>
         {
+            // Cleared before the early return, and on every close however caused: a press that was
+            // abandoned (dragged off the chevron and released elsewhere) would otherwise stay armed
+            // and turn the next dismissing click into a reopen.
+            _pressedChevron = false;
             if (_committing) return;
             if (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed
                 || !_box.IsKeyboardFocused)

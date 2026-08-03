@@ -219,12 +219,11 @@ public class AppSettings
     // cleanup.
     public bool TradeAnchorFromHere { get; set; } = true;
 
-    // SC Trade Tools corroboration data. Graduated (2026-07-30) from an owner-only Admin-tab flag
-    // to a real Settings consent row, now that the maintainer has approved in-app use of their
-    // endpoints; the Admin card keeps its own toggle too, as a one-shot fetch tool for the owner -
-    // both surfaces read/write this same field. Off means SctMarketService never makes a network
-    // call at all. Default off.
-    public bool SctDataEnabled { get; set; }
+    // NOTE: SctDataEnabled was removed 2026-08-03. Live market data is one yes/no covering both
+    // UEX and SC Trade Tools (owner: "combined to the same toggle... all or nothing"), so
+    // MarketDataEnabled above gates both feeds. A stale SctDataEnabled key left in an existing
+    // settings.json is simply ignored on load, which is the intended migration: anyone who had
+    // market data on gets the SCT cross-check with it.
 }
 
 public class ScanRegion

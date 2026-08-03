@@ -186,9 +186,9 @@ public sealed partial class TradePage
         // a single selected commodity - SctOnlyBuyers takes one CommodityId, and the terminal-browse
         // "every commodity here" mode has no one id to key it off, so that mode shows UEX rows only
         // (never a fabricated per-commodity SCT match). App.Sct.SctOnlyBuyers self-gates on
-        // SctDataEnabled; the outer check here keeps this call site's own trace at zero while dark,
+        // the market consent; the outer check here keeps this call site's own trace at zero while dark,
         // same as the Sell flow.
-        var sctOnly = App.Settings.Current.SctDataEnabled && _pricesSelectedCommodity is not null && uexRows.Count > 0
+        var sctOnly = App.Settings.Current.MarketDataEnabled == true && _pricesSelectedCommodity is not null && uexRows.Count > 0
             ? App.Sct.SctOnlyBuyers(uexRows[0].CommodityId).ToList()
             : new List<SctListing>();
 
@@ -245,7 +245,7 @@ public sealed partial class TradePage
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
         });
 
-        string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
+        string sctSuffix = App.Settings.Current.MarketDataEnabled == true ? $", sctOnly {sctOnly.Count}" : "";
         string commodityPart = _pricesSelectedCommodity ?? "ALL (terminal browse)";
         Logger.Info($"[UI] Trade prices run: {totalTerminals} terminals, commodity {commodityPart}, showing {top.Count}{sctSuffix}");
     }

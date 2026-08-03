@@ -65,7 +65,6 @@ public sealed class SettingsPage : UserControl
     private Hud.ToggleSwitch? _marketToggle;
     private Button? _marketRefreshBtn;
     private TextBlock? _marketStatusText;
-    private Hud.ToggleSwitch? _sctToggle;
 
     // Overlay ghost mode toggle (INTERFACE). Held so it can be re-synced when ghost mode is
     // changed elsewhere (the ghost rail's own flyout switch) instead of only seeding once here.
@@ -664,19 +663,6 @@ public sealed class SettingsPage : UserControl
                 },
             };
 
-            // SC Trade Tools cross-check: graduated from the owner-only Admin flag to a real
-            // Settings consent row (2026-07-30, the maintainer cleared the gate) - directly
-            // adjacent to the market data toggle above, same section, same house chrome. Both
-            // surfaces read/write the same AppSettings.SctDataEnabled field; the Admin card keeps
-            // its own toggle as a one-shot fetch tool for the owner.
-            _sctToggle = new Hud.ToggleSwitch(App.Settings.Current.SctDataEnabled)
-            {
-                // Single write path (App.SetSctDataEnabled, the SetOverlayGhostMode idiom): it
-                // saves, logs, broadcasts SctConsentChanged so the Admin card's sibling toggle
-                // can never show stale state, and kicks the go-live fetch on enable.
-                OnToggled = on => App.SetSctDataEnabled(on, "settings"),
-            };
-
             _marketRefreshBtn = GhostButton(MarketNotice.RefreshNow);
             _marketRefreshBtn.Click += (_, _) =>
             {
@@ -710,11 +696,6 @@ public sealed class SettingsPage : UserControl
                 SettingRow(MarketNotice.SettingsToggleTitle,
                     MarketNotice.SettingsToggleDesc,
                     _marketToggle, last: false),
-                SettingRow("SC Trade Tools cross-check",
-                    "Cross-checks UEX prices against SC Trade Tools, a second community-run price " +
-                    "source, and marks matching rows CORROBORATED or SOURCES DISAGREE. Free public " +
-                    "endpoints. Off by default.",
-                    _sctToggle, last: false),
                 SettingRow("Refresh now",
                     "Fetch the latest sell prices from UEX right now, regardless of the hourly " +
                     "schedule. Prices can go stale (and keep their visible age) when UEX stops " +
@@ -727,22 +708,11 @@ public sealed class SettingsPage : UserControl
             RefreshMarketRows();
             App.Market.Changed += () => Dispatcher.BeginInvoke(RefreshMarketRows);
 
-            RefreshSctRow();
-            App.Sct.Changed += () => Dispatcher.BeginInvoke(RefreshSctRow);
-            // The consent broadcast is what covers a BARE OFF from the Admin card: Sct.Changed
-            // only fires when a fetch publishes, which off never does.
-            App.SctConsentChanged += (_, _) => Dispatcher.BeginInvoke(RefreshSctRow);
         }
 
         return Pane(panel);
     }
 
-    // The pane is built once and cached for the app lifetime, but consent can change elsewhere
-    // (the Admin DATA TOOLS card writes the same AppSettings.SctDataEnabled field): mirror the
-    // setting so the toggle never lies - same shape as RefreshUpdateRows/RefreshMarketRows above.
-    // Subscribed to App.Sct.Changed (worker thread on a real fetch, caller's own thread on
-    // Start's disk load), so it always marshals through the dispatcher like those two.
-    private void RefreshSctRow() => _sctToggle?.SetOnSilently(App.Settings.Current.SctDataEnabled);
 
     // Keeps the Market data rows honest as the fetch cycle moves through its states. Subscribed
     // to App.Market.Changed (worker thread): the subscription above uses Dispatcher.BeginInvoke,
@@ -775,29 +745,40 @@ public sealed class SettingsPage : UserControl
     // never recolored or restyled (brand asset rule). SourceNote still carries the
     // accessible name and tooltip so screen readers get the same information sighted users
     // read off the badge.
-    private static Image UexBadge()
+    // Both source badges on the one Source row: live trade data is a single consent covering UEX
+    // and SC Trade Tools, so a row that named only UEX would under-credit the second source it
+    // now silently turns on. Unmodified brand assets, side by side.
+    private static FrameworkElement UexBadge()
     {
-        // Capped decode, mirroring GuidesPage.Thumbnail's pattern: the source PNG is
-        // 3840x1138 (~17.5 MB decoded RGBA) but this row only ever shows it at 26px tall.
-        // DecodePixelHeight = 52 (2x display height) keeps it crisp at high DPI without
-        // decoding the full-resolution bitmap.
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(SourceBadge("uex_badge.png", 26, "UEX"));
+        var sct = SourceBadge("sct_badge.png", 26, "SC Trade Tools");
+        sct.Margin = new Thickness(10, 0, 0, 0);
+        row.Children.Add(sct);
+        row.ToolTip = MarketNotice.SourceNote;
+        System.Windows.Automation.AutomationProperties.SetName(row, MarketNotice.SourceNote);
+        // Note: SettingRow (:939) unconditionally right-aligns any FrameworkElement control it
+        // hosts, so no HorizontalAlignment is set here - it would be dead/contradictory.
+        return row;
+    }
+
+    // Capped decode, mirroring GuidesPage.Thumbnail's pattern: the UEX source PNG is 3840x1138
+    // (~17.5 MB decoded RGBA) and the SCT one 512x512, but this row only ever shows either at
+    // 26px tall. DecodePixelHeight = 2x the display height keeps both crisp at high DPI without
+    // decoding the full-resolution bitmap.
+    private static Image SourceBadge(string fileName, int height, string name)
+    {
         var bmp = new System.Windows.Media.Imaging.BitmapImage();
         bmp.BeginInit();
-        bmp.UriSource = new Uri("pack://application:,,,/Assets/uex_badge.png", UriKind.Absolute);
+        bmp.UriSource = new Uri($"pack://application:,,,/Assets/{fileName}", UriKind.Absolute);
         bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-        bmp.DecodePixelHeight = 52;
+        bmp.DecodePixelHeight = height * 2;
         bmp.EndInit();
         bmp.Freeze();
 
-        var badge = new Image
-        {
-            Source = bmp, Height = 26, Stretch = Stretch.Uniform,
-            ToolTip = MarketNotice.SourceNote,
-        };
-        // Note: SettingRow (:939) unconditionally right-aligns any FrameworkElement control it
-        // hosts, so no HorizontalAlignment is set here - it would be dead/contradictory.
+        var badge = new Image { Source = bmp, Height = height, Stretch = Stretch.Uniform, ToolTip = name };
         RenderOptions.SetBitmapScalingMode(badge, BitmapScalingMode.HighQuality);
-        System.Windows.Automation.AutomationProperties.SetName(badge, MarketNotice.SourceNote);
+        System.Windows.Automation.AutomationProperties.SetName(badge, name);
         return badge;
     }
 

@@ -252,7 +252,7 @@ public sealed partial class TradePage
         // merged into the ranking (mock:887-890) - and only when there is a ranked list to append
         // after (a zero-buyer commodity keeps the existing "no buyers" empty state above, rather
         // than growing a second, disconnected empty-state branch for this narrow case).
-        var sctOnly = App.Settings.Current.SctDataEnabled
+        var sctOnly = App.Settings.Current.MarketDataEnabled == true
             ? App.Sct.SctOnlyBuyers(picked.CommodityId).ToList()
             : new List<SctListing>();
         for (int i = 0; i < sctOnly.Count; i++)
@@ -263,7 +263,7 @@ public sealed partial class TradePage
             _sellResults.Children.Add(row);
         }
 
-        string sctSuffix = App.Settings.Current.SctDataEnabled ? $", sctOnly {sctOnly.Count}" : "";
+        string sctSuffix = App.Settings.Current.MarketDataEnabled == true ? $", sctOnly {sctOnly.Count}" : "";
         Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}{sctSuffix}");
     }
 
