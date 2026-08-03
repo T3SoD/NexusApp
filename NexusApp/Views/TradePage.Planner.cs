@@ -626,6 +626,13 @@ public sealed partial class TradePage
         }
 
         Logger.Info($"[UI] Trade planner run: {routes.Count} routes, ship {ship.Id}, scope {App.Settings.Current.TradeScope}, start {App.Settings.Current.TradeStartManual ?? "LIVE"}, dest {_destSelectedName ?? AnyDestination}, commodity {_commoditySelectedName ?? AnyCommodity}");
+
+        // One line per rebuild, not per route: enough for the App Log Monitor and the diagnostic
+        // snapshot to answer "is the container snap biting in the field", without turning a
+        // 25-route rebuild into 25 log lines. Silent when nothing snapped, which is the common case.
+        var snappedCount = routes.Count(r => r.TripQty < r.PlannedQty);
+        if (snappedCount > 0)
+            Logger.Info($"[UI] Trade planner run: {snappedCount} of {routes.Count} routes snapped to buyable containers, {routes.Sum(r => r.PlannedQty - r.TripQty)} SCU trimmed");
     }
 
     // Starting Location (task 10): mirrors SetDemandFilter's no-op-on-unchanged guard - a pick that
@@ -1423,7 +1430,10 @@ public sealed partial class TradePage
         // line up). Wrapping the chips was not enough - the leg still measured them. Out here it
         // spans both columns and cannot influence any other element's width or placement, however
         // many containers it lists.
-        if (ContainerPlanner.Plan(r.BuyRow.ContainerSizes, ship.MaxContainerScu, r.TripQty) is { } plan)
+        // PLANNED, not TripQty. TripQty is already snapped to what this menu can supply, so planning
+        // against it would report a shortfall of zero on every card and delete the one line that
+        // explains why a 46 SCU hull is only hauling 40 (issue #31).
+        if (ContainerPlanner.Plan(r.BuyRow.ContainerSizes, ship.MaxContainerScu, r.PlannedQty) is { } plan)
         {
             // Stretches deliberately: on its own row it drives nothing, and the chip WrapPanel
             // inside needs a real width to wrap against. Left-aligning here would give it infinite
@@ -1441,7 +1451,7 @@ public sealed partial class TradePage
                 warnNote: plan.MaxContainerScu < ship.MaxContainerScu ? "TERMINAL LIMIT" : null,
                 warnTip: $"The largest container this terminal sells is {plan.MaxContainerScu:n0} SCU, below the "
                        + $"{ship.MaxContainerScu:n0} SCU this ship can load, so the run needs more containers than it otherwise would."));
-            purchase.Children.Add(CratePlanLine(plan, r.TripQty));
+            purchase.Children.Add(CratePlanLine(plan, r.PlannedQty));
             Grid.SetRow(purchase, 3); Grid.SetColumnSpan(purchase, 2);
             grid.Children.Add(purchase);
         }
@@ -1715,10 +1725,13 @@ public sealed partial class TradePage
         return row;
     }
 
-    /// <summary>The buy leg's container plan: which sizes to actually buy here to reach the trip
-    /// quantity, and an amber shortfall when this kiosk's sizes cannot reach it. Shares the
-    /// LabelledValueLine geometry so it sits flush under the largest-size line above it.</summary>
-    private static Panel CratePlanLine(ContainerPlan plan, int tripQty)
+    /// <summary>The buy leg's container plan: which sizes to actually buy here to reach the
+    /// quantity the planner wanted, and an amber shortfall when this kiosk's sizes cannot reach
+    /// it. Takes the PRE-SNAP quantity deliberately: TradeRoute.TripQty is already snapped to
+    /// what this menu can supply, so planning against it would report a shortfall of zero on
+    /// every card. Shares the LabelledValueLine geometry so it sits flush under the largest-size
+    /// line above it.</summary>
+    private static Panel CratePlanLine(ContainerPlan plan, int plannedQty)
     {
         // WrapPanel, left-aligned: a four-size plan (real: a Cutlass Black needing 16+16+8+4+2)
         // would otherwise run the leg as wide as its longest chip row and drag every sibling with
@@ -1742,7 +1755,7 @@ public sealed partial class TradePage
             // A real answer, not a gap: every container this kiosk sells is bigger than the whole trip.
             row.Children.Add(new TextBlock
             {
-                Text = $"none sold here small enough for {tripQty:n0} SCU",
+                Text = $"none sold here small enough for {plannedQty:n0} SCU",
                 FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("AccentBrush"),
                 Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
             });
@@ -1789,11 +1802,11 @@ public sealed partial class TradePage
             row.Children.Add(new TextBlock
             {
                 // Says the consequence in words rather than leaving "40 of 46" to be subtracted.
-                Text = $"{plan.ShortfallScu:n0} SCU short of the {tripQty:n0} planned",
+                Text = $"{plan.ShortfallScu:n0} SCU short of the {plannedQty:n0} planned",
                 FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("AccentBrush"),
                 Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = $"This terminal sells no combination of container sizes that reaches "
-                        + $"{tripQty:n0} SCU, so the run loads {plan.TotalScu:n0} SCU instead.",
+                        + $"{plannedQty:n0} SCU, so the run loads {plan.TotalScu:n0} SCU instead.",
             });
         return row;
     }

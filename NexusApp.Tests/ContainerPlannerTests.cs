@@ -207,4 +207,50 @@ public class ContainerPlannerTests
                     Assert.All(p.Picks, x => Assert.InRange(x.Scu, p.MinContainerScu, p.MaxContainerScu));
                 }
     }
+
+    [Fact]
+    public void BuyableScu_ReturnsTheTarget_WhenTheMenuReachesItExactly()
+    {
+        // A menu containing 1 can hit any target, so the snap is a no-op.
+        Assert.Equal(46, ContainerPlanner.BuyableScu("1,2,4,8,16,24,32", shipMaxContainerScu: 16, targetScu: 46));
+    }
+
+    [Fact]
+    public void BuyableScu_ReturnsTheFullestReachableLoad_WhenTheMenuCannotReachTheTarget()
+    {
+        // A Cutlass Black's 46 SCU against a menu starting at 8: 5x8 = 40 is the fullest load
+        // at or under the target, so 6 SCU are unbuyable.
+        Assert.Equal(40, ContainerPlanner.BuyableScu("8,16,24,32", shipMaxContainerScu: 16, targetScu: 46));
+    }
+
+    [Fact]
+    public void BuyableScu_ReturnsZero_WhenEveryContainerIsBiggerThanTheTarget()
+    {
+        Assert.Equal(0, ContainerPlanner.BuyableScu("8,16,24,32", shipMaxContainerScu: 32, targetScu: 6));
+    }
+
+    [Fact]
+    public void BuyableScu_ReturnsTheTargetUnchanged_WhenNothingCanBePlanned()
+    {
+        // Fail-open, deliberately. An unparseable menu or a zero-capacity ship is a "cannot
+        // measure", and a route must never be made to look worse because the planner could not run.
+        // RoutePlanner's BoxFits gate makes both cases unreachable from ranking anyway.
+        Assert.Equal(46, ContainerPlanner.BuyableScu("", shipMaxContainerScu: 16, targetScu: 46));
+        Assert.Equal(46, ContainerPlanner.BuyableScu("1,2,4", shipMaxContainerScu: 0, targetScu: 46));
+    }
+
+    [Fact]
+    public void BuyableScu_ReturnsZero_ForANonPositiveTarget()
+    {
+        Assert.Equal(0, ContainerPlanner.BuyableScu("1,2,4,8", shipMaxContainerScu: 16, targetScu: 0));
+    }
+
+    [Fact]
+    public void BuyableScu_AgreesWithPlansTotal()
+    {
+        // The one invariant that matters: the number ranking uses and the containers the card
+        // lists are the same decision, so they can never contradict each other on screen.
+        var plan = ContainerPlanner.Plan("8,16,24,32", 16, 46)!;
+        Assert.Equal(plan.TotalScu, ContainerPlanner.BuyableScu("8,16,24,32", 16, 46));
+    }
 }

@@ -106,6 +106,27 @@ public static class ContainerPlanner
     }
 
     /// <summary>
+    /// How much of <paramref name="targetScu"/> can actually be bought here, and nothing else about
+    /// how. The route planner ranks on this, so a route is priced on cargo that can be loaded rather
+    /// than on the raw capacity of the hull (issue #31: "do not recommend a manifest size that can
+    /// not be achieved by those sizes").
+    /// <para>
+    /// Delegates to <see cref="Plan"/> rather than restating the coin math, so the quantity a route
+    /// is ranked on and the containers its card lists are one decision and can never contradict each
+    /// other on screen.
+    /// </para>
+    /// <para>
+    /// Fails OPEN: when nothing can be planned at all (no target, no usable ship capacity, an
+    /// unparseable menu) the target is returned unchanged, because a route must not be made to look
+    /// worse for a measurement that could not be taken. RoutePlanner's BoxFits gate already excludes
+    /// the unusable-menu and zero-capacity cases before this is reached, so in ranking the fallback
+    /// only ever fires on a target that is already zero.
+    /// </para>
+    /// </summary>
+    public static int BuyableScu(string containerSizes, int shipMaxContainerScu, int targetScu) =>
+        Plan(containerSizes, shipMaxContainerScu, targetScu)?.TotalScu ?? targetScu;
+
+    /// <summary>
     /// The crate sizes a given ship can actually take from a given terminal: the terminal's menu
     /// filtered to what fits the ship's largest grid. Same split discipline as TradeMath.BoxFits
     /// (comma-separated, trimmed, empties dropped), and the same fail-closed stance - a size that

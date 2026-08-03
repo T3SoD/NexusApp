@@ -561,4 +561,156 @@ public class RoutePlannerTests
             Assert.Equal(defaultRoutes[i].TripParts, explicitProfitRoutes[i].TripParts);
         }
     }
+
+    [Fact]
+    public void Rank_SnapsTripQtyToWhatTheBuyMenuCanActuallySupply()
+    {
+        // A Cutlass Black's 46 SCU at a terminal whose smallest container is 8: the fullest
+        // buyable load is 5x8 = 40, so 6 SCU cannot be bought and must not be priced.
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 500, containerSizes: "8,16,24,32"),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, shipScu: 46, shipMaxBox: 16, budget: null,
+            originTerminalIds: null, scope: "ALL", take: 10);
+
+        var route = Assert.Single(routes);
+        Assert.Equal(40, route.TripQty);        // 5x8, the fullest load at or under 46
+        Assert.Equal(46, route.PlannedQty);     // what ship and stock alone allowed
+        Assert.Equal(4000, route.Gross);        // 40 * (200 - 100), NOT 46 * 100
+        Assert.Equal(route.Gross, route.Net);
+    }
+
+    [Fact]
+    public void Rank_LeavesTripQtyAlone_WhenTheMenuReachesTheTarget()
+    {
+        // A menu containing 1 hits any target, so nothing moves and PlannedQty equals TripQty.
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 500),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 46, 16, null, null, "ALL", 10);
+
+        var route = Assert.Single(routes);
+        Assert.Equal(46, route.TripQty);
+        Assert.Equal(46, route.PlannedQty);
+        Assert.Equal(4600, route.Gross);
+    }
+
+    [Fact]
+    public void Rank_ReordersRoutes_WhenSnappingChangesWhichPaysMore()
+    {
+        // The whole point of the fix. On raw capacity commodity 10 wins (46 x 105 = 4,830 against
+        // 46 x 100 = 4,600). Once commodity 10's menu is honoured it can only load 40 (4,200), so
+        // commodity 20 must come first.
+        var terminals = new Dictionary<int, MarketTerminal>
+        {
+            [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton"), [3] = Term(3, "Stanton"), [4] = Term(4, "Stanton"),
+        };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 10, buy: 100, sell: 0, buyStock: 500, containerSizes: "8,16,24,32"),
+            Row(2, 10, buy: 0, sell: 205, sellDemand: 500, containerSizes: "8,16,24,32"),
+            Row(3, 20, buy: 100, sell: 0, buyStock: 500),
+            Row(4, 20, buy: 0, sell: 200, sellDemand: 500),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 46, 16, null, null, "ALL", 10);
+
+        Assert.Equal(2, routes.Count);
+        Assert.Equal(20, routes[0].BuyRow.CommodityId);
+        Assert.Equal(4600, routes[0].Net);
+        Assert.Equal(10, routes[1].BuyRow.CommodityId);
+        Assert.Equal(4200, routes[1].Net);
+    }
+
+    [Fact]
+    public void Rank_KeepsRoutesThatCanBuyNothing_RatherThanDroppingThem()
+    {
+        // Stock is 6 but the smallest container sold here is 8. The route is unrunnable, and the
+        // card's "none sold here small enough" line is the only place that is ever explained, so
+        // the row stays and simply pays nothing.
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 6, containerSizes: "8,16,24,32"),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 46, 16, null, null, "ALL", 10);
+
+        var route = Assert.Single(routes);
+        Assert.Equal(0, route.TripQty);
+        Assert.Equal(6, route.PlannedQty);
+        Assert.Equal(0, route.Net);
+    }
+
+    [Fact]
+    public void Rank_JudgesDemandCoverageAgainstTheSnappedQuantity()
+    {
+        // Demand is 42, which does not cover the 46 the hull wanted but does cover the 40 that can
+        // actually be bought and therefore actually delivered. CoversTrip must pass.
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 500, containerSizes: "8,16,24,32"),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 42),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 46, 16, null, null, "ALL", 10,
+            StockFilter.CoversTrip);
+
+        var route = Assert.Single(routes);
+        Assert.Equal(40, route.TripQty);
+    }
+
+    [Fact]
+    public void Rank_SnapsAfterTheBudgetHasAlreadyBound()
+    {
+        // Budget affords 30 (3,000 / 100), below the hull's 46. The menu then snaps that 30 down
+        // to 24, so both limits apply in order and the smaller wins.
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var rows = new List<TradePriceRow>
+        {
+            Row(1, 47, buy: 100, sell: 0, buyStock: 500, containerSizes: "8,16,24,32"),
+            Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+        };
+
+        var routes = RoutePlanner.Rank(rows, terminals, 46, 16, budget: 3000,
+            originTerminalIds: null, scope: "ALL", take: 10);
+
+        var route = Assert.Single(routes);
+        Assert.Equal(24, route.TripQty);     // 16 + 8; 30 is not reachable from 8,16
+        Assert.Equal(30, route.PlannedQty);
+        Assert.Equal(2400, route.Net);
+    }
+
+    [Fact]
+    public void Rank_NarratesTheContainerLimit_OnlyWhenItActuallyBit()
+    {
+        var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton"), [2] = Term(2, "Stanton") };
+        var snapped = RoutePlanner.Rank(
+            new List<TradePriceRow>
+            {
+                Row(1, 47, buy: 100, sell: 0, buyStock: 500, containerSizes: "8,16,24,32"),
+                Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+            },
+            terminals, 46, 16, null, null, "ALL", 10);
+        Assert.Contains("containers reach 40", snapped[0].TripParts);
+
+        var untouched = RoutePlanner.Rank(
+            new List<TradePriceRow>
+            {
+                Row(1, 47, buy: 100, sell: 0, buyStock: 500),
+                Row(2, 47, buy: 0, sell: 200, sellDemand: 500),
+            },
+            terminals, 46, 16, null, null, "ALL", 10);
+        Assert.DoesNotContain(untouched[0].TripParts, p => p.StartsWith("containers reach"));
+    }
 }

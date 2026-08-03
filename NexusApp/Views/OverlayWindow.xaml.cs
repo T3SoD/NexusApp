@@ -4078,6 +4078,14 @@ public partial class OverlayWindow : Window
             App.Map.DistanceMeters, commodityFilter);
         Logger.Info($"[UI] overlay trade planner run: {routes.Count} routes, scope {App.Settings.Current.TradeScope}, commodity {commodityFilter ?? "ANY"}");
 
+        // Same snap telemetry as the desktop planner (TradePage.Planner.cs), one line per rebuild
+        // and silent when nothing snapped: a user working entirely from the overlay would otherwise
+        // generate zero evidence of the container snap for the App Log Monitor and diagnostic
+        // snapshot to read.
+        var snappedCount = routes.Count(r => r.TripQty < r.PlannedQty);
+        if (snappedCount > 0)
+            Logger.Info($"[UI] overlay trade planner run: {snappedCount} of {routes.Count} routes snapped to buyable containers, {routes.Sum(r => r.PlannedQty - r.TripQty)} SCU trimmed");
+
         if (routes.Count == 0)
         {
             // A commodity filter that produced nothing gets named (the main ladder's rule), then

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using NexusApp.Models;
 
@@ -6,10 +7,18 @@ namespace NexusApp.Services;
 // One priced leg pair for the route planner: buy this commodity at BuyRow's terminal, haul it,
 // sell at SellRow's terminal. Net == Gross in v1 - no fee schedule exists yet (spec: "fee
 // provider is zero in v1"); TradeRoute carries only the one number so the UI never has to
-// reconcile a fee split that does not exist yet. TripParts narrates the same TripQty this route
-// was built from, so the headline number and the expanded-band explanation can never drift apart.
+// reconcile a fee split that does not exist yet. TripQty is what can actually be BOUGHT: capacity,
+// stock and budget first, then snapped down to the fullest load the buy terminal's container menu
+// can supply (issue #31). PlannedQty is that same figure BEFORE the snap, carried so the card can
+// name the gap ("6 SCU short of the 46 planned") beside a profit that no longer pretends the gap
+// was hauled. Rank is the only production constructor and always sets it; the 0 default exists
+// only to keep the parameter optional for callers that do not compute one, which in practice means
+// direct test constructions (the pin-rename test among them) that predate PlannedQty and have no
+// use for it - 0 is not itself a meaningful trip quantity. TripParts narrates the same TripQty this
+// route was built from, so the headline number and the expanded-band explanation can never drift
+// apart.
 public sealed record TradeRoute(TradePriceRow BuyRow, TradePriceRow SellRow, int TripQty, double Gross,
-    double Net, ProximityTier Tier, string[] TripParts);
+    double Net, ProximityTier Tier, string[] TripParts, int PlannedQty = 0);
 
 // Demand-at-destination coverage filter for the route planner (task 5; resemantic task 10). Any =
 // no filter (default, the planner's original behavior, byte-preserved). CoversTrip requires the
@@ -99,12 +108,53 @@ public static class RoutePlanner
                 lists.Sells.Add(row);
         }
 
+        // Memo for the container snap below. The snapped quantity depends on the BUY ROW alone
+        // (this hull, this row's stock, this budget, this row's price, this row's menu) and never on
+        // the sell leg, so it is computed once per buy row rather than once per pair. Keying on the
+        // menu string and the pre-snap quantity collapses that further: a whole snapshot holds only
+        // a few dozen distinct menus, and every row a full hold can fill shares one quantity.
+        // ContainerPlanner.BuyableScu also takes shipMaxBox as a third input, deliberately left out
+        // of this key: shipMaxBox is a Rank parameter, never reassigned once this call starts, and
+        // this dictionary is local to the call, so a single Rank invocation can only ever see one
+        // value of it. A static or cross-call cache would not have that guarantee and would need
+        // shipMaxBox folded back into the key.
+        var buyable = new Dictionary<(string Sizes, int Planned), int>();
+
         foreach (var (buys, sells) in byCommodity.Values)
         {
+            // The per-buy-row work below (a TripQty computation, a full ContainerPlanner DP) is
+            // only worth paying for when there is something to pair it against. A picked
+            // DESTINATION routinely empties this commodity's sell list entirely; before this work
+            // was hoisted up from the inner sells loop, an empty sells list simply meant that loop
+            // did nothing, so this guard restores the same no-op for every buy row in that case
+            // instead of paying for the DP on each one.
+            if (sells.Count == 0) continue;   // no eligible sell leg: nothing this buy row can pair with
+
             foreach (var buyRow in buys)
             {
                 if (!TradeMath.BoxFits(buyRow.ContainerSizes, shipMaxBox)) continue;
                 var buyTerminal = terminals[buyRow.TerminalId];
+
+                // What capacity, stock and budget allow, before the kiosk gets a say.
+                var plannedQty = TradeMath.TripQty(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
+
+                // What can actually be carried out of this kiosk. A terminal selling only 8s and
+                // bigger cannot fill a 46 SCU hull, and pricing the missing 6 was ranking routes on
+                // cargo nobody can buy (issue #31).
+                var key = (buyRow.ContainerSizes, plannedQty);
+                if (!buyable.TryGetValue(key, out var tripQty))
+                {
+                    tripQty = ContainerPlanner.BuyableScu(buyRow.ContainerSizes, shipMaxBox, plannedQty);
+                    buyable[key] = tripQty;
+                }
+
+                var tripParts = TradeMath.TripParts(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
+                // Appended here rather than inside TradeMath.TripParts: that function is pure
+                // capacity math with no container inputs, and growing its signature for one caller
+                // would be churn. Only said when the menu actually bit, so the narration never
+                // lists a limit that did not apply.
+                if (tripQty < plannedQty)
+                    tripParts = [.. tripParts, $"containers reach {tripQty.ToString("N0", CultureInfo.InvariantCulture)}"];
 
                 foreach (var sellRow in sells)
                 {
@@ -112,12 +162,10 @@ public static class RoutePlanner
                     if (!TradeMath.BoxFits(sellRow.ContainerSizes, shipMaxBox)) continue;
 
                     var sellTerminal = terminals[sellRow.TerminalId];
-                    var tripQty = TradeMath.TripQty(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy);
                     if (!PassesStockFilter(stockFilter, tripQty, sellRow.SellDemandScu)) continue;
                     var gross = tripQty * (sellRow.Sell - buyRow.Buy);
                     result.Add(new TradeRoute(buyRow, sellRow, tripQty, gross, gross,
-                        ProximityTiers.Derive(buyTerminal, sellTerminal),
-                        TradeMath.TripParts(shipScu, buyRow.BuyStockScu, budget, buyRow.Buy)));
+                        ProximityTiers.Derive(buyTerminal, sellTerminal), tripParts, plannedQty));
                 }
             }
         }
@@ -169,9 +217,10 @@ public static class RoutePlanner
     // anything, so it only ever surfaces under Any.
     //
     // DEMAND ONLY (task 10 resemantic): buyStockScu is deliberately NOT checked here anymore.
-    // tripQty is derived from buyStockScu via TradeMath.TripQty (tripQty = min(shipScu,
-    // buyStockScu, ...)), so tripQty can never exceed buyStockScu - the buy side is already
-    // self-limiting. That made the old CoversTrip check (buyStockScu >= tripQty) a tautology, but
+    // tripQty is derived from buyStockScu via TradeMath.TripQty (min(shipScu, buyStockScu, ...))
+    // and then snapped DOWN to what the buy terminal's containers can supply, so tripQty can never
+    // exceed buyStockScu - the buy side is already self-limiting, and the snap only tightens it.
+    // That made the old CoversTrip check (buyStockScu >= tripQty) a tautology, but
     // the old CoversTwoTrips check (buyStockScu >= 2*tripQty) was NOT: whenever stock was the
     // binding constraint (the common case), tripQty == buyStockScu, so buyStockScu >= 2*tripQty
     // reduced to buyStockScu >= 2*buyStockScu - only ever true for buyStockScu <= 0. CoversTwoTrips
