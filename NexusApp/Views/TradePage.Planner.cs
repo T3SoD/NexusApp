@@ -1536,22 +1536,22 @@ public sealed partial class TradePage
         return p;
     }
 
-    /// <summary>What SCT said about one side, kept beside the UEX row so a card can offer both.
-    /// <c>Fresher</c> is the freshness comparison only - it never changes what is shown or ranked.</summary>
-    private readonly record struct SidePair(SideReading Fresher, double SctPrice, int SctQuantity, DateTime SctUtc);
+    /// <summary>What SCT said about one side, kept beside the UEX row so a card can offer both.</summary>
+    private readonly record struct SidePair(double SctPrice, int SctQuantity, DateTime SctUtc);
 
-    // Keyed by (terminal, commodity, player-buy) from the last rank. Absent means only UEX had a
-    // reading, in which case the row already carries its numbers and its timestamp.
+    // Keyed by (terminal, commodity, player-buy) from the last rank. Absent means only UEX reported
+    // this side, in which case the row already carries everything there is to show.
     private Dictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SidePair> _sidePairs = new();
 
     /// <summary>
     /// Records what SCT says about every side and returns the rows UNCHANGED.
     ///
-    /// UEX alone ranks and prices the routes (owner: "keep UEX as main"), so no figure here is
-    /// substituted. Ranking on whichever feed was fresher per side was built and then backed out:
-    /// with ONE toggle per route, a route whose buy leg was fresher on SCT and whose sell leg was
-    /// fresher on UEX has no honest two-state default, and the profit would have come from a
-    /// mixture the card could not display.
+    /// UEX alone prices and ranks the routes (owner: "for prices lets just stick with UEX"), so no
+    /// figure is substituted here. This exists only so a card can offer SCT's stock and demand
+    /// beside it. Choosing whichever feed observed a side more recently was built and then backed
+    /// out: with one toggle per route, a route fresher on SCT for its buy leg and on UEX for its
+    /// sell leg has no honest two-state default, and the profit would have come from a mixture the
+    /// card could not display.
     ///
     /// Container sizes, terminal identity and commodity identity are UEX's regardless - SCT
     /// publishes none of them.
@@ -1564,11 +1564,10 @@ public sealed partial class TradePage
         var sct = App.Sct.SideIndex();
         if (sct.Count == 0) return rows;
 
-        var now = DateTime.UtcNow;
         foreach (var row in rows)
         {
-            RecordPair(row, sct, ChooseSide(row, sct, now, playerBuy: true), playerBuy: true);
-            RecordPair(row, sct, ChooseSide(row, sct, now, playerBuy: false), playerBuy: false);
+            RecordPair(row, sct, playerBuy: true);
+            RecordPair(row, sct, playerBuy: false);
         }
         return rows;
     }
@@ -1577,23 +1576,11 @@ public sealed partial class TradePage
     // untouched, because UEX is what the card shows and what the route was ranked on.
     private void RecordPair(TradePriceRow row,
         IReadOnlyDictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SctListing> sct,
-        SideReading fresher, bool playerBuy)
+        bool playerBuy)
     {
         if (!sct.TryGetValue((row.TerminalId, row.CommodityId, playerBuy), out var listing)) return;
         _sidePairs[(row.TerminalId, row.CommodityId, playerBuy)] =
-            new SidePair(fresher, listing.Price, listing.Quantity, listing.TimestampUtc);
-    }
-
-    private SideReading ChooseSide(TradePriceRow row,
-        IReadOnlyDictionary<(int TerminalId, int CommodityId, bool PlayerBuy), SctListing> sct,
-        DateTime nowUtc, bool playerBuy)
-    {
-        var hit = sct.TryGetValue((row.TerminalId, row.CommodityId, playerBuy), out var listing) ? listing : null;
-        return MarketMerge.Choose(
-            playerBuy ? row.Buy : row.Sell,
-            playerBuy ? row.BuyStockScu : row.SellDemandScu,
-            row.ModifiedUtc,
-            hit?.Price, hit?.Quantity, hit?.TimestampUtc, nowUtc);
+            new SidePair(listing.Price, listing.Quantity, listing.TimestampUtc);
     }
 
     /// <summary>
