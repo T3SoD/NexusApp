@@ -16,6 +16,7 @@ internal static class TradePlanArgs
     {
         "PROFIT PER SCU" => RankMode.ProfitPerScu,
         "PROFIT PER GM" => RankMode.ProfitPerGm,
+        "ROI" => RankMode.Roi,
         _ => RankMode.Profit,
     };
 
