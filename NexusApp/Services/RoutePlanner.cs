@@ -41,7 +41,7 @@ public enum StockFilter { Any, CoversTrip, CoversTwoTrips }
 // difference twenty times over. Deliberately a measured-distance RATIO and not credits-per-hour or
 // an ETA: turning it into time would need a speed model the app does not have, and would contradict
 // the ProximityTiers spec line "no invented ETAs".
-public enum RankMode { Profit, ProfitPerScu, ProfitPerGm }
+public enum RankMode { Profit, ProfitPerScu, ProfitPerGm, Roi }
 
 // Pairs a Buy>0 row with a Sell>0 row of the same commodity, at two DIFFERENT terminals (a
 // same-terminal pair is not a haul), ranks by net profit per trip. Anchor mode (FROM HERE vs
@@ -194,6 +194,17 @@ public static class RoutePlanner
                       })
                       .ThenByDescending(x => x.Route.Net)
                       .Select(x => x.Route).Take(take).ToList(),
+
+            // Capital efficiency (owner, 2026-08-04): net over the buy-side capital the trip ties
+            // up, the same derivation the card rail's TradeFinancials fold renders, so the sorted-by
+            // figure is the RETURN ON INVESTMENT every card already shows. A route with no capital
+            // tied up sorts LAST, the rail's own silence convention: an unpriceable ratio is
+            // absence, not a bargain. Ties break on raw net, matching every other ratio mode.
+            RankMode.Roi =>
+                result.OrderByDescending(r => r.BuyRow.Buy > 0 && r.TripQty > 0
+                          ? r.Net / (r.BuyRow.Buy * r.TripQty)
+                          : double.NegativeInfinity)
+                      .ThenByDescending(r => r.Net).Take(take).ToList(),
 
             // ProfitPerGm with no distance source available falls back to plain profit rather than
             // returning an arbitrary order. The UI only offers the pill when a catalog is wired, so

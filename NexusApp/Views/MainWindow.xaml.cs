@@ -48,7 +48,9 @@ public partial class MainWindow : Window
             App.Locations.Changed += () => Dispatcher.BeginInvoke(UpdateLocationChip);
         if (App.GameLog != null)
         {
-            App.GameLog.StateChanged += () => { UpdateSessionChip(); RefreshBlueprintTrackingLine(); };
+            // UpdateLocationChip rides the session flips too (owner, 2026-08-04): its lamp folds
+            // App.GameLog.IsSessionLive in, so game start/exit repaints it, not only a move.
+            App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateLocationChip(); RefreshBlueprintTrackingLine(); };
             // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
             // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
             // ChipSuffix on the next Game.log channel resolve.
@@ -737,11 +739,13 @@ public partial class MainWindow : Window
 
     // LOCATION telemetry chip (F14, new): where Game.log last placed the player - the gate for
     // every distance the app renders (Codex, work orders, Trade ranking, map marker, overlay route
-    // bands), which until this chip had no global lamp. Cyan breathing when a place is known
-    // (cyan = the app's live-location identity, reserved), dim "unknown" otherwise. Label over
-    // resolution: App.Player.Label is the log's own words even when the catalog cannot place them,
-    // which is the honest thing for a chip that SAYS rather than MEASURES (PlayerPlace's rule).
-    private bool? _locationChipKnown;
+    // bands), which until this chip had no global lamp. Cyan breathing when a place is known AND a
+    // session is live (cyan = the app's live-location identity, reserved), red when the reading
+    // has no live session behind it (owner, 2026-08-04: LastKnownLocation never clears, so
+    // known-ness alone kept the chip cyan after the game closed), dim "unknown" otherwise. Label
+    // over resolution: App.Player.Label is the log's own words even when the catalog cannot place
+    // them, which is the honest thing for a chip that SAYS rather than MEASURES (PlayerPlace's rule).
+    private LocationLamp? _locationChipLamp;
     private void UpdateLocationChip()
     {
         if (LocationChipText == null) return;
@@ -752,22 +756,35 @@ public partial class MainWindow : Window
         // dim with a "space" qualifier and NO cyan pulse - the cyan live treatment is the chip's
         // claim that the app knows the player's place, and a jurisdiction is not one.
         bool coarse = known && App.Player!.LabelIsJurisdiction;
+        // The FEED's process probe, not GameLogSession's gated read: the latter goes false when
+        // the log monitor is stopped while the game still runs, and this chip's location keeps
+        // updating live off the feed in exactly that state.
+        var lamp = StatusChips.LocationLampState(known, coarse, App.GameLogFeed?.IsSessionLive == true);
         LocationChipText.Text = !known ? "unknown" : coarse ? $"{label} space" : label;
         // The value is width-capped (long outpost names trim at 136px so the line never outgrows
         // the operator name above it) - the tooltip always carries the full text.
-        LocationChipText.ToolTip = !known ? null
-            : coarse ? $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down."
-            : label;
-        var brush = !known || coarse ? Hud.Br("FgDimBrush") : Hud.Br("CyanBrush");
+        LocationChipText.ToolTip = lamp switch
+        {
+            LocationLamp.Unknown => null,
+            LocationLamp.Offline => $"{label} - the last known reading. Star Citizen is not running.",
+            LocationLamp.Coarse => $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down.",
+            _ => label,
+        };
+        var brush = lamp switch
+        {
+            LocationLamp.Live => Hud.Br("CyanBrush"),
+            LocationLamp.Offline => Hud.Br("DangerBrush"),
+            _ => Hud.Br("FgDimBrush"),
+        };
         LocationChipText.Foreground = brush;
         LocationDot.Fill = brush;
-        Hud.PulseDot(LocationDot, known && !coarse);
-        // Log only the flips, not every place change - the tracker already logs the timeline.
-        bool lit = known && !coarse;
-        if (_locationChipKnown != lit)
+        Hud.PulseDot(LocationDot, lamp == LocationLamp.Live);
+        // Log only the lamp flips, not every place change - the tracker already logs the timeline.
+        if (_locationChipLamp != lamp)
         {
-            _locationChipKnown = lit;
-            Logger.Info($"[UI] dock location: {(known ? LocationChipText.Text : "unknown")}");
+            _locationChipLamp = lamp;
+            Logger.Info($"[UI] dock location: {(known ? LocationChipText.Text : "unknown")}"
+                + (lamp == LocationLamp.Offline ? " (game offline)" : ""));
         }
     }
 
@@ -1285,6 +1302,7 @@ public partial class MainWindow : Window
 
         var (state, text, tip) = MarketPillState();
         if (state == _marketPillState && text == _marketPillText && tip == _marketPillTip) return;
+        bool stateChanged = state != _marketPillState;
         _marketPillState = state;
         _marketPillText = text;
         _marketPillTip = tip;
@@ -1315,14 +1333,20 @@ public partial class MainWindow : Window
         MarketChipText.Text = text;
         MarketChipText.Foreground = value;
         MarketDot.Fill = dot;
-        Hud.PulseDot(MarketDot, state == "busy");   // amber breathe while a cycle runs; solid otherwise
+        // Pulse only on state transitions: the value text ages now (PillState), so a text-only
+        // repaint (a minute or hour boundary crossing) must not restart the busy breathe from
+        // full opacity mid-loop - the exact artifact the change-guard above exists to prevent.
+        if (stateChanged) Hud.PulseDot(MarketDot, state == "busy");   // amber breathe while a cycle runs; solid otherwise
     }
 
-    // Which state the pill is in, its value text, and its tooltip. Priority: a refresh in flight is
-    // the most current fact about the channel, so it outranks the previous cycle's error (which
-    // comes back by itself if this cycle fails too). Staleness is measured off the refined price
-    // stamp, not the snapshot's newest fetch, for the same reason the dossier's age note is: the
-    // daily reference datasets would otherwise report day-old prices as fresh.
+    // Which state the pill is in, its value text, and its tooltip - the fold itself is
+    // MarketNotice.PillState, shared grammar with the Trade page's strip pill (owner, 2026-08-04:
+    // both TRADE DATA pills show hours since the last update). The age is stamped off the TRADE
+    // price dataset - the exact stamp the strip pill dates (TradePage.RefreshContextRow) - not
+    // RefinedPrices: the two datasets usually share one fetch stamp, but a partial cycle leaves
+    // them apart and the two pills then read different numbers for the same label (observed live
+    // 2026-08-04, 9m against 6m). Still a per-dataset stamp, never the snapshot's newest fetch,
+    // so the old day-old-data-reads-fresh concern stays covered.
     private (string State, string Text, string Tip) MarketPillState()
     {
         // The demo profile never fetches (MarketDataService.ShouldFetch), so a pill there could
@@ -1332,21 +1356,9 @@ public partial class MainWindow : Window
             return ("off", "", MarketNotice.PillTooltip);
 
         var snap = App.Market.Snapshot;
-        var priced = snap is { } s && s.RefinedPrices.FetchedUtc != default;
-        DateTime? clock = App.Settings.Current.LastMarketFetchUtc?.ToLocalTime()
-                          ?? (priced ? DateTime.SpecifyKind(snap!.RefinedPrices.FetchedUtc, DateTimeKind.Utc).ToLocalTime() : null);
-
-        if (App.Market.FetchInProgress)
-            return ("busy", clock is { } c ? MarketNotice.PillClock(c) : MarketNotice.PillSyncing, MarketNotice.PillTooltip);
-        if (App.Market.LastError is { } err)
-            return ("error", MarketNotice.PillOffline, err);
-        if (!priced)
-            return ("nodata", MarketNotice.PillNoData, MarketNotice.PillTooltip);
-
-        var age = DateTime.UtcNow - snap!.RefinedPrices.FetchedUtc;
-        if (age > TimeSpan.FromHours(24))
-            return ("stale", MarketNotice.PillAge(age), MarketNotice.PillTooltip);
-        return ("fresh", clock is { } t ? MarketNotice.PillClock(t) : MarketNotice.PillNoData, MarketNotice.PillTooltip);
+        var priced = snap is { } s && s.TradePrices.FetchedUtc != default;
+        TimeSpan? age = priced ? DateTime.UtcNow - snap!.TradePrices.FetchedUtc : null;
+        return MarketNotice.PillState(App.Market.FetchInProgress, App.Market.LastError, age);
     }
 
     // The pill is a shortcut to the setting that governs it: mouse only, like every other control.

@@ -3514,6 +3514,7 @@ public partial class OverlayWindow : Window
         ("PROFIT", "PROFIT", RankMode.Profit),
         ("PROFIT PER SCU", "PROFIT PER SCU", RankMode.ProfitPerScu),
         ("PROFIT PER Gm", "PROFIT PER GM", RankMode.ProfitPerGm),
+        ("ROI", "ROI", RankMode.Roi),
     };
     // BUDGET presets (R2): session-local by design, so unlike everything above there is no
     // persisted vocabulary to mirror - the values are exactly what the pills say.

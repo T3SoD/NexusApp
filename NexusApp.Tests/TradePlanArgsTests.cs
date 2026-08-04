@@ -16,6 +16,7 @@ public class TradePlanArgsTests
     [Theory]
     [InlineData("PROFIT PER SCU", RankMode.ProfitPerScu)]
     [InlineData("PROFIT PER GM", RankMode.ProfitPerGm)]
+    [InlineData("ROI", RankMode.Roi)]
     [InlineData("PROFIT", RankMode.Profit)]
     [InlineData(null, RankMode.Profit)]
     [InlineData("garbage", RankMode.Profit)]
