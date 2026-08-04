@@ -48,6 +48,7 @@ public sealed partial class TradePage
     private Border _rankProfitPill = null!;
     private Border _rankProfitPerScuPill = null!;
     private Border _rankProfitPerGmPill = null!;
+    private Border _rankRoiPill = null!;
     // The TRADE ship list, not the grid catalog: every flyable hull with cargo space (~90), where
     // CargoShipCatalog carries only the 15 whose 3D grids are reviewed and signed off. The planner
     // needs totals and a max container size, never geometry. See TradeShipCatalog's class comment.
@@ -459,12 +460,17 @@ public sealed partial class TradePage
         _rankProfitPill = ScopePill("PROFIT");
         _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
         _rankProfitPerGmPill = ScopePill("PROFIT PER Gm");
+        // ROI (owner, 2026-08-04): capital efficiency, the same net-over-investment figure every
+        // card's financial rail shows - so the sorted-by number is always visible on the cards.
+        _rankRoiPill = ScopePill("ROI");
         _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
         _rankProfitPerScuPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerScu);
         _rankProfitPerGmPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.ProfitPerGm);
+        _rankRoiPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Roi);
         rankModeRow.Children.Add(_rankProfitPill);
         rankModeRow.Children.Add(_rankProfitPerScuPill);
         rankModeRow.Children.Add(_rankProfitPerGmPill);
+        rankModeRow.Children.Add(_rankRoiPill);
         rankModeGrp.Children.Add(rankModeRow);
         bottomRow.Children.Add(rankModeGrp);
 
@@ -904,12 +910,14 @@ public sealed partial class TradePage
         SetPillOn(_rankProfitPill, active == RankMode.Profit);
         SetPillOn(_rankProfitPerScuPill, active == RankMode.ProfitPerScu);
         SetPillOn(_rankProfitPerGmPill, active == RankMode.ProfitPerGm);
+        SetPillOn(_rankRoiPill, active == RankMode.Roi);
     }
 
     private static string RankModeLabel(RankMode mode) => mode switch
     {
         RankMode.ProfitPerScu => "PROFIT PER SCU",
         RankMode.ProfitPerGm => "PROFIT PER GM",
+        RankMode.Roi => "ROI",
         _ => "PROFIT",
     };
 
@@ -1306,15 +1314,102 @@ public sealed partial class TradePage
         return grid;
     }
 
+    // The financial rail (spec 2026-08-04 Option E, mock section E): a fixed 210px instrument
+    // cluster left of the route journey. Net glows on top (the ranked number keeps the loudest
+    // treatment), ROI carries the tier tint and a 0-50% meter, Investment and Gross state the
+    // capital ask beneath. Every decision folds through TradeFinancials; this method only paints.
+    private static Border BuildFinancialRail(TradeRoute r)
+    {
+        var (investment, gross, roi) = TradeFinancials.Compute(r.BuyRow.Buy, r.SellRow.Sell, r.TripQty, r.Net);
+
+        var stack = new StackPanel();
+
+        TextBlock Lbl(string t) => new()
+        {
+            Text = t, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"),
+        };
+        TextBlock Unit() => new()
+        {
+            Text = " aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 10,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(4, 0, 0, 2),
+        };
+        StackPanel MoneyRow(double value, double fontSize, Brush fg, Thickness margin, Effect? glow = null)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = margin };
+            row.Children.Add(new TextBlock
+            {
+                Text = value.ToString("n0", CultureInfo.InvariantCulture),
+                FontFamily = Hud.Font("MonoFont"), FontSize = fontSize, Foreground = fg, Effect = glow,
+            });
+            row.Children.Add(Unit());
+            return row;
+        }
+
+        stack.Children.Add(Lbl("NET PROFIT / TRIP"));
+        stack.Children.Add(MoneyRow(r.Net, 19, Hud.Br("AccentBrush"), new Thickness(0, 2, 0, 11),
+            new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 }));
+
+        // ROI renders silence when no capital is tied up (Compute returned null): no label, no
+        // meter, never a guessed percentage.
+        if (roi is { } pct)
+        {
+            var tier = TradeFinancials.Tier(pct);
+            var tint = tier switch
+            {
+                RoiTier.High => Hud.Br("OkBrush"),
+                RoiTier.Mid => Hud.Br("AccentBrush"),
+                _ => Hud.Br("FgDimBrush"),
+            };
+            stack.Children.Add(Lbl("RETURN ON INVESTMENT"));
+            stack.Children.Add(new TextBlock
+            {
+                Text = TradeFinancials.RoiText(pct), FontFamily = Hud.Font("MonoFont"),
+                FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 0, 0),
+                // Mock .roiHeroVal.t2/.t3: the Mid/High tiers glow in their tint (12px, 0.35),
+                // the None tier stays flat - the dim tier is deliberately unremarkable.
+                Effect = tier == RoiTier.None ? null : new DropShadowEffect
+                {
+                    Color = Hud.Col(tier == RoiTier.High ? "OkBrush" : "AccentBrush"),
+                    BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35,
+                },
+            });
+            // Star/star split carries the fraction, so the meter needs no measure math and
+            // resizes with the rail. Track behind spanning both columns, fill in the first.
+            var frac = TradeFinancials.MeterFraction(pct);
+            var meter = new Grid { Height = 5, Margin = new Thickness(0, 4, 0, 11) };
+            meter.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
+            meter.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
+            var track = new Border { Background = Hud.Br("Bg3Brush"), CornerRadius = new CornerRadius(3) };
+            Grid.SetColumnSpan(track, 2);
+            meter.Children.Add(track);
+            meter.Children.Add(new Border { Background = tint, CornerRadius = new CornerRadius(3) });   // column 0
+            stack.Children.Add(meter);
+        }
+
+        stack.Children.Add(Lbl("INVESTMENT"));
+        stack.Children.Add(MoneyRow(investment, 13, Hud.Br("FgBrush"), new Thickness(0, 2, 0, 11)));
+        stack.Children.Add(Lbl("GROSS"));
+        stack.Children.Add(MoneyRow(gross, 13, Hud.Br("FgBrush"), new Thickness(0, 2, 0, 0)));
+
+        // The divider between rail and journey is this Border's own right edge. Default vertical
+        // Stretch, never Top: the mock's .railGrid stretches its children, so the rule runs the
+        // full row height even when the journey column (wrapped container chips, shortfall lines)
+        // outgrows the rail; the StackPanel inside keeps the stats top-anchored either way.
+        return new Border
+        {
+            Padding = new Thickness(0, 0, 18, 0),
+            BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 1, 0),
+            Child = stack,
+        };
+    }
+
     private UIElement BuildRouteRowContent(TradeRoute r, int index, TradeShip ship, Dictionary<int, MarketTerminal> terminals)
     {
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition());
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition());
-        grid.RowDefinitions.Add(new RowDefinition());
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // source picker
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // purchase block
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // head
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // rail + journey
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // detail band
 
         // Terminal lookups for both legs, resolved once and reused below both for the System tags
@@ -1355,26 +1450,13 @@ public sealed partial class TradePage
             RefreshPinChips();   // repaint in place; see ApplyPinChipVisual for why not a rebuild
         };
         head.Children.Add(pinChip);
-        Grid.SetRow(head, 0); Grid.SetColumn(head, 0);
+        Grid.SetRow(head, 0);
         grid.Children.Add(head);
 
-        var profit = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        profit.Children.Add(new TextBlock { Text = "PROFIT / TRIP", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right });
-        var profitRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        profitRow.Children.Add(new TextBlock
-        {
-            Text = r.Net.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 22,
-            Foreground = Hud.Br("AccentBrush"),
-            Effect = new DropShadowEffect { Color = Hud.Col("AccentBrush"), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.35 },   // mock:236
-        });
-        profitRow.Children.Add(new TextBlock { Text = " aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(4, 0, 0, 3) });
-        profit.Children.Add(profitRow);
-        profit.Children.Add(new TextBlock
-        {
-            Text = $"{r.TripQty:n0} SCU trip - after fees", FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right,
-        });
-        Grid.SetRow(profit, 0); Grid.SetRowSpan(profit, 2); Grid.SetColumn(profit, 1);
-        grid.Children.Add(profit);
+        // The top-right PROFIT / TRIP corner is gone: the readout moved into the financial rail
+        // (spec 2026-08-04 Option E, BuildFinancialRail), and its "after fees" subline died with
+        // it - no fee schedule exists (RoutePlanner.cs:8-10), so those words claimed a deduction
+        // that never happens.
 
         // System tags for both legs, reusing the terminal lookups resolved above (dictionary read
         // per row, not a linear scan of Terminals.Rows).
@@ -1389,7 +1471,7 @@ public sealed partial class TradePage
         // name's CharacterEllipsis, which BuildLeg's own top row is explicitly built around.
         // Star columns hand each leg a finite share, so the card degrades by trimming long names
         // (full name stays in the tooltip) instead of overlapping its own readouts.
-        var legs = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        var legs = new Grid();   // top gap rides on the rail grid below, not here
         legs.ColumnDefinitions.Add(new ColumnDefinition());
         legs.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         legs.ColumnDefinitions.Add(new ColumnDefinition());
@@ -1404,8 +1486,20 @@ public sealed partial class TradePage
         Grid.SetColumn(legArrow, 1); legs.Children.Add(legArrow);
         var sellLeg = BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, isBuy: false, SctDeltasFor(r.SellRow, "sell"), ToggleFor(r.SellRow, false), out var applySell, sellTerm, RaiseShowOnMap);
         Grid.SetColumn(sellLeg, 2); legs.Children.Add(sellLeg);
-        Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
-        grid.Children.Add(legs);
+
+        // Rail + journey (spec 2026-08-04 Option E): fixed 210px financial rail, its right edge
+        // the divider, then the whole route journey. The legs/source/purchase rows live inside
+        // the journey column so the rail spans their full height.
+        var railGrid = new Grid { Margin = new Thickness(0, 9, 0, 0) };   // mock .routeInWide gap: 9px
+        railGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
+        railGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        railGrid.Children.Add(BuildFinancialRail(r));   // column 0
+        var journey = new StackPanel { Margin = new Thickness(18, 0, 0, 0) };
+        Grid.SetColumn(journey, 1);
+        railGrid.Children.Add(journey);
+        Grid.SetRow(railGrid, 1);
+        grid.Children.Add(railGrid);
+        journey.Children.Add(legs);
 
         // ONE picker for the whole route (owner: "one toggle per route so if you switch to sct both
         // stock and demand show SCT and vice versa"), moving QUANTITIES ONLY - prices stay UEX's on
@@ -1433,8 +1527,7 @@ public sealed partial class TradePage
                 srcRow.Children.Add(RouteSourcePill("SCT", active: sct, ranked: false, onClick: () => ShowSource(true)));
             }
             ShowSource(false);   // UEX is what the route was ranked and priced on, so it opens there
-            Grid.SetRow(srcRow, 2); Grid.SetColumnSpan(srcRow, 2);
-            grid.Children.Add(srcRow);
+            journey.Children.Add(srcRow);
         }
 
         // The purchase block lives on its OWN full-width row, not inside the buy leg. It used to
@@ -1466,8 +1559,7 @@ public sealed partial class TradePage
                 warnTip: $"The largest container this terminal sells is {plan.MaxContainerScu:n0} SCU, below the "
                        + $"{ship.MaxContainerScu:n0} SCU this ship can load, so the run needs more containers than it otherwise would."));
             purchase.Children.Add(CratePlanLine(plan, r.PlannedQty));
-            Grid.SetRow(purchase, 3); Grid.SetColumnSpan(purchase, 2);
-            grid.Children.Add(purchase);
+            journey.Children.Add(purchase);
         }
 
         // Always visible: same divider-above-and-padding geometry DetailBand gives the Sell rows,
@@ -1531,7 +1623,7 @@ public sealed partial class TradePage
         if (detail.Children.Count > 0)
         {
             detailHost.Child = detail;
-            Grid.SetRow(detailHost, 4); Grid.SetColumnSpan(detailHost, 2);
+            Grid.SetRow(detailHost, 2);
             grid.Children.Add(detailHost);
         }
         return grid;
@@ -1827,7 +1919,14 @@ public sealed partial class TradePage
 
     private static StackPanel BuildLeg(string eyebrow, string terminalName, string? system, double price, string qtyLabel, int qty, int tripQty, DateTime asOfUtc, string containerSizes, int shipMaxContainerScu, bool isBuy, (double? Price, double? Quantity) sctDelta, SourceToggle? sourceToggle, out Action<bool>? applySource, MarketTerminal? terminal = null, Action<int>? onShowOnMap = null)
     {
-        var leg = new StackPanel { MinWidth = 160, Margin = new Thickness(0, 0, 14, 0) };
+        // MinWidth 100, down from 160 with the financial rail (2026-08-04 review): the rail's
+        // fixed 210px column raised the card's content floor, and WPF's ArrangeCore enforces a
+        // leg's MinWidth past its star slot with no clipping anywhere in the chain - at the
+        // window's 900px minimum the two 160px legs rendered on top of each other and past the
+        // card edge, the exact overlap class the star/ellipsis legs grid exists to prevent. At
+        // 100 the ellipsis does the yielding down to the window minimum; wide layouts never see
+        // a MinWidth this small because the star split hands each leg far more.
+        var leg = new StackPanel { MinWidth = 100, Margin = new Thickness(0, 0, 14, 0) };
         leg.Children.Add(new TextBlock { Text = eyebrow.ToUpperInvariant(), FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush") });   // mock:239-241, letter-spacing not settable on TextBlock; size/weight/color match
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition());
