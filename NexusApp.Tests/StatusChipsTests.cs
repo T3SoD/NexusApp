@@ -90,4 +90,23 @@ public class StatusChipsTests
     [Fact]
     public void AutoScanText_BothOff()
         => Assert.Equal("RS off · CT off", StatusChips.AutoScanText(ScanIndicator.Off, ScanIndicator.Off));
+
+    // ── LocationLampState: the location pills' shared fold (owner, 2026-08-04) ──
+    // Red (Offline) whenever a location is on screen with no live session behind it; cyan (Live)
+    // only for a precise reading while the game runs. Offline outranks coarse because with the
+    // game closed the reading is history regardless of its precision. LastKnownLocation is
+    // app-lifetime (seeded from the previous session's Game.log at startup), so location-known
+    // alone must never light the live cyan.
+
+    [Theory]
+    [InlineData(false, false, false, LocationLamp.Unknown)]
+    [InlineData(false, true,  false, LocationLamp.Unknown)]
+    [InlineData(false, false, true,  LocationLamp.Unknown)]
+    [InlineData(false, true,  true,  LocationLamp.Unknown)]
+    [InlineData(true,  false, false, LocationLamp.Offline)]
+    [InlineData(true,  true,  false, LocationLamp.Offline)]   // offline outranks coarse
+    [InlineData(true,  false, true,  LocationLamp.Live)]
+    [InlineData(true,  true,  true,  LocationLamp.Coarse)]
+    public void LocationLampState_Matrix(bool known, bool coarse, bool sessionLive, LocationLamp expected)
+        => Assert.Equal(expected, StatusChips.LocationLampState(known, coarse, sessionLive));
 }

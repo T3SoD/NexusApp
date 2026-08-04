@@ -90,6 +90,19 @@ public class TradeOriginResolverTests
     public void StartTerminalIds_UnknownName_ReturnsEmpty()
         => Assert.Empty(TradeOriginResolver.StartTerminalIds("Nowhere Station", null, Terminals)!);
 
+    // The move-rebuild gate (owner, 2026-08-04): a real location change only re-ranks the planner
+    // when the persisted start kind actually reads the live location. Mirrors StartTerminalIds'
+    // branching above: ANY (also null/empty, the same fail-open) and named-terminal starts ignore
+    // the live location, and re-ranking them on a move rebuilds an identical results list.
+    [Theory]
+    [InlineData("LIVE", true)]
+    [InlineData("ANY", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("Admin - Port Olisar", false)]
+    public void StartDependsOnLiveLocation_OnlyForTheLiveKind(string? startManual, bool expected)
+        => Assert.Equal(expected, TradeOriginResolver.StartDependsOnLiveLocation(startManual));
+
     // ---- Live gateway origin fix (owner's live bug, 2026-07-31). Root cause: LocationTracker
     // stores the in-game DISPLAY name ("Pyro Gateway Station"), but UEX's own Location/Name
     // vocabulary for the same station is "Pyro Gateway (Stanton)" - a string that appears

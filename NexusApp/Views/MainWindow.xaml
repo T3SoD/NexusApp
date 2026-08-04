@@ -33,12 +33,25 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left: logo + title + version badges. ClipToBounds (F14 follow-up, the owner's live pass:
-                 the widened strip painted over the clock): a StackPanel arranges children at full
-                 desired size and PAINTS past its star column into the clock's Auto column when the
-                 window is narrow - clipping keeps the cut on our side of the boundary. The SESSION
-                 chip carries its own trim cap so the cut is rare. -->
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0" ClipToBounds="True">
+            <!-- Left: logo + title + version badges. The Border clips (F14 follow-up, the owner's
+                 live pass: the widened strip painted over the clock): a StackPanel arranges children
+                 at full desired size and PAINTS past its star column into the clock's Auto column
+                 when the window is narrow - clipping keeps the cut on our side of the boundary. The
+                 SESSION chip carries its own trim cap so the cut is rare. The clip moved from the
+                 panel to this Border with a fade-out mask (owner, 2026-08-04: the hard cut sliced
+                 the AUTO-SCAN chip mid-glyph flush against the clock, which read as the clock
+                 overlapping the chip) - an overflowing strip now fades out ahead of the boundary,
+                 and the mask lives on the Border because the panel's own mask would map to its full
+                 desired width and put the fade off screen. -->
+            <Border ClipToBounds="True">
+                <Border.OpacityMask>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                        <GradientStop Color="#FFFFFFFF" Offset="0.96"/>
+                        <GradientStop Color="#00FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.OpacityMask>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                 <views:NexusBeamIcon Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
                     <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"
@@ -157,10 +170,13 @@
                     </StackPanel>
                 </Border>
             </StackPanel>
+            </Border>
 
-            <!-- Right: OS clock + action buttons -->
+            <!-- Right: OS clock + action buttons. The 12px left margin is the breathing gap between
+                 the (possibly faded-out) chip strip and the clock - part of the same 2026-08-04 fix
+                 as the fade mask above. -->
             <StackPanel Grid.Column="1" Orientation="Horizontal"
-                        VerticalAlignment="Center" Margin="0,0,8,0">
+                        VerticalAlignment="Center" Margin="12,0,8,0">
                 <TextBlock x:Name="OsClock" Text="00:00:00" FontFamily="{StaticResource MonoFont}" FontSize="13"
                            Foreground="{DynamicResource FgBrush}" VerticalAlignment="Center" Margin="0,0,2,0"/>
                 <TextBlock Text="STD" FontFamily="{StaticResource MonoFont}" FontSize="9"

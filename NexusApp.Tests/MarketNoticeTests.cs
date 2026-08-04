@@ -127,17 +127,63 @@ public class MarketNoticeTests : IDisposable
         Assert.Equal("(patch 4.8)", MarketNotice.AgePart(MarketNotice.PatchTag("4.8")));
     }
 
-    [Fact]
-    public void PillClock_IsTwentyFourHour() =>
-        Assert.Equal("23:15", MarketNotice.PillClock(new DateTime(2026, 7, 27, 23, 15, 0, DateTimeKind.Local)));
+    // ── PillState: one value grammar for both TRADE DATA pills (owner, 2026-08-04) ──
+    // The header chip renders the same hours-since text the Trade page strip pill composes from
+    // FormatAge, so the two pills can never read as different facts again. The old fresh/busy
+    // clock (PillClock) and the stale-only compact age (PillAge) are gone with it.
 
+    [Fact]
+    public void PillState_Fresh_ShowsHoursSinceUpdate() =>
+        Assert.Equal(("fresh", "3h ago", MarketNotice.PillTooltip),
+            MarketNotice.PillState(busy: false, lastError: null, age: TimeSpan.FromHours(3)));
+
+    [Fact]
+    public void PillState_FreshUnderAMinute_JustNow() =>
+        Assert.Equal("just now", MarketNotice.PillState(false, null, TimeSpan.FromSeconds(30)).Text);
+
+    [Fact]
+    public void PillState_Stale_SameGrammarDifferentState() =>
+        Assert.Equal(("stale", "1d ago", MarketNotice.PillTooltip),
+            MarketNotice.PillState(false, null, TimeSpan.FromHours(26)));
+
+    [Fact]
+    public void PillState_BusyWithPriorData_KeepsTheAge() =>
+        Assert.Equal(("busy", "2h ago", MarketNotice.PillTooltip),
+            MarketNotice.PillState(true, null, TimeSpan.FromHours(2)));
+
+    [Fact]
+    public void PillState_BusyFirstEver_Syncing() =>
+        Assert.Equal(("busy", MarketNotice.PillSyncing, MarketNotice.PillTooltip),
+            MarketNotice.PillState(true, null, null));
+
+    // A refresh in flight is the most current fact about the channel, so busy outranks the
+    // previous cycle's error (which comes back by itself if this cycle fails too).
+    [Fact]
+    public void PillState_BusyOutranksError() =>
+        Assert.Equal("busy", MarketNotice.PillState(true, "timeout", TimeSpan.FromHours(2)).State);
+
+    [Fact]
+    public void PillState_Error_OfflineWithReasonAsTip() =>
+        Assert.Equal(("error", MarketNotice.PillOffline, "timeout"),
+            MarketNotice.PillState(false, "timeout", TimeSpan.FromHours(1)));
+
+    [Fact]
+    public void PillState_NeverFetched_NoData() =>
+        Assert.Equal(("nodata", MarketNotice.PillNoData, MarketNotice.PillTooltip),
+            MarketNotice.PillState(false, null, null));
+
+    // The parity lock: at any age, the header chip's value is byte-identical to what the Trade
+    // page strip pill renders (TradePage.RefreshContextRow, FormatAge).
     [Theory]
-    [InlineData(26, "26h")]     // just past the 24h stale line
-    [InlineData(47, "47h")]
-    [InlineData(48, "2d")]      // two days and over reads in days, so the pill stays short
-    [InlineData(72, "3d")]
-    public void PillAge_HoursThenDays(int hours, string expected) =>
-        Assert.Equal(expected, MarketNotice.PillAge(TimeSpan.FromHours(hours)));
+    [InlineData(0.5)]
+    [InlineData(45)]
+    [InlineData(60 * 5)]
+    [InlineData(60 * 26)]
+    public void PillState_ValueMirrorsFormatAge(double minutes)
+    {
+        var age = TimeSpan.FromMinutes(minutes);
+        Assert.Equal(MarketNotice.FormatAge(age), MarketNotice.PillState(false, null, age).Text);
+    }
 
     [Fact]
     public void StatusLine_NeverFetched() =>
@@ -171,7 +217,8 @@ public class MarketNoticeTests : IDisposable
             MarketNotice.AgePart("12m ago"),
             MarketNotice.PillLabel, MarketNotice.PillOffline, MarketNotice.PillSyncing,
             MarketNotice.PillNoData, MarketNotice.PillTooltip,
-            MarketNotice.PillClock(DateTime.Now), MarketNotice.PillAge(TimeSpan.FromHours(26)),
+            MarketNotice.PillState(false, null, TimeSpan.FromHours(26)).Text,
+            MarketNotice.PillState(true, null, null).Text,
             MarketNotice.NeverFetched,
             MarketNotice.PatchTag("4.8"),
             MarketNotice.FormatAge(TimeSpan.FromMinutes(12)),

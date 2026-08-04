@@ -53,9 +53,13 @@ public sealed partial class TradePage : UserControl
     private Border _originChip = null!;
     private Ellipse _originDot = null!;
     private TextBlock _originValue = null!;
-    private bool _originDotLive;          // the dot is already wearing its live dressing (glow effect +
-                                            // breathe loop): refreshes that STAY in live mode must not
-                                            // re-allocate the effect or restart the loop from full opacity
+    private LocationLamp? _originLamp;    // the dot's current dressing (glow effect + breathe loop is
+                                            // Live-only): re-dressed ONCE per lamp transition, so refreshes
+                                            // that STAY in a state never re-allocate the effect or restart
+                                            // the loop from full opacity
+    private string? _lastLiveLocation;    // the location the planner last ranked on: the rebuild guard
+                                            // (LiveOriginMoved) that keeps freshness-only tracker raises
+                                            // from re-ranking the whole planner
     private readonly Border[] _scopePills = new Border[4];
     private static readonly string[] Scopes = { "ALL", "STANTON", "PYRO", "NYX" };   // mock:1116
     private Border _uexPill = null!;
@@ -127,7 +131,32 @@ public sealed partial class TradePage : UserControl
         // tick that lands while the user is elsewhere is never lost, just not paid for. Off-screen
         // repaints are not free either: they churn the inputs' surrounding state for nobody.
         App.Market.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
-        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshContextRow(); });
+        _lastLiveLocation = App.Locations.LastKnownLocation;
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (!IsVisible) return;
+            RefreshContextRow();
+            // A real move also re-ranks the live-origin surfaces (owner, 2026-08-04: arriving
+            // somewhere new in game left a LIVE starting location stale until the user left and
+            // re-entered the tab - the event path stopped at the context row while only Refresh()
+            // reached the rebuilds). Guarded on the location actually changing: the tracker also
+            // raises for freshness-only inventory ticks, and full rebuilds are too heavy for
+            // those. The overlay's trade panel has carried this same wire since 2026-08-01.
+            if (!LiveOriginMoved(_lastLiveLocation, App.Locations.LastKnownLocation)) return;
+            _lastLiveLocation = App.Locations.LastKnownLocation;
+            // The sell flow's proximity tiers and distance tags always rank from the live origin
+            // (OriginTerminalIds); the planner reads it only when the persisted start kind is
+            // LIVE - ANY and named-terminal starts ignore the location, and re-ranking them here
+            // would tear down and re-fade an identical results list under the reader.
+            RebuildSell();
+            if (TradeOriginResolver.StartDependsOnLiveLocation(App.Settings.Current.TradeStartManual))
+                RebuildPlanner();
+        });
+        // The ORIGIN chip's lamp folds the game-process probe in (owner, 2026-08-04: red when no
+        // live session backs the reading), so game start/exit repaints it, not only a move.
+        // StateChanged still fires on process flips even while the log monitor is stopped: the
+        // session relays the shared feed's probe regardless of its own attachment.
+        App.GameLog.StateChanged += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshContextRow(); });
         // SCT is a worker-thread raise (the service documents it), so this marshals like the other
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
         // age pill and every corroboration badge waited for the next hourly market tick.
@@ -140,7 +169,18 @@ public sealed partial class TradePage : UserControl
         RebuildPlanner();
         RebuildSell();
         RebuildPrices();
+
+        // The strip pill's age text is event-painted (RefreshContextRow), so between events it
+        // rotted while the header chip's 1.5s timer kept ITS age current - the two TRADE DATA
+        // pills read 6m against 9m side by side (owner, 2026-08-04: they must not drift). A
+        // minute tick matches FormatAge's coarsest visible step, and the lamp guard keeps the
+        // repaint allocation-free when nothing changed.
+        _ageTimer.Interval = TimeSpan.FromMinutes(1);
+        _ageTimer.Tick += (_, _) => { if (IsVisible) RefreshContextRow(); };
+        _ageTimer.Start();
     }
+
+    private readonly System.Windows.Threading.DispatcherTimer _ageTimer = new();
 
     private static ScrollViewer WrapPane(UIElement content) => new()
     {
@@ -153,6 +193,8 @@ public sealed partial class TradePage : UserControl
     /// origin change that happened while the user was on another page is caught immediately.</summary>
     public void Refresh()
     {
+        _lastLiveLocation = App.Locations.LastKnownLocation;   // this pass ranks on it, so the
+                                                                 // rebuild guard starts from here
         RefreshContextRow();
         RebuildPlanner();
         RebuildSell();
@@ -699,6 +741,14 @@ public sealed partial class TradePage : UserControl
             : snap.TradePrices.Rows.Select(r => r.CommodityName).Distinct()
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
 
+    /// <summary>Whether a location raise is a real move (so the planner's LIVE origin must
+    /// re-rank) or a freshness-only re-raise (repaint the chip, skip the rebuild). Ordinal:
+    /// location strings are the log's own words, never user input, so a casing change is a
+    /// different reported place, not a variant to forgive. Internal static so the guard the
+    /// Locations.Changed handler folds on is unit-testable (TradeLiveOriginTests).</summary>
+    internal static bool LiveOriginMoved(string? lastSeen, string? current) =>
+        !string.Equals(lastSeen, current, StringComparison.Ordinal);
+
     /// <summary>The SELL flow's origin, for SellLookup's proximity-tier math (task 10 scope
     /// ripple, approved): live-only. The manual origin dropdown that used to back this when no
     /// session was live is gone (the ORIGIN chip is display-only now; the route planner's own
@@ -712,7 +762,18 @@ public sealed partial class TradePage : UserControl
 
     private void RefreshContextRow()
     {
-        bool live = App.Locations.LastKnownLocation is not null;
+        // Session-aware lamp (owner, 2026-08-04): the chip wore the live cyan whenever a location
+        // was known, but LastKnownLocation is seeded from the previous session's Game.log at app
+        // start and never clears, so with the game closed it glowed blue forever. The shared fold
+        // (StatusChips.LocationLampState) keys the dressing on the game-process probe - the FEED's
+        // probe, not GameLogSession's gated read, which goes false when the log monitor is
+        // stopped while the game still runs (and the tracker, riding the feed, keeps updating the
+        // very location this chip shows). This chip has no jurisdiction concept, so coarse is false.
+        var lamp = StatusChips.LocationLampState(
+            locationKnown: App.Locations.LastKnownLocation is not null,
+            coarse: false,
+            sessionLive: App.GameLogFeed.IsSessionLive);
+        bool redress = _originLamp != lamp;   // dressing is per-transition; see _originLamp
         var content = (StackPanel)_originChip.Child;
         content.Children.Clear();
 
@@ -723,7 +784,7 @@ public sealed partial class TradePage : UserControl
             Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
         });
 
-        if (live)
+        if (lamp == LocationLamp.Live)
         {
             _originValue.Text = $"{App.Locations.LastKnownLocation} - LIVE";
             _originValue.Foreground = Hud.Br("CyanBrush");   // recolored cyan, not amber - CyanColor's own
@@ -733,9 +794,8 @@ public sealed partial class TradePage : UserControl
             // Dressed ONCE per entry into live mode. A refresh that stays live must not re-allocate
             // the glow or restart a Forever loop from full opacity: the dot would visibly snap back
             // to bright on every tick that has nothing to do with it.
-            if (!_originDotLive)
+            if (redress)
             {
-                _originDotLive = true;
                 _originDot.Effect = new DropShadowEffect { Color = Hud.Col("CyanBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 };
                 // Breathe 1900->3800ms (mock MS.breathe*2, index.html:700): PulseDot always uses
                 // Motion.BreatheMs (1900) as-is, so this ORIGIN dot needs its own animation rather than
@@ -749,10 +809,31 @@ public sealed partial class TradePage : UserControl
             }
             _originChip.ToolTip = "Auto-detected from your current session.";   // mock:703, verbatim
         }
+        else if (lamp == LocationLamp.Offline)
+        {
+            // Red, not cyan: the game is not running, so the reading is the last session's, not a
+            // live one. Same DangerBrush the SESSION chip flips to, same glow shape as the live
+            // dressing, no breathe - the pulse is the claim that tracking is alive.
+            _originValue.Text = $"{App.Locations.LastKnownLocation} - OFFLINE";
+            _originValue.Foreground = Hud.Br("DangerBrush");
+            content.Children.Add(_originValue);
+            _originDot.Fill = Hud.Br("DangerBrush");
+            if (redress)
+            {
+                _originDot.BeginAnimation(UIElement.OpacityProperty, null);
+                _originDot.Opacity = 1.0;
+                _originDot.Effect = new DropShadowEffect { Color = Hud.Col("DangerBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 };
+            }
+            _originChip.ToolTip = "Last known location. Star Citizen is not running.";
+        }
         else
         {
-            if (_originDotLive) { _originDot.BeginAnimation(UIElement.OpacityProperty, null); _originDotLive = false; }
-            _originDot.Effect = null;
+            if (redress)
+            {
+                _originDot.BeginAnimation(UIElement.OpacityProperty, null);
+                _originDot.Opacity = 1.0;
+                _originDot.Effect = null;
+            }
             _originDot.Fill = Hud.Br("FgDimBrush");
             // Display-only (task 10): the manual dropdown/click-to-change path is gone entirely -
             // this chip only ever reports what the live session is, never a place to pick one.
@@ -760,6 +841,11 @@ public sealed partial class TradePage : UserControl
             _originValue.Foreground = Hud.Br("FgDimBrush");
             content.Children.Add(_originValue);
             _originChip.ToolTip = "No active session detected.";
+        }
+        if (redress)
+        {
+            _originLamp = lamp;
+            Logger.Info($"[UI] trade origin lamp: {lamp}");   // flips only, never per-tick
         }
 
         var snapForAge = App.Market.Snapshot;

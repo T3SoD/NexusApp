@@ -69,4 +69,24 @@ public static class StatusChips
         ScanIndicator.Paused => "paused",
         _ => "off",
     };
+
+    /// <summary>The location lamps' shared fold (owner, 2026-08-04: the pills wore the live cyan
+    /// forever, game running or not - they must go red when no session is live). Used by the dock
+    /// LOCATION chip and the Trade page's ORIGIN chip. Offline outranks coarse: with the game
+    /// closed the reading is history regardless of its precision, and red is the lamp saying
+    /// tracking is NOT current. LastKnownLocation is app-lifetime (seeded from the previous
+    /// session's Game.log at startup and never cleared), so location-known alone can never mean
+    /// live; sessionLive is the game-process probe (App.GameLogFeed.IsSessionLive - the pure
+    /// probe, not GameLogSession's attachment-gated read, which goes false when the log monitor
+    /// is stopped while the game still runs).</summary>
+    public static LocationLamp LocationLampState(bool locationKnown, bool coarse, bool sessionLive)
+        => !locationKnown ? LocationLamp.Unknown
+         : !sessionLive ? LocationLamp.Offline
+         : coarse ? LocationLamp.Coarse
+         : LocationLamp.Live;
 }
+
+/// <summary>What a location readout may claim right now: Unknown (dim, no reading), Live (cyan,
+/// precise place with a live session behind it), Coarse (dim, jurisdiction-only reading), or
+/// Offline (red, a reading with no live session behind it).</summary>
+public enum LocationLamp { Unknown, Live, Coarse, Offline }

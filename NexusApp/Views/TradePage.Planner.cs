@@ -1381,15 +1381,29 @@ public sealed partial class TradePage
         string? buySystem = buyTerm?.System;
         string? sellSystem = sellTerm?.System;
 
-        var legs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        legs.Children.Add(BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, isBuy: true, SctDeltasFor(r.BuyRow, "buy"), ToggleFor(r.BuyRow, true), out var applyBuy, buyTerm, RaiseShowOnMap));
-        legs.Children.Add(new Path
+        // Star / arrow / Star grid, NOT a horizontal StackPanel (owner, 2026-08-04: at narrow
+        // window widths the sell leg's price and demand lines ran under the PROFIT / TRIP
+        // readout). A horizontal StackPanel measures its children with infinite width, so the
+        // legs rendered at full natural width and spilled out of this star column under the
+        // profit block (WPF does not clip) - and that same infinite measure defeated the terminal
+        // name's CharacterEllipsis, which BuildLeg's own top row is explicitly built around.
+        // Star columns hand each leg a finite share, so the card degrades by trimming long names
+        // (full name stays in the tooltip) instead of overlapping its own readouts.
+        var legs = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        legs.ColumnDefinitions.Add(new ColumnDefinition());
+        legs.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        legs.ColumnDefinitions.Add(new ColumnDefinition());
+        var buyLeg = BuildLeg("Buy at", r.BuyRow.TerminalName, buySystem, r.BuyRow.Buy, "STOCK", r.BuyRow.BuyStockScu, r.TripQty, r.BuyRow.ModifiedUtc, r.BuyRow.ContainerSizes, ship.MaxContainerScu, isBuy: true, SctDeltasFor(r.BuyRow, "buy"), ToggleFor(r.BuyRow, true), out var applyBuy, buyTerm, RaiseShowOnMap);
+        Grid.SetColumn(buyLeg, 0); legs.Children.Add(buyLeg);
+        var legArrow = new Path
         {
             Data = Geometry.Parse("M3,12 L18,12 M12,6 L18,12 L12,18"), Width = 20, Height = 20, Stroke = Hud.Br("FgDimBrush"),
             StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
             Fill = Brushes.Transparent, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center,
-        });
-        legs.Children.Add(BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, isBuy: false, SctDeltasFor(r.SellRow, "sell"), ToggleFor(r.SellRow, false), out var applySell, sellTerm, RaiseShowOnMap));
+        };
+        Grid.SetColumn(legArrow, 1); legs.Children.Add(legArrow);
+        var sellLeg = BuildLeg("Sell at", r.SellRow.TerminalName, sellSystem, r.SellRow.Sell, "DEMAND", r.SellRow.SellDemandScu, r.TripQty, r.SellRow.ModifiedUtc, r.SellRow.ContainerSizes, ship.MaxContainerScu, isBuy: false, SctDeltasFor(r.SellRow, "sell"), ToggleFor(r.SellRow, false), out var applySell, sellTerm, RaiseShowOnMap);
+        Grid.SetColumn(sellLeg, 2); legs.Children.Add(sellLeg);
         Grid.SetRow(legs, 1); Grid.SetColumn(legs, 0);
         grid.Children.Add(legs);
 

@@ -85,6 +85,13 @@ internal static class TradeOriginResolver
         return TerminalIdForName(startManual, terminals) is { } id ? new HashSet<int> { id } : new HashSet<int>();
     }
 
+    // The move-rebuild gate (owner, 2026-08-04): whether the persisted start kind above actually
+    // reads the live location, so TradePage's Locations.Changed handler re-ranks the planner only
+    // when a move can change its inputs. Mirrors StartTerminalIds' branching: ANY (also
+    // null/empty, the same fail-open) and named-terminal starts ignore liveLocation entirely, and
+    // re-ranking them on a move tears down and re-fades an identical results list.
+    internal static bool StartDependsOnLiveLocation(string? startManual) => startManual == "LIVE";
+
     // Location-first DISPLAY flip (owner's ask, 2026-07-31): UEX terminal names are Shop-first
     // ("Admin - ARC-L1", "Platinum Bay - Everus Harbor"), which clumps every station's admin
     // office/trade hub under the same first letter in an alphabetical picker instead of grouping by

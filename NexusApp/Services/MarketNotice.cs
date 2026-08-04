@@ -98,15 +98,20 @@ internal static class MarketNotice
     public static string DossierHeroLine(double display, string terminalName, string ageText) =>
         $"{DossierHeroLabel} {PriceValue(display)} {AtTerminal(terminalName)} {AgePart(ageText)}";
 
-    // MARKET pill value, fresh and busy states: the local time of the last successful refresh.
-    // HH:mm regardless of the app's 12/24 hour clock setting, matching StatusLine above (the two
-    // read the same fact and must not disagree).
-    public static string PillClock(DateTime local) => $"{local:HH:mm}";
-
-    // MARKET pill value, stale state: how old the prices are, as text and not colour alone. Hours
-    // up to two days, then days, so the pill never grows past four characters.
-    public static string PillAge(TimeSpan age) =>
-        age.TotalHours < 48 ? $"{(int)age.TotalHours}h" : $"{(int)age.TotalDays}d";
+    // TRADE DATA pill state fold, shared value grammar (owner, 2026-08-04): the header chip and
+    // the Trade page strip pill both show hours since the last update, via the same FormatAge the
+    // strip pill always used - the header's old HH:mm clock read as a different fact when the two
+    // report the same feed. Priority: a refresh in flight is the most current fact about the
+    // channel, so busy outranks the previous cycle's error (which comes back by itself if this
+    // cycle fails too). A null age means nothing fetched yet. Pure so the parity is testable; the
+    // WPF painting stays in MainWindow.RefreshMarketPill.
+    public static (string State, string Text, string Tip) PillState(bool busy, string? lastError, TimeSpan? age)
+    {
+        if (busy) return ("busy", age is { } b ? FormatAge(b) : PillSyncing, PillTooltip);
+        if (lastError is { } err) return ("error", PillOffline, err);
+        if (age is not { } a) return ("nodata", PillNoData, PillTooltip);
+        return (a > TimeSpan.FromHours(24) ? "stale" : "fresh", FormatAge(a), PillTooltip);
+    }
 
     public static string StatusLine(DateTime? lastFetchLocal, string? lastError) =>
         lastFetchLocal is not { } t ? "Never refreshed"
