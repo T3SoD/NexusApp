@@ -13,6 +13,8 @@ public partial class RegionSelectorWindow : Window
     private Point _start;
     private bool _dragging;
     private IntPtr _anchorHwnd;
+    private readonly List<RECT> _monitors = [];
+    private int _monitorIndex;
 
     public event Action<ScanRegion>? RegionSelected;
 
@@ -24,50 +26,76 @@ public partial class RegionSelectorWindow : Window
 
     /// <summary>
     /// Shows the draw surface covering the single monitor that <paramref name="anchor"/> occupies
-    /// (the overlay / main window - i.e. where the user is working, usually the game's monitor)
-    /// instead of always the primary (issue #6). Sized in physical pixels via MoveWindow so it lands
-    /// on the correct monitor under Per-Monitor-DPI-V2, where WPF Left/Top + Maximize does not.
+    /// (issue #6), with a NEXT MONITOR button to hop the surface to any other screen (issue #36:
+    /// the overlay may sit away from the game's monitor, and the old picker stranded the user
+    /// there). Sized in physical pixels via MoveWindow so it lands on the correct monitor under
+    /// Per-Monitor-DPI-V2, where WPF Left/Top + Maximize does not.
     /// </summary>
     public void ShowOnMonitorOf(Window? anchor)
     {
         _anchorHwnd = anchor != null ? new WindowInteropHelper(anchor).Handle : IntPtr.Zero;
-        Show();   // OnSourceInitialized sizes us to the anchor's monitor in physical pixels
+        Show();   // OnSourceInitialized enumerates monitors and covers the anchor's
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         var hwnd = new WindowInteropHelper(this).Handle;
-        // Cover the monitor the anchor (overlay / main window - usually the game's monitor) is on, in
-        // PHYSICAL pixels. Under Per-Monitor-DPI-V2, positioning via WPF Left/Top + Maximize lands on
-        // the wrong monitor across a DPI boundary (issue #6); MonitorFromWindow + MoveWindow is exact,
-        // and PointToScreen on the canvas then yields the right physical coords for that monitor.
+
+        var handles = new List<IntPtr>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero,
+            (IntPtr hMon, IntPtr _, ref RECT rc, IntPtr _) => { handles.Add(hMon); _monitors.Add(rc); return true; },
+            IntPtr.Zero);
+
+        if (_monitors.Count == 0)
+        {
+            Logger.Info("[WIN] region selector: monitor enumeration failed; default placement");
+            return;
+        }
+
+        // Start on the anchor's monitor (the overlay's or main window's), matched by handle.
         var target = _anchorHwnd != IntPtr.Zero ? _anchorHwnd : hwnd;
-        var mon = MonitorFromWindow(target, MONITOR_DEFAULTTONEAREST);
-        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (mon != IntPtr.Zero && GetMonitorInfo(mon, ref mi))
-        {
-            var rc = mi.rcMonitor;
-            MoveWindow(hwnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, repaint: true);
-            Logger.Info($"[WIN] region selector covering monitor ({rc.left},{rc.top}) {rc.right - rc.left}x{rc.bottom - rc.top} (issue #6)");
-        }
-        else
-        {
-            Logger.Info("[WIN] region selector: could not resolve anchor monitor; default placement (issue #6)");
-        }
+        var anchorMon = MonitorFromWindow(target, MONITOR_DEFAULTTONEAREST);
+        _monitorIndex = Math.Max(0, handles.IndexOf(anchorMon));
+
+        NextMonitorBtn.Visibility = _monitors.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        ApplyMonitor(hwnd);
     }
 
+    // Cover _monitors[_monitorIndex] in PHYSICAL pixels. Double move (the ScanIndicatorWindow
+    // idiom): the first lands the window on the target monitor and fires WM_DPICHANGED so WPF
+    // adopts that monitor's DPI; the second re-asserts the exact rect over WPF's auto-resize.
+    // PointToScreen on the canvas then yields the right physical coords for that monitor.
+    private void ApplyMonitor(IntPtr hwnd)
+    {
+        var rc = _monitors[_monitorIndex];
+        int w = rc.right - rc.left, h = rc.bottom - rc.top;
+        MoveWindow(hwnd, rc.left + 1, rc.top + 1, w, h, repaint: false);
+        MoveWindow(hwnd, rc.left, rc.top, w, h, repaint: true);
+        NextMonitorLabel.Text = MonitorCycle.Label(_monitorIndex, _monitors.Count) + "  ·  MOVE TO NEXT";
+        Logger.Info($"[WIN] region selector covering monitor {_monitorIndex + 1} of {_monitors.Count} " +
+                    $"({rc.left},{rc.top}) {w}x{h} (issue #36)");
+    }
+
+    private void NextMonitor_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;   // never reaches the canvas: a hop must not start a drag
+        if (_monitors.Count <= 1) return;
+        _dragging = false;
+        SelectRect.Visibility = Visibility.Collapsed;
+        _monitorIndex = MonitorCycle.Next(_monitorIndex, _monitors.Count);
+        ApplyMonitor(new WindowInteropHelper(this).Handle);
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc proc, IntPtr data);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
-    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
     private const uint MONITOR_DEFAULTTONEAREST = 2;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int left, top, right, bottom; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
     private void Canvas_MouseDown(object sender, MouseButtonEventArgs e)
     {

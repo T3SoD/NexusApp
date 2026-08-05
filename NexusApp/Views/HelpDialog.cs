@@ -71,7 +71,7 @@ public class HelpDialog : Window
                 "EXACT means the value is a perfect multiple of the resource's base RS.",
                 "A close match within 0.5% is still very likely correct.",
                 "Click + Add to cart on the best match to put it on your shopping list.",
-                "RECENT SCANS keeps your history - filter it with the pills, and click any entry to re-run that lookup.",
+                "RECENT SCANS keeps your history - the pills filter both the history and the live results above (EXACT hides close matches), and click any entry to re-run that lookup.",
                 "Click Clear next to RECENT SCANS to clear the history.",
             ]),
 

@@ -27,6 +27,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private HistoryFilter _historyFilter = HistoryFilter.All;
 
     public ObservableCollection<MatchResult> ScanResults { get; } = [];
+    // ScanResults through the active filter pill (issue #34: the pills govern live results too).
+    // A live collection, not a LINQ view: the overlay assigns it as an ItemsSource imperatively,
+    // and cart-toggle rebuilds must keep flowing through CollectionChanged.
+    public ObservableCollection<MatchResult> FilteredScanResults { get; } = [];
     public ObservableCollection<ScanHistoryEntry> ScanHistory { get; } = [];
     public ObservableCollection<ScanHistoryEntry> FilteredScanHistory { get; } = [];
     public ObservableCollection<Resource> AllResources { get; } = [];
@@ -35,10 +39,15 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<Blueprint> BlueprintResults { get; } = [];
 
     // ── RS Decoder (C1 dashboard) derived views ───────────────────────────────
-    public MatchResult? BestMatch => ScanResults.Count > 0 ? ScanResults[0] : null;
-    public IEnumerable<MatchResult> OtherMatches => ScanResults.Skip(1);
-    public bool HasResults => ScanResults.Count > 0;
-    public bool NoResults  => ScanResults.Count == 0;
+    // All derived from the FILTERED results: under the Exact pill a close-only scan shows the
+    // empty state, not a blank hero (issue #34).
+    public MatchResult? BestMatch => FilteredScanResults.Count > 0 ? FilteredScanResults[0] : null;
+    public IEnumerable<MatchResult> OtherMatches => FilteredScanResults.Skip(1);
+    public bool HasResults => FilteredScanResults.Count > 0;
+    public bool NoResults  => FilteredScanResults.Count == 0;
+    // The scan DID match, but the active pill hides everything (Exact over a close-only scan).
+    // Both surfaces must say so, or a successful scan reads as a dead pipeline (issue #34).
+    public bool ResultsHiddenByFilter => ScanResults.Count > 0 && FilteredScanResults.Count == 0;
     public bool IsScanning => _scanner.IsRunning;
 
     private void NotifyScanDerived()
@@ -47,13 +56,25 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(OtherMatches));
         OnPropertyChanged(nameof(HasResults));
         OnPropertyChanged(nameof(NoResults));
+        OnPropertyChanged(nameof(ResultsHiddenByFilter));
     }
 
     public event Action<int>? OcrValueReceived;
     public event Action<ScanPhase>? OcrPhaseReceived;
     public event Action<int>? OcrProgressReceived;
 
-    partial void OnHistoryFilterChanged(HistoryFilter value) => RebuildFilteredHistory();
+    // True only while a filter pill click rebuilds the derived results. The rebuild raises
+    // BestMatch synchronously, so the view reads this to sync its motion tracker instead of
+    // replaying the full scan choreography for an unchanged scan (issue #34).
+    public bool ResultsRebuildIsFilterFlip { get; private set; }
+
+    partial void OnHistoryFilterChanged(HistoryFilter value)
+    {
+        RebuildFilteredHistory();
+        ResultsRebuildIsFilterFlip = true;
+        try { RebuildFilteredResults(); }
+        finally { ResultsRebuildIsFilterFlip = false; }
+    }
 
     public MainViewModel()
     {
@@ -126,14 +147,11 @@ public partial class MainViewModel : ObservableObject
         StatusText = matches.Count == 0 ? "No matches found" : "";
 
         bool isNewScan = ScanHistory.Count == 0 || ScanHistory[0].Rs != rs;
-        NotifyScanDerived();
+        RebuildFilteredResults();
 
         if (!addToHistory || !isNewScan) return;
 
-        var topName   = matches.Count > 0 ? matches[0].Resource.Name : "No match";
-        var matchKind = matches.Count == 0 ? MatchKind.None
-                      : matches[0].IsExact  ? MatchKind.Exact
-                      : MatchKind.Close;
+        var (topName, matchKind) = ScanClassification.Summarize(matches);
         ScanHistory.Insert(0, new ScanHistoryEntry(rs, topName, matchKind)
             { IsInCart = cart.Contains(topName) });
         while (ScanHistory.Count > 20) ScanHistory.RemoveAt(ScanHistory.Count - 1);
@@ -148,6 +166,15 @@ public partial class MainViewModel : ObservableObject
         FilteredScanHistory.Clear();
         foreach (var e in ScanHistory.Where(PassesHistoryFilter))
             FilteredScanHistory.Add(e);
+    }
+
+    // Re-derive FilteredScanResults from ScanResults; every ScanResults mutation site calls this.
+    private void RebuildFilteredResults()
+    {
+        FilteredScanResults.Clear();
+        foreach (var m in ScanResultsFilter.Apply(ScanResults, HistoryFilter))
+            FilteredScanResults.Add(m);
+        NotifyScanDerived();
     }
 
     private bool PassesHistoryFilter(ScanHistoryEntry e) => HistoryFilter switch
@@ -165,7 +192,7 @@ public partial class MainViewModel : ObservableObject
         ScanResults.Clear();
         foreach (var r in results) ScanResults.Add(r);
 
-        NotifyScanDerived();
+        RebuildFilteredResults();
 
         var history = ScanHistory.Select(e => e with { IsInCart = cart.Contains(e.TopResource) }).ToList();
         ScanHistory.Clear();
@@ -179,7 +206,7 @@ public partial class MainViewModel : ObservableObject
         RsInput = "";
         ScanResults.Clear();
         StatusText = "";
-        NotifyScanDerived();
+        RebuildFilteredResults();
     }
 
     [RelayCommand]
@@ -293,6 +320,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void AddResourceToShopping(Resource r)
     {
+        if (r.Method == "salvage") return;   // synthetic decode entry, not a purchasable ore
         App.Data.AddToShoppingList(r.Name, 1, "SCU");
         LoadShoppingList();
     }
@@ -319,6 +347,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ToggleCart(MatchResult m)
     {
+        if (m.IsSalvage) return;   // the button is hidden on salvage cards; guard the command too
         if (m.IsInCart) RemoveFromShopping(m.Resource.Name);
         else AddResourceToShopping(m.Resource);
     }
@@ -352,8 +381,14 @@ public partial class MainViewModel : ObservableObject
 
 public record MatchResult(Resource Resource, int InputRs, int Nodes, bool IsExact, double ErrorPct)
 {
+    // Synthetic salvage decode (SalvageDecode, issue #34): counts panels, not rock nodes, and
+    // carries none of the ore affordances (cart, refinery, composition).
+    public bool IsSalvage => Resource.Method == "salvage";
+    public bool CanCart => !IsSalvage;
     public string BadgeText => IsExact ? "EXACT" : $"~{ErrorPct:0.00}%";
-    public string NodesText => Nodes == 1 ? "×1 node" : $"×{Nodes} nodes";
+    public string NodesText => IsSalvage
+        ? (Nodes == 1 ? "×1 panel" : $"×{Nodes} panels")
+        : (Nodes == 1 ? "×1 node" : $"×{Nodes} nodes");
     public string CardColor => IsExact ? "#3FB950" : "#E3B341";
     public bool IsInCart { get; set; }
 

@@ -14,6 +14,16 @@
                    Margin="0,32,0,0" FontSize="16" Foreground="White"
                    Text="Click and drag to select the RS value region. Press Escape to cancel."/>
 
+        <!-- NEXT MONITOR hop (issue #36): visible only with more than one monitor; sits above the
+             canvas so a click here can never start a region drag (the handler marks it Handled). -->
+        <Border x:Name="NextMonitorBtn" Visibility="Collapsed"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,68,0,0"
+                Background="#CC101820" BorderBrush="#FFFF00FF" BorderThickness="1"
+                CornerRadius="4" Padding="14,7" Cursor="Hand" Panel.ZIndex="1"
+                MouseLeftButtonDown="NextMonitor_Click">
+            <TextBlock x:Name="NextMonitorLabel" FontSize="12" FontWeight="Bold" Foreground="White"/>
+        </Border>
+
         <!-- Canvas must have Background set (even Transparent) for WPF hit-testing to work.
              HorizontalAlignment/VerticalAlignment=Stretch makes it fill the Grid cell. -->
         <Canvas x:Name="DrawCanvas"

@@ -16,4 +16,12 @@ public sealed class ScanMotionTracker
         _last = bestMatchName;
         return changed;
     }
+
+    // Filter pill flips swap or empty the hero without a new scan (issue #34). The view records
+    // the swap here instead of choreographing; a null (pill emptied the list) keeps the last name
+    // so returning to a wider filter cannot replay the reveal for an unchanged scan.
+    public void Sync(string? bestMatchName)
+    {
+        if (!string.IsNullOrEmpty(bestMatchName)) _last = bestMatchName;
+    }
 }

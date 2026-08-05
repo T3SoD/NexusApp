@@ -298,7 +298,9 @@ public partial class MainWindow : Window
     {
         var selector = new RegionSelectorWindow();
         selector.RegionSelected += ApplyScanRegion;
-        selector.ShowOnMonitorOf(this);   // draw surface opens on this window's monitor (issue #6)
+        // Opens on this window's monitor (issue #6); the surface's NEXT MONITOR button reaches
+        // any other screen (issue #36).
+        selector.ShowOnMonitorOf(this);
     }
 
     /// <summary>Ensures the overlay is open, visible, and on the requested tab for the tour.</summary>
@@ -1076,6 +1078,9 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName != nameof(MainViewModel.BestMatch)) return;
         var name = _vm.BestMatch?.Resource?.Name;
+        // A filter pill flip is not a new scan: record the hero swap so the next real scan still
+        // gates correctly, but play no reveal and keep the expanded card open (issue #34).
+        if (_vm.ResultsRebuildIsFilterFlip) { _scanMotion.Sync(name); return; }
         bool full = _scanMotion.ShouldChoreograph(name);
         // A genuinely new best match starts the OTHER MATCHES collapsed; a cart-toggle rebuild
         // (same match) keeps the open card open so its rows re-render in place, never re-animated.
@@ -1418,6 +1423,9 @@ public partial class MainWindow : Window
         if (App.Settings.Current.MarketDataEnabled != true) return;
         if (App.Market.Snapshot is not { } snap) return;
         if (_vm.BestMatch is not { } m) return;
+        // The synthetic salvage card has no UEX commodity; skipping keeps the mapping-miss
+        // guard log honest for real gaps (issue #34).
+        if (m.IsSalvage) return;
 
         var hit = MarketQueries.BestRefinedSell(snap, m.Resource.Name);
         if (hit is null) return;   // no priced row for this resource: render nothing, not a blank line

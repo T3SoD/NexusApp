@@ -346,6 +346,55 @@ public partial class OverlayWindow : Window
         }
     }
 
+    // Issue #36: the OS can maximize (Snap drag-to-top, Win+Up) or minimize (Win+Down, Show
+    // Desktop) the overlay because CanResizeWithGrip carries WS_MAXIMIZEBOX/WS_MINIMIZEBOX. Both
+    // states are traps for a chrome-less, taskbar-less window: maximized, DragMove no-ops and
+    // the grip is template-hidden; minimized, there is no taskbar button to restore from.
+    // A maximize becomes a normal-state work-area fill (SnapMaximizeGuard); a minimize becomes a
+    // hide (owner's call) - the main-window OVERLAY toggle restores it, the Hidden wiring pauses
+    // the scanner like the close glyph, and Show Desktop puts the overlay away with everything
+    // else instead of popping it back over the bared desktop. The monitor is read while still
+    // maximized - the maximized window covers exactly the monitor the user snapped on, which a
+    // restore-first order would lose.
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Normal) return;
+
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+            Hide();
+            Logger.Info("[WIN] overlay minimize converted to hide (restore via the main-window toggle)");
+            return;
+        }
+
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        bool haveMonitor = _overlayHwnd != IntPtr.Zero
+            && MonitorFromWindow(_overlayHwnd, MONITOR_DEFAULTTONEAREST) is var mon
+            && mon != IntPtr.Zero && GetMonitorInfo(mon, ref mi);
+
+        WindowState = WindowState.Normal;
+
+        // Every programmatic footprint change hides the anchored Refinery Tracker flyout first
+        // (the file's standing rule); a work-area fill would otherwise strand it offscreen.
+        HideRefineryTrackerForGhost();
+
+        if (haveMonitor && SnapMaximizeGuard.FillRect(_ghostActive,
+                new PxRect(mi.rcMonitor.left, mi.rcMonitor.top,
+                           mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top),
+                new PxRect(mi.rcWork.left, mi.rcWork.top,
+                           mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top)) is { } fill)
+        {
+            GhostApplyRect(fill);
+            Logger.Info($"[WIN] overlay snap-maximize converted to a movable work-area fill ({(int)fill.Width}x{(int)fill.Height})");
+        }
+        else
+        {
+            Logger.Info("[WIN] overlay snap-maximize reverted" + (_ghostActive ? " (ghost mode)" : ""));
+        }
+    }
+
     private void UpdateCursorPassThrough()
     {
         bool passThrough = App.Settings.Current.OverlayPassThroughWhenCursorHidden && IsCursorHidden();
@@ -491,7 +540,7 @@ public partial class OverlayWindow : Window
         if (_woFlyout is { IsVisible: true })
         {
             _woFlyout.Hide();
-            Logger.Info("[WIN] Refinery tracker hidden (ghost transition)");
+            Logger.Info("[WIN] Refinery tracker hidden (overlay footprint change)");
         }
     }
 
@@ -1353,8 +1402,8 @@ public partial class OverlayWindow : Window
         _regionSelector = selector;
         selector.RegionSelected += r => ScanRegionSelected?.Invoke(r);
         selector.Closed += (_, _) => { if (ReferenceEquals(_regionSelector, selector)) _regionSelector = null; };
-        // Open the draw surface on the monitor this overlay sits on (the user drags it onto the
-        // game's monitor), not always the primary - issue #6.
+        // Opens on this overlay's monitor; the surface's NEXT MONITOR button reaches the game's
+        // screen without dragging the overlay there (issue #36).
         selector.ShowOnMonitorOf(this);
     }
 
@@ -1371,7 +1420,7 @@ public partial class OverlayWindow : Window
         _contractRegionSelector = selector;
         selector.RegionSelected += r => ContractRegionSelected?.Invoke(r);
         selector.Closed += (_, _) => { if (ReferenceEquals(_contractRegionSelector, selector)) _contractRegionSelector = null; };
-        selector.ShowOnMonitorOf(this);
+        selector.ShowOnMonitorOf(this);   // NEXT MONITOR button hops screens (issue #36)
     }
 
     // ── SCAN tab controls (toggle switches matching the STATS tab) ──────────────
@@ -1761,7 +1810,9 @@ public partial class OverlayWindow : Window
     {
         _vm.RsInput = rs.ToString();
         _vm.LookupCommand.Execute(null);
-        OverlayResults.ItemsSource = _vm.ScanResults;
+        // The FILTERED live collection (issue #34: the pills govern live results too). Assigning
+        // the ObservableCollection itself keeps cart-toggle and filter rebuilds flowing in.
+        OverlayResults.ItemsSource = _vm.FilteredScanResults;
         ApplyExactAutoExpand();
     }
 
@@ -1837,6 +1888,9 @@ public partial class OverlayWindow : Window
         if (App.Settings.Current.MarketDataEnabled != true) return false;
         if (App.Market.Snapshot is not { } snap) return false;
         if (host.DataContext is not MatchResult m) return false;
+        // The synthetic salvage card has no UEX commodity; skipping keeps the mapping-miss
+        // guard log honest for real gaps (issue #34).
+        if (m.IsSalvage) return false;
         if (MarketQueries.BestRefinedSell(snap, m.Resource.Name) is not { } hit) return false;
 
         var ageText = hit.Stale
@@ -1894,7 +1948,7 @@ public partial class OverlayWindow : Window
         _openRows = null;
         _animateExpandName = null;
 
-        var exact = _vm.ScanResults.FirstOrDefault(r => r.IsExact);
+        var exact = _vm.FilteredScanResults.FirstOrDefault(r => r.IsExact);
         if (exact == null || _composition.Get(exact.Resource.Name).Count == 0) return;
 
         _expandedName = exact.Resource.Name;
@@ -2013,7 +2067,11 @@ public partial class OverlayWindow : Window
                 FontSize = 8,
                 Height = 18,
             };
-            btn.Click += (_, __) => { _vm.HistoryFilter = f; };
+            btn.Click += (s, __) =>
+            {
+                InteractionLog.Click($"history filter {label}", (Button)s);
+                _vm.HistoryFilter = f;
+            };
             OverlayHistoryFilterPanel.Children.Add(btn);
         }
     }
@@ -2097,7 +2155,7 @@ public partial class OverlayWindow : Window
                 InteractionLog.Click($"recent scan RS {e2.Rs:N0}", (Border)s);
                 OverlayRsInput.Text = e2.Rs.ToString("N0");
                 _vm.RunScanNoHistory(e2.Rs);
-                OverlayResults.ItemsSource = _vm.ScanResults;
+                OverlayResults.ItemsSource = _vm.FilteredScanResults;
                 ApplyExactAutoExpand();
             };
             HistoryStrip.Children.Add(rowBorder);
@@ -2114,7 +2172,9 @@ public partial class OverlayWindow : Window
         _clearHistoryConfirm ??= new TwoTapConfirm(TimeSpan.FromSeconds(3), () =>
         {
             int n = _vm.ScanHistory.Count;
-            _vm.ScanHistory.Clear();
+            // Through the VM command, never clearing the raw collection directly: both RECENT
+            // surfaces render FilteredScanHistory, which only the command rebuilds (issue #34).
+            _vm.ClearHistoryCommand.Execute(null);
             Logger.Info($"[UI] Scan history cleared ({n} entries)");
         });
         void Rest()

@@ -47,4 +47,25 @@ public class ScanMotionTrackerTests
         Assert.False(t.ShouldChoreograph(null));
         Assert.True(t.ShouldChoreograph("Quantanium"));
     }
+
+    // Filter pill flips rebuild the derived results and swap or empty the hero without a new
+    // scan (issue #34); the view syncs the tracker instead of choreographing, and the sync must
+    // not let the next real scan of the same value replay the full reveal.
+    [Fact]
+    public void Sync_RecordsNameWithoutChoreographing()
+    {
+        var t = new ScanMotionTracker();
+        t.ShouldChoreograph("Quantanium");
+        t.Sync("Bexalite");                                // pill flip swapped the hero
+        Assert.False(t.ShouldChoreograph("Bexalite"));     // same hero re-notified: settle only
+    }
+
+    [Fact]
+    public void Sync_WithNull_KeepsTheLastName()
+    {
+        var t = new ScanMotionTracker();
+        t.ShouldChoreograph("Quantanium");
+        t.Sync(null);                                      // Exact pill emptied the live list
+        Assert.False(t.ShouldChoreograph("Quantanium"));   // back to All: same scan, no replay
+    }
 }

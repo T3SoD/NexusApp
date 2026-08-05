@@ -666,7 +666,8 @@
                                                         Background="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"/>
                                                 <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="Bold"
                                                            Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
-                                                <!-- G3: tier chip (S = amber-bright text + amber-line border; A/B/C = dim), overlay treatment -->
+                                                <!-- G3: tier chip (S = amber-bright text + amber-line border; A/B/C = dim), overlay treatment.
+                                                     Collapses when the entry has no tier (synthetic salvage card). -->
                                                 <Border Padding="6,2" CornerRadius="3" Margin="12,0,0,0" VerticalAlignment="Center" BorderThickness="1">
                                                     <Border.Style>
                                                         <Style TargetType="Border">
@@ -674,6 +675,9 @@
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
                                                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Resource.Tier}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
@@ -743,6 +747,7 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                                 <Button Grid.Column="1" Content="+ Add to cart" Style="{StaticResource ChamferAccentButton}" Padding="14,7"
+                                                        Visibility="{Binding CanCart, Converter={StaticResource BoolVis}}"
                                                         Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding Resource}"/>
                                             </Grid>
@@ -783,7 +788,20 @@
                                         <Border Height="1" Width="56" Background="{DynamicResource CyanDimBrush}" VerticalAlignment="Center"/>
                                         <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Grid>
-                                    <TextBlock Text="Scan an RS value to identify a deposit" Foreground="{StaticResource FgDimBrush}" FontSize="13" Margin="0,14,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Foreground="{StaticResource FgDimBrush}" FontSize="13" Margin="0,14,0,0" HorizontalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Scan an RS value to identify a deposit"/>
+                                                <Style.Triggers>
+                                                    <!-- The scan matched but the active pill hides every result: say so,
+                                                         or a successful close-only scan reads as a failed decode (issue #34). -->
+                                                    <DataTrigger Binding="{Binding ResultsHiddenByFilter}" Value="True">
+                                                        <Setter Property="Text" Value="Close matches hidden by the EXACT filter"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
                             </Grid>
                         </views:ChamferPanel>
@@ -814,7 +832,8 @@
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock Text="{Binding Resource.Name}" FontFamily="{StaticResource HeadFont}" FontSize="16"
                                                                            Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}" VerticalAlignment="Center"/>
-                                                                <!-- tier chip (S = amber-bright text + amber-line border; A/B/C = dim) -->
+                                                                <!-- tier chip (S = amber-bright text + amber-line border; A/B/C = dim);
+                                                                     collapses when the entry has no tier (synthetic salvage card) -->
                                                                 <Border Padding="5,1" CornerRadius="3" Margin="8,0,0,0" VerticalAlignment="Center" BorderThickness="1">
                                                                     <Border.Style>
                                                                         <Style TargetType="Border">
@@ -822,6 +841,9 @@
                                                                             <Style.Triggers>
                                                                                 <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
                                                                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding Resource.Tier}" Value="">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
                                                                         </Style>
@@ -856,6 +878,7 @@
                                                         <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" FontSize="18"
                                                                    Foreground="{StaticResource FgBrush}" Text="{Binding Resource.BaseRs, StringFormat='RS {0:N0}'}"/>
                                                         <Button Grid.Column="2" Content="Add" Style="{StaticResource ChamferButton}" Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                                Visibility="{Binding CanCart, Converter={StaticResource BoolVis}}"
                                                                 Command="{Binding DataContext.AddResourceToShoppingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding Resource}"/>
                                                     </Grid>

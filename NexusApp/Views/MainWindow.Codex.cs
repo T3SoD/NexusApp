@@ -64,7 +64,11 @@ public partial class MainWindow
             var f = filter;
             var btn = MakePill(label, _vm.HistoryFilter == f);
             btn.Height = 20;
-            btn.Click += (_, __) => { _vm.HistoryFilter = f; };
+            btn.Click += (s, __) =>
+            {
+                InteractionLog.Click($"history filter {label}", (Button)s);
+                _vm.HistoryFilter = f;
+            };
             HistoryFilterPanel.Children.Add(btn);
         }
     }

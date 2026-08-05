@@ -492,20 +492,47 @@ public class DataService : IDisposable
         }
     }
 
+    // Auto-scan re-runs the same confirmed reading (twice per value by design, and again on
+    // re-taps); the [SCAN] decode breadcrumbs below log each distinct reading once.
+    private int _lastRsLogged = -1;
+
     public List<RsMatch> FindByRs(int rs)
     {
         var all = GetAllResources();
         var results = new List<RsMatch>();
+        bool logThis = rs != _lastRsLogged;
         foreach (var r in all.Where(r => r.Method == "ship"))
         {
             var (matches, nodes, isExact, errorPct) = r.CheckRs(rs);
             if (matches)
                 results.Add(new RsMatch(r, nodes, isExact, errorPct));
+            else if (logThis && ClusterLimits.MaxNodes(r.Rarity) is int max && WouldMatchUncapped(rs, r.BaseRs, max))
+                Logger.Info($"[SCAN] RS {rs:N0}: {r.Name} x{(int)Math.Round((double)rs / r.BaseRs)} dropped (cluster cap {max}, issue #34)");
         }
+        // Salvage panels (n*2000, issue #34): appended last as a deterministic tiebreak (OrderBy
+        // is stable). With the current seed an exact ErrorPct tie cannot occur (no in-cap ore
+        // multiple is divisible by 2000); close-band collisions rank by ErrorPct.
+        if (SalvageDecode.TryMatch(rs) is { } salvage)
+        {
+            results.Add(salvage);
+            if (logThis) Logger.Info($"[SCAN] RS {rs:N0}: salvage decode x{salvage.Nodes} panel(s)");
+        }
+        _lastRsLogged = rs;
         return results
             .OrderByDescending(x => x.Resource.IsPinned)
             .ThenBy(x => x.ErrorPct)
             .ToList();
+    }
+
+    // The cap-drop breadcrumb needs to know WHY CheckRs refused, and its tuple cannot say; this
+    // re-runs the band math for the one refusal case worth logging (a would-be match past the cap).
+    private static bool WouldMatchUncapped(int rs, int baseRs, int cap)
+    {
+        if (baseRs <= 0) return false;
+        double ratio = (double)rs / baseRs;
+        int nearest = (int)Math.Round(ratio);
+        if (nearest <= cap) return false;   // the refusal was not the cap
+        return rs % baseRs == 0 || Math.Abs(ratio - nearest) / nearest * 100 <= 0.5;
     }
 
     public List<Blueprint> GetBlueprintsForResource(string resourceName)

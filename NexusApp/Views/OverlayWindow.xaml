@@ -251,6 +251,13 @@
                                 Click="OverlayScan_Click"/>
                     </Grid>
 
+                    <!-- Hidden-by-filter notice: shares row 3 with the results list, which renders
+                         zero cards whenever this is visible (ResultsHiddenByFilter, issue #34). -->
+                    <TextBlock Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="10" Foreground="{DynamicResource FgDimBrush}"
+                               Text="Close matches hidden by the EXACT filter"
+                               Visibility="{Binding ResultsHiddenByFilter, Converter={StaticResource BoolVis}}"/>
+
                     <!-- Results -->
                     <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Margin="10,0">
                         <ItemsControl x:Name="OverlayResults">
@@ -287,7 +294,8 @@
                                                         <TextBlock Text="{Binding Resource.Name}" FontWeight="SemiBold"
                                                                    Foreground="{Binding Resource.Rarity, Converter={StaticResource RarityColor}}"
                                                                    VerticalAlignment="Center"/>
-                                                        <!-- C1: tier chip (S = amber-bright text+border; A/B/C = dim) -->
+                                                        <!-- C1: tier chip (S = amber-bright text+border; A/B/C = dim);
+                                                             collapses when the entry has no tier (synthetic salvage card) -->
                                                         <Border Padding="5,1" CornerRadius="3" Margin="5,0,0,0"
                                                                 VerticalAlignment="Center" BorderThickness="1">
                                                             <Border.Style>
@@ -296,6 +304,9 @@
                                                                     <Style.Triggers>
                                                                         <DataTrigger Binding="{Binding Resource.Tier}" Value="S">
                                                                             <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Resource.Tier}" Value="">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
                                                                         </DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
@@ -369,10 +380,12 @@
                                                          snapshot has landed, or the ore has no priced row. -->
                                                     <StackPanel x:Name="MarketSellHost" Loaded="MarketSellHost_Loaded"/>
                                                 </StackPanel>
-                                                <!-- C5: cart button (+ CART / IN CART, drives ToggleCartCommand) -->
+                                                <!-- C5: cart button (+ CART / IN CART, drives ToggleCartCommand).
+                                                     Hidden on the synthetic salvage card - nothing to buy or refine. -->
                                                 <Button Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
                                                         Cursor="Hand" FontSize="9" FontWeight="Bold"
                                                         FontFamily="{StaticResource MonoFont}"
+                                                        Visibility="{Binding CanCart, Converter={StaticResource BoolVis}}"
                                                         Command="{Binding DataContext.ToggleCartCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"
                                                         Click="CartToggle_Click">
