@@ -244,6 +244,14 @@ public class ProfitDisplayTests
         => Assert.Equal(hidden, ProfitDisplay.LedgerHiddenCount(total));
 
     [Fact]
+    public void RowTitle_AppendsTheCommodityName()
+        => Assert.Equal("Sold 128 SCU Bioplastic", ProfitDisplay.RowTitle(true, 128m, "Bioplastic"));
+
+    [Fact]
+    public void RowTitle_UnknownCommodity_QuantityOnly()
+        => Assert.Equal("Bought 14.4 SCU", ProfitDisplay.RowTitle(false, 14.4m, null));
+
+    [Fact]
     public void WhereText_PrefersTheStampedPlace()
         => Assert.Equal("MIC-L5", ProfitDisplay.WhereText("MIC-L5", false, "SCShop_Admin_lt_base_g"));
 

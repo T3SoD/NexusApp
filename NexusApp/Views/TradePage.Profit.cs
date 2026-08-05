@@ -361,7 +361,8 @@ public sealed partial class TradePage
         var mainLine = new StackPanel { Orientation = Orientation.Horizontal };
         mainLine.Children.Add(new TextBlock
         {
-            Text = $"{(sell ? "Sold" : "Bought")} {tx.Scu.ToString("0.##", CultureInfo.InvariantCulture)} SCU",
+            // D10a: the commodity's display name from the embedded GUID table, when known.
+            Text = ProfitDisplay.RowTitle(sell, tx.Scu, CommodityNameCatalog.Instance.Resolve(tx.ResourceGuid)),
             FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
         });
         if (isVoided)

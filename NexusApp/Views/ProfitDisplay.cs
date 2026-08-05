@@ -118,6 +118,15 @@ internal static class ProfitDisplay
 
     internal static int LedgerHiddenCount(int total) => Math.Max(0, total - LedgerRowCap);
 
+    /// <summary>The ledger row's main line: verb, quantity, and the commodity's display name
+    /// when the GUID table knows it (D10a). An unknown GUID renders nothing rather than a
+    /// guess: a new commodity on a newer game build than the table.</summary>
+    internal static string RowTitle(bool sell, decimal scu, string? commodity)
+    {
+        var qty = $"{(sell ? "Sold" : "Bought")} {scu.ToString("0.##", CultureInfo.InvariantCulture)} SCU";
+        return string.IsNullOrWhiteSpace(commodity) ? qty : qty + " " + commodity;
+    }
+
     /// <summary>The ledger row's WHERE text: the player's stamped location when one exists
     /// (jurisdiction readings say "{name} space", the F14 idiom), else the cleaned shop token.
     /// Shop tokens are kiosk TEMPLATES shared across stations, never claimed as a place.</summary>
