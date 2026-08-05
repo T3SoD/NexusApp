@@ -34,6 +34,11 @@ public partial class App : Application
     // Game.log's replay on every start, same rationale as Shards).
     public static LocationTracker Locations { get; private set; } = null!;
 
+    // Session profit tracker (issue #39): commodity-kiosk buys/sells from the shared Game.log
+    // tail. The live ledger rebuilds from the current log's replay; finished sessions persist as
+    // per-channel summaries (profit_history.json).
+    public static ProfitTracker Profit { get; private set; } = null!;
+
     // Contract OCR scanner: reads the in-game Contracts panel and enriches the active haul record.
     public static ContractOcrService ContractOcr { get; private set; } = null!;
     public static ContractScanner ContractScan { get; private set; } = null!;
@@ -409,6 +414,7 @@ public partial class App : Application
             GameLogFeed,
             channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
         Locations = new LocationTracker(GameLogFeed);
+        Profit = new ProfitTracker(GameLogFeed);
 
         // Geometry + the player-position seam. Created right after Locations because PlayerPlace
         // reads both. Loading the catalog here rather than in a page constructor is the whole point:
@@ -552,6 +558,7 @@ public partial class App : Application
         Hauls?.Dispose();
         Shards?.Dispose();
         Locations?.Dispose();
+        Profit?.Dispose();
         GameLog?.Dispose();
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above
         Network?.Dispose();

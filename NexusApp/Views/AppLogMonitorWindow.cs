@@ -233,6 +233,10 @@ public sealed class AppLogMonitorWindow : Window
             ("Ghost rail scale", $"{Math.Round(UiScaleService.ClampRailScale(App.Settings.Current.OverlayGhostRailScale) * 100)}%"),
             ("Market data", App.Settings.Current.MarketDataEnabled switch { null => "Not asked", true => "On", false => "Off" }),
             ("Codex sell column", App.Settings.Current.CodexSellColumn ? "on" : "off"),
+            // Session profit (spec 2026-08-05 section 8): count and net PRESENCE only - a
+            // snapshot is shared, so amounts never land in it.
+            ("Session profit", $"{App.Profit.Ledger.Transactions.Count} transactions, "
+                + $"session net {(App.Profit.Ledger.UnvoidedCount > 0 ? "present" : "none")}"),
         };
 
         return DiagnosticSnapshot.Build(

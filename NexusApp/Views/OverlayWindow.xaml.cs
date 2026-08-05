@@ -200,6 +200,15 @@ public partial class OverlayWindow : Window
         // Server / Shard section (top of the STATS tab): refresh when the shard history changes,
         // but only while the STATS tab is on screen (same guard pattern as OnHaulsChanged).
         App.Shards.Changed += OnShardsChanged;
+        // Session profit (issue #39): keep the TRADE tab's SESSION line live. Like Hauls/Shards
+        // the tracker is pumped by the shared Game.log feed's DispatcherTimer, so it already
+        // raises on the UI thread and needs no marshaling.
+        App.Profit.Changed += OnProfitChanged;
+        // The line's OFFLINE dimming folds on the FEED's process probe (the same read
+        // BuildTradeSessionLine takes), so game start/exit must repaint it too - Changed alone
+        // left the dim state stale until an unrelated rebuild. The feed's watcher is pumped by
+        // a DispatcherTimer as well, so this raise is also UI-thread.
+        App.GameLogFeed.SessionLiveChanged += OnProfitSessionLiveChanged;
 
         // Live market prices on the scan cards: repaint the sell lines already on screen when a
         // fetch cycle publishes a new snapshot, instead of leaving an hour-old price up until the
@@ -2444,6 +2453,8 @@ public partial class OverlayWindow : Window
         App.GameLog.StatusChanged -= OnGameLogStatusChanged;
         App.Hauls.Changed -= OnHaulsChanged;
         App.Shards.Changed -= OnShardsChanged;
+        App.Profit.Changed -= OnProfitChanged;
+        App.GameLogFeed.SessionLiveChanged -= OnProfitSessionLiveChanged;
         App.Market.Changed -= _onMarketChanged;
         App.Locations.Changed -= _onLocationChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
@@ -2457,6 +2468,16 @@ public partial class OverlayWindow : Window
         _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
         base.OnClosed(e);
     }
+
+    // Repaint the TRADE tab's SESSION line when the profit tracker applies or voids a settlement.
+    private void OnProfitChanged()
+    {
+        if (IsTabPresented("trade")) RebuildTradePanel();
+    }
+
+    // And when the game opens or exits: the SESSION line's OFFLINE dim state folds on the feed's
+    // process probe, which no settlement raise accompanies (review fix, 2026-08-05).
+    private void OnProfitSessionLiveChanged(bool _) => OnProfitChanged();
 
     // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.
     private void OnHaulsChanged()
@@ -3650,6 +3671,55 @@ public partial class OverlayWindow : Window
         BuildTradeTopRow();
         if (_tradeMode == "PLANNER") BuildPlannerSection();
         else BuildPinnedSection();
+        // Anchored above the scroll (owner ask 2026-08-05), not appended to the items: the money
+        // readout stays put while the route cards scroll under it.
+        TradeSessionHost.Content = BuildTradeSessionLine();
+    }
+
+    // SESSION line (profit tracker spec 2026-08-05, S5): one line, the session net on the chip's
+    // color rule - green positive, red negative, dim empty or offline. The ledger, derivation and
+    // history strip stay on the desktop panel; this is read at a glance mid-flight. Anchored at
+    // the top of the tab, so the hairline sits BELOW it as the divider against the scroll.
+    private Border BuildTradeSessionLine()
+    {
+        var ledger = App.Profit.Ledger;
+        var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock
+        {
+            Text = "SESSION", FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        });
+        var value = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 13,
+            Foreground = state switch
+            {
+                ProfitState.Positive => (Brush)FindResource("OkBrush"),
+                ProfitState.Negative => (Brush)FindResource("DangerBrush"),
+                _ => (Brush)FindResource("FgDimBrush"),
+            },
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        value.Inlines.Add(new System.Windows.Documents.Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
+        // No unit after the empty dashes: "- - - aUEC" would read as a value.
+        if (ledger.UnvoidedCount > 0)
+            value.Inlines.Add(new System.Windows.Documents.Run(" aUEC")
+            {
+                FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("FgDimBrush"),
+            });
+        Grid.SetColumn(value, 1);
+        row.Children.Add(value);
+        // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor: hairline
+        // below as the divider against the scrolling cards, 7px vertical padding.
+        return new Border
+        {
+            BorderBrush = (Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 0, 0, 4), Child = row,
+        };
     }
 
     // The fused top row, above BOTH modes (mock nexus-design-lab/overlay-trade-v2, candidate B,
