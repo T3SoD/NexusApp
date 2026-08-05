@@ -492,7 +492,14 @@
                      in it" and nothing else. The only action is a per-card unpin. Built in code
                      (RebuildTradePanel). -->
                 <Grid x:Name="TradeTabContent" Visibility="Collapsed">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,6">
+                    <Grid.RowDefinitions>
+                        <!-- SESSION profit line anchored above the scroll (owner ask 2026-08-05):
+                             the money readout stays put while the route cards scroll under it. -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <ContentControl x:Name="TradeSessionHost" Grid.Row="0" Margin="8,6,8,0"/>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="8,0,8,6">
                         <StackPanel x:Name="TradePanelItems"/>
                     </ScrollViewer>
                 </Grid>

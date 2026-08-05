@@ -1051,61 +1051,57 @@ public sealed class CommandPage : UserControl
         return sp;
     }
 
-    // Session profit quick reference (issue #39): the same ProfitDisplay folds the Trade panel
-    // renders, one card deep. Value, derivation, and the all-time line when history exists; the
-    // full ledger, chart, and caveats stay on Trade where there is room to be honest.
+    // Commodity trading profit quick reference (issue #39; owner rework 2026-08-05: the ALL-TIME
+    // figure leads, the session net demotes to a foot line). Same ProfitDisplay folds the Trade
+    // panel renders, one card deep; the ledger, chart, and caveats stay on Trade where there is
+    // room to be honest.
     private UIElement SessionProfit()
     {
         var sp = new StackPanel();
-        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade"));
+        sp.Children.Add(PanelHead("ALL TIME TRADING PROFIT", "Open trade", "trade"));
         if (App.Profit == null) return sp;
 
-        var ledger = App.Profit.Ledger;
-        bool live = App.GameLogFeed.IsSessionLive;
-        int sells = 0, buys = 0, voided = 0;
-        foreach (var t in ledger.Transactions)
-        {
-            if (t.Voided != null) voided++;
-            else if (t.Kind == TransactionKind.Sell) sells++;
-            else buys++;
-        }
+        var channel = App.GameLogFeed.ActiveChannel;
+        var ch = App.Profit.History.Channels.Find(c => c.Channel == channel);
+        bool hasHistory = ch != null && ch.Entries.Count + ch.PrunedCount > 0;
+        long allNet = hasHistory ? ProfitHistory.AllTimeNet(App.Profit.History, channel) : 0;
 
-        var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, live);
-        var brush = state switch
+        var value = new TextBlock
         {
-            ProfitState.Positive => Br("OkBrush"),
-            ProfitState.Negative => Br("DangerBrush"),
-            _ => Br("FgDimBrush"),
+            FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold,
+            Foreground = !hasHistory || allNet == 0 ? Br("FgDimBrush") : allNet > 0 ? Br("OkBrush") : Br("DangerBrush"),
         };
-        var value = new TextBlock { FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold, Foreground = brush };
-        value.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
-        if (ledger.UnvoidedCount > 0)
+        value.Inlines.Add(new Run(hasHistory ? ProfitDisplay.Compact(allNet) : ProfitDisplay.NoneValue));
+        if (hasHistory)
             value.Inlines.Add(new Run("  aUEC") { FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
         sp.Children.Add(value);
 
         sp.Children.Add(new TextBlock
         {
-            Text = ProfitDisplay.DerivationLine(sells, ledger.Sold, buys, ledger.Bought, voided, live),
+            Text = hasHistory
+                ? ProfitDisplay.AllTimeLine(ProfitHistory.AllTimeSessionCount(App.Profit.History, channel), ch!.FirstSessionUtc)
+                : "No kiosk transactions observed yet.",
             FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"),
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 0),
+            Margin = new Thickness(0, 5, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
         });
 
-        var channel = App.GameLogFeed.ActiveChannel;
-        var ch = App.Profit.History.Channels.Find(c => c.Channel == channel);
-        if (ch != null && ch.Entries.Count + ch.PrunedCount > 0)
+        var ledger = App.Profit.Ledger;
+        var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
+        var session = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        session.Inlines.Add(new Run("THIS SESSION ") { FontWeight = FontWeights.Bold });
+        session.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net))
         {
-            long allNet = ProfitHistory.AllTimeNet(App.Profit.History, channel);
-            int allCount = ProfitHistory.AllTimeSessionCount(App.Profit.History, channel);
-            var all = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-            all.Inlines.Add(new Run("ALL TIME ") { FontWeight = FontWeights.Bold });
-            all.Inlines.Add(new Run(ProfitDisplay.Compact(allNet))
+            FontFamily = Mono,
+            Foreground = state switch
             {
-                FontFamily = Mono,
-                Foreground = allNet > 0 ? Br("OkBrush") : allNet < 0 ? Br("DangerBrush") : Br("FgDimBrush"),
-            });
-            all.Inlines.Add(new Run(", " + ProfitDisplay.AllTimeLine(allCount, ch.FirstSessionUtc)));
-            sp.Children.Add(all);
-        }
+                ProfitState.Positive => Br("OkBrush"),
+                ProfitState.Negative => Br("DangerBrush"),
+                _ => Br("FgDimBrush"),
+            },
+        });
+        if (ledger.UnvoidedCount > 0) session.Inlines.Add(new Run(" aUEC"));
+        if (state == ProfitState.Offline) session.Inlines.Add(new Run("  (game offline)"));
+        sp.Children.Add(session);
         return sp;
     }
 
@@ -1176,9 +1172,14 @@ public sealed class CommandPage : UserControl
     // ── small helpers ──
     private UIElement PanelHead(string title, string link, string nav)
     {
+        // Star + auto columns so a long title trims instead of running under the right-docked
+        // link (the ALL TIME COMMODITY TRADING PROFIT head was the first to collide).
         var g = new Grid { Margin = new Thickness(0, 0, 0, 12) };
-        g.Children.Add(new TextBlock { Text = title, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush") });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.Children.Add(new TextBlock { Text = title, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0) });
         var a = new TextBlock { Text = link + "  →", FontFamily = Ui, FontSize = 11, Foreground = Br("AccentBrush"), HorizontalAlignment = HorizontalAlignment.Right, Cursor = System.Windows.Input.Cursors.Hand };
+        Grid.SetColumn(a, 1);
         a.MouseEnter += (_, _) => a.TextDecorations = TextDecorations.Underline;
         a.MouseLeave += (_, _) => a.TextDecorations = null;
         a.MouseLeftButtonUp += (_, _) => _navigate(nav);

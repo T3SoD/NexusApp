@@ -3671,12 +3671,15 @@ public partial class OverlayWindow : Window
         BuildTradeTopRow();
         if (_tradeMode == "PLANNER") BuildPlannerSection();
         else BuildPinnedSection();
-        TradePanelItems.Children.Add(BuildTradeSessionLine());
+        // Anchored above the scroll (owner ask 2026-08-05), not appended to the items: the money
+        // readout stays put while the route cards scroll under it.
+        TradeSessionHost.Content = BuildTradeSessionLine();
     }
 
     // SESSION line (profit tracker spec 2026-08-05, S5): one line, the session net on the chip's
     // color rule - green positive, red negative, dim empty or offline. The ledger, derivation and
-    // history strip stay on the desktop panel; this is read at a glance mid-flight.
+    // history strip stay on the desktop panel; this is read at a glance mid-flight. Anchored at
+    // the top of the tab, so the hairline sits BELOW it as the divider against the scroll.
     private Border BuildTradeSessionLine()
     {
         var ledger = App.Profit.Ledger;
@@ -3691,7 +3694,6 @@ public partial class OverlayWindow : Window
         });
         var value = new TextBlock
         {
-            Text = ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net),
             FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 13,
             Foreground = state switch
             {
@@ -3701,13 +3703,22 @@ public partial class OverlayWindow : Window
             },
             VerticalAlignment = VerticalAlignment.Center,
         };
+        value.Inlines.Add(new System.Windows.Documents.Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
+        // No unit after the empty dashes: "- - - aUEC" would read as a value.
+        if (ledger.UnvoidedCount > 0)
+            value.Inlines.Add(new System.Windows.Documents.Run(" aUEC")
+            {
+                FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("FgDimBrush"),
+            });
         Grid.SetColumn(value, 1);
         row.Children.Add(value);
-        // The overlay card's line idiom (mock .ovlLine): hairline above, 7px vertical padding.
+        // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor: hairline
+        // below as the divider against the scrolling cards, 7px vertical padding.
         return new Border
         {
-            BorderBrush = (Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 8, 0, 0), Child = row,
+            BorderBrush = (Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 0, 0, 4), Child = row,
         };
     }
 

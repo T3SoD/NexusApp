@@ -24,6 +24,14 @@ public sealed class CommodityTransaction
     public IReadOnlyList<CargoBoxGroup> Boxes { get; init; } = Array.Empty<CargoBoxGroup>();
     public string? Voided { get; set; }                // null = settled; else the result code that refused it
 
+    // Where the player was when the settlement logged, stamped by ProfitTracker from the location
+    // tracker's state at that line (same feed, subscribed ahead of the profit consumer, so replay
+    // stamps identically). Null = no location signal yet. The shop token cannot carry this:
+    // kiosk shopNames are shared TEMPLATES ("SCShop_Admin_lt_base_g" at three different kiosks,
+    // recon 2026-08-02, confirmed live at MIC-L5 2026-08-05), so they name a kiosk CLASS, not a place.
+    public string? PlaceLabel { get; set; }
+    public bool PlaceIsArea { get; set; }              // jurisdiction reading: render "{label} space", dim
+
     // Replay-dedupe identity: two settlements cannot share timestamp, kind, amount, kiosk and
     // resource inside one millisecond.
     public string Key => string.Create(CultureInfo.InvariantCulture,

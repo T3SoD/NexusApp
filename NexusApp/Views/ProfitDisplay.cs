@@ -82,7 +82,7 @@ internal static class ProfitDisplay
         : net > 0 ? ProfitState.Positive
         : ProfitState.Negative;
 
-    // "1 sell in 1,067,200, 1 buy out 836,854, this session." Clauses only for what happened;
+    // "1 sell in 1,067,200 aUEC, 1 buy out 836,854 aUEC, this session." Clauses only for what happened;
     // offline swaps the live suffix for the last-session prefix (or, empty, the offline waiting
     // copy: nothing to prefix and no live promise to make).
     internal static string DerivationLine(int sells, long sold, int buys, long bought, int voided, bool live)
@@ -90,8 +90,8 @@ internal static class ProfitDisplay
         if (sells == 0 && buys == 0 && voided == 0) return live ? WaitingLine : WaitingOfflineLine;
 
         var clauses = new List<string>(3);
-        if (sells > 0) clauses.Add($"{sells} sell{(sells == 1 ? "" : "s")} in {Format(sold)}");
-        if (buys > 0) clauses.Add($"{buys} buy{(buys == 1 ? "" : "s")} out {Format(bought)}");
+        if (sells > 0) clauses.Add($"{sells} sell{(sells == 1 ? "" : "s")} in {Format(sold)} aUEC");
+        if (buys > 0) clauses.Add($"{buys} buy{(buys == 1 ? "" : "s")} out {Format(bought)} aUEC");
         if (voided > 0) clauses.Add($"{voided} voided");
         var joined = string.Join(", ", clauses);
         return live ? joined + ", this session." : OfflinePrefix + joined + ".";
@@ -117,6 +117,14 @@ internal static class ProfitDisplay
     internal const int LedgerRowCap = 50;
 
     internal static int LedgerHiddenCount(int total) => Math.Max(0, total - LedgerRowCap);
+
+    /// <summary>The ledger row's WHERE text: the player's stamped location when one exists
+    /// (jurisdiction readings say "{name} space", the F14 idiom), else the cleaned shop token.
+    /// Shop tokens are kiosk TEMPLATES shared across stations, never claimed as a place.</summary>
+    internal static string WhereText(string? placeLabel, bool placeIsArea, string shopName) =>
+        string.IsNullOrWhiteSpace(placeLabel) ? ShopLabel(shopName)
+        : placeIsArea ? placeLabel + " space"
+        : placeLabel;
 
     internal static string LedgerEarlierNote(int hidden) =>
         $"and {Format(hidden)} earlier this session";

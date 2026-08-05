@@ -144,7 +144,15 @@ public sealed partial class TradePage
     {
         var ledger = App.Profit.Ledger;
         var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
-        _profitChipValue.Text = ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net);
+        // Units ruling (owner, 2026-08-05, chip exemption overridden same day): the value carries
+        // the dim aUEC suffix like every other money surface, never after the empty dashes.
+        _profitChipValue.Inlines.Clear();
+        _profitChipValue.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
+        if (ledger.UnvoidedCount > 0)
+            _profitChipValue.Inlines.Add(new Run(" aUEC")
+            {
+                FontFamily = Hud.Font("UiFont"), FontSize = 9, Foreground = Hud.Br("FgDimBrush"),
+            });
         _profitChipValue.Foreground = ProfitBrush(state);
         _profitChip.Opacity = state == ProfitState.Offline ? 0.55 : 1.0;   // mock .plChip.offline
     }
@@ -376,11 +384,15 @@ public sealed partial class TradePage
         main.Children.Add(mainLine);
         main.Children.Add(new TextBlock
         {
-            Text = ProfitDisplay.ShopLabel(tx.ShopName), FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+            // The stamped player location when known; the shop token is a kiosk TEMPLATE shared
+            // across stations (recon 2026-08-02, confirmed live 2026-08-05) and never shows as
+            // a place. Raw token and resource id stay inspectable in the tooltip (S3).
+            Text = ProfitDisplay.WhereText(tx.PlaceLabel, tx.PlaceIsArea, tx.ShopName),
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
             Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
-            // Raw token and resource id stay inspectable here (S3: cleaned for display, raw in tooltip).
             ToolTip = $"shopName[{tx.ShopName}]  resourceGUID[{tx.ResourceGuid}]"
+                    + (tx.PlaceLabel is null ? "" : $"  location at settlement: {tx.PlaceLabel}")
                     + (isVoided ? $"  result[{tx.Voided}]" : ""),
         });
         Grid.SetColumn(main, 2);
@@ -388,11 +400,15 @@ public sealed partial class TradePage
 
         var amount = new TextBlock
         {
-            Text = ProfitDisplay.Signed(sell ? tx.Amount : -tx.Amount),
             FontFamily = Hud.Font("MonoFont"), FontSize = 14, TextAlignment = TextAlignment.Right,
             Foreground = isVoided ? Hud.Br("FgDimBrush") : sell ? Hud.Br("OkBrush") : Hud.Br("DangerBrush"),
             Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
         };
+        amount.Inlines.Add(new Run(ProfitDisplay.Signed(sell ? tx.Amount : -tx.Amount)));
+        amount.Inlines.Add(new Run(" aUEC")
+        {
+            FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
+        });
         Grid.SetColumn(amount, 3);
         grid.Children.Add(amount);
 
@@ -446,13 +462,19 @@ public sealed partial class TradePage
                 Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 7, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             });
-            left.Children.Add(new TextBlock
+            var allValue = new TextBlock
             {
-                Text = ProfitDisplay.Compact(allNet), FontFamily = Hud.Font("MonoFont"), FontSize = 15,
-                FontWeight = FontWeights.Medium,
+                FontFamily = Hud.Font("MonoFont"), FontSize = 15, FontWeight = FontWeights.Medium,
                 Foreground = allNet >= 0 ? Hud.Br("OkBrush") : Hud.Br("DangerBrush"),
                 Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
+            };
+            allValue.Inlines.Add(new Run(ProfitDisplay.Compact(allNet)));
+            allValue.Inlines.Add(new Run(" aUEC")
+            {
+                FontFamily = Hud.Font("UiFont"), FontSize = 10, FontWeight = FontWeights.Normal,
+                Foreground = Hud.Br("FgDimBrush"),
             });
+            left.Children.Add(allValue);
             left.Children.Add(new TextBlock
             {
                 Text = ProfitDisplay.AllTimeLine(allCount, ch.FirstSessionUtc),
@@ -623,12 +645,18 @@ public sealed partial class TradePage
             FontFamily = Hud.Font("UiFont"), FontSize = 10, FontWeight = FontWeights.Bold,
             Foreground = Hud.Br("FgDimBrush"),
         });
-        content.Children.Add(new TextBlock
+        var dayNet = new TextBlock
         {
-            Text = ProfitDisplay.Signed(day.Net), FontFamily = Hud.Font("MonoFont"), FontSize = 12,
+            FontFamily = Hud.Font("MonoFont"), FontSize = 12,
             Foreground = day.Net >= 0 ? Hud.Br("OkBrush") : Hud.Br("DangerBrush"),
             Margin = new Thickness(0, 2, 0, 0),
+        };
+        dayNet.Inlines.Add(new Run(ProfitDisplay.Signed(day.Net)));
+        dayNet.Inlines.Add(new Run(" aUEC")
+        {
+            FontFamily = Hud.Font("UiFont"), FontSize = 9.5, Foreground = Hud.Br("FgDimBrush"),
         });
+        content.Children.Add(dayNet);
         content.Children.Add(new TextBlock
         {
             Text = $"{day.Sessions} session{(day.Sessions == 1 ? "" : "s")}, "

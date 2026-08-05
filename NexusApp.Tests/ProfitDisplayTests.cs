@@ -76,22 +76,22 @@ public class ProfitDisplayTests
 
     [Fact]
     public void DerivationLine_RoundTrip()
-        => Assert.Equal("1 sell in 1,067,200, 1 buy out 836,854, this session.",
+        => Assert.Equal("1 sell in 1,067,200 aUEC, 1 buy out 836,854 aUEC, this session.",
             ProfitDisplay.DerivationLine(1, 1_067_200, 1, 836_854, 0, live: true));
 
     [Fact]
     public void DerivationLine_PluralsAndVoided()
-        => Assert.Equal("2 sells in 2,000,000, 3 buys out 1,500,000, 2 voided, this session.",
+        => Assert.Equal("2 sells in 2,000,000 aUEC, 3 buys out 1,500,000 aUEC, 2 voided, this session.",
             ProfitDisplay.DerivationLine(2, 2_000_000, 3, 1_500_000, 2, live: true));
 
     [Fact]
     public void DerivationLine_BuysOnly()
-        => Assert.Equal("1 buy out 182,560, this session.",
+        => Assert.Equal("1 buy out 182,560 aUEC, this session.",
             ProfitDisplay.DerivationLine(0, 0, 1, 182_560, 0, live: true));
 
     [Fact]
     public void DerivationLine_Offline_PrefixesLastSession()
-        => Assert.Equal("Game offline. Last session: 1 sell in 1,067,200, 1 buy out 836,854.",
+        => Assert.Equal("Game offline. Last session: 1 sell in 1,067,200 aUEC, 1 buy out 836,854 aUEC.",
             ProfitDisplay.DerivationLine(1, 1_067_200, 1, 836_854, 0, live: false));
 
     [Fact]
@@ -242,6 +242,19 @@ public class ProfitDisplayTests
     [InlineData(200, 150)]
     public void LedgerHiddenCount_CountsBeyondTheCap(int total, int hidden)
         => Assert.Equal(hidden, ProfitDisplay.LedgerHiddenCount(total));
+
+    [Fact]
+    public void WhereText_PrefersTheStampedPlace()
+        => Assert.Equal("MIC-L5", ProfitDisplay.WhereText("MIC-L5", false, "SCShop_Admin_lt_base_g"));
+
+    [Fact]
+    public void WhereText_AreaReading_SaysSpace()
+        => Assert.Equal("Crusader space", ProfitDisplay.WhereText("Crusader", true, "SCShop_Admin_lt_base_g"));
+
+    [Fact]
+    public void WhereText_NoPlace_FallsBackToTheCleanedShopToken()
+        => Assert.Equal(ProfitDisplay.ShopLabel("SCShop_Admin_lt_base_g"),
+            ProfitDisplay.WhereText(null, false, "SCShop_Admin_lt_base_g"));
 
     [Fact]
     public void LedgerCapAndEarlierNote_MatchTheSpec()
