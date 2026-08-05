@@ -127,6 +127,12 @@ public sealed class CommandPage : UserControl
         // The header subtitle now reports where the player was last seen, so a boundary crossing has
         // to repaint it. Same guard and same idiom MapPage uses for its own player marker.
         App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        // Session profit card (issue #39): kiosk settlements and the game going on or offline both
+        // change what it says. Both signals already raise on the UI thread (the tracker coalesces
+        // through the dispatcher, the feed's probe is DispatcherTimer-pumped); same guard-and-
+        // catch-up idiom as the hauls subscription above.
+        if (App.Profit != null) App.Profit.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
 
         // REMAINING countdown (app review F11). Every other trigger on this page is a DATA change,
         // and a countdown has none - the number goes stale purely because time passed. So the
@@ -954,6 +960,9 @@ public sealed class CommandPage : UserControl
 
         var right = new StackPanel { Margin = new Thickness(8, 0, 0, 0) };
         right.Children.Add(Hud.Panel(ActiveHauls(), chamfer: 14, padding: new Thickness(18)));
+        var profit = Hud.Panel(SessionProfit(), chamfer: 14, padding: new Thickness(18));
+        profit.Margin = new Thickness(0, 12, 0, 0);
+        right.Children.Add(profit);
         var risk = NetworkRisk();
         if (risk != null) { risk.Margin = new Thickness(0, 12, 0, 0); right.Children.Add(risk); }
         var shardCard = ShardCard();
@@ -1039,6 +1048,64 @@ public sealed class CommandPage : UserControl
                 sp.Children.Add(top);
                 sp.Children.Add(Hud.StateBar(frac, frac >= 1 ? Hud.BarState.Green : Hud.BarState.Cyan));
             }
+        return sp;
+    }
+
+    // Session profit quick reference (issue #39): the same ProfitDisplay folds the Trade panel
+    // renders, one card deep. Value, derivation, and the all-time line when history exists; the
+    // full ledger, chart, and caveats stay on Trade where there is room to be honest.
+    private UIElement SessionProfit()
+    {
+        var sp = new StackPanel();
+        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade"));
+        if (App.Profit == null) return sp;
+
+        var ledger = App.Profit.Ledger;
+        bool live = App.GameLogFeed.IsSessionLive;
+        int sells = 0, buys = 0, voided = 0;
+        foreach (var t in ledger.Transactions)
+        {
+            if (t.Voided != null) voided++;
+            else if (t.Kind == TransactionKind.Sell) sells++;
+            else buys++;
+        }
+
+        var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, live);
+        var brush = state switch
+        {
+            ProfitState.Positive => Br("OkBrush"),
+            ProfitState.Negative => Br("DangerBrush"),
+            _ => Br("FgDimBrush"),
+        };
+        var value = new TextBlock { FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold, Foreground = brush };
+        value.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
+        if (ledger.UnvoidedCount > 0)
+            value.Inlines.Add(new Run("  aUEC") { FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
+        sp.Children.Add(value);
+
+        sp.Children.Add(new TextBlock
+        {
+            Text = ProfitDisplay.DerivationLine(sells, ledger.Sold, buys, ledger.Bought, voided, live),
+            FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 0),
+        });
+
+        var channel = App.GameLogFeed.ActiveChannel;
+        var ch = App.Profit.History.Channels.Find(c => c.Channel == channel);
+        if (ch != null && ch.Entries.Count + ch.PrunedCount > 0)
+        {
+            long allNet = ProfitHistory.AllTimeNet(App.Profit.History, channel);
+            int allCount = ProfitHistory.AllTimeSessionCount(App.Profit.History, channel);
+            var all = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+            all.Inlines.Add(new Run("ALL TIME ") { FontWeight = FontWeights.Bold });
+            all.Inlines.Add(new Run(ProfitDisplay.Compact(allNet))
+            {
+                FontFamily = Mono,
+                Foreground = allNet > 0 ? Br("OkBrush") : allNet < 0 ? Br("DangerBrush") : Br("FgDimBrush"),
+            });
+            all.Inlines.Add(new Run(", " + ProfitDisplay.AllTimeLine(allCount, ch.FirstSessionUtc)));
+            sp.Children.Add(all);
+        }
         return sp;
     }
 
