@@ -96,6 +96,13 @@
     "Height": 1150
   },
   "AutoScanContracts": true,
+  "WalletRegion": {
+    "X": 1650,
+    "Y": 128,
+    "Width": 320,
+    "Height": 56
+  },
+  "WalletOcrEnabled": true,
   "ReduceAnimations": false,
   "Clock24Hour": true,
   "SoftwareRendering": false,

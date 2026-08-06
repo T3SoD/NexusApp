@@ -14,7 +14,7 @@ namespace NexusApp.Tests;
 // before files are ever added; this test keeps the publicly checkable part enforced forever.)
 public class DemoSeedHygieneTests
 {
-    private static readonly string[] Required = ["settings.json", "nexus.db", "network.db", "Game.log"];
+    private static readonly string[] Required = ["settings.json", "nexus.db", "network.db", "Game.log", "wallet.json"];
 
     private static byte[] LoadDemo(string name)
     {
@@ -60,9 +60,9 @@ public class DemoSeedHygieneTests
     }
 
     // The csproj glob embeds everything under Data/demo. This pins the resource set to exactly
-    // the four swept files, so a stray addition cannot ship unswept.
+    // the five swept files, so a stray addition cannot ship unswept.
     [Fact]
-    public void DemoResourceSet_IsExactlyTheFourSweptFiles()
+    public void DemoResourceSet_IsExactlyTheFiveSweptFiles()
         => Assert.Equal(
             Required.Select(n => $"NexusApp.Data.demo.{n}").OrderBy(n => n, StringComparer.Ordinal),
             typeof(DataService).Assembly.GetManifestResourceNames()

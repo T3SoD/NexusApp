@@ -18,7 +18,7 @@ public static class DemoProfile
 
     // The embedded dataset (NexusApp/Data/demo/**) as root-relative destinations. Extracted verbatim
     // except settings.json, whose GameLogPath is patched to the seeded Game.log once the root is known.
-    internal static readonly string[] Files = ["settings.json", "nexus.db", "network.db", GameLogRelative];
+    internal static readonly string[] Files = ["settings.json", "nexus.db", "network.db", GameLogRelative, "wallet.json"];
 
     private const string ResourcePrefix = "NexusApp.Data.demo.";
 
