@@ -60,6 +60,16 @@ public class WalletDisplayTests
     }
 
     [Fact]
+    public void SnapshotLineCarriesPresenceOnlyNeverAmounts()
+    {
+        var line = WalletDisplay.SnapshotLine(true, "Ocr", Now.AddMinutes(-4), Now, untrackedCount: 3);
+        Assert.Equal("anchored (Ocr, 4m ago), 3 untracked this session", line);
+        Assert.Equal("not anchored", WalletDisplay.SnapshotLine(false, null, null, Now, 0));
+        // A balance could only surface as a long digit run; ages and counts never reach four digits.
+        Assert.DoesNotMatch("[0-9]{4,}", line);
+    }
+
+    [Fact]
     public void MergeRowsInterleavesNewestFirstAndCaps()
     {
         var t1 = new CommodityTransaction { TimestampUtc = Now.AddMinutes(-40), Kind = TransactionKind.Buy, Amount = 1 };

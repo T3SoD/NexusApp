@@ -237,6 +237,9 @@ public sealed class AppLogMonitorWindow : Window
             // snapshot is shared, so amounts never land in it.
             ("Session profit", $"{App.Profit.Ledger.Transactions.Count} transactions, "
                 + $"session net {(App.Profit.Ledger.UnvoidedCount > 0 ? "present" : "none")}"),
+            // Wallet (OCR wallet spec section 9): anchored presence + age only, same sharing rule.
+            ("Wallet", WalletDisplay.SnapshotLine(App.Wallet.HasAnchor, App.Wallet.AnchorSource,
+                App.Wallet.AnchorUtc, DateTime.UtcNow, App.Wallet.SessionUntracked.Count)),
         };
 
         return DiagnosticSnapshot.Build(

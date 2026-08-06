@@ -53,6 +53,17 @@ internal static class WalletDisplay
         return $"{(int)age.TotalDays}d";
     }
 
+    /// <summary>The diagnostic snapshot's wallet line (spec section 9): anchored presence,
+    /// source, age and the untracked count only. A snapshot is shared, so the balance and the
+    /// row amounts never land in it.</summary>
+    internal static string SnapshotLine(bool hasAnchor, string? source, DateTime? anchorUtc,
+                                        DateTime nowUtc, int untrackedCount)
+    {
+        if (!hasAnchor || anchorUtc is null) return "not anchored";
+        return $"anchored ({source}, {AgeText(nowUtc - anchorUtc.Value)} ago), "
+             + $"{untrackedCount} untracked this session";
+    }
+
     internal static string UntrackedTitle(long amount) =>
         amount >= 0 ? "Untracked income" : "Untracked purchase";
 
