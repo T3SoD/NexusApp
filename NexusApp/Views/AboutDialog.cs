@@ -13,6 +13,43 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.13.4  -  Aug 6, 2026",
+        [
+            "New aUEC wallet - open your mobiGlas in game and Nexus reads your balance, then keeps a running estimate between reads using the kiosk trades it already tracks. Set the scan region in Settings, the same way you set the RS and contract regions, with an optional on-screen box so you can see what is being read",
+            "Money that arrives or leaves without a matching commodity trade is listed as Untracked Income or Untracked Purchase, so a contract payout or a ship purchase is visible in the ledger. These rows are never counted into session or all-time trading profit, which stay pure trading figures",
+            "When a contract completes shortly before a wallet read, the untracked income row carries that contract's name instead of a bare amount, so payouts are identifiable at a glance",
+            "The wallet reads out in three places - a WALLET pill in the header (replacing the auto-scan pill), a wallet card on Operations, and a wallet line on the overlay TRADE tab - each showing a state light for tracking, aging, or game offline",
+            "New SESSION PROFIT card on the TRADE tab - Nexus reads your commodity buys and sells from the game log and shows what the session actually made, with an ALL-TIME TRADING PROFIT card and a daily history behind it",
+            "Ledger rows name the commodity you traded, carry aUEC units, and stamp where the trade happened",
+            "Route cards are rebuilt around a financial rail, and a new RANK BY ROI mode ranks routes by return on the money you put in, on both the desktop and overlay planners",
+            "Trade data pills share one age grammar, routes re-rank when you move in game, and the pills show an offline light when the game is not running",
+        ]),
+        ("App  6.13.3  -  Aug 3, 2026",
+        [
+            "Routes rank on the quantity a terminal can actually supply, so a listing with almost no stock no longer ranks as though it could fill your hold",
+            "Refreshed trade data sources, a fuller ship list for the planner, and container-planner cleanup",
+        ]),
+        ("App  6.13.2  -  Aug 2, 2026",
+        [
+            "The overlay TRADE tab gets a PLANNER mode - a mini route planner with the MANIFEST layout, so you can rank and pick a run without leaving the game",
+            "Commodity fields across the trade tabs are type-or-browse, and the planner gains a commodity filter",
+            "The LOCATION readout moved into the dock operator panel, where it stays visible across tabs",
+        ]),
+        ("App  6.13.1  -  Aug 1, 2026",
+        [
+            "Maintenance release - repository and documentation housekeeping only, with no changes to how the app behaves",
+        ]),
+        ("App  6.13.0  -  Aug 1, 2026",
+        [
+            "New MAP tab - an interactive starmap of Stanton and Pyro with a player marker driven by your live in-game position, orbit rings, zoom, and location search",
+            "Map layers for MY HAULS and MY ORDERS, and guides, planner legs, and Mining Codex entries can all open their place on the map",
+            "Pinned trade routes persist between sessions, several routes can be pinned at once, and each pin can be closed from the overlay itself",
+            "The overlay gains a TRADE tab with its own dock icon and Flight Band cards, and it follows your live location as you fly",
+            "Routes can rank by profit per gigameter, and price surfaces know where a price is so you can click through to it",
+            "Operations says where you are and sorts haul stops nearest first, and the REMAINING column ticks down live",
+            "The update check now runs on every launch instead of once a day, so a new version is offered as soon as it exists",
+            "Blueprint names still resolve when a text mod reorders the words, and the Blueprint Library shows how many people in your network own each one",
+        ]),
         ("App  6.12.1  -  Jul 31, 2026",
         [
             "The route planner has a ROUTE section - pick a starting location and a destination from the same list, with a LIVE button that snaps the start to where you are standing",
