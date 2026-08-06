@@ -132,6 +132,21 @@ public class WalletCaptureTests
         Assert.Equal(2, h.Delays.Count); // settle + one spacing: the normal two-read path
     }
 
+    // Live evidence 16:15: a cold mobiGlas boot takes over a second before the balance renders,
+    // so the first readable grab lands around grab 5-6 and needs a partner AFTER that. The
+    // burst must keep grabbing to its time budget, not a small attempt count.
+    [Fact]
+    public void ALateFirstReadStillGetsItsPartner()
+    {
+        var h = new Harness();
+        foreach (var t in new string?[] { null, null, null, null, null, "846", "846" })
+            h.Grabs.Enqueue(t);
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(846, hit.Balance);
+    }
+
     // Speed: an unreadable grab retries fast; the boot animation resolves in fractions of the
     // normal spacing.
     [Fact]

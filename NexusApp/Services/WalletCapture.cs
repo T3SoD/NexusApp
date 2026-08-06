@@ -15,7 +15,10 @@ public sealed class WalletCapture : IDisposable
     public static readonly TimeSpan GrabSpacing = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan RetrySpacing = TimeSpan.FromMilliseconds(150);
     public static readonly TimeSpan BurstBudget = TimeSpan.FromSeconds(5);
-    public const int MaxGrabs = 6;
+    // High enough that the TIME budget is the real cap: a cold mobiGlas boot renders the
+    // balance over a second in, and the first readable grab needs partners after it
+    // (live evidence, 2026-08-06 16:15).
+    public const int MaxGrabs = 12;
 
     private readonly Func<Task<string?>> _capture;
     private readonly Func<bool> _canCapture;
