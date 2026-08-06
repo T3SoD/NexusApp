@@ -15,6 +15,11 @@ public sealed class WalletCapture : IDisposable
     public static readonly TimeSpan GrabSpacing = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan RetrySpacing = TimeSpan.FromMilliseconds(150);
     public static readonly TimeSpan BurstBudget = TimeSpan.FromSeconds(5);
+    // A single dual-recognition-vetted read this close to the estimate confirms alone (live
+    // 17:01: a correct read waited 3 s for a partner over a 240 aUEC drift). Larger moves keep
+    // the two-read rule; a surviving misread inside the band costs at most a small row that the
+    // next capture corrects.
+    public const long SingleReadTolerance = 100_000;
     // High enough that the TIME budget is the real cap: a cold mobiGlas boot renders the
     // balance over a second in, and the first readable grab needs partners after it
     // (live evidence, 2026-08-06 16:15).
@@ -108,10 +113,13 @@ public sealed class WalletCapture : IDisposable
 
                 if (value is not null)
                 {
-                    // A read agreeing with the current estimate needs no second opinion: it
-                    // confirms what the tracker already believes. Otherwise the usual rule:
-                    // the same value seen twice inside the burst.
-                    if (value == _currentEstimate() || seen.Contains(value.Value))
+                    // A read inside the tolerance band of the current estimate needs no second
+                    // opinion: it confirms what the tracker already believes, give or take the
+                    // small drift fees cause. Otherwise the usual rule: the same value seen
+                    // twice inside the burst.
+                    var estimate = _currentEstimate();
+                    var withinBand = estimate is { } e && Math.Abs(value.Value - e) <= SingleReadTolerance;
+                    if (withinBand || seen.Contains(value.Value))
                     {
                         var captureUtc = triggerUtc + (_utcNow() - start);
                         Finish("confirmed");

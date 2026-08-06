@@ -132,6 +132,35 @@ public class WalletCaptureTests
         Assert.Equal(2, h.Delays.Count); // settle + one spacing: the normal two-read path
     }
 
+    // Live 17:01: a correct single read sat unconfirmed for 3 s because the balance had moved
+    // by 240 since the anchor and the animation starved the partner read. A single vetted read
+    // within the tolerance band of the estimate confirms immediately; only large moves demand
+    // the second opinion.
+    [Fact]
+    public void SingleReadWithinToleranceConfirmsImmediately()
+    {
+        var h = new Harness { Estimate = 5_101_183 };
+        h.Grabs.Enqueue("5,100,943"); // 240 under the estimate, inside the band
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(5100943, hit.Balance);
+        Assert.Single(h.Delays); // settle only
+    }
+
+    [Fact]
+    public void ALargeMoveStillDemandsASecondRead()
+    {
+        var h = new Harness { Estimate = 5_101_183 };
+        h.Grabs.Enqueue("4,000,000"); // far outside the band
+        h.Grabs.Enqueue("4,000,000");
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(4000000, hit.Balance);
+        Assert.Equal(2, h.Delays.Count);
+    }
+
     // Live evidence 16:15: a cold mobiGlas boot takes over a second before the balance renders,
     // so the first readable grab lands around grab 5-6 and needs a partner AFTER that. The
     // burst must keep grabbing to its time budget, not a small attempt count.
