@@ -398,7 +398,16 @@ public sealed class SettingsPage : UserControl
     public void SwitchToGameTab() => SwitchTab(Array.IndexOf(SettingsTabs.Ids, "game"));
 
     // ── Category panes ──────────────────────────────────────────────────────────
-    // GAME: Game.log paths + Blueprint Network identity.
+    // GAME: Game.log paths + Wallet OCR + Blueprint Network identity.
+    private RegionSelectorWindow? _walletRegionSelector;   // single instance; a second click closes it
+
+    private static void ApplyWalletOcrEnabled(bool on)
+    {
+        App.Settings.Current.WalletOcrEnabled = on;
+        App.Settings.Save();
+        Logger.Info($"[UI] Wallet OCR {(on ? "on" : "off")}");
+    }
+
     private ScrollViewer BuildGamePane()
     {
         var panel = new StackPanel { Margin = new Thickness(2, 2, 14, 40) };
@@ -484,6 +493,61 @@ public sealed class SettingsPage : UserControl
                 "Track your session from Star Citizen's Game.log: auto-collect blueprints you receive " +
                 "(they're marked Owned in your library), or import the ones you already own from past logs.",
                 openLogBtn, last: true)));
+
+        // Wallet OCR (issue #39 follow-on): event-driven capture of the mobiGlas aUEC balance.
+        // Region setup follows the overlay's contract-region idiom (single instance, toggle-close,
+        // the #36 NEXT MONITOR hop); the toggle and region persist like every other scan setting.
+        var walletToggle = new CheckBox
+        {
+            Content = "Capture on mobiGlas open",
+            IsChecked = App.Settings.Current.WalletOcrEnabled,
+            Foreground = Hud.Br("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        walletToggle.Checked += (_, _) => ApplyWalletOcrEnabled(true);
+        walletToggle.Unchecked += (_, _) => ApplyWalletOcrEnabled(false);
+
+        var walletStatus = new TextBlock
+        {
+            FontSize = 11.5, Margin = new Thickness(0, 8, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right, TextAlignment = TextAlignment.Right,
+            Foreground = Hud.Br("FgDimBrush"),
+        };
+        void RefreshWalletStatus() => walletStatus.Text =
+            App.Settings.Current.WalletRegion is { } wr ? $"{wr.Width}x{wr.Height} at {wr.X},{wr.Y}" : "not set";
+        RefreshWalletStatus();
+
+        var walletRegionBtn = GhostButton("Set wallet region");
+        walletRegionBtn.Click += (s, e) =>
+        {
+            InteractionLog.Click("Set wallet scan region", (DependencyObject)s);
+            if (_walletRegionSelector != null) { _walletRegionSelector.Close(); return; }
+            var selector = new RegionSelectorWindow();
+            _walletRegionSelector = selector;
+            selector.RegionSelected += r =>
+            {
+                App.Settings.Current.WalletRegion = r;
+                App.Settings.Save();
+                App.WalletOcr.SetRegion(r.X, r.Y, r.Width, r.Height);
+                Logger.Info($"[WALLET] region set: {r.Width}x{r.Height}");
+                RefreshWalletStatus();
+            };
+            selector.Closed += (_, _) => { if (ReferenceEquals(_walletRegionSelector, selector)) _walletRegionSelector = null; };
+            selector.ShowOnMonitorOf(Window.GetWindow(this));   // NEXT MONITOR button hops screens (issue #36)
+        };
+        var walletControl = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        walletControl.Children.Add(walletRegionBtn);
+        walletControl.Children.Add(walletStatus);
+
+        panel.Children.Add(SectionPanel("Wallet OCR", false,
+            SettingRow("Wallet capture",
+                "Reads your aUEC balance from the mobiGlas each time you open it (event-driven, never " +
+                "polling) and keeps the Trade tab's wallet estimate anchored to reality.",
+                walletToggle),
+            SettingRow("Wallet scan region",
+                "Place the box over the mobiGlas balance readout. OCR reads only this region; the " +
+                "feature stays inert until one is set.",
+                walletControl, last: true)));
 
         var handleLabel = new TextBlock
         {
