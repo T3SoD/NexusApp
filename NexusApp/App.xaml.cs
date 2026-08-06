@@ -43,6 +43,13 @@ public partial class App : Application
     public static ContractOcrService ContractOcr { get; private set; } = null!;
     public static ContractScanner ContractScan { get; private set; } = null!;
 
+    // Wallet OCR (issue #39 follow-on): the mobiGlas trigger line starts a burst that reads the
+    // configured wallet region; a confirmed balance re-anchors the wallet tracker, which owns the
+    // estimate and the untracked delta rows.
+    public static WalletOcrService WalletOcr { get; private set; } = null!;
+    public static WalletCapture WalletCap { get; private set; } = null!;
+    public static WalletTracker Wallet { get; private set; } = null!;
+
     // Auto-update state machine (checks, downloads, installs). Created right after Settings
     // so the consent gate and throttle read real values; inert in the demo profile.
     public static UpdateService Update { get; private set; } = null!;
@@ -415,6 +422,7 @@ public partial class App : Application
             channelTag: () => GameChannels.FolderName(GameLogFeed.ActiveChannel));
         Locations = new LocationTracker(GameLogFeed);
         Profit = new ProfitTracker(GameLogFeed);
+        Wallet = new WalletTracker(Profit, GameLogFeed);
 
         // Geometry + the player-position seam. Created right after Locations because PlayerPlace
         // reads both. Loading the catalog here rather than in a page constructor is the whole point:
@@ -453,6 +461,17 @@ public partial class App : Application
         // to it directly (app review, Task 9) - this composition root stops reaching into the
         // concrete view.
         if (Settings.Current.AutoScanContracts) ContractScan.Start();
+
+        // Wallet OCR: event-driven only (no polling). The burst gates itself on the toggle, a
+        // configured region, and foreground relevance; the tracker does its own dispatcher-side
+        // flush, so the feed-thread event routes straight through.
+        WalletOcr = new WalletOcrService();
+        if (Settings.Current.WalletRegion is { } wor) WalletOcr.SetRegion(wor.X, wor.Y, wor.Width, wor.Height);
+        WalletCap = new WalletCapture(GameLogFeed,
+            capture: () => WalletOcr.ScanRegionTextAsync(),
+            canCapture: () => Settings.Current.WalletOcrEnabled && WalletOcr.HasRegion && IsForegroundRelevant);
+        WalletCap.BalanceCaptured += (balance, triggerUtc, captureUtc) =>
+            Wallet.OnBalanceCaptured(balance, triggerUtc, captureUtc);
     }
 
     // Builds the user's customDisplay -> official localization map from their global.ini, so the
@@ -555,9 +574,12 @@ public partial class App : Application
         _foreground?.Dispose();
         ContractScan?.Dispose();
         ContractOcr?.Dispose();
+        WalletCap?.Dispose();
+        WalletOcr?.Dispose();
         Hauls?.Dispose();
         Shards?.Dispose();
         Locations?.Dispose();
+        Wallet?.Dispose();   // before Profit: it reads the ledger and hangs off Profit.Changed
         Profit?.Dispose();
         GameLog?.Dispose();
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above

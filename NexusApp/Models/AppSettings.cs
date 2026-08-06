@@ -57,6 +57,12 @@ public class AppSettings
     public ScanRegion? ContractRegion { get; set; }
     public bool AutoScanContracts { get; set; }
 
+    // Wallet OCR: screen region where the mobiGlas renders the aUEC balance, and whether the
+    // trigger-driven capture runs at all. WalletRegion mirrors ScanRegion; null = not yet set,
+    // which keeps the whole feature inert regardless of the toggle.
+    public ScanRegion? WalletRegion { get; set; }
+    public bool WalletOcrEnabled { get; set; } = true;
+
     // Accessibility/comfort: when on, the app minimizes motion (skips page transitions,
     // dock/HUD pulses, count-ups, switch slides and the ambient panel glyphs). Default off.
     public bool ReduceAnimations { get; set; }
