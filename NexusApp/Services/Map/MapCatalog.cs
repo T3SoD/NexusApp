@@ -58,8 +58,8 @@ public sealed class MapCatalog
     // irrelevant to the resource name, which always resolves against Data/<filename>).
     private const string ResourceName = "NexusApp.Data.starmap_map.json";
 
-    // Objects belonging to star systems that are not in the game (owner, 2026-08-01: "star map still
-    // mentions terra jump point and it shouldnt" - the same call he made on the gateway aliases).
+    // Objects belonging to star systems that are not in the game (2026-08-01: the star map still
+    // listed a Terra jump point and should not have - the same call made on the gateway aliases).
     // They are in the artifact because it is derived from the game's own object catalog, which
     // carries unreleased content: real data, but not places any player can reach. Left in, they
     // turn up in search results and the SELECTION panel and imply the map covers somewhere it does
@@ -75,12 +75,12 @@ public sealed class MapCatalog
     // an unrelated name cannot be swept up.
     //
     // The Castra entry was raised as a question (its object sits in Nyx, which IS live, so an
-    // unactivated jump point might have been something a player could fly to and see) and the owner
-    // ruled it out on the same terms as the rest. The destination system is what decides, not the
+    // unactivated jump point might have been something a player could fly to and see) and was
+    // ruled out on the same terms as the rest. The destination system is what decides, not the
     // system the object happens to sit in.
     //
-    // TERRA WAS REMOVED FROM THIS LIST 2026-08-01, same day it was added: The owner corrected the
-    // premise - "terra gateway does exist in the game, magnus does not". That also explains the
+    // TERRA WAS REMOVED FROM THIS LIST 2026-08-01, same day it was added: the premise was wrong.
+    // Terra Gateway does exist in the game, Magnus does not. That also explains the
     // thing that looked wrong at the time, namely UEX carrying 21 real terminals at
     // "Terra Gateway (Stanton)" with priced rows. The data was right and the exclusion was wrong.
     //
@@ -242,7 +242,7 @@ public sealed class MapCatalog
     // here by display name alone could mark the wrong system. Those two are resolved only through
     // RawTokenGateways above, before this table is ever consulted.
     // "Terra Gateway Station" was pulled from here earlier on 2026-08-01 and restored the same day
-    // when the owner corrected the premise: Terra Gateway DOES exist in the game (Magnus does not). It is
+    // when the premise was corrected: Terra Gateway DOES exist in the game (Magnus does not). It is
     // unambiguous - "Terra Gateway" names an object in Stanton only - so a plain display-name alias
     // is right for it, unlike the gateways whose object names repeat across systems and can only be
     // told apart by raw token.

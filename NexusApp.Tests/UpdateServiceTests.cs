@@ -348,7 +348,7 @@ public class UpdateServiceTests : IDisposable
         Assert.Empty(t.Requested);
     }
 
-    // The 24h throttle (and its clock-rollback self-heal) died 2026-08-01 at the owner's ask: launch
+    // The 24h throttle (and its clock-rollback self-heal) was removed on 2026-08-01: launch
     // is the only auto trigger, and every launch now checks. The gate is consent + demo, nothing
     // else - no time arithmetic left to get wrong.
     [Theory]

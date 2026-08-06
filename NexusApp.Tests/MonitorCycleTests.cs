@@ -4,7 +4,7 @@ using Xunit;
 namespace NexusApp.Tests;
 
 // Issue #36: the region picker dims ONE monitor and carries a NEXT MONITOR button instead of
-// tinting every screen at once (owner's call). The hop math and the 1-based button label live in
+// tinting every screen at once (by design). The hop math and the 1-based button label live in
 // this seam; the window supplies the monitor rects and applies the moves.
 public class MonitorCycleTests
 {

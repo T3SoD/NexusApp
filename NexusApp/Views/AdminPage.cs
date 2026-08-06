@@ -524,11 +524,11 @@ public sealed class AdminPage : UserControl
         stack.Children.Add(Section("DEMO PROFILE", demo));
 
         // Data tools card. The SCT toggle that lived here is gone: live market data is now a
-        // single consent covering UEX and SCT together (owner, 2026-08-03: "get rid of the
-        // separate toggles... all or nothing"), so there is nothing owner-specific left to switch.
+        // single consent covering UEX and SCT together (2026-08-03: the separate toggles were
+        // removed in favor of all or nothing), so there is nothing owner-specific left to switch.
         // What survives is the one-shot fetch, which was the genuinely useful half of this card -
-        // SCT rides the hourly market tick but only actually refetches every 6h, so an owner
-        // wanting to see a change now still needs a way to force it.
+        // SCT rides the hourly market tick but only actually refetches every 6h, so seeing a
+        // change now still needs a way to force it.
         var data = new StackPanel();
         data.Children.Add(new TextBlock
         {

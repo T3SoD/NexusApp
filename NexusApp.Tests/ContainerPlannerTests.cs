@@ -5,7 +5,7 @@ using Xunit;
 namespace NexusApp.Tests;
 
 // Container menus below are real values from the shipped market snapshot; the awkward ones
-// (16,24,32 with no 8; 8,16 only) were read out of the owner's own Game.log at two Pyro shops,
+// (16,24,32 with no 8; 8,16 only) were read out of a captured Game.log at two Pyro shops,
 // where the same commodity had different menus at different terminals.
 public class ContainerPlannerTests
 {
@@ -44,7 +44,7 @@ public class ContainerPlannerTests
     [Fact]
     public void ReportsTheShortfall_WhenTheMenuCannotReachTheTarget()
     {
-        // The owner's original complaint, reproduced: 46 SCU of capacity against a kiosk whose
+        // The original reported defect, reproduced: 46 SCU of capacity against a kiosk whose
         // smallest crate is 8 leaves 6 SCU unbuyable.
         var p = ContainerPlanner.Plan("8,16,24,32", shipMaxContainerScu: 16, targetScu: 46)!;
         Assert.False(p.HitsTarget);

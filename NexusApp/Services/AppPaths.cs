@@ -4,8 +4,8 @@ namespace NexusApp.Services;
 
 // Resolves the per-profile data root once per process. A normal launch uses %AppData%\NexusApp.
 // A launch carrying --demo-profile uses %AppData%\NexusApp_demo instead: a fully separate,
-// disposable profile seeded from the embedded StarlightHauler demo dataset, so the owner can
-// take public screenshots without the live profile ever being read or written.
+// disposable profile seeded from the embedded StarlightHauler demo dataset, so public
+// screenshots can be taken without the live profile ever being read or written.
 public static class AppPaths
 {
     public const string DemoArg = "--demo-profile";

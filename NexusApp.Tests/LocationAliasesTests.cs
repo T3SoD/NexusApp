@@ -15,7 +15,7 @@ public class LocationAliasesTests
     [Fact]
     public void Normalize_JumpPointGatewayToken_ReturnsStationName()
     {
-        // The owner's real-world example: the RR_JP_StantonPyro inventory key at the Pyro-bound gate.
+        // A real-world example: the RR_JP_StantonPyro inventory key at the Pyro-bound gate.
         Assert.Equal("Pyro Gateway Station", LocationAliases.Normalize("RR_JP_StantonPyro"));
     }
 
@@ -65,9 +65,9 @@ public class LocationAliasesTests
         Assert.Equal(expected, LocationAliases.Normalize(token));
     }
 
-    // Added 2026-08-01 after surveying every Location[...] token in the owner's captured sessions rather
-    // than fixing only the one he happened to notice in the log. SM0-13 he named himself; SM0-10 was
-    // the single most frequent unaliased token of all (20 captures) and takes the same pattern.
+    // Added 2026-08-01 after surveying every Location[...] token in the captured sessions rather
+    // than fixing only the one token first noticed in the log. SM0-13 was the reported one; SM0-10
+    // was the single most frequent unaliased token of all (20 captures) and takes the same pattern.
     [Theory]
     [InlineData("Stanton4_Shubin_SM0_13", "Shubin Mining Facility SM0-13")]
     [InlineData("Stanton4_Shubin_SM0_10", "Shubin Mining Facility SM0-10")]
@@ -113,7 +113,7 @@ public class LocationAliasesTests
         Assert.Null(LocationAliases.Normalize(null!));
     }
 
-    // ---- UexLocationForToken (owner's live gateway bug fix): raw-token to UEX Location string,
+    // ---- UexLocationForToken (live gateway bug fix): raw-token to UEX Location string,
     // a second table from Normalize's display-name one, keyed by raw token because display names
     // are not unique - see LocationAliases.cs's doc comment on _uexLocations for why.
 
@@ -128,7 +128,7 @@ public class LocationAliasesTests
         => Assert.Equal("Pyro Gateway (Stanton)", LocationAliases.UexLocationForToken("rr_jp_stantonpyro"));
 
     // The conflation this separate, raw-token-keyed table exists to prevent, now demonstrable with
-    // BOTH ends captured (2026-08-01: RR_JP_NyxPyro appeared twice in the owner's own Game.log). These
+    // BOTH ends captured (2026-08-01: RR_JP_NyxPyro appeared twice in a captured Game.log). These
     // two tokens are the same gate from opposite sides. Their DISPLAY names collide outright - the
     // gate you are looking at is named for where it leads, so the Nyx-side one displays "Pyro
     // Gateway Station", exactly like the Stanton-side RR_JP_StantonPyro - and their map objects are
@@ -171,8 +171,8 @@ public class LocationAliasesTests
     [Fact]
     public void StantonSideTerraToken_IsPresentInBothTables()
     {
-        // Excluded on 2026-08-01 and restored the same day: The owner corrected the premise with "terra
-        // gateway does exist in the game, magnus does not". UEX had been carrying 21 terminals with
+        // Excluded on 2026-08-01 and restored the same day: Terra Gateway does exist in the game
+        // (Magnus does not), so the exclusion was wrong. UEX had been carrying 21 terminals with
         // priced rows at this Location the whole time, which was the evidence that should have
         // prompted a question rather than been treated as noise.
         Assert.Equal("Terra Gateway Station", LocationAliases.Normalize("RR_JP_StantonTerra"));
@@ -194,7 +194,7 @@ public class LocationAliasesTests
         Assert.Null(LocationAliases.UexLocationForToken(""));
     }
 
-    // Canary (owner's live gateway bug, 2026-07-31): every uexLocations VALUE committed in
+    // Canary (live gateway bug, 2026-07-31): every uexLocations VALUE committed in
     // location_aliases.json must still name a real, currently-priced UEX terminal Location. This
     // fixture is a snapshot of the real live-UEX Locations verified at the time these three
     // mappings were added; if UEX ever renames one of these gateway Locations and this table is

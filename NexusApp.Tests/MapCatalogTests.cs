@@ -21,7 +21,7 @@ public class MapCatalogTests
         Assert.Equal(961, Catalog.Objects.Count);
     }
 
-    // ── Unreachable-system exclusions (owner, 2026-08-01) ──
+    // ── Unreachable-system exclusions (2026-08-01) ──
 
     [Theory]
     [InlineData("Stanton", "Stanton - Magnus Jump Point")]
@@ -41,8 +41,8 @@ public class MapCatalogTests
     [InlineData("Stanton", "Stanton - Terra Jump Point")]
     public void TerraObjects_AreInTheCatalog(string system, string name)
     {
-        // Excluded on 2026-08-01 and restored the same day - the owner: "terra gateway does exist in the
-        // game, magnus does not". Pinned in the positive so the mistake cannot be repeated silently.
+        // Excluded on 2026-08-01 and restored the same day: Terra Gateway does exist in the game
+        // (Magnus does not). Pinned in the positive so the mistake cannot be repeated silently.
         Assert.NotNull(Catalog.ByName(system, name));
     }
 
@@ -420,7 +420,7 @@ public class MapCatalogTests
     [Fact]
     public void ResolvePlayerLocation_TerraGatewayStationAlias_ResolvesToStantonTerraGateway()
     {
-        // Terra Gateway exists in game (owner, 2026-08-01) and "Terra Gateway" names an object in
+        // Terra Gateway exists in game (confirmed live 2026-08-01) and "Terra Gateway" names an object in
         // Stanton ONLY, so a plain display-name alias is correct here - unlike the gateways whose
         // object names repeat across systems and need the raw token to be told apart.
         var obj = Catalog.ResolvePlayerLocation("Terra Gateway Station", rawToken: null);
@@ -442,7 +442,7 @@ public class MapCatalogTests
     }
 
     // The sharpest case the raw-token tier exists for, and the reason RR_JP_NyxPyro was worth
-    // adding the moment it was captured (twice, 2026-08-01, in the owner's own Game.log): these two
+    // adding the moment it was captured (twice, 2026-08-01, in a real Game.log): these two
     // tokens produce the SAME display name AND the same object name, in two different systems.
     // Given only "Pyro Gateway Station", nothing downstream could place the player at all.
     [Fact]

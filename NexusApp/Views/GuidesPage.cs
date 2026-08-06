@@ -211,7 +211,7 @@ public sealed class GuidesPage : UserControl
         {
             _hangarLine = new ExecHangarStatusLine(compact: false, surfaceName: "guides")
             {
-                // Owner ruling (live run 2026-07-27): inset from the scroller edge; the line was
+                // Ruling from live run 2026-07-27: inset from the scroller edge; the line was
                 // nearly touching the scrollbar.
                 Margin = new Thickness(0, 0, 12, 0),
             };

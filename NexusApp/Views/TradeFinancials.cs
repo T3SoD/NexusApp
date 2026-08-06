@@ -11,7 +11,7 @@ namespace NexusApp.Views;
 // the folds are unit-testable (InternalsVisibleTo), the same pattern as TradeBadges.
 internal static class TradeFinancials
 {
-    // Rail tier thresholds, percent. Constants beside the fold so the owner can tune them.
+    // Rail tier thresholds, percent. Constants beside the fold so they are easy to tune.
     internal const double RoiHighPct = 25;
     internal const double RoiMidPct = 10;
     // The meter's full-scale reading, percent: a route at or past this pegs the meter.

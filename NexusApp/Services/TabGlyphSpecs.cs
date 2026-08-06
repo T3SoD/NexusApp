@@ -8,7 +8,7 @@ namespace NexusApp.Services;
 public sealed record GlyphPart(string El, IReadOnlyDictionary<string, string> Attrs);
 
 /// <summary>
-/// Glyph source for the overlay tab strip. Tabs reuse the app's dock icons (owner ruling
+/// Glyph source for the overlay tab strip. Tabs reuse the app's dock icons (ruling
 /// 2026-07-27: overlay tabs match their related pages), read from the same DockIconSpecs JSON the
 /// dock renders, so a regenerated dock pick can never drift from the overlay. Core parts only:
 /// flourish parts (ids prefixed "f_") and animation tracks are dock-scale detail, unreadable at
@@ -18,7 +18,7 @@ public sealed record GlyphPart(string El, IReadOnlyDictionary<string, string> At
 /// <para>"trade" used to be hand-authored too - a trending-up arrow, written when the tab was
 /// reserved for a commodity page that did not exist yet. That page shipped with its own dock icon
 /// (the balance scale in DockIconSpecsCustom), so from 2026-08-01 the entry is gone and the tab
-/// resolves through the dock like every other page-backed tab: The owner's report was simply that the
+/// resolves through the dock like every other page-backed tab: the report was simply that the
 /// overlay's icon did not match the app's. The scale's core parts sit inside x 1.8-22.2, y 4-20.5,
 /// so the default 24x24 crop frames them without clipping, and Geometry.Parse handles its two arc
 /// segments.</para>

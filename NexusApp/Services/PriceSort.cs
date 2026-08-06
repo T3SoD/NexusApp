@@ -12,7 +12,7 @@ internal readonly record struct PriceRowItem(double SellValue, TradePriceRow? Ue
 
 internal enum PriceSortColumn { Sell, Buy, Stock, Status, Age }
 
-// Prices flow: sortable columns (owner live-pass ask, 2026-07-30). Pure and static so the SCT-only
+// Prices flow: sortable columns (live-pass ask, 2026-07-30). Pure and static so the SCT-only
 // placement rules are unit-testable on their own - TradePage.Prices.cs's RebuildPrices calls this
 // once per rebuild with whatever column/direction the last header click set, then applies the
 // top-50 display cap to what comes back (this sorts the FULL merged list, never truncates itself).

@@ -344,7 +344,7 @@ public sealed class MapPage : UserControl
 
     // ── planner route pinning (MainWindow forwards TradePage's pinned buy/sell terminals) ──
 
-    /// <summary>Draws every pinned route's buy-to-sell leg (owner's call, 2026-08-01: when several
+    /// <summary>Draws every pinned route's buy-to-sell leg (2026-08-01: when several
     /// routes are pinned the map shows all of them, so the map and the overlay never disagree about
     /// what is pinned). The scene reads the id list as consecutive PAIRS, one segment per pair, so
     /// two runs never get joined into one polyline through whichever terminal happened to be listed
@@ -1064,7 +1064,7 @@ public sealed class MapPage : UserControl
         public TranslateTransform KnobT = null!;
     }
 
-    // Row visibility rule for a data layer (owner live-use finding, 2026-07-31): a row with nothing
+    // Row visibility rule for a data layer (live-use finding, 2026-07-31): a row with nothing
     // in the active system just shows a 0, and toggling it does nothing - so it should not be there
     // to toggle. TRADE is the one exception: a 0 there can mean "market data consent is off" or "no
     // snapshot yet", which is a state the SELECTION zone's hint text ("Trade layer needs market data
@@ -1095,7 +1095,7 @@ public sealed class MapPage : UserControl
         return Zone("LAYERS", stack);
     }
 
-    // Separates the always-on base map toggle from the four data layers above it (owner live-use
+    // Separates the always-on base map toggle from the four data layers above it (live-use
     // finding, 2026-07-31: ASTEROID CLUSTERS sitting last under an indent read as a child of EXEC
     // HANGAR, not as "not a data layer"). Hairline reuses NavBorderBrush, the same house separator
     // brush as this file's own Zone() bottom hairline (line 503-504) and the ROUTE BUILDER zone's
@@ -1251,7 +1251,7 @@ public sealed class MapPage : UserControl
         _layerRows["hauls"].Count.Text = haulsCount.ToString();
         _layerRows["orders"].Count.Text = ordersCount.ToString();
 
-        // Row visibility (owner live-use finding: EXEC HANGAR shows 0 in Stanton/Nyx and toggling it
+        // Row visibility (live-use finding: EXEC HANGAR shows 0 in Stanton/Nyx and toggling it
         // does nothing there). Recomputed here because RefreshLayerCounts is the one choke point all
         // three callers already share - the ctor, SwitchSystem, and the market-data delta path
         // (RefreshMarketDelta) - so there is no second place this can drift from. Only the row's
@@ -1596,7 +1596,7 @@ public sealed class MapPage : UserControl
         _sendBtn.MouseLeftButtonUp += (_, _) => OnSendToPlanner();
         stack.Children.Add(_sendBtn);
 
-        // IN DEVELOPMENT tag (owner, 2026-08-01): the zone hands a multi-stop draft to a two-field
+        // IN DEVELOPMENT tag (2026-08-01): the zone hands a multi-stop draft to a two-field
         // planner, so intermediate stops are dropped at the handoff (OnSendToPlanner's own note) -
         // the tag says out loud that this surface is not finished rather than letting that read
         // as a bug. Same amber chip language as the planner's own MARKET pill family.

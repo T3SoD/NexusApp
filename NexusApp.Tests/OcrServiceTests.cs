@@ -5,7 +5,7 @@ namespace NexusApp.Tests;
 
 // OcrService.ExtractRsValue (Services/OcrService.cs) is the RS Decoder's digit parser: comma/period
 // stripping between digits, a regex collapse for OCR-misread thousands separators, then a bounded
-// digit-run scan. OcrService.cs is owner-locked per project rule; the ONLY permitted edit here (per
+// digit-run scan. OcrService.cs preprocessing is locked by project rule; the ONLY permitted edit here (per
 // the 2026-07-28 app-wide review spec's seam ruling) was widening ExtractRsValue's access modifier
 // from private to internal, method body byte-identical, so it is reachable via the existing
 // InternalsVisibleTo("NexusApp.Tests") entry in NexusApp.csproj. These tests PIN the method's current

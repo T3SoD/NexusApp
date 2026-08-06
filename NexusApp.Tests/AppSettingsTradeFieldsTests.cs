@@ -24,7 +24,7 @@ public class AppSettingsTradeFieldsTests
         Assert.Empty(s.PinnedRoutes);   // pinning is opt-in; a fresh profile has none
     }
 
-    // Pinned routes became PERSISTED on 2026-08-01 (the owner: "the same as refinery orders"). The whole
+    // Pinned routes became PERSISTED on 2026-08-01, matching how refinery orders persist. The whole
     // point is that they survive a restart, and that is a serialization question - nothing else in
     // the suite would notice if PinnedRoute stopped round-tripping. Serialized with the same options
     // SettingsService uses.

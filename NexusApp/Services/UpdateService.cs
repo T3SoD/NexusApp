@@ -196,11 +196,11 @@ public sealed class UpdateService
     }
 
     // Pure gate for the on-launch check: consent must be an explicit yes, and the demo profile
-    // is always inert. The 24-hour throttle that used to live here died on the owner's ask
-    // (2026-08-01, "change it to check on each launch of the app"): launch is the only auto
-    // trigger, so a same-day relaunch now checks again instead of silently sitting on a
-    // yesterday-stamped result - one signed-manifest HEAD-sized fetch per launch is nothing,
-    // and it took the clock-rollback self-heal with it (no stamp comparison, nothing to heal).
+    // is always inert. The 24-hour throttle that used to live here died 2026-08-01, when the
+    // check changed to run on each launch of the app: launch is the only auto trigger, so a
+    // same-day relaunch now checks again instead of silently sitting on a yesterday-stamped
+    // result - one signed-manifest HEAD-sized fetch per launch is nothing, and it took the
+    // clock-rollback self-heal with it (no stamp comparison, nothing to heal).
     // LastUpdateCheckUtc is still stamped after every completed attempt: Settings shows it.
     internal static bool ShouldAutoCheck(bool? enabled, bool isDemoProfile)
         => !isDemoProfile && enabled == true;

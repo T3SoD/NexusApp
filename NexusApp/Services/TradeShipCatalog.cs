@@ -31,10 +31,9 @@ public sealed class TradeShipCatalog
     public IReadOnlyList<TradeShip> Ships { get; }
 
     public TradeShipCatalog(IEnumerable<TradeShip> ships) =>
-        // Plain alphabetical (owner, 2026-08-03: "lets do them all alphabetically"). The grid
-        // catalog's hauling-priority rank is deliberately not carried over: at ~90 entries the
-        // list is scanned by name, and ranking a handful of hulls would put them somewhere the
-        // alphabet does not explain.
+        // Plain alphabetical (2026-08-03). The grid catalog's hauling-priority rank is deliberately
+        // not carried over: at ~90 entries the list is scanned by name, and ranking a handful of
+        // hulls would put them somewhere the alphabet does not explain.
         Ships = ships.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
 
     public static TradeShipCatalog LoadEmbedded()

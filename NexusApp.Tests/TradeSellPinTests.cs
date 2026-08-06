@@ -8,8 +8,8 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Sell-only pins (owner, 2026-08-01: "add a pin to overlay button for the results in the sell tab
-// ... that functions the same as planner pin to overlay"). A sell pin has NO buy leg - identity is
+// Sell-only pins (2026-08-01): the Sell tab's results carry their own PIN TO OVERLAY button that
+// behaves exactly like the planner's. A sell pin has NO buy leg - identity is
 // (null, sell terminal, commodity) - and shares the planner pins' single list and five-pin cap.
 // These pin the pure rules; the WPF wiring (the Sell tab chip, the overlay card variant) follows
 // the same untestable-window reasoning as TradePinnedRouteTests.

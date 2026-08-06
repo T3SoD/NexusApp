@@ -12,7 +12,7 @@ namespace NexusApp.Views;
 /// page reveals use the reveal bezier, ambient loops and status dots breathe on
 /// easeInOut, and UI slides decelerate (cubic ease-out).
 /// Convention: entrances ease on Settle, exits on SlideOut - deliberate, and it
-/// supersedes the mock tables' single-curve slide rows (owner ruling 2026-07-28).
+/// supersedes the mock tables' single-curve slide rows (ruling 2026-07-28).
 /// </summary>
 public static class Motion
 {

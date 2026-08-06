@@ -7,7 +7,7 @@ namespace NexusApp.Services;
 // measured elapsed time, so anchor math never mixes clocks with the ledger.
 public sealed class WalletCapture : IDisposable
 {
-    // Cadence tightened at the owner's ask (2026-08-06): confirm can land ~550 ms after the
+    // Cadence tightened 2026-08-06: confirm can land ~550 ms after the
     // trigger line, or at settle+one-grab when the read matches the current estimate. Empty
     // grabs retry fast (the mobiGlas boot animation resolves in fractions of a spacing), and
     // six grabs keep the burst spanning a slow boot inside the same budget.

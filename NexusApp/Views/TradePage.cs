@@ -66,7 +66,7 @@ public sealed partial class TradePage : UserControl
     private TextBlock _uexAgeValue = null!;
     private Ellipse _uexPillDot = null!;
 
-    // Datamined starmap positions (owner's ask, 2026-07-30), shared by the Planner and Sell flows'
+    // Datamined starmap positions (2026-07-30), shared by the Planner and Sell flows'
     // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
     // Was a second, near-duplicate geometry catalog of its own (StarmapCatalog, 215 places, its own
     // 59 KB embed, its own copy of Resolve and FormatGm). Retired 2026-08-01 in favour of the one
@@ -141,7 +141,7 @@ public sealed partial class TradePage : UserControl
         {
             if (!IsVisible) return;
             RefreshContextRow();
-            // A real move also re-ranks the live-origin surfaces (owner, 2026-08-04: arriving
+            // A real move also re-ranks the live-origin surfaces (2026-08-04: arriving
             // somewhere new in game left a LIVE starting location stale until the user left and
             // re-entered the tab - the event path stopped at the context row while only Refresh()
             // reached the rebuilds). Guarded on the location actually changing: the tracker also
@@ -157,7 +157,7 @@ public sealed partial class TradePage : UserControl
             if (TradeOriginResolver.StartDependsOnLiveLocation(App.Settings.Current.TradeStartManual))
                 RebuildPlanner();
         });
-        // The ORIGIN chip's lamp folds the game-process probe in (owner, 2026-08-04: red when no
+        // The ORIGIN chip's lamp folds the game-process probe in (2026-08-04: red when no
         // live session backs the reading), so game start/exit repaints it, not only a move.
         // StateChanged still fires on process flips even while the log monitor is stopped: the
         // session relays the shared feed's probe regardless of its own attachment.
@@ -184,7 +184,7 @@ public sealed partial class TradePage : UserControl
 
         // The strip pill's age text is event-painted (RefreshContextRow), so between events it
         // rotted while the header chip's 1.5s timer kept ITS age current - the two TRADE DATA
-        // pills read 6m against 9m side by side (owner, 2026-08-04: they must not drift). A
+        // pills read 6m against 9m side by side (2026-08-04: they must not drift). A
         // minute tick matches FormatAge's coarsest visible step, and the lamp guard keeps the
         // repaint allocation-free when nothing changed.
         _ageTimer.Interval = TimeSpan.FromMinutes(1);
@@ -407,7 +407,7 @@ public sealed partial class TradePage : UserControl
         return raw.EndsWith(" ago", StringComparison.Ordinal) ? raw[..^4] : "<1m";
     }
 
-    // System tag (owner's live-pass ask, 2026-07-30): a dim, small, uppercase suffix naming which
+    // System tag (live-pass finding, 2026-07-30): a dim, small, uppercase suffix naming which
     // star system (Stanton/Pyro/Nyx) a terminal is in, so ALL-scope rows stay unambiguous. NOT a
     // chip - no border/background, matches the eyebrow/dim-label idiom used elsewhere on this page
     // (e.g. the BUY AT / SELL AT eyebrows, HeaderCell). Absent (never a placeholder or dash) for
@@ -423,7 +423,7 @@ public sealed partial class TradePage : UserControl
         };
     }
 
-    // Distance tag (owner's ask, 2026-07-30, decorating beyond the approved mock): a dim gigameter
+    // Distance tag (2026-07-30, decorating beyond the approved mock): a dim gigameter
     // readout naming the real straight-line distance between a route's two legs (or the origin and
     // a buyer), shown only when StarmapCatalog resolved both ends in the same system. Same dim/
     // small/no-chrome geometry as SystemTag right above, but a SIBLING helper rather than a shared
@@ -486,7 +486,7 @@ public sealed partial class TradePage : UserControl
         _stripHost.Children.Add(_underline);
     }
 
-    // ── Data source pills, docked right of the tab strip (owner's ask, 2026-07-31: moved out of the
+    // ── Data source pills, docked right of the tab strip (2026-07-31: moved out of the
     // context row so they read as strip chrome, not a row 2 filter) - built here so the fields exist
     // before BuildContextRow()'s trailing RefreshContextRow() call runs. Moved
     // verbatim out of BuildContextRow: same BuildPill() call.
@@ -495,8 +495,8 @@ public sealed partial class TradePage : UserControl
     {
         var pills = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
-        // ONE pill for both feeds (owner, 2026-08-03: "update all pills pertaining to UEX and SCT
-        // to be one uniform pill that says Trade Data"). Two pills made sense while the sources had
+        // ONE pill for both feeds (2026-08-03: every UEX and SCT pill folded into one uniform
+        // TRADE DATA pill). Two pills made sense while the sources had
         // separate consents; with a single toggle they turned on and off together, so a reader was
         // being asked to track two lamps that could never disagree about being present. The value
         // is UEX's age because UEX is the feed the app shows and ranks on; the tooltip carries both
@@ -621,7 +621,7 @@ public sealed partial class TradePage : UserControl
 
     // Status-strip pill chrome, reused verbatim (MainWindow.xaml:110-146 / mock:145-149): padding
     // 9,3,11,3, radius 4, Bg2Nav fill, 1px NavBorder line, dot 7x7, label mono 9 bold dim, value mono 10.
-    // The dot (owner's live-pass ask, 2026-07-30, item 4: a freshness LED before the label) is the
+    // The dot (live-pass item 4, 2026-07-30: a freshness LED before the label) is the
     // same 7x7 Ellipse construction MainWindow's own top-strip pills use (MainWindow.xaml e.g.
     // SessionDot/BlueprintDot/ShardDot: Width=7 Height=7, Margin 0,0,7,0, VerticalAlignment=Center) -
     // built once here and dressed live by SetFreshnessDot below, never animated (static fill; the
@@ -788,7 +788,7 @@ public sealed partial class TradePage : UserControl
 
     private void RefreshContextRow()
     {
-        // Session-aware lamp (owner, 2026-08-04): the chip wore the live cyan whenever a location
+        // Session-aware lamp (2026-08-04): the chip wore the live cyan whenever a location
         // was known, but LastKnownLocation is seeded from the previous session's Game.log at app
         // start and never clears, so with the game closed it glowed blue forever. The shared fold
         // (StatusChips.LocationLampState) keys the dressing on the game-process probe - the FEED's
@@ -903,13 +903,13 @@ public sealed partial class TradePage : UserControl
     // RoutePlanner.TogglePin / SurvivingPins / PinSurvivesRefresh (Services/RoutePlanner.cs), unit
     // tested directly in NexusApp.Tests/TradePinnedRouteTests.cs.
     //
-    // MULTI-PIN and PERSISTED since 2026-08-01 (the owner: "i would like the ability to pin multiple routes from
-    // planner to display in the overlay with the ability to close each one out from the overlay").
+    // MULTI-PIN since 2026-08-01: several planner routes can be pinned into the overlay at once,
+    // and each pin can be closed from the overlay itself.
     // Order is pin order, oldest first, and it is load-bearing: the overlay lists pins in it, and
     // TogglePin drops the oldest at the cap.
-    // PERSISTED since 2026-08-01 (the owner: "lets have trade routes pinned persist the same as refinery
-    // orders"). Backed by AppSettings.PinnedRoutes, which is the live list itself rather than a copy
-    // written back - one owner, so a pin cannot exist in memory and not on disk.
+    // PERSISTED since 2026-08-01, matching how refinery orders persist. Backed by
+    // AppSettings.PinnedRoutes, which is the live list itself rather than a copy written back -
+    // a single source of truth, so a pin cannot exist in memory and not on disk.
     internal IReadOnlyList<PinnedRoute> PinnedRoutes => App.Settings.Current.PinnedRoutes;
     internal event Action? PinnedRouteChanged;
 
@@ -962,7 +962,7 @@ public sealed partial class TradePage : UserControl
     /// overlay is showing.</summary>
     internal bool IsPinned(TradeRoute r) => PinnedRoutes.Any(p => RoutePlanner.SameHaul(p, r));
 
-    /// <summary>The Sell tab's counterpart (owner, 2026-08-01): true when a SELL-ONLY pin names
+    /// <summary>The Sell tab's counterpart (2026-08-01): true when a SELL-ONLY pin names
     /// this buyer terminal + commodity. Planner pins never satisfy this - see SameSellHaul.</summary>
     internal bool IsSellPinned(int terminalId, int commodityId)
         => PinnedRoutes.Any(p => RoutePlanner.SameSellHaul(p, terminalId, commodityId));

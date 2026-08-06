@@ -19,8 +19,8 @@ namespace NexusApp.Views;
 /// skipped-not-completed, and malformed-entry counts, the mission-data and newer-version notices,
 /// and a "NOT RECOGNIZED - SKIPPED" scrollable names list. Same visual chrome AND the same
 /// Cancel/"Mark N owned" footer convention as ImportResultDialog (that class stays untouched).
-/// AMENDMENT 2: this was briefly a post-apply summary (immediate-apply ruling); the owner reversed
-/// that, so this is now a real gate, matching the Game.log import pattern.
+/// AMENDMENT 2: this was briefly a post-apply summary (immediate-apply ruling); that was reversed,
+/// so this is now a real gate, matching the Game.log import pattern.
 /// </summary>
 public sealed class ScmdbImportResultDialog : Window
 {

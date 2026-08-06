@@ -23,7 +23,7 @@ public class ShardLogParserTests
     private const string TestJoin =
         "<2026-07-29T13:14:51.882Z> [Notice] <Join PU> address[10.0.0.1] port[64318] shard[test_euw1b_12030094_002] locationId[1] [x]";
 
-    // Verbatim from a real PTU Game.log (2026-07-29, owner's install). Confirms the live PTU
+    // Verbatim from a real PTU install's Game.log (2026-07-29). Confirms the live PTU
     // shard prefix is "ptu" - the pre-#28 (?:pub|priv) regex would have rejected it. Server ip
     // only, no PII.
     private const string PtuJoinReal =

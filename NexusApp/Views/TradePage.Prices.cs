@@ -13,8 +13,8 @@ namespace NexusApp.Views;
 public sealed partial class TradePage
 {
     // PriceRowItem (exactly one of Uex/Sct populated per row) now lives in Services/PriceSort.cs,
-    // alongside the sort helper itself - moved out of this class (owner live-pass ask, 2026-07-30,
-    // item 2) so PriceSort.SortRows and its unit tests can build rows without a WPF UserControl.
+    // alongside the sort helper itself - moved out of this class (live-pass item 2, 2026-07-30)
+    // so PriceSort.SortRows and its unit tests can build rows without a WPF UserControl.
 
     private CommodityPickerBox _pricesCommodityPicker = null!;   // shared type-or-browse field (issue #41), replaces the plain ComboBox
     private readonly bool[] _priceCols = { true, true, true, false };   // STOCK, STATUS, AGE, +WEEK AVG - session only, not persisted (task brief: "persist nothing new")
@@ -29,7 +29,7 @@ public sealed partial class TradePage
     // every terminal" view - see RefreshPricesCommodityBox and RebuildPrices below.
     private int? _pricesTerminalFilter;
 
-    // Sort state (owner live-pass ask, 2026-07-30, item 2): session-only, not persisted - same
+    // Sort state (live-pass item 2, 2026-07-30): session-only, not persisted - same
     // reasoning as _priceCols above. Default Sell descending is the pre-existing behavior, with
     // the Sell header visually marked active from first paint.
     private PriceSortColumn _pricesSortColumn = PriceSortColumn.Sell;
@@ -49,7 +49,7 @@ public sealed partial class TradePage
 
         _pricesInputs = new StackPanel();
 
-        // Owner's live-pass ask (2026-07-30, round 3): the CONTROL itself must anchor to the pane's
+        // Live-pass finding (2026-07-30, round 3): the CONTROL itself must anchor to the pane's
         // left edge, under the ORIGIN pill. An explicit-Width child of a vertical StackPanel keeps
         // its default Stretch alignment and is therefore CENTERED in the available width - the
         // Planner/Sell inputs dodge this only because they live in horizontal rows. Pin it Left.
@@ -206,7 +206,7 @@ public sealed partial class TradePage
         // instant the filter clears (mouse-only dismiss - a plain TextBlock click handler, same
         // idiom as the ORIGIN chip's Manual/Live links, TradePage.cs:704-711 - carries no keyboard
         // path at all: nothing here is a Tab stop or has a key binding).
-        // Location-first display (owner's ask, 2026-07-31): filterTerm.Name is a raw MarketTerminal
+        // Location-first display (2026-07-31): filterTerm.Name is a raw MarketTerminal
         // name (Shop-first), unlike the price rows' own TerminalName column below (TradePriceRow.
         // TerminalName is a different UEX vocabulary - see BuildPriceRow's comment). Display only:
         // _pricesTerminalFilter stores the terminal ID, never this label, so nothing here can leak
@@ -324,7 +324,7 @@ public sealed partial class TradePage
         return tb;
     }
 
-    // Click-to-sort header (owner's live-pass ask, 2026-07-30, item 2): SELL/BUY/STOCK/STATUS/AGE
+    // Click-to-sort header (live-pass item 2, 2026-07-30): SELL/BUY/STOCK/STATUS/AGE
     // only - Terminal and Week avg stay plain HeaderCells above, never wrapped by this. Click an
     // inactive header: sort by that column, descending first. Click the already-active header:
     // flip direction. The chevron only appears on the active header; inactive headers show nothing.
@@ -406,7 +406,7 @@ public sealed partial class TradePage
             // matches the SCT-only branch's termPanel below) - this column is the widest of the row
             // and carries no trimming, so the tag never wraps or clips.
             //
-            // Location-first display NOT applied here (owner's ask, 2026-07-31 review): r.TerminalName
+            // Location-first display NOT applied here (2026-07-31 review): r.TerminalName
             // is TradePriceRow.TerminalName, a DIFFERENT UEX vocabulary from MarketTerminal.Name -
             // already documented in TradePage.cs's TerminalNames doc comment (e.g. "CBD Lorville" vs
             // "CBD - Central Business District - Lorville" for the same terminal, verified against a

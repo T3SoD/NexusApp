@@ -6,7 +6,7 @@ namespace NexusApp.Services;
 /// How far SC Trade Tools sits from UEX on one figure, signed and from UEX's point of view.
 ///
 /// UEX stays the number the app shows and ranks on; this is only ever a margin note beside it
-/// (owner, 2026-08-03: "lets keep UEX as main but next to prices and stock show a +/-% delta").
+/// (2026-08-03: UEX stays the main source, with a +/-% delta shown next to prices and stock).
 /// Positive means SCT reports MORE than UEX - a higher price, more stock. Negative means less.
 ///
 /// Deliberately separate from PriceReconciler.DisagreePct, which is absolute and feeds the

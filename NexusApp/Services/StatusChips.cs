@@ -7,8 +7,8 @@ namespace NexusApp.Services;
 /// Pure composition seams for the header status strip (F14 pill consolidation, 2026-08-01).
 /// The strip went from five chips of mixed importance to multi-feature lamps: GAME SESSION
 /// (absorbing the SHARD chip as its value suffix), UEX (the MARKET chip, renamed to match the
-/// Trade page's pill for the same feed), and AUTO-SCAN (one chip for BOTH OCR scanners, the
-/// owner's amendment on the mock). The LOCATION readout born in the same pass lives in the dock
+/// Trade page's pill for the same feed), and AUTO-SCAN (one chip for BOTH OCR scanners, an
+/// amendment on the mock). The LOCATION readout born in the same pass lives in the dock
 /// foot operator panel now (issue #40). These seams are the parts of that rework that are
 /// decisions rather
 /// than plumbing, so they are pure and tested; the WPF painting stays in MainWindow.
@@ -29,7 +29,7 @@ public static class StatusChips
 
     /// <summary>The merged session chip's value text. Live carries only FACTS - the shard and the
     /// channel suffix - because the breathing green dot and the SESSION label already say "alive";
-    /// the word "monitoring" restated them and the owner cut it (2026-08-01). With nothing detected the
+    /// the word "monitoring" restated them and was cut (2026-08-01). With nothing detected the
     /// live value is empty, which is correct silence, not a gap. The shard rides only the live
     /// state: with the session offline the last-seen shard is history, not status, and appending
     /// it would dress a dead reading as a current one.</summary>
@@ -48,8 +48,8 @@ public static class StatusChips
     public static ScanIndicator ContractScanState(bool running, bool enabled)
         => running ? ScanIndicator.On : enabled ? ScanIndicator.Paused : ScanIndicator.Off;
 
-    /// <summary>One LED for two scanners (owner on the mock: "make sure the autoscan represents
-    /// both OCR auto scan features"). Paused outranks On because paused is the state worth a
+    /// <summary>One LED for two scanners (amended on the mock: the AUTO-SCAN chip must represent
+    /// both OCR auto-scan features). Paused outranks On because paused is the state worth a
     /// glance - the scanners pause THEMSELVES on foreground rules, and a green lamp while either
     /// is silently paused would be the lamp lying. On outranks Off because something genuinely
     /// running deserves the live green even when its sibling is switched off by choice.</summary>
@@ -70,7 +70,7 @@ public static class StatusChips
         _ => "off",
     };
 
-    /// <summary>The location lamps' shared fold (owner, 2026-08-04: the pills wore the live cyan
+    /// <summary>The location lamps' shared fold (2026-08-04: the pills wore the live cyan
     /// forever, game running or not - they must go red when no session is live). Used by the dock
     /// LOCATION chip and the Trade page's ORIGIN chip. Offline outranks coarse: with the game
     /// closed the reading is history regardless of its precision, and red is the lamp saying

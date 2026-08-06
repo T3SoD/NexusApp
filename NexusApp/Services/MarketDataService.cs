@@ -195,8 +195,8 @@ public sealed class MarketDataService : IDisposable
     }
 
     /// <summary>The one market refresh tick, announced so a sibling feed can ride the same clock
-    /// instead of running a second timer (owner, 2026-08-03: "combined to the same toggle and
-    /// refresh timer"). Deliberately just "the cycle ran" and not "data changed" - a subscriber
+    /// instead of running a second timer (2026-08-03: one toggle and one refresh timer cover both
+    /// feeds). Deliberately just "the cycle ran" and not "data changed" - a subscriber
     /// decides for itself whether it is due, so this service knows nothing about who listens.</summary>
     public event Action? AutoRefreshTick;
 

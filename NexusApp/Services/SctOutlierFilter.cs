@@ -4,7 +4,7 @@ namespace NexusApp.Services;
 /// Drops implausible prices from the SCT feed before they are stored.
 ///
 /// SCT listings are user-submitted and unvalidated, so a mistyped price lands in the feed exactly
-/// like a real one. The owner caught the case this exists for (2026-08-03): quartz at Rod's Fuel 'n
+/// like a real one. The case this exists for was caught live (2026-08-03): quartz at Rod's Fuel 'n
 /// Supplies came through at 84,200 aUEC, a fat-fingered 4,200, against a median of 4,400 across
 /// every terminal reporting quartz. Because a lookup takes the newest listing per terminal, that
 /// one typo became the number on screen.

@@ -210,7 +210,7 @@ public partial class OverlayWindow : Window
         // left the dim state stale until an unrelated rebuild. The feed's watcher is pumped by
         // a DispatcherTimer as well, so this raise is also UI-thread.
         App.GameLogFeed.SessionLiveChanged += OnProfitSessionLiveChanged;
-        // WALLET line under SESSION (owner ask 2026-08-06): the same keep-live contract, but
+        // WALLET line under SESSION (added 2026-08-06): the same keep-live contract, but
         // WalletTracker raises off the feed/burst thread, so marshal. Only the anchored money
         // block repaints - a capture mid-flight must not rebuild a planner under the cursor.
         _onWalletChanged = () => Dispatcher.BeginInvoke(() =>
@@ -232,7 +232,7 @@ public partial class OverlayWindow : Window
         });
         App.Market.Changed += _onMarketChanged;
 
-        // Host-managed picker popup dismissal (owner's live-pass find, 2026-08-02: overlay
+        // Host-managed picker popup dismissal (live-pass find, 2026-08-02: overlay
         // dropdowns collapsed the instant they were clicked - StaysOpen=false's capture close
         // misfires inside a Topmost window). The planner pickers open their popups with
         // StaysOpen=true (CommodityPickerBox.HostManagedClose) and this window closes them on any
@@ -242,8 +242,8 @@ public partial class OverlayWindow : Window
         // chevron's own toggle still owns that case.
         PreviewMouseDown += (_, _) => CloseUnhoveredPickerPopups();
 
-        // Live player location on the TRADE tab (owner, 2026-08-01: "current location in the overlay
-        // tab does not update live like it does in the main app"). The tab was only ever repainted
+        // Live player location on the TRADE tab (2026-08-01: the overlay tab's location did not
+        // update live the way the main window's does). The tab was only ever repainted
         // on a tab switch or a pin change, so a boundary crossing mid-flight left CURRENT LOCATION
         // and every band position stale - on the one surface that is actually on screen while
         // crossing boundaries. Same permanent-subscription-plus-visibility-guard idiom MapPage's
@@ -369,7 +369,7 @@ public partial class OverlayWindow : Window
     // states are traps for a chrome-less, taskbar-less window: maximized, DragMove no-ops and
     // the grip is template-hidden; minimized, there is no taskbar button to restore from.
     // A maximize becomes a normal-state work-area fill (SnapMaximizeGuard); a minimize becomes a
-    // hide (owner's call) - the main-window OVERLAY toggle restores it, the Hidden wiring pauses
+    // hide (by design), the main-window OVERLAY toggle restores it, the Hidden wiring pauses
     // the scanner like the close glyph, and Show Desktop puts the overlay away with everything
     // else instead of popping it back over the bared desktop. The monitor is read while still
     // maximized - the maximized window covers exactly the monitor the user snapped on, which a
@@ -1285,7 +1285,7 @@ public partial class OverlayWindow : Window
     // Paint the chamfered shell: the FramePath silhouette (bevelled fill + 1px border) and the matching
     // clip on ContentRoot so inner content stays inside the TL + BR bevels.
     // 16px chamfer: the app's shipped silhouette (predates the 2026-07 overlay mocks; their tables
-    // were corrected to 16 - owner ruling 2026-07-28).
+    // were corrected to 16, ruling 2026-07-28).
     private void UpdateChamfer()
     {
         // PanelHost lives INSIDE the scaled tree, so its ActualWidth/ActualHeight are already in
@@ -1927,7 +1927,7 @@ public partial class OverlayWindow : Window
         return true;
     }
 
-    // The overlay card's sell line follows the decoder line's roles (owner ruling 2026-07-27, live
+    // The overlay card's sell line follows the decoder line's roles (ruling 2026-07-27, live
     // run 5, mock .sellline): label dim, value gold, terminal name Fg, age or patch tag dim, and
     // the whole line dim when the price is stale. The runs are composed from MarketNotice's own
     // parts - the same parts OverlaySellLine is built from - so the rendered text stays identical
@@ -3517,14 +3517,14 @@ public partial class OverlayWindow : Window
     // and deliberately nothing else. Screen space here is tiny and it is read mid-flight, so it is a
     // read-only glance, not a second planner.
     //
-    // Reworked the same day on the owner's live pass: it was one route, one column of plain lines, with
+    // Reworked the same day after a live pass: it was one route, one column of plain lines, with
     // no way to unpin from here. It now lists EVERY pinned route as a "Manifest Strip" card - mock
     // nexus-design-lab/overlay-trade, candidate B of four, picked for pins-per-screen because this
     // panel gets a two-second read mid-flight. Three lines a card: commodity + SCU, the run itself
     // on one rail, distance + margin. Each card closes itself.
     //
-    // Overlay planner spec, 2026-08-02: the "not a second planner" ruling above was revisited by
-    // the owner. The tab now carries two modes - PLANNER (default: the top 5 routes, ranked with
+    // Overlay planner spec, 2026-08-02: the "not a second planner" ruling above was revisited.
+    // The tab now carries two modes - PLANNER (default: the top 5 routes, ranked with
     // the exact settings the main planner persists) and PINNED (the card list above, unchanged).
     // Revision R2, same day: PLANNER grew into a mini planner. A collapsible FILTERS stack
     // carries the full input set (SHIP, START, DEST and COMMODITY pickers, then BUDGET, SCOPE,
@@ -3681,12 +3681,12 @@ public partial class OverlayWindow : Window
         BuildTradeTopRow();
         if (_tradeMode == "PLANNER") BuildPlannerSection();
         else BuildPinnedSection();
-        // Anchored above the scroll (owner ask 2026-08-05), not appended to the items: the money
+        // Anchored above the scroll (added 2026-08-05), not appended to the items: the money
         // readout stays put while the route cards scroll under it.
         TradeSessionHost.Content = BuildTradeMoneyBlock();
     }
 
-    // Anchored money block: the WALLET line with the SESSION line under it (owner order
+    // Anchored money block: the WALLET line with the SESSION line under it (order fixed
     // 2026-08-06, wallet on top) - the desktop header's two money readouts. Stacked lines, not
     // side-by-side pills: 320 px cannot seat two full-digit values abreast. One border for the
     // pair, hairline BELOW as the divider against the scrolling cards.
@@ -3941,7 +3941,7 @@ public partial class OverlayWindow : Window
             TradePanelItems.Children.Add(BuildTradeCard(route, terminals, here, fg, dim, gold, accent, mono));
     }
 
-    // One Manifest Strip card. Every value the owner asked for is on it: start, end, distance,
+    // One Manifest Strip card. Every required value is on it: start, end, distance,
     // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
     private Border BuildTradeCard(
         PinnedRoute route,
@@ -4085,9 +4085,9 @@ public partial class OverlayWindow : Window
         body.Children.Add(close);
 
         // EVERY card looks the same. An earlier pass tinted and outlined the card in amber while
-        // the player stood at one of its stops; the owner rejected it twice (2026-08-01), and he is
-        // right - the band already lights that end's cap, which is candidate D's own way of saying
-        // it, and a second signal for the same fact turned an accent into a background colour.
+        // the player stood at one of its stops; that behavior was rejected twice (2026-08-01), and
+        // rightly so: the band already lights that end's cap, which is candidate D's own way of
+        // saying it. A second signal for the same fact turned an accent into a background colour.
         return new Border
         {
             Background = (System.Windows.Media.Brush)FindResource("Bg2Brush"),
@@ -4116,7 +4116,7 @@ public partial class OverlayWindow : Window
         return grid;
     }
 
-    // Terminal name with the system riding DIRECTLY after it, hyphen-separated (owner's live-pass
+    // Terminal name with the system riding DIRECTLY after it, hyphen-separated (live-pass
     // revision, 2026-08-02: the tag column parked the system at the far edge, away from short
     // names). One TextBlock, two runs: the suffix stays dim and small like the desktop SystemTag,
     // and CharacterEllipsis still trims the whole line from the right on overflow. Tooltip carries
@@ -4209,7 +4209,7 @@ public partial class OverlayWindow : Window
     // ── PLANNER mode (overlay planner spec, 2026-08-02; revision R2: mini planner) ─────────────
     // The top 5 routes ranked with the exact persisted settings the main planner uses
     // (TradePlanArgs is the shared interpretation seam, so the two surfaces cannot drift). R2
-    // (owner's call after the live pass) made this a mini version of the desktop planner: the
+    // (decided after the live pass) made this a mini version of the desktop planner: the
     // FULL input set lives here too, in a collapsible FILTERS stack above the cards - SHIP,
     // START (no longer forced "LIVE"; the shared TradeStartManual drives the origin), DEST,
     // COMMODITY, BUDGET presets, SCOPE, DEMAND, RANK. All but BUDGET write the SAME persisted
@@ -4283,8 +4283,8 @@ public partial class OverlayWindow : Window
         if (string.IsNullOrEmpty(commodityFilter)) commodityFilter = null;
         var destIds = TradePlanArgs.DestTerminalIds(App.Settings.Current.TradeDestManual, snap.Terminals.Rows);
         var routes = RoutePlanner.Rank(snap.TradePrices.Rows, terminals, ship.TotalScu, ship.MaxContainerScu,
-            // take 25, the desktop planner's own cap (owner's live-pass ask, 2026-08-02: "show all
-            // the planner routes, not just 5") - the pane scrolls, and 25 is what "all" means on
+            // take 25, the desktop planner's own cap (live-pass change, 2026-08-02: show the full
+            // planner route set, not just 5). The pane scrolls, and 25 is what "all" means on
             // the desktop too.
             _plannerBudget, originIds, App.Settings.Current.TradeScope, take: 25,
             TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter),
@@ -4741,8 +4741,8 @@ public partial class OverlayWindow : Window
 
         // Head line (mock head: gap 7, bottom margin 5): what to haul, how much, what the trip
         // nets, then the pin star at the right edge. "/trip" keeps mirroring the pinned card's
-        // "/SCU" suffix grammar. The age moved down onto each leg line (owner's revision,
-        // 2026-08-02: last-refreshed belongs beside BOTH the stock and demand figures).
+        // "/SCU" suffix grammar. The age moved down onto each leg line (revised 2026-08-02:
+        // last-refreshed belongs beside BOTH the stock and demand figures).
         var head = new Grid { Margin = new Thickness(0, 0, 0, 5) };
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -4777,7 +4777,7 @@ public partial class OverlayWindow : Window
         head.Children.Add(pin);
         rows.Children.Add(head);
 
-        // No distance tail for now (owner's call, 2026-08-02): the leg lines carry name, figure
+        // No distance tail for now (2026-08-02): the leg lines carry name, figure
         // and freshness only.
         rows.Children.Add(PlannerLeg("BUY", route.BuyRow.TerminalName, buyTerminal?.System,
             route.BuyRow.BuyStockScu, route.TripQty, route.BuyRow.ModifiedUtc, fg, dim, mono));
@@ -4811,7 +4811,7 @@ public partial class OverlayWindow : Window
     // is that viewbox mapping - Stretch would refit the path's bounds and fatten it). Built ONCE
     // and shared frozen across every card's Path: Geometry.Parse returns a FROZEN StreamGeometry,
     // so the transform must go on an unfrozen Clone (setting it on the parse result throws
-    // InvalidOperationException - the owner's live find, 2026-08-02, the "Overlay Error" dialog
+    // InvalidOperationException - live find, 2026-08-02, the "Overlay Error" dialog
     // on the first candidate-B launch), and re-freezing makes the shared instance thread-safe.
     private static readonly Geometry PlannerPinStarGeometry = MakePlannerPinStarGeometry();
 
@@ -4906,7 +4906,7 @@ public partial class OverlayWindow : Window
         };
         Grid.SetColumn(figure, 2);
         line.Children.Add(figure);
-        // Last-refreshed, per leg, as the house freshness pill (owner's revisions, 2026-08-02):
+        // Last-refreshed, per leg, as the house freshness pill (revised 2026-08-02):
         // TradePage.FreshChip is the desktop legs' own chip - mono "Xh ago", dim pill, amber
         // tint past 24h - so the two surfaces speak the same staleness vocabulary.
         var age = DateTime.UtcNow - modifiedUtc;
@@ -5005,7 +5005,7 @@ public partial class OverlayWindow : Window
     private readonly List<FrameworkElement> _guidesCascade = new();
     private GuideEntry? _openGuide;
     // Executive Hangar status line (issue #26 amendment): the shared compact control, hosted
-    // inside the Contested Zones section of the catalog list (owner ruling: mirror the main
+    // inside the Contested Zones section of the catalog list (ruling: mirror the main
     // Guides page placement). Built once with the rest of the tab (EnsureGuidesTab); its
     // tick lifecycle is independent of the guide list/viewer - see SwitchTab and OnClosed.
     private ExecHangarStatusLine? _guidesHangarLine;
@@ -5038,7 +5038,7 @@ public partial class OverlayWindow : Window
             list.Children.Add(head);
             _guidesCascade.Add(head);
 
-            // Executive Hangar status (issue #26 amendment, owner ruling live run 2026-07-27):
+            // Executive Hangar status (issue #26 amendment, ruling from live run 2026-07-27):
             // the compact line lives INSIDE the Contested Zones section, directly under its
             // header, mirroring the main Guides page (not a block above the whole tab). It
             // scrolls with the list and is covered by the viewer like any other list content.

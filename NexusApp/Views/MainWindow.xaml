@@ -33,12 +33,12 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left: logo + title + version badges. The Border clips (F14 follow-up, the owner's
+            <!-- Left: logo + title + version badges. The Border clips (F14 follow-up, found on a
                  live pass: the widened strip painted over the clock): a StackPanel arranges children
                  at full desired size and PAINTS past its star column into the clock's Auto column
                  when the window is narrow - clipping keeps the cut on our side of the boundary. The
                  SESSION chip carries its own trim cap so the cut is rare. The clip moved from the
-                 panel to this Border with a fade-out mask (owner, 2026-08-04: the hard cut sliced
+                 panel to this Border with a fade-out mask (2026-08-04: the hard cut sliced
                  the AUTO-SCAN chip mid-glyph flush against the clock, which read as the clock
                  overlapping the chip) - an overflowing strip now fades out ahead of the boundary,
                  and the mask lives on the Border because the panel's own mask would map to its full
@@ -126,7 +126,7 @@
                      code-behind. F14: the old SHARD chip folded in here - the shard is parsed FROM
                      Game.log and cannot exist without a live session, so it IS the live value
                      ("US-E · 042", StatusChips.SessionValue) instead of holding its own header slot;
-                     the word "monitoring" was cut (the owner) since the breathing dot already says alive. -->
+                     the word "monitoring" was cut since the breathing dot already says alive. -->
                 <Border x:Name="SessionChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
@@ -154,7 +154,7 @@
                         <TextBlock x:Name="MarketChipText" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- WALLET telemetry chip (owner, 2026-08-06: replaces AUTO-SCAN, which lives on in
+                <!-- WALLET telemetry chip (2026-08-06: replaces AUTO-SCAN, which lives on in
                      the overlay HUB rail): the OCR wallet estimate at a glance. Dot and value follow
                      the wallet state (green tracking, amber aging, red impossible, dim otherwise;
                      money never wears cyan); click opens Trade, where the full block lives. Driven
@@ -459,7 +459,7 @@
                     </ScrollViewer>
 
                     <!-- dock foot: operator + location. The LOCATION line (F14; relocated from the
-                         header strip for issue #40, owner's placement call: the caption slot under
+                         header strip for issue #40, placement decision: the caption slot under
                          the operator name) is where Game.log last placed the player - the one signal
                          every distance in the app hangs off (Codex, work orders, Trade ranking, the
                          map marker, overlay route bands), seated under the operator it describes.

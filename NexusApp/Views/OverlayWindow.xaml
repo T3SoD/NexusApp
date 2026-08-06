@@ -239,7 +239,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <!-- Sized down from the original 42/16 pair to sit with the overlay's
-                             10-11px density (owner ruling 2026-07-27). Padding drops to 10,4
+                             10-11px density (ruling 2026-07-27). Padding drops to 10,4
                              because the ChamferTextBox base carries 10,8: a 16.5px mono line at
                              12.5 plus 16px of padding would not fit a 30px row. -->
                         <TextBox x:Name="OverlayRsInput" Style="{StaticResource ChamferTextBox}"
@@ -493,7 +493,7 @@
                      (RebuildTradePanel). -->
                 <Grid x:Name="TradeTabContent" Visibility="Collapsed">
                     <Grid.RowDefinitions>
-                        <!-- SESSION profit line anchored above the scroll (owner ask 2026-08-05):
+                        <!-- SESSION profit line anchored above the scroll (2026-08-05):
                              the money readout stays put while the route cards scroll under it. -->
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>

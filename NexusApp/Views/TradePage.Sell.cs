@@ -103,7 +103,7 @@ public sealed partial class TradePage
             Logger.Info("[UI] Trade sell: quantity updated");
             RebuildSell();   // results only: the control the user just clicked is still alive
         };
-        // Live re-rank per keystroke (owner's live-pass ask, 2026-07-30, item C; mock index.html:918,
+        // Live re-rank per keystroke (live-pass item C, 2026-07-30; mock index.html:918,
         // onChange re-ranks immediately - was LostFocus-only here, so nothing ranked until the user
         // typed a quantity AND clicked elsewhere). RebuildSell only ever clears/repopulates
         // _sellResults, never _sellInputs (this box's own parent, built once - see this method's
@@ -231,7 +231,7 @@ public sealed partial class TradePage
 
         if (buyers.Count == 0) { _sellResults.Children.Add(new TextBlock { Text = $"No buyers found for {picked.CommodityName} in this scope.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
-        // Origin terminal for the distance tag (owner's ask, 2026-07-30): resolved once per rebuild
+        // Origin terminal for the distance tag (2026-07-30): resolved once per rebuild
         // from the same originId the ranking itself already used, not a second origin lookup.
         MarketTerminal? originTerm = originId is { } oid && terminals.TryGetValue(oid, out var ot) ? ot : null;
 
@@ -338,13 +338,13 @@ public sealed partial class TradePage
     {
         terminals.TryGetValue(b.Row.TerminalId, out var term);
         string? system = term?.System;
-        // Owner's ask, 2026-07-30 (decorating beyond the approved mock): the real gigameter
+        // Added 2026-07-30 (decorating beyond the approved mock): the real gigameter
         // distance from the current origin to this buyer, only when both resolve on the starmap
         // in the same system - DistanceMeters already encodes both the resolution and the
         // same-system gate, so this is a single call, not a duplicated check.
         double? distanceMeters = _starmap.DistanceMeters(originTerm, term);
 
-        // PIN TO OVERLAY on sell rows (owner, 2026-08-01), same chip and same repaint-in-place
+        // PIN TO OVERLAY on sell rows (2026-08-01), same chip and same repaint-in-place
         // rules as the planner's: the click never rebuilds, e.Handled keeps it off the row's own
         // expand toggle, and RefreshPinChips repaints EVERY chip since a cap eviction can dim a
         // chip on either tab. UEX rows only - an SCT-only listing has no terminal id to pin.
@@ -388,7 +388,7 @@ public sealed partial class TradePage
     // rows (chip omitted, see BuildSctOnlyBuyerRowContent); badge is whatever CorroborationBadge
     // returned for the caller's reconciled/synthesized state, or null to render none.
     //
-    // Location-first display NOT applied to terminalName here (owner's ask, 2026-07-31 review):
+    // Location-first display NOT applied to terminalName here (2026-07-31 review):
     // callers feed this from TradePriceRow.TerminalName (BuildBuyerRowContent's b.Row.TerminalName)
     // or an SCT Location string, both a different UEX vocabulary from MarketTerminal.Name that
     // TradeOriginResolver.LocationFirst's " - " rule was verified against - see the same note on

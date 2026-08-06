@@ -58,7 +58,7 @@ public class MarketNoticeTests : IDisposable
     public void PatchTag_FormatsVersion() =>
         Assert.Equal("patch 4.8", MarketNotice.PatchTag("4.8"));
 
-    // Every rendered price carries the game's currency unit, "aUEC/SCU" (owner ruling 2026-07-27).
+    // Every rendered price carries the game's currency unit, "aUEC/SCU" (ruling 2026-07-27).
     [Fact]
     public void DecoderLine_FormatsCorrectly() =>
         Assert.Equal("Sell (refined, avg): 8,210 aUEC/SCU at Refinery Ore Sales - ARC-L1 (12m ago)",
@@ -127,7 +127,7 @@ public class MarketNoticeTests : IDisposable
         Assert.Equal("(patch 4.8)", MarketNotice.AgePart(MarketNotice.PatchTag("4.8")));
     }
 
-    // ── PillState: one value grammar for both TRADE DATA pills (owner, 2026-08-04) ──
+    // ── PillState: one value grammar for both TRADE DATA pills (2026-08-04) ──
     // The header chip renders the same hours-since text the Trade page strip pill composes from
     // FormatAge, so the two pills can never read as different facts again. The old fresh/busy
     // clock (PillClock) and the stale-only compact age (PillAge) are gone with it.

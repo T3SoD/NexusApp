@@ -195,7 +195,7 @@ public static class RoutePlanner
                       .ThenByDescending(x => x.Route.Net)
                       .Select(x => x.Route).Take(take).ToList(),
 
-            // Capital efficiency (owner, 2026-08-04): net over the buy-side capital the trip ties
+            // Capital efficiency (added 2026-08-04): net over the buy-side capital the trip ties
             // up, the same derivation the card rail's TradeFinancials fold renders, so the sorted-by
             // figure is the RETURN ON INVESTMENT every card already shows. A route with no capital
             // tied up sorts LAST, the rail's own silence convention: an unpriceable ratio is
@@ -245,7 +245,7 @@ public static class RoutePlanner
             _ => true,
         };
 
-    // A3 (owner live-use finding): the scope pill and the START/DESTINATION pickers are independent
+    // A3 (live-use finding): the scope pill and the START/DESTINATION pickers are independent
     // controls that can be set to two different systems, and nothing stops that. Scope STANTON with
     // a Pyro destination filters every sell leg away, so the planner returns nothing and falls
     // through to "No routes match the current scope and budget" - indistinguishable from a genuine
@@ -308,7 +308,7 @@ public static class RoutePlanner
         && a.SellRow.TerminalId == b.SellRow.TerminalId
         && a.BuyRow.CommodityId == b.BuyRow.CommodityId;
 
-    /// <summary>How many routes may be pinned at once (owner's call, 2026-08-01, when pinning went
+    /// <summary>How many routes may be pinned at once (set 2026-08-01, when pinning went
     /// from one route to several). Chosen against the overlay: five Manifest Strip cards fit the
     /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
     internal const int MaxPins = 5;
@@ -362,8 +362,8 @@ public static class RoutePlanner
         return kept;
     }
 
-    /// <summary>Captures a Sell-tab buyer as a sell-only pin (owner, 2026-08-01: "add a pin to
-    /// overlay button for the results in the sell tab"). No buy leg: the identity is (null,
+    /// <summary>Captures a Sell-tab buyer as a sell-only pin (2026-08-01, when the Sell tab's
+    /// results gained a pin-to-overlay button). No buy leg: the identity is (null,
     /// terminal, commodity), PerScuMargin holds the SELL PRICE, and TripQty is the quantity the
     /// user had typed - their own cargo, not a computed trip.</summary>
     internal static PinnedRoute ToSellPin(TradePriceRow row, int qty, DateTime nowUtc) => new()
@@ -435,8 +435,8 @@ public static class RoutePlanner
     /// began surviving a restart: a ranking is the best 25 routes for the ship, budget and scope
     /// selected right now, so falling out of one means "not currently top-25", not "no longer
     /// exists". Under the old rule, changing ship and reopening the planner would have silently
-    /// erased the user's pins - indistinguishable from a bug, and exactly what persistence was asked
-    /// for to prevent.</para>
+    /// erased the user's pins - indistinguishable from a bug, and exactly what persistence exists
+    /// to prevent.</para>
     ///
     /// <para>Returns a new list in the original pin order; never mutates the inputs.</para>
     /// </summary>

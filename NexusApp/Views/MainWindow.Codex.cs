@@ -131,7 +131,7 @@ public partial class MainWindow
     // to "default" the moment live market prices, the column toggle or the snapshot goes away.
     private string _refSort = "default";
 
-    // The Codex list's sell column is opt-in (owner ruling 2026-07-27, live run 5): the toggle row
+    // The Codex list's sell column is opt-in (ruling 2026-07-27, live run 5): the toggle row
     // above the list only exists while live market data is on, and the column itself needs the
     // toggle ON as well. Built once here; its visibility is driven per rebuild by BuildReferenceTree.
     private Hud.ToggleSwitch? _codexSellToggle;
@@ -356,7 +356,7 @@ public partial class MainWindow
     }
 
     // One Codex row's price: the best refined sell, a BARE number - the column header states the
-    // unit once (owner ruling 2026-07-27) so 39 rows do not repeat it. When the freshest priced row
+    // unit once (ruling 2026-07-27) so 39 rows do not repeat it. When the freshest priced row
     // for that ore comes from an older game patch the number goes dim and carries the patch tag, so
     // a stale price is never signalled by colour alone.
     private static FrameworkElement SellCell(PriceHit hit)
@@ -450,7 +450,7 @@ public partial class MainWindow
     // Stale-price marker in the dock count-chip geometry: mono 9 bold on a 0x1F tint of the dim
     // text colour, 0x66 border, radius 3. Used by the dossier price rows, the work order sell
     // line, and the Codex sell column cells (the column returned as an off-by-default toggle
-    // preference after first being removed for clutter; both were owner rulings on 2026-07-27).
+    // preference after first being removed for clutter; both were rulings on 2026-07-27).
     private static Border PatchTagChip(string gameVersion)
     {
         var c = ((System.Windows.Media.SolidColorBrush)Hud.Br("FgDimBrush")).Color;
@@ -480,7 +480,7 @@ public partial class MainWindow
     // with the numeric columns below it. Callers only add this alongside actual rows (see the
     // gate in ShowResourceDetail) - it never renders alone over an empty section.
     //
-    // Both numeric columns were widened when their values gained currency units (owner rulings
+    // Both numeric columns were widened when their values gained currency units (rulings
     // 2026-07-27), sized by measuring the widest realistic string in the rendering font:
     // week avg 104 -> 128 ("999,999 aUEC/SCU" is 115.4px in the inherited UiFont at 13, plus the
     // cell's 10px left gap), now 96 -> 116 ("999,999 aUEC" is 77.9px at 12, plus the 10px gap, the
@@ -566,7 +566,7 @@ public partial class MainWindow
         }
         g.Children.Add(name);
 
-        // Both value cells carry a unit (owner rulings 2026-07-27): the week average spells out
+        // Both value cells carry a unit (rulings 2026-07-27): the week average spells out
         // "aUEC/SCU", the instant price beside it takes the shorter "aUEC" because its own dim
         // "now" label already says what it is and a second "/SCU" on the same row is clutter.
         var avg = new TextBlock
@@ -1173,7 +1173,7 @@ public partial class MainWindow
             var heroAge = topHit.Stale
                 ? MarketNotice.PatchTag(topHit.GameVersion)
                 : MarketNotice.FormatAge(DateTime.UtcNow - topHit.ModifiedUtc);
-            // Segmented like the decoder line (owner ruling 2026-07-27): label dim, value gold,
+            // Segmented like the decoder line (ruling 2026-07-27): label dim, value gold,
             // terminal Fg, age dim, and the whole line dim when the price is stale.
             var heroSell = new TextBlock
             {

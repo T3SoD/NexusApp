@@ -55,7 +55,7 @@ public class WalletCaptureTests
         var hit = Assert.Single(h.Captured);
         Assert.Equal(5230346, hit.Balance);
         Assert.Equal(TriggerUtc, hit.TriggerUtc);
-        // settle 250 ms + one grab spacing 300 ms (owner, 2026-08-06: faster than the original
+        // settle 250 ms + one grab spacing 300 ms (2026-08-06: faster than the original
         // 2 s feel), measured on the injected clock, applied to the trigger line's own stamp:
         // the anchor never touches the wall clock.
         Assert.Equal(TriggerUtc + TimeSpan.FromMilliseconds(550), hit.CaptureUtc);

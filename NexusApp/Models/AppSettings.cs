@@ -22,7 +22,7 @@ public class AppSettings
 
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
-    // Trade routes pinned in the planner (owner, 2026-08-01: "the same as refinery orders"). They
+    // Trade routes pinned in the planner, persisted 2026-08-01 to match refinery orders. They
     // shipped session-only that morning; a run outlives a session, so that was wrong. Order is pin
     // order, oldest first, and it is load-bearing - the overlay lists cards in it and the cap drops
     // the oldest. See Models/PinnedRoute.cs for what is stored and what deliberately is not.
@@ -110,7 +110,7 @@ public class AppSettings
     // Auto-update consent: null = the one-time opt-in strip has not been answered yet (and no
     // network call ever happens), true/false = the user's standing choice, changeable anytime
     // in Settings > Updates. With consent on, the check runs on every launch (the 24h throttle
-    // died 2026-08-01 at the owner's ask).
+    // died 2026-08-01).
     public bool? UpdateCheckEnabled { get; set; }
 
     // UTC instant of the last completed update check (success or failure), driving the
@@ -226,7 +226,7 @@ public class AppSettings
     public bool TradeAnchorFromHere { get; set; } = true;
 
     // NOTE: SctDataEnabled was removed 2026-08-03. Live market data is one yes/no covering both
-    // UEX and SC Trade Tools (owner: "combined to the same toggle... all or nothing"), so
+    // UEX and SC Trade Tools (one combined toggle, all or nothing), so
     // MarketDataEnabled above gates both feeds. A stale SctDataEnabled key left in an existing
     // settings.json is simply ignored on load, which is the intended migration: anyone who had
     // market data on gets the SCT cross-check with it.

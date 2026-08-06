@@ -12,7 +12,7 @@ namespace NexusApp.Tests;
 // context - too heavy for a unit test (the same reasoning that moved PriceSort.SortRows out of that
 // page) - so this covers the seams; the WPF wiring is smoke-tested instead.
 //
-// Pins became PERSISTED on 2026-08-01 (the owner: "the same as refinery orders"), which changed what the
+// Pins became PERSISTED on 2026-08-01, matching how refinery orders persist, which changed what the
 // rules have to guarantee. The stale-pin DROP is gone and RefreshPins took its place; the reasoning
 // is in RoutePlanner.RefreshPins and is asserted here.
 public class TradePinnedRouteTests

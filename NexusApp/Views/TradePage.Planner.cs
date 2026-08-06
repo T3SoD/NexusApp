@@ -83,7 +83,7 @@ public sealed partial class TradePage
         _startSelectedKind = null;
     }
 
-    // Location-first display (owner's ask, 2026-07-31): the combo shows TradeOriginResolver.
+    // Location-first display (2026-07-31): the combo shows TradeOriginResolver.
     // LocationFirst's flipped label ("ARC-L1 - Admin") but _startSelectedKind/AppSettings.
     // TradeStartManual must keep the REAL UEX name the whole time (TerminalIdForName/
     // StartTerminalIds only ever resolve real names). Rebuilt fresh every RefreshStartCombo call,
@@ -114,13 +114,13 @@ public sealed partial class TradePage
         _destSelectedName = null;
     }
 
-    // Location-first display (owner's ask, 2026-07-31), same mechanism as _startDisplayToKind
+    // Location-first display (2026-07-31), same mechanism as _startDisplayToKind
     // above: display -> real terminal name ("ANY" maps to itself), rebuilt fresh every
     // RefreshDestCombo call so SelectionChanged can map the combo's displayed text back to the
     // real name that gets persisted into AppSettings.TradeDestManual.
     private Dictionary<string, string>? _destDisplayToName;
 
-    // COMMODITY picker (issue #41, planner half; owner's revision: the same type-or-browse
+    // COMMODITY picker (issue #41, planner half; revised to the same type-or-browse
     // CommodityPickerBox the SELL and PRICES fields use, not a plain dropdown): same
     // seed-once/revalidate-per-rebuild idiom as the DESTINATION picker above, minus the display
     // map - commodity names are not terminal names, so LocationFirst never applies and the items
@@ -187,7 +187,7 @@ public sealed partial class TradePage
     // guards the DEBOUNCED call (see _budgetDebounceTimer below), not an immediate one.
     private bool _inBudgetLiveRerank;
 
-    // Debounce for the live re-rank (owner's live-lag report, 2026-07-31): RoutePlanner.Rank
+    // Debounce for the live re-rank (live lag reported 2026-07-31): RoutePlanner.Rank
     // bucketizes the WHOLE TradePrices row set (~2,600 rows in a live snapshot) and pairs every
     // buy against every sell PER COMMODITY, then RebuildPlanner rebuilds up to 25 WPF route rows
     // - firing that on every single keystroke stutters at typing speed. Same DispatcherTimer
@@ -256,8 +256,8 @@ public sealed partial class TradePage
 
         // SHIP: type-or-browse, the same CommodityPickerBox the commodity fields and the overlay's
         // own ship picker use. It replaced a plain NexusComboBox when the catalog went from 15 hulls
-        // to ~90 (owner, 2026-08-03: "allow the user to type in the search bar just like the
-        // commodities") - at that length a scroll-only dropdown is unusable. Rows are the SAME
+        // to ~90 (2026-08-03: the ship field must support typed search like the commodity
+        // fields) - at that length a scroll-only dropdown is unusable. Rows are the SAME
         // "{DisplayName} - {TotalScu} SCU" strings the overlay builds, so the two surfaces share one
         // vocabulary; _shipDisplayToId maps a committed row back to the catalog id TradeShipId
         // persists, because a display string must never be persisted.
@@ -328,7 +328,7 @@ public sealed partial class TradePage
         // re-ranks against the box's live text with no extra bookkeeping - the one "budget updated"
         // log line stays exclusively on LostFocus-with-change above, so typing does not spam the log.
         //
-        // DEBOUNCED (owner's live-lag report, 2026-07-31 - see _budgetDebounceTimer's own comment
+        // DEBOUNCED (live lag reported 2026-07-31 - see _budgetDebounceTimer's own comment
         // above for the cost this avoids): every keystroke restarts the one shared timer instead
         // of rebuilding right away; only the Tick, after BudgetDebounceMs of quiet typing, calls
         // RebuildPlanner. The reentrancy guard (_inBudgetLiveRerank) moves down into the Tick
@@ -408,7 +408,7 @@ public sealed partial class TradePage
         destGrp.Children.Add(_destCombo);
         routeRow.Children.Add(destGrp);
 
-        // COMMODITY picker (issue #41; owner's revision: type-or-browse, matching the SELL tab's
+        // COMMODITY picker (issue #41; revised to type-or-browse, matching the SELL tab's
         // commodity field). "ANY" is the pinned first row, selecting it means no constraint. No
         // display map: the rows ARE the persisted names. Width matches the other two
         // CommodityPickerBox instances so the control feels identical across the trade tabs.
@@ -460,7 +460,7 @@ public sealed partial class TradePage
         _rankProfitPill = ScopePill("PROFIT");
         _rankProfitPerScuPill = ScopePill("PROFIT PER SCU");
         _rankProfitPerGmPill = ScopePill("PROFIT PER Gm");
-        // ROI (owner, 2026-08-04): capital efficiency, the same net-over-investment figure every
+        // ROI (2026-08-04): capital efficiency, the same net-over-investment figure every
         // card's financial rail shows - so the sorted-by number is always visible on the cards.
         _rankRoiPill = ScopePill("ROI");
         _rankProfitPill.MouseLeftButtonUp += (_, _) => SetRankMode(RankMode.Profit);
@@ -727,7 +727,7 @@ public sealed partial class TradePage
         string? liveLoc = App.Locations.LastKnownLocation;
         var terminalNames = TerminalNames(snap);
 
-        // Location-first display (owner's ask, 2026-07-31): kindToDisplay/displayToKind are
+        // Location-first display (2026-07-31): kindToDisplay/displayToKind are
         // rebuilt fresh on every refresh from the current terminal list - they never persist
         // anything themselves, they just translate between the real kind (_startSelectedKind,
         // AppSettings.TradeStartManual) and the flipped label shown on screen. "ANY" and the
@@ -939,7 +939,7 @@ public sealed partial class TradePage
     {
         var terminalNames = TerminalNames(snap);
 
-        // Location-first display (owner's ask, 2026-07-31), same mechanism as RefreshStartCombo
+        // Location-first display (2026-07-31), same mechanism as RefreshStartCombo
         // above: nameToDisplay/displayToName are rebuilt fresh on every refresh and never touch
         // _destSelectedName or AppSettings.TradeDestManual, which stay the real UEX name the
         // whole time (SelectionChanged persists `name`, never `display`). "ANY" is not a
@@ -1121,7 +1121,7 @@ public sealed partial class TradePage
     {
         var text = new TextBlock
         {
-            // "PIN TO OVERLAY", not "PIN" (owner, 2026-08-01): a bare PIN said nothing about where
+            // "PIN TO OVERLAY", not "PIN" (2026-08-01): a bare PIN said nothing about where
             // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
             // second effect, and the tooltip below is where that belongs.
             Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
@@ -1142,9 +1142,9 @@ public sealed partial class TradePage
         return chip;
     }
 
-    // Repaints an existing chip rather than rebuilding it (owner's live pass, 2026-08-01: "when i
-    // click pin to overlay the main app flashes and lags a bit"). The click handler used to call
-    // RebuildPlanner, which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
+    // Repaints an existing chip rather than rebuilding it (live pass, 2026-08-01: clicking PIN TO
+    // OVERLAY made the main app flash and lag). The click handler used to call RebuildPlanner,
+    // which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
     // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the
     // flash, the rank plus 25 rebuilds is the lag, and it also collapsed whatever row the user had
     // expanded. Nothing about the ranking changes when a route is pinned.
@@ -1202,8 +1202,8 @@ public sealed partial class TradePage
     // + CSS 250-253 (.legBarTrack/.legBarFill), matching the mock's track-plus-overlay construction
     // exactly rather than two abutting star-width columns.
     //
-    // Owner's live-pass ask, 2026-07-30 (items B/D): "the green and red bars dont make much sense,
-    // are they supposed to be filled or what?" Root cause was `fill.HorizontalAlignment = Left`
+    // Live-pass finding, 2026-07-30 (items B/D): the green and red bars read ambiguously and never
+    // appeared filled at all. Root cause was `fill.HorizontalAlignment = Left`
     // below: a Border with no Child and no explicit Width measures to a natural DesiredSize.Width
     // of 0, and Left/Right/Center alignment (unlike Stretch) arranges an element at its
     // DesiredSize, not the available space - so the fill rendered as a genuine zero-width,
@@ -1294,12 +1294,12 @@ public sealed partial class TradePage
             new DoubleAnimation(target, TimeSpan.FromMilliseconds(Motion.DrillMs)) { EasingFunction = Motion.Reveal });
     }
 
-    // Every route card renders its full detail inline (owner, 2026-08-03: "I do not like the click
-    // to expand for additional details on each of the planner route, can you just show it all
-    // within each routes hero card"). So there is no chevron, no click handler and no per-row open
-    // state here any more; the card is a readout, not a control. The Sell tab keeps its expander -
-    // its rows are a long browse list where collapsing is what makes it scannable, and it was not
-    // part of this ask. The shared ChevronGlyph/SetChevronOpen/DetailBand helpers therefore stay.
+    // Every route card renders its full detail inline (2026-08-03: the click-to-expand step for
+    // the planner's extra route detail was removed, so each hero card shows all of it at once).
+    // So there is no chevron, no click handler and no per-row open state here any more; the card
+    // is a readout, not a control. The Sell tab keeps its expander - its rows are a long browse
+    // list where collapsing is what makes it scannable, and it was not part of this change. The
+    // shared ChevronGlyph/SetChevronOpen/DetailBand helpers therefore stay.
     private FrameworkElement BuildRouteRow(TradeRoute r, int index, TradeShip ship, Dictionary<int, MarketTerminal> terminals)
     {
         var frame = Hud.CardFrame(BuildRouteRowContent(r, index, ship, terminals),
@@ -1420,7 +1420,7 @@ public sealed partial class TradePage
         var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         head.Children.Add(new TextBlock { Text = r.BuyRow.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
         head.Children.Add(TierChip(r.Tier));
-        // Owner's ask, 2026-07-30 (decorating beyond the approved mock): the real gigameter
+        // Added 2026-07-30 (decorating beyond the approved mock): the real gigameter
         // distance between the buy and sell legs, only when both resolve on the starmap in the
         // same system - DistanceMeters already encodes both the resolution and the same-system
         // gate, so this is a single call, not a duplicated check.
@@ -1463,7 +1463,7 @@ public sealed partial class TradePage
         string? buySystem = buyTerm?.System;
         string? sellSystem = sellTerm?.System;
 
-        // Star / arrow / Star grid, NOT a horizontal StackPanel (owner, 2026-08-04: at narrow
+        // Star / arrow / Star grid, NOT a horizontal StackPanel (2026-08-04: at narrow
         // window widths the sell leg's price and demand lines ran under the PROFIT / TRIP
         // readout). A horizontal StackPanel measures its children with infinite width, so the
         // legs rendered at full natural width and spilled out of this star column under the
@@ -1501,8 +1501,8 @@ public sealed partial class TradePage
         grid.Children.Add(railGrid);
         journey.Children.Add(legs);
 
-        // ONE picker for the whole route (owner: "one toggle per route so if you switch to sct both
-        // stock and demand show SCT and vice versa"), moving QUANTITIES ONLY - prices stay UEX's on
+        // ONE picker for the whole route (one toggle per route, so switching to SCT moves both the
+        // stock and the demand reading together), moving QUANTITIES ONLY - prices stay UEX's on
         // both legs. It drives both legs together through the repaint hooks they handed back, so
         // the card never shows one leg's stock from one feed beside the other's from the other.
         //
@@ -1533,8 +1533,8 @@ public sealed partial class TradePage
         // The purchase block lives on its OWN full-width row, not inside the buy leg. It used to
         // sit in the leg, where a StackPanel sizes to its widest child, so a four-size plan made
         // the buy column as wide as its chip row and shoved the sell leg and the profit block
-        // across the card (owner, 2026-08-03, with a screenshot of two cards whose legs did not
-        // line up). Wrapping the chips was not enough - the leg still measured them. Out here it
+        // across the card (2026-08-03, observed as two cards whose legs did not line up in a
+        // screenshot). Wrapping the chips was not enough - the leg still measured them. Out here it
         // spans both columns and cannot influence any other element's width or placement, however
         // many containers it lists.
         // PLANNED, not TripQty. TripQty is already snapped to what this menu can supply, so planning
@@ -1572,20 +1572,20 @@ public sealed partial class TradePage
         };
         var detail = new StackPanel();
         // The old first line here read "Box size OK for {ship} ({N} SCU crates)" with a tick.
-        // Removed, not reworded (owner, 2026-08-03: it is "vague and the wrong terminology"): it
+        // Removed, not reworded (2026-08-03: the wording was vague and the terminology wrong): it
         // was also always true, because RoutePlanner already drops any pair whose crates this hull
         // cannot take, so it confirmed a condition that can never be false on a row you can see.
-        // What the owner actually wanted from it - which containers to buy - is the buy leg's
+        // What is actually needed from it - which containers to buy - is the buy leg's
         // RECOMMENDED CONTAINERS line, stated where the purchase happens.
         //
-        // The "Trip size N SCU = smallest of: ship N, stock N" line lived here too and is gone at
-        // the owner's request: the same figure is already the STOCK bar's whole point on the buy
+        // The "Trip size N SCU = smallest of: ship N, stock N" line lived here too and was dropped
+        // as redundant: the same figure is already the STOCK bar's whole point on the buy
         // leg, and the RECOMMENDED CONTAINERS line now states what that quantity actually buys.
         //
         // The profit block is gone as well. Gross, Fees and Net were rendered unconditionally
         // while RoutePlanner sets Net == Gross with no fee provider, so the card carried the same
         // figure twice under two labels; collapsing it to one number then simply repeated the
-        // card head's own PROFIT / TRIP readout (owner: "now we show profit/trip twice"). Only a
+        // card head's own PROFIT / TRIP readout, so profit per trip was shown twice. Only a
         // real fee split adds anything the head does not already say, so that is the only thing
         // rendered here, and it returns by itself the day a fee provider lands (the datamined
         // auto-load ladder is the obvious first one). Net stays out of it: the head is Net.
@@ -1662,7 +1662,7 @@ public sealed partial class TradePage
     /// <summary>
     /// Records what SCT says about every side and returns the rows UNCHANGED.
     ///
-    /// UEX alone prices and ranks the routes (owner: "for prices lets just stick with UEX"), so no
+    /// UEX alone prices and ranks the routes (prices stay on UEX only), so no
     /// figure is substituted here. This exists only so a card can offer SCT's stock and demand
     /// beside it. Choosing whichever feed observed a side more recently was built and then backed
     /// out: with one toggle per route, a route fresher on SCT for its buy leg and on UEX for its
@@ -1702,8 +1702,8 @@ public sealed partial class TradePage
     /// <summary>
     /// Both feeds' readings for one side, so a card can show either on demand.
     ///
-    /// A VIEWER, not a planning input (owner: "i dont want it to re rank, i want it to just show
-    /// what SCT or UEX is displaying for that commodity with that route"). Switching swaps the
+    /// A VIEWER, not a planning input: the toggle never re-ranks, it only shows what SCT or UEX
+    /// reports for that commodity on that route. Switching swaps the
     /// price, the quantity, the coverage bar and the age; the route keeps the position and the
     /// profit UEX gave it.
     /// </summary>
@@ -1812,7 +1812,7 @@ public sealed partial class TradePage
         });
         // The value is always neutral. It used to turn amber to flag "the terminal caps you below
         // your hull", which meant an identical, purely factual range read white on one card and
-        // amber on the next with nothing on screen saying why (owner, 2026-08-03). A measurement is
+        // amber on the next with nothing on screen saying why (2026-08-03). A measurement is
         // not a warning; the warning gets its own words below.
         row.Children.Add(new TextBlock
         {
@@ -1841,8 +1841,8 @@ public sealed partial class TradePage
     {
         // WrapPanel, left-aligned: a four-size plan (real: a Cutlass Black needing 16+16+8+4+2)
         // would otherwise run the leg as wide as its longest chip row and drag every sibling with
-        // it - which is what stretched the freshness pill (owner, 2026-08-03: "have it isolated so
-        // it doesnt affect the freshness pill length"). Wrapping keeps the block inside the card
+        // it - which is what stretched the freshness pill (2026-08-03: this block must stay
+        // isolated and never change the freshness pill's length). Wrapping keeps it inside the card
         // and off the other rows' geometry.
         var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0),
                                   HorizontalAlignment = HorizontalAlignment.Left };
@@ -1850,7 +1850,7 @@ public sealed partial class TradePage
         {
             // Says what it is, in the game's own noun. The line it replaced ("Box size OK for...")
             // was called out as vague and wrong terminology; "RECOMMENDED CONTAINERS" then became
-            // "OPTIMAL CONTAINER PURCHASE COUNT" (owner, 2026-08-03) because the number that
+            // "OPTIMAL CONTAINER PURCHASE COUNT" (2026-08-03) because the number that
             // matters is how many of each to buy, not merely which sizes are recommended.
             Text = "OPTIMAL CONTAINER PURCHASE COUNT", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
             Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
@@ -1868,8 +1868,8 @@ public sealed partial class TradePage
             return row;
         }
 
-        // One chip per size instead of "21 x 32 SCU + 1 x 24 SCU" (owner, 2026-08-03: "it looks
-        // like a math equation rather than easy to digest information"). The plus signs were the
+        // One chip per size instead of "21 x 32 SCU + 1 x 24 SCU" (2026-08-03: the old form read
+        // as a math equation rather than digestible information). The plus signs were the
         // worst of it - they read as a sum to be evaluated rather than a shopping list, and a
         // four-size plan (real: 2x16 + 1x8 + 1x4 + 1x2 for a Cutlass Black) read as arithmetic.
         // Discrete chips are the page's own idiom for a set of small facts.
@@ -1958,15 +1958,15 @@ public sealed partial class TradePage
             };
         }
         Grid.SetColumn(name, 0); top.Children.Add(name);
-        // Owner's live-pass ask, 2026-07-30 (item A): "the system is extremely close to the price
-        // per scu in the planner tab" - SystemTag's own left margin (6px) already separates it from
+        // Live-pass finding, 2026-07-30 (item A): the system tag sat extremely close to the price
+        // per SCU in the planner tab - SystemTag's own left margin (6px) already separates it from
         // the name, but the two Auto columns (tag, priceRow) sit flush against each other with no
         // gap at all, so the tag crowded straight into the price. Right margin only, matching the
         // Sell flow's own tag-to-next-element gap idiom (TradePage.Sell.cs:393, 10px) at the top of
-        // this fix's 10-12px ask so the two clusters (name+tag vs price) read as clearly distinct.
+        // this fix's 10-12px range so the two clusters (name+tag vs price) read as clearly distinct.
         if (SystemTag(system) is { } tag) { tag.Margin = new Thickness(6, 0, 12, 1); Grid.SetColumn(tag, 1); top.Children.Add(tag); }
         var priceRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        // UEX, always (owner, 2026-08-03: "for prices lets just stick with UEX for those"). The
+        // UEX, always (2026-08-03: prices stay on UEX only). The
         // source toggle below moves stock and demand only, so this never changes after it is drawn
         // and needs no host to swap it through.
         priceRow.Children.Add(new TextBlock { Text = price.ToString("n0", CultureInfo.InvariantCulture), FontFamily = Hud.Font("MonoFont"), FontSize = 13, Foreground = Hud.Br("GoldBrush") });
@@ -2005,7 +2005,7 @@ public sealed partial class TradePage
         // than the ship's best - the trip needs smaller crates than the ship could otherwise carry.
         var legMaxScu = TradeMath.MaxContainerScu(containerSizes);
         // On the SELL leg the chip stays beside DEMAND where it always was. On the BUY leg it moves
-        // down to sit directly above RECOMMENDED CONTAINERS (owner, 2026-08-03), because the two are
+        // down to sit directly above RECOMMENDED CONTAINERS (2026-08-03), because the two are
         // one thought: the biggest container this kiosk sells, then what to actually buy with it.
         if (!isBuy && MaxContainerChip(legMaxScu, warning: legMaxScu is { } m && m < shipMaxContainerScu) is { } maxChip)
             barRow.Children.Add(maxChip);
@@ -2022,7 +2022,7 @@ public sealed partial class TradePage
         leg.Children.Add(freshChip);
 
         // Repaints THIS LEG's stock or demand only. Handed back so ONE toggle on the card can drive
-        // both legs together (owner: "have toggle only affect stock and demand quantities"). Null
+        // both legs together (the toggle moves stock and demand quantities only). Null
         // when only UEX reports this side, which is what lets a card with a single switchable leg
         // still offer the toggle without pretending the other moved.
         applySource = null;
@@ -2043,8 +2043,8 @@ public sealed partial class TradePage
                 qtyStamp.Visibility = sct ? Visibility.Visible : Visibility.Collapsed;
             };
 
-        // The purchase block, seated UNDER the freshness pill at the owner's request: it is the
-        // leg's conclusion, so it reads last rather than interrupting the price/stock/freshness run.
+        // The purchase block is seated UNDER the freshness pill: it is the leg's conclusion, so it
+        // reads last rather than interrupting the price/stock/freshness run.
         // Buy leg only - the sell leg unloads cargo the ship already holds, so both "largest size
         // for purchase" and a container plan would be advice about a purchase already made.
         return leg;

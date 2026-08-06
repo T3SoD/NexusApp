@@ -6,8 +6,8 @@ namespace NexusApp.Tests;
 
 // StatusChips (F14 header consolidation): the pure decisions behind the header status strip's lamps.
 // SessionValue pins what the merged GAME SESSION chip says once the SHARD chip folds into it;
-// AutoScanCombined pins how two scanner states fold into one LED (the owner: the chip must represent
-// BOTH OCR auto-scan features).
+// AutoScanCombined pins how two scanner states fold into one LED (the chip must represent BOTH
+// OCR auto-scan features).
 public class StatusChipsTests
 {
     // ── ShardText: the old SHARD chip's format, verbatim ──
@@ -33,7 +33,7 @@ public class StatusChipsTests
         // is a suffix on the session chip rather than its own surface.
         => Assert.Null(StatusChips.ShardText(region, "042", "LIVE"));
 
-    // ── SessionValue: the merged chip's value. No "monitoring" (owner, 2026-08-01): the breathing
+    // ── SessionValue: the merged chip's value. No "monitoring" (ruling 2026-08-01): the breathing
     // green dot and the SESSION label already say "alive", so live carries only facts. ──
 
     [Fact]
@@ -91,7 +91,7 @@ public class StatusChipsTests
     public void AutoScanText_BothOff()
         => Assert.Equal("RS off · CT off", StatusChips.AutoScanText(ScanIndicator.Off, ScanIndicator.Off));
 
-    // ── LocationLampState: the location pills' shared fold (owner, 2026-08-04) ──
+    // ── LocationLampState: the location pills' shared fold (2026-08-04) ──
     // Red (Offline) whenever a location is on screen with no live session behind it; cyan (Live)
     // only for a precise reading while the game runs. Offline outranks coarse because with the
     // game closed the reading is history regardless of its precision. LastKnownLocation is

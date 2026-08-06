@@ -130,8 +130,8 @@ public partial class App : Application
         OverlayGhostModeChanged?.Invoke(on, source);
     }
 
-    // SCT rides the market consent and the market clock (owner, 2026-08-03: "combined to the
-    // same toggle and refresh timer... all or nothing"). The separate SetSctDataEnabled write path
+    // SCT rides the market consent and the market clock (2026-08-03: one toggle and one refresh
+    // timer cover both feeds, all or nothing). The separate SetSctDataEnabled write path
     // and SctConsentChanged broadcast are gone with the toggle that needed them: there is nothing
     // left that can turn one feed on without the other, so the two surfaces can no longer disagree.
     // Turning market data on kicks an immediate SCT fetch so the layer goes live without a restart,
@@ -162,7 +162,7 @@ public partial class App : Application
     }
 
     // Called once from MainWindow.Loaded: never blocks startup, never runs without consent,
-    // never in the demo profile. Every launch checks (owner, 2026-08-01 - the 24h throttle is
+    // never in the demo profile. Every launch checks (ruling 2026-08-01 - the 24h throttle is
     // gone). Fire-and-forget is safe: CheckAsync owns all its failure paths and reports
     // through State/Changed.
     public static void MaybeStartUpdateCheck()

@@ -16,7 +16,7 @@ namespace NexusApp.Views;
 /// -> preview/confirm -> apply -> refresh) as a small, separate flow so the Game.log import stays
 /// untouched. AMENDMENT 2 (design spec): ownership now applies only on explicit confirm, matching
 /// the Game.log import's own preview-gate pattern (an earlier ruling had this apply immediately
-/// and summarize afterward; the owner reversed that).
+/// and summarize afterward; that was reversed).
 /// </summary>
 public static class ScmdbImportFlow
 {

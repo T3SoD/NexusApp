@@ -9,9 +9,9 @@ public readonly record struct ContainerPick(int Scu, int Count);
 /// <see cref="TotalScu"/> is what the picks really add up to, which is NOT always the target: a
 /// kiosk selling only 16/24/32 SCU crates cannot make 20, and a Cutlass Black's 46 SCU cannot be
 /// filled from 8 SCU crates without leaving 6 behind. <see cref="ShortfallScu"/> is that gap, and it
-/// is the number the owner was hitting in the wild ("the planner recommends an amount of SCU for a
-/// trip but when I get there it's limited to a container size that is not a multiple of what the
-/// planner recommends").
+/// is the number hit in the wild: the planner recommends an SCU quantity for a trip, and the kiosk
+/// on arrival only sells a container size that is not a multiple of that recommendation, so the
+/// recommended amount cannot be loaded exactly.
 /// </para>
 /// </summary>
 public sealed record ContainerPlan(int TotalScu, int ShortfallScu, IReadOnlyList<ContainerPick> Picks,

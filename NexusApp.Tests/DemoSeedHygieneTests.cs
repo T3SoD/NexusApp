@@ -7,9 +7,9 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// The demo dataset ships INSIDE the public app so the owner can screenshot a believable fake
+// The demo dataset ships INSIDE the public app so screenshots can show a believable fake
 // profile (StarlightHauler). This guard makes the hygiene promise permanent: the dataset must
-// exist, parse, identify as the fake operator, and never contain the owner's handle or any
+// exist, parse, identify as the fake operator, and never contain the real operator handle or any
 // absolute user-profile path. (The private PII sweep beyond these public markers happens
 // before files are ever added; this test keeps the publicly checkable part enforced forever.)
 public class DemoSeedHygieneTests

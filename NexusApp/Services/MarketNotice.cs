@@ -14,7 +14,7 @@ internal static class MarketNotice
     public const string SourceNote = "Data: UEX and SC Trade Tools community reports";
     // Shown in the Settings status area, under the last-refresh line: the cadence is a promise
     // about network activity, so it belongs where a reader checking on the feature is already
-    // looking and not only in the toggle description (owner ruling 2026-07-27).
+    // looking and not only in the toggle description (ruling 2026-07-27).
     public const string CadenceNote = "Checks about once an hour while Nexus is open.";
     public const string DossierFooter = "Prices: UEX community data";
     public const string NeverFetched = "No price data yet. Turn on live market prices and refresh.";
@@ -30,7 +30,7 @@ internal static class MarketNotice
     // Seed data, so it renders whether or not live market data is on.
     public const string BestRefineryLabel = "Best refinery";
 
-    // The Mining Codex list's optional sell column (owner ruling 2026-07-27, live run 5): the
+    // The Mining Codex list's optional sell column (ruling 2026-07-27, live run 5): the
     // column is opt-in and off by default, so a reader who wants prices in the list asks for them
     // once. The toggle row itself only exists while live market data is on.
     public const string CodexColumnToggle = "Show sell prices";
@@ -40,10 +40,10 @@ internal static class MarketNotice
     // UEX pill reports, and one feed does not get two names and two palettes).
     // The pill is not rendered at all when the feature is off, so there is no "off" string here:
     // silence over placeholder, the same rule every price surface follows.
-    // One label for every pill that reports the live trade feeds (owner, 2026-08-03: "update all
-    // pills pertaining to UEX and SCT to be one uniform pill that says Trade Data"). The header
-    // chip and the Trade page's own strip pill both use it, so the two can never drift, and it no
-    // longer names one source while quietly carrying both.
+    // One label for every pill that reports the live trade feeds (2026-08-03: every UEX and SCT
+    // pill becomes one uniform pill reading TRADE DATA). The header chip and the Trade page's own
+    // strip pill both use it, so the two can never drift, and it no longer names one source while
+    // quietly carrying both.
     public const string PillLabel = "TRADE DATA";
     public const string PillOffline = "offline";   // a cycle failed: the dot also goes DangerColor
     public const string PillSyncing = "syncing";   // a first-ever cycle is running, no clock to show yet
@@ -61,7 +61,7 @@ internal static class MarketNotice
         : $"{(int)age.TotalDays}d ago";
 
     // ── Sell line parts ───────────────────────────────────────────────────────
-    // The one-line sell surfaces are rendered SEGMENTED (owner ruling 2026-07-27, live run 5,
+    // The one-line sell surfaces are rendered SEGMENTED (ruling 2026-07-27, live run 5,
     // mock .sellline): the label is dim, the value gold, the terminal name Fg, the age or patch
     // tag dim. The whole line still drops to dim when the price is stale. The parts below are the
     // single source of that text: the full-line formatters are composed FROM them, so a renderer
@@ -71,7 +71,7 @@ internal static class MarketNotice
     public const string DossierHeroLabel = "Best sell:";
 
     // The value always carries the game's currency unit, "aUEC/SCU", on every surface that renders
-    // a price (owner ruling 2026-07-27 after live review).
+    // a price (ruling 2026-07-27 after live review).
     public static string PriceValue(double display) => $"{display:n0} aUEC/SCU";
 
     public static string AtTerminal(string terminalName) => $"at {terminalName}";
@@ -98,7 +98,7 @@ internal static class MarketNotice
     public static string DossierHeroLine(double display, string terminalName, string ageText) =>
         $"{DossierHeroLabel} {PriceValue(display)} {AtTerminal(terminalName)} {AgePart(ageText)}";
 
-    // TRADE DATA pill state fold, shared value grammar (owner, 2026-08-04): the header chip and
+    // TRADE DATA pill state fold, shared value grammar (2026-08-04): the header chip and
     // the Trade page strip pill both show hours since the last update, via the same FormatAge the
     // strip pill always used - the header's old HH:mm clock read as a different fact when the two
     // report the same feed. Priority: a refresh in flight is the most current fact about the

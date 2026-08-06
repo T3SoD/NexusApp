@@ -56,8 +56,8 @@ internal sealed class HttpSctTransport : ISctTransport
 // "never populated while off," so declining market data after data was already cached hides it
 // again immediately.
 //
-// ONE CONSENT, ONE CLOCK (owner, 2026-08-03: "combined to the same toggle and refresh timer...
-// all or nothing"). This used to carry its own AppSettings.SctDataEnabled toggle, shown in both
+// ONE CONSENT, ONE CLOCK (2026-08-03: one toggle and one refresh timer cover both feeds,
+// all or nothing). This used to carry its own AppSettings.SctDataEnabled toggle, shown in both
 // Settings and the Admin card, and its own 6h DispatcherTimer. Both are gone: live market data is
 // now a single yes/no covering both feeds, and this one rides MarketDataService's tick. What did
 // NOT change is RefreshInterval - see Start().
@@ -170,7 +170,7 @@ public sealed class SctMarketService : IDisposable
 
         // No timer of its own any more. This feed rides MarketDataService's hourly tick
         // (App wires AutoRefreshTick), so the app has ONE market clock and ONE consent
-        // (owner, 2026-08-03: "combined to the same toggle and refresh timer... all or nothing").
+        // (2026-08-03: one toggle and one refresh timer cover both feeds, all or nothing).
         //
         // RefreshInterval still applies and is still 6h: ShouldAutoRefresh gates every attempt on
         // it, so being CHECKED hourly does not mean being FETCHED hourly. That spacing is

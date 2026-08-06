@@ -1055,7 +1055,7 @@ public sealed class CommandPage : UserControl
         return sp;
     }
 
-    // Commodity trading profit quick reference (issue #39; owner rework 2026-08-05: the ALL-TIME
+    // Commodity trading profit quick reference (issue #39; reworked 2026-08-05: the ALL-TIME
     // figure leads, the session net demotes to a foot line). Same ProfitDisplay folds the Trade
     // panel renders, one card deep; the ledger, chart, and caveats stay on Trade where there is
     // room to be honest.
@@ -1109,7 +1109,7 @@ public sealed class CommandPage : UserControl
         return sp;
     }
 
-    // Wallet quick reference (OCR wallet; owner 2026-08-06: Operations gains a wallet card,
+    // Wallet quick reference (OCR wallet; ruling 2026-08-06: Operations gains a wallet card,
     // overriding the spec's not-in-v1 note). The estimate leads exact, never compacted - a
     // wallet is a balance, not a trend; provenance foots it, and the untracked count appears
     // only when there is one. Same WalletDisplay folds the Trade block renders.

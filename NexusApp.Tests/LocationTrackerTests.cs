@@ -28,7 +28,7 @@ public class LocationTrackerTests
         "requested inventory for Location[Stanton4_NewBabbage] " +
         "[Team_CoreGameplayFeatures][Inventory]";
 
-    // The owner's real-world live bug (2026-07-31): his Game.log placed him at this raw gateway token.
+    // A real-world live bug (2026-07-31): a Game.log capture placed the player at this raw token.
     private const string PyroGatewayInventoryRequest =
         "<2026-07-29T22:39:34.863Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
         "requested inventory for Location[RR_JP_StantonPyro] " +
@@ -52,7 +52,7 @@ public class LocationTrackerTests
 
     // A gateway token that has NEVER been captured and is therefore deliberately absent from both
     // alias tables. Shaped exactly like a real one, which is the point. RR_JP_NyxPyro used to play
-    // this role and was promoted out of it on 2026-08-01 when the owner's own log produced it twice;
+    // this role and was promoted out of it on 2026-08-01 when a captured log produced it twice;
     // "Stanton Gateway (Nyx)" is still listed in the UEX snapshot with no token to pair it with.
     private const string UncapturedGatewayInventoryRequest =
         "<2026-08-01T00:14:49.839Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
@@ -76,7 +76,7 @@ public class LocationTrackerTests
     [Fact]
     public void Ingest_JurisdictionLine_IsMarkedCoarse()
     {
-        // The owner's live find, 2026-08-01: the LOCATION chip read "Crusader Industries" at
+        // Found live on 2026-08-01: the LOCATION chip read "Crusader Industries" at
         // Crusader - a jurisdiction names whose SPACE you are in, not where you stand. The flag
         // lets display surfaces qualify it instead of dressing an area up as a place.
         var t = new LocationTracker(new GameLogFeed());
@@ -222,7 +222,7 @@ public class LocationTrackerTests
         Assert.Equal("microTech", t.LastKnownLocation);
     }
 
-    // LastKnownUexLocation (owner's live gateway bug fix, 2026-07-31): a second, raw-token-keyed
+    // LastKnownUexLocation (live gateway bug fix, 2026-07-31): a second, raw-token-keyed
     // resolution alongside LastKnownLocation's display name, needed because TradeOriginResolver
     // could not connect "Pyro Gateway Station" (the in-game display name) to UEX's own
     // "Pyro Gateway (Stanton)" Location string by exact or substring match - the live planner

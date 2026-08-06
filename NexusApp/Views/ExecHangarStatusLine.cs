@@ -83,7 +83,7 @@ public sealed class ExecHangarStatusLine : StackPanel
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(_itemGap, 0, 0, 0),
         };
 
-        // Owner ruling (live run 2026-07-27): say what the number counts down TO ("closes in" /
+        // Ruling from live run 2026-07-27: say what the number counts down TO ("closes in" /
         // "opens in"); a bare countdown reads ambiguously against the 185m full-cycle mental model.
         _verbText = new TextBlock
         {
@@ -285,9 +285,9 @@ public sealed class ExecHangarStatusLine : StackPanel
     // is modeled on NetworkPage's small prompt/choice dialogs; DialogMotion.Attach and
     // UiScaleService.ApplyToDialog are added below to match the app's near-universal dialog
     // idiom (every dedicated *Dialog.cs, e.g. WorkOrderEditorDialog's identical
-    // SizeToContent.Height sizing) - mouse only, still no default/cancel key bindings. Owner is
-    // Window.GetWindow(this) from the caller, so it sits over whichever host invoked it (the
-    // main window for the Guides page, the overlay for the GUIDES tab).
+    // SizeToContent.Height sizing) - mouse only, still no default/cancel key bindings. The dialog
+    // Owner is Window.GetWindow(this) from the caller, so it sits over whichever host invoked it
+    // (the main window for the Guides page, the overlay for the GUIDES tab).
     private static bool ShowReanchorConfirm(Window? owner)
     {
         var win = new Window

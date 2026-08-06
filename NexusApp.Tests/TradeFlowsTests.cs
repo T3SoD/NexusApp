@@ -23,7 +23,7 @@ public class TradeFlowsTests
     public void NormalizeForRestore_WhitelistsKnownIdsOnly(string? saved, string expected)
         => Assert.Equal(expected, TradeFlows.NormalizeForRestore(saved));
 
-    // UEX /commodities_status codes 1-7 (TradePriceRow.StatusBuy), owner-approved wording
+    // UEX /commodities_status codes 1-7 (TradePriceRow.StatusBuy), approved wording
     // (task-14 review finding 1). Code 0 and any out-of-range code both mean "no status report" -
     // a plain dash, not a fabricated state.
     [Theory]

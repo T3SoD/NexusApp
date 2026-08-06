@@ -5,8 +5,8 @@ using NexusApp.Models.Cargo;
 namespace NexusApp.Services.Cargo;
 
 // Exports one ship's effective cargo grids as a JSON object in the exact shape of cargo_ships.json (the
-// embedded catalog), so the owner can paste-merge an approved override into the catalog by hand and
-// commit it. This is the "promote to datamine" step: it writes a file only, and touches no build
+// embedded catalog), so an approved override can be paste-merged into the catalog by hand and
+// committed. This is the "promote to datamine" step: it writes a file only, and touches no build
 // pipeline or datamine tooling.
 public static class CatalogPatchExport
 {

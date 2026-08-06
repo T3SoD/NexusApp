@@ -28,8 +28,8 @@ public class TradeShipCatalogTests
     public void EveryGridCatalogShip_IsAlsoATradeShip_WithTheSameId()
     {
         // AppSettings.TradeShipId persists a catalog id. Before this list existed the planner read
-        // the grid catalog, so every id it could have written must still resolve, or an owner's
-        // saved ship silently reverts to the first row on upgrade.
+        // the grid catalog, so every id it could have written must still resolve, or a saved
+        // ship silently reverts to the first row on upgrade.
         var missing = Grids.Ships
             .Where(g => Trade.ById(g.Id) is null)
             .Select(g => $"{g.Id} ({g.DisplayName})")

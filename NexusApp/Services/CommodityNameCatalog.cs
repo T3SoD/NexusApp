@@ -8,8 +8,8 @@ namespace NexusApp.Services;
 // GUID-to-display-name table for the commodities the Game.log names only by resourceGUID
 // (TODO D10a). Derived data: DataCore resourcetypedatabase records joined to the packed
 // global.ini localization, extracted per SC patch (check_p4k_update.ps1 ritual); the
-// extraction tooling stays local, only this table ships. 207 rows at 4.9.0; every GUID the
-// owner ever transacted resolved (28 of 28, verified 2026-08-05).
+// extraction tooling stays local, only this table ships. 207 rows at 4.9.0; every GUID
+// transacted in the captured sessions resolved (28 of 28, verified 2026-08-05).
 public sealed class CommodityNameCatalog
 {
     private readonly Dictionary<string, string> _names;

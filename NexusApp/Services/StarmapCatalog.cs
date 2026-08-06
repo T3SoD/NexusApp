@@ -4,9 +4,9 @@ using System.Text.Json;
 
 namespace NexusApp.Services;
 
-// Derived inter-location distances (Data/starmap_locations.json). Owner-requested decoration
+// Derived inter-location distances (Data/starmap_locations.json). Added decoration
 // (2026-07-30) on top of the approved trading-tab mock: true gigameter distances alongside the
-// existing proximity tiers - a recorded deviation beyond the mock, at the owner's explicit ask.
+// existing proximity tiers - a recorded, deliberate deviation beyond the mock.
 // Positions are absolute, star-relative meters and are valid ONLY within a single system; two
 // positions from different systems are never compared (jump-point travel is not Euclidean).
 // Public-safe: derived positions only, no bulk source data, no PII.

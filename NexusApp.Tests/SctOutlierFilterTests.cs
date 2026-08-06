@@ -14,7 +14,7 @@ public class SctOutlierFilterTests
         => new(location, transaction, commodity, price, 0, 0, T);
 
     [Fact]
-    public void DropsTheFatFingeredPrice_TheOwnerActuallyHit()
+    public void DropsTheFatFingeredPrice_SeenLive()
     {
         // Verbatim from the live snapshot: quartz BUYS across every terminal, median 4,400, with
         // one listing at 84,200 - a mistyped 4,200 that a newest-wins lookup then showed.

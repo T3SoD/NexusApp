@@ -3,7 +3,7 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Guards the owner-approved seed-data hygiene pass (feature/seed-data-hygiene):
+// Guards the seed-data hygiene pass (feature/seed-data-hygiene):
 // the removed racing/drug/refuel/placeholder rows must stay gone, blueprint names
 // must stay unique, and the content version must not regress below 1.3.1.
 // Reads the embedded seed the same way DataService does at runtime.

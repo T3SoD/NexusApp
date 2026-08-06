@@ -20,7 +20,7 @@ public static class GhostFootprints
     /// <summary>Rail height at scale 1, DERIVED from the tab count rather than frozen at the six
     /// tabs the mock was drawn with. Adding the TRADE tab made the icon column taller than the old
     /// hard-coded 332, and the DockPanel resolved that by running the last icon into the settings
-    /// gear (owner's live pass, 2026-08-01). Deriving it means the next tab cannot do the same.</summary>
+    /// gear (found on a live pass, 2026-08-01). Deriving it means the next tab cannot do the same.</summary>
     public static double RailHCollapsed =>
         RailCapH
         + OverlayTabs.Ids.Length * (RailIconH + RailIconGap)

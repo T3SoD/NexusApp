@@ -3,7 +3,7 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Pure seam for the budget box's live-rerank debounce (owner's live-lag report, 2026-07-31 -
+// Pure seam for the budget box's live-rerank debounce (live-lag report, 2026-07-31 -
 // TradePage.Planner.cs). The DispatcherTimer wiring itself is WPF dispatcher plumbing and not
 // unit-testable (same documented precedent as ExecHangarStatusLine.cs's own 1-second ticker -
 // see ExecHangarCycleTests.cs, which only ever exercises the pure ExecHangarCycle math, never

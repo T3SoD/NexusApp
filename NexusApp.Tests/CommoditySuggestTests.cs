@@ -78,7 +78,7 @@ public class CommoditySuggestTests
         Assert.Equal(60, result.Count);
     }
 
-    // pinnedFirst: the planner's "ANY" sentinel (owner's revision to issue #41: the planner field
+    // pinnedFirst: the planner's "ANY" sentinel (revision to issue #41: the planner field
     // behaves like the Sell field, so its no-constraint row rides inside the same popup). Pinned
     // above the alphabetical order in browse mode, matched like any name when typing, and never
     // part of the names list itself.

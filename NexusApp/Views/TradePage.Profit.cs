@@ -144,7 +144,7 @@ public sealed partial class TradePage
     {
         var ledger = App.Profit.Ledger;
         var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
-        // Units ruling (owner, 2026-08-05, chip exemption overridden same day): the value carries
+        // Units ruling (2026-08-05, chip exemption overridden same day): the value carries
         // the dim aUEC suffix like every other money surface, never after the empty dashes.
         _profitChipValue.Inlines.Clear();
         _profitChipValue.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));

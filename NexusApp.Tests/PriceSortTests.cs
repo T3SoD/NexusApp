@@ -5,7 +5,7 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Prices flow: sortable columns (owner live-pass ask, 2026-07-30). PriceSort.SortRows is the pure
+// Prices flow: sortable columns (live-pass ask, 2026-07-30). PriceSort.SortRows is the pure
 // extraction TradePage.Prices.cs's RebuildPrices calls once per rebuild; these tests pin the five
 // column keys, the status-0/SCT-only "sorts last" placement rule, and the Sell-descending stable
 // tie-break, all independent of any WPF control.

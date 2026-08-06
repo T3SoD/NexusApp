@@ -21,7 +21,7 @@ public static class GpuInfo
         foreach (var line in lines) Logger.Info(line);
     }
 
-    // Adapter description lines for the owner diagnostics dashboard (same registry source the
+    // Adapter description lines for the Admin diagnostics dashboard (same registry source the
     // startup log uses). Returns an empty list on any failure - diagnostics must never throw.
     public static List<string> AdapterLines()
     {

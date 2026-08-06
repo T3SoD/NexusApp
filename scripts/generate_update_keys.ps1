@@ -33,8 +33,8 @@ Set-Content -Path $priv -Value $ecdsa.ExportEncryptedPkcs8PrivateKeyPem($p1, $pb
 Set-Content -Path $pub  -Value $ecdsa.ExportSubjectPublicKeyInfoPem() -Encoding ascii -NoNewline
 
 # Best-effort: strip inherited ACLs so only the current user can access the private key.
-# Full control, not read-only: the owner must be able to back up, rotate, and delete the
-# key (read-only broke deletion outright, and an owner can always re-grant anyway).
+# Full control, not read-only: backup, rotation, and deletion of the key must all stay
+# possible (read-only broke deletion outright, and the ACL can always be re-granted anyway).
 try { icacls $priv /inheritance:r /grant:r "$($env:USERNAME):F" | Out-Null } catch { }
 
 Write-Host "Private key: $priv"

@@ -341,7 +341,7 @@ public partial class MainWindow
     // the card's meta-label idiom) + ore name in its rarity colour (12 SemiBold, mock .ore) + the
     // refined sell price (12, GoldBrush, FgDimBrush when stale, mock .val) + terminal name
     // (11, FgDimBrush, ellipsis-truncated, mock .term; the value column is Auto, so the unit added
-    // by the 2026-07-27 owner ruling simply narrows the terminal's star column) + age or - when the freshest row is from an
+    // by the 2026-07-27 ruling simply narrows the terminal's star column) + age or - when the freshest row is from an
     // older game patch - the same PatchTagChip the dossier price rows use
     // (mock .age; data-honesty rule: a price never renders without one of the two).
     private FrameworkElement BuildWorkOrderSellRow(string seedName, PriceHit hit, bool showSellLabel)

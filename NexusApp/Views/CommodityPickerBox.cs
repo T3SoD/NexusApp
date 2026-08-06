@@ -81,7 +81,7 @@ internal sealed class CommodityPickerBox : Grid
             HorizontalAlignment = HorizontalAlignment.Right, Child = ChevronGlyphDown(),
         };
         // Open on UP, not down. Opening on the down was the "dropdown closes the instant you click
-        // it" bug (owner, 2026-08-02, on both the overlay and the desktop pages): a StaysOpen=false
+        // it" bug (2026-08-02, on both the overlay and the desktop pages): a StaysOpen=false
         // Popup takes the mouse capture the moment it opens, so opening it mid-gesture meant the
         // user's own button RELEASE was delivered to that fresh capture as the dismissing click.
         // Instrumentation caught it precisely - every close logged mouseL=Released with a
@@ -161,7 +161,7 @@ internal sealed class CommodityPickerBox : Grid
     /// flow's defer-to-next-rebuild rule).</summary>
     public bool IsInteracting => _box.IsKeyboardFocused || _popup.IsOpen;
 
-    /// <summary>Overlay mode (owner's live-pass find, 2026-08-02: overlay dropdowns collapsed the
+    /// <summary>Overlay mode (live-pass find, 2026-08-02: overlay dropdowns collapsed the
     /// instant they were clicked). In a Topmost window, StaysOpen=false's capture-based auto-close
     /// misfires - the activation/capture churn of clicking the overlay dismisses the popup within
     /// the same click. When true, the popup opens with StaysOpen=true and the HOST window owns
