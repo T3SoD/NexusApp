@@ -76,6 +76,7 @@ public partial class OverlayWindow : Window
     private readonly Action<string> _onOrderReady;
     private readonly Action _onMarketChanged;
     private readonly Action _onLocationChanged;
+    private readonly Action _onWalletChanged;
 
     public OverlayWindow(MainViewModel vm)
     {
@@ -205,10 +206,18 @@ public partial class OverlayWindow : Window
         // raises on the UI thread and needs no marshaling.
         App.Profit.Changed += OnProfitChanged;
         // The line's OFFLINE dimming folds on the FEED's process probe (the same read
-        // BuildTradeSessionLine takes), so game start/exit must repaint it too - Changed alone
+        // BuildTradeMoneyBlock takes), so game start/exit must repaint it too - Changed alone
         // left the dim state stale until an unrelated rebuild. The feed's watcher is pumped by
         // a DispatcherTimer as well, so this raise is also UI-thread.
         App.GameLogFeed.SessionLiveChanged += OnProfitSessionLiveChanged;
+        // WALLET line under SESSION (owner ask 2026-08-06): the same keep-live contract, but
+        // WalletTracker raises off the feed/burst thread, so marshal. Only the anchored money
+        // block repaints - a capture mid-flight must not rebuild a planner under the cursor.
+        _onWalletChanged = () => Dispatcher.BeginInvoke(() =>
+        {
+            if (IsTabPresented("trade")) TradeSessionHost.Content = BuildTradeMoneyBlock();
+        });
+        if (App.Wallet != null) App.Wallet.Changed += _onWalletChanged;
 
         // Live market prices on the scan cards: repaint the sell lines already on screen when a
         // fetch cycle publishes a new snapshot, instead of leaving an hour-old price up until the
@@ -2455,6 +2464,7 @@ public partial class OverlayWindow : Window
         App.Shards.Changed -= OnShardsChanged;
         App.Profit.Changed -= OnProfitChanged;
         App.GameLogFeed.SessionLiveChanged -= OnProfitSessionLiveChanged;
+        if (App.Wallet != null) App.Wallet.Changed -= _onWalletChanged;
         App.Market.Changed -= _onMarketChanged;
         App.Locations.Changed -= _onLocationChanged;
         App.ForegroundRelevanceChanged -= OnForegroundRelevanceChanged;
@@ -3673,18 +3683,34 @@ public partial class OverlayWindow : Window
         else BuildPinnedSection();
         // Anchored above the scroll (owner ask 2026-08-05), not appended to the items: the money
         // readout stays put while the route cards scroll under it.
-        TradeSessionHost.Content = BuildTradeSessionLine();
+        TradeSessionHost.Content = BuildTradeMoneyBlock();
     }
 
-    // SESSION line (profit tracker spec 2026-08-05, S5): one line, the session net on the chip's
-    // color rule - green positive, red negative, dim empty or offline. The ledger, derivation and
-    // history strip stay on the desktop panel; this is read at a glance mid-flight. Anchored at
-    // the top of the tab, so the hairline sits BELOW it as the divider against the scroll.
-    private Border BuildTradeSessionLine()
+    // Anchored money block: the WALLET line with the SESSION line under it (owner order
+    // 2026-08-06, wallet on top) - the desktop header's two money readouts. Stacked lines, not
+    // side-by-side pills: 320 px cannot seat two full-digit values abreast. One border for the
+    // pair, hairline BELOW as the divider against the scrolling cards.
+    private Border BuildTradeMoneyBlock()
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(BuildTradeWalletRow());
+        stack.Children.Add(BuildTradeSessionRow());
+        // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor.
+        return new Border
+        {
+            BorderBrush = (Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 0, 0, 4), Child = stack,
+        };
+    }
+
+    // SESSION row: the session net on the chip's color rule - green positive, red negative, dim
+    // empty or offline. The ledger, derivation and history strip stay on the desktop panel;
+    // this is read at a glance mid-flight.
+    private Grid BuildTradeSessionRow()
     {
         var ledger = App.Profit.Ledger;
         var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
-        var row = new Grid();
+        var row = new Grid { Margin = new Thickness(0, 5, 0, 0) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.Children.Add(new TextBlock
@@ -3713,13 +3739,71 @@ public partial class OverlayWindow : Window
             });
         Grid.SetColumn(value, 1);
         row.Children.Add(value);
-        // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor: hairline
-        // below as the divider against the scrolling cards, 7px vertical padding.
-        return new Border
+        return row;
+    }
+
+    // WALLET row: the header pill's readout on the overlay - state dot + the exact estimate
+    // (never Compact for money, negatives render). Colors mirror MainWindow.UpdateWalletChip.
+    // AGING flips on the next event-driven repaint: the overlay's no-new-timers constraint,
+    // the same accepted residual as the desktop wallet block.
+    private Grid BuildTradeWalletRow()
+    {
+        var w = App.Wallet;
+        var state = w == null
+            ? WalletUiState.NotSet
+            : WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
+                                  DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        var dim = (Brush)FindResource("FgDimBrush");
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = new StackPanel { Orientation = Orientation.Horizontal };
+        label.Children.Add(new System.Windows.Shapes.Ellipse
         {
-            BorderBrush = (Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 0, 0, 4), Child = row,
+            Width = 6, Height = 6,
+            Fill = state switch
+            {
+                WalletUiState.Current => (Brush)FindResource("OkBrush"),
+                WalletUiState.Aging => (Brush)FindResource("WarnBrush"),
+                WalletUiState.Impossible => (Brush)FindResource("DangerBrush"),
+                _ => dim,
+            },
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0),
+        });
+        label.Children.Add(new TextBlock
+        {
+            Text = "WALLET", FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+        });
+        row.Children.Add(label);
+        var value = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 13,
+            Foreground = state switch
+            {
+                WalletUiState.Current => (Brush)FindResource("FgBrush"),
+                WalletUiState.Aging => (Brush)FindResource("WarnBrush"),
+                WalletUiState.Impossible => (Brush)FindResource("DangerBrush"),
+                _ => dim,
+            },
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        if (w?.Estimate is { } est)
+        {
+            value.Inlines.Add(new System.Windows.Documents.Run(ProfitDisplay.Format(est)));
+            value.Inlines.Add(new System.Windows.Documents.Run(" aUEC")
+            {
+                FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 9.5, Foreground = dim,
+            });
+        }
+        else
+        {
+            // The chip's not-set word; no unit, "not set aUEC" would read as a value.
+            value.Inlines.Add(new System.Windows.Documents.Run("not set"));
+        }
+        Grid.SetColumn(value, 1);
+        row.Children.Add(value);
+        return row;
     }
 
     // The fused top row, above BOTH modes (mock nexus-design-lab/overlay-trade-v2, candidate B,
