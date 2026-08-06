@@ -400,6 +400,26 @@ public sealed class SettingsPage : UserControl
     // ── Category panes ──────────────────────────────────────────────────────────
     // GAME: Game.log paths + Wallet OCR + Blueprint Network identity.
     private RegionSelectorWindow? _walletRegionSelector;   // single instance; a second click closes it
+    private ScanIndicatorWindow? _walletIndicator;         // amber outline; created on first show
+    private CheckBox? _walletBoxToggle;
+
+    // Runtime-only like the contract box: never persisted, so a forgotten toggle cannot leave
+    // an always-on-top outline on the next launch.
+    private void SetWalletBoxVisible(bool on)
+    {
+        if (on)
+        {
+            if (App.Settings.Current.WalletRegion is not { } r) return;
+            _walletIndicator ??= new ScanIndicatorWindow(Color.FromArgb(255, 255, 178, 62));
+            _walletIndicator.SetRegion(r);
+            _walletIndicator.Show();
+        }
+        else
+        {
+            _walletIndicator?.Hide();
+        }
+        Logger.Info($"[UI] Wallet detection box {(on ? "shown" : "hidden")}");
+    }
 
     private static void ApplyWalletOcrEnabled(bool on)
     {
@@ -531,6 +551,7 @@ public sealed class SettingsPage : UserControl
                 App.WalletOcr.SetRegion(r.X, r.Y, r.Width, r.Height);
                 Logger.Info($"[WALLET] region set: {r.Width}x{r.Height}");
                 RefreshWalletStatus();
+                if (_walletBoxToggle?.IsChecked == true) SetWalletBoxVisible(true);
             };
             selector.Closed += (_, _) => { if (ReferenceEquals(_walletRegionSelector, selector)) _walletRegionSelector = null; };
             selector.ShowOnMonitorOf(Window.GetWindow(this));   // NEXT MONITOR button hops screens (issue #36)
@@ -538,6 +559,15 @@ public sealed class SettingsPage : UserControl
         var walletControl = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
         walletControl.Children.Add(walletRegionBtn);
         walletControl.Children.Add(walletStatus);
+
+        _walletBoxToggle = new CheckBox
+        {
+            Content = "Show the box on screen",
+            Foreground = Hud.Br("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _walletBoxToggle.Checked += (_, _) => SetWalletBoxVisible(true);
+        _walletBoxToggle.Unchecked += (_, _) => SetWalletBoxVisible(false);
 
         panel.Children.Add(SectionPanel("Wallet OCR", false,
             SettingRow("Wallet capture",
@@ -547,7 +577,11 @@ public sealed class SettingsPage : UserControl
             SettingRow("Wallet scan region",
                 "Place the box over the mobiGlas balance readout. OCR reads only this region; the " +
                 "feature stays inert until one is set.",
-                walletControl, last: true)));
+                walletControl),
+            SettingRow("Wallet detection box",
+                "Shows the region as an amber outline on screen so you can check its placement " +
+                "against the open mobiGlas. Not saved: the outline never survives a relaunch.",
+                _walletBoxToggle, last: true)));
 
         var handleLabel = new TextBlock
         {
