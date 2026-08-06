@@ -154,19 +154,20 @@
                         <TextBlock x:Name="MarketChipText" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
-                <!-- AUTO-SCAN telemetry chip: BOTH OCR scanners (RS + contracts) on one lamp (F14,
-                     the owner's amendment). The dot is the fold (StatusChips.AutoScanCombined: paused
-                     outranks on outranks off) and the value text spells each scanner out so the
-                     aggregate never hides which one is in which state. Also gained the LED dot its
-                     header siblings always had - it was the only chip carrying state in text alone. -->
-                <Border Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
+                <!-- WALLET telemetry chip (owner, 2026-08-06: replaces AUTO-SCAN, which lives on in
+                     the overlay HUB rail): the OCR wallet estimate at a glance. Dot and value follow
+                     the wallet state (green tracking, amber aging, red impossible, dim otherwise;
+                     money never wears cyan); click opens Trade, where the full block lives. Driven
+                     by UpdateWalletChip in code-behind. -->
+                <Border x:Name="WalletChip" Padding="9,3,11,3" CornerRadius="4" Margin="0,0,6,0"
                         Background="{StaticResource Bg2NavBrush}"
                         BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="1"
-                        ToolTip="Auto-scan: RS (mining OCR) and CT (contract OCR). Both pause themselves when neither Nexus nor Star Citizen is in front.">
+                        Cursor="Hand" MouseLeftButtonDown="WalletChip_Click"
+                        ToolTip="OCR wallet estimate: anchored by your mobiGlas, kiosk trades move it between captures.">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="ScanDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="AUTO-SCAN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="ScanChipText" Text="RS off · CT off" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
+                        <Ellipse x:Name="WalletDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="WALLET" FontSize="9" FontWeight="Bold" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="WalletChipText" Text="not set" FontSize="10" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </StackPanel>

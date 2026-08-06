@@ -137,19 +137,17 @@ public partial class MainWindow : Window
         _vm.ScanHistory.CollectionChanged += OnScanHistoryChanged;
 
         _scanChipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        // The status-strip refresh tick: the SCAN chip's poll, and the MARKET pill's only route to
-        // the two states nothing raises an event for (a cycle STARTING, and the Settings toggle
-        // being flipped). RefreshMarketPill returns immediately unless the state actually changed.
-        _scanChipTimer.Tick += (_, __) => { UpdateScanChip(); RefreshMarketPill(); };
+        // The status-strip refresh tick: the WALLET chip's walk across the AGING boundary (age
+        // crossing 30 min raises no event), and the MARKET pill's only route to the two states
+        // nothing raises an event for (a cycle STARTING, and the Settings toggle being flipped).
+        // RefreshMarketPill returns immediately unless the state actually changed.
+        _scanChipTimer.Tick += (_, __) => { UpdateWalletChip(); RefreshMarketPill(); };
         _scanChipTimer.Start();
-        UpdateScanChip();
-        // Flip the AUTO-SCAN chip to/from paused the instant foreground relevance changes.
-        App.ForegroundRelevanceChanged += _ => Dispatcher.Invoke(UpdateScanChip);
-        // F14: the chip now carries the contract scanner too, so a contract-scan start/stop from
-        // the overlay or the Hauling page repaints it immediately (ContractScanner can raise off
-        // the UI thread - App.xaml.cs marshals its other events the same way).
-        if (App.ContractScan != null)
-            App.ContractScan.RunningChanged += () => Dispatcher.BeginInvoke(UpdateScanChip);
+        UpdateWalletChip();
+        // A confirmed capture, an untracked row or a manual set repaints the chip immediately
+        // (WalletTracker raises off the feed thread; marshal like the other chip sources).
+        if (App.Wallet != null)
+            App.Wallet.Changed += () => Dispatcher.BeginInvoke(UpdateWalletChip);
         // Pause/resume the RS auto-scan itself on the same signal - moved from App.xaml.cs's
         // OnForegroundRelevanceChanged (app review, Task 9), unwrapped exactly as it ran there
         // (that handler called SetScanForegroundActive directly, with no Dispatcher marshal).
@@ -800,29 +798,45 @@ public partial class MainWindow : Window
     }
 
     private System.Windows.Threading.DispatcherTimer? _scanChipTimer;
-    // AUTO-SCAN telemetry chip (F14): one lamp for BOTH OCR scanners (owner's amendment on the
-    // mock). The dot carries the fold (StatusChips.AutoScanCombined - paused outranks on outranks
-    // off) and pulses only while the fold is On; the value text spells each scanner out ("RS on ·
-    // CT off") so the aggregate never hides which one is in which state. Off renders DIM, not red:
-    // a scanner the user switched off is a choice, and red stays reserved for real failures.
-    // Refreshed on the light 1.5s timer (which also covers the Settings AutoScanContracts toggle,
-    // which raises no event) plus ContractScan.RunningChanged for instant flips.
-    private void UpdateScanChip()
+    // WALLET telemetry chip (owner, 2026-08-06: replaces AUTO-SCAN in the strip; the combined
+    // scanner state lives on in the overlay HUB rail). Dot and value follow the wallet state:
+    // green tracking (dot breathes, the strip's alive idiom), amber aging, red impossible, dim
+    // not-set/offline. The value is the exact estimate; money never wears cyan. Refreshed on the
+    // light 1.5s timer (the AGING boundary raises no event) plus Wallet.Changed for instant
+    // capture flips.
+    private void UpdateWalletChip()
     {
-        var rs = _vm.RsScanState;
-        var ct = StatusChips.ContractScanState(
-            App.ContractScan?.IsRunning ?? false, App.Settings.Current.AutoScanContracts);
-        var combined = StatusChips.AutoScanCombined(rs, ct);
-        ScanChipText.Text = StatusChips.AutoScanText(rs, ct);
-        var brush = combined switch
+        var w = App.Wallet;
+        if (w == null) return;
+        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
+                                        DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        WalletChipText.Text = WalletDisplay.HeaderValue(w.Estimate);
+        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var brush = state switch
         {
-            ScanIndicator.On => _chipOkBrush,
-            ScanIndicator.Paused => _chipWarnBrush,
-            _ => (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+            WalletUiState.Current => _chipOkBrush,
+            WalletUiState.Aging => _chipWarnBrush,
+            WalletUiState.Impossible => (System.Windows.Media.Brush)FindResource("DangerBrush"),
+            _ => dim,
         };
-        ScanChipText.Foreground = brush;
-        ScanDot.Fill = brush;
-        Hud.PulseDot(ScanDot, combined == ScanIndicator.On);
+        WalletDot.Fill = brush;
+        WalletChipText.Foreground = state switch
+        {
+            WalletUiState.Current => (System.Windows.Media.Brush)FindResource("FgBrush"),
+            WalletUiState.NotSet or WalletUiState.Offline => dim,
+            _ => brush,
+        };
+        WalletChip.ToolTip = w.HasAnchor
+            ? WalletDisplay.Provenance(w.AnchorSource, w.AnchorUtc, DateTime.UtcNow)
+            : WalletDisplay.CardHint;
+        Hud.PulseDot(WalletDot, state == WalletUiState.Current);
+    }
+
+    // The pill is a shortcut to the surface that explains it: mouse only, like every other control.
+    private void WalletChip_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        InteractionLog.Click("wallet status pill", WalletChip);
+        SetActivePage("trade");
     }
 
     /// <summary>Keeps the dock's Refinery and Hauling count badges live. Wired in the constructor to

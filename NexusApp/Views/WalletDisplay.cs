@@ -64,6 +64,15 @@ internal static class WalletDisplay
              + $"{untrackedCount} untracked this session";
     }
 
+    /// <summary>The header chip and card value: the exact estimate (negatives render, never
+    /// clamp) or the not-set word.</summary>
+    internal static string HeaderValue(long? estimate) =>
+        estimate is { } e ? ProfitDisplay.Format(e) + " aUEC" : "not set";
+
+    // The panel's SetupHint says "below", which is only true on the Trade panel; card and chip
+    // surfaces use this location-free variant.
+    internal const string CardHint = "No anchor yet. Open your mobiGlas in game, or set a balance on Trade.";
+
     internal static string UntrackedTitle(long amount) =>
         amount >= 0 ? "Untracked income" : "Untracked purchase";
 

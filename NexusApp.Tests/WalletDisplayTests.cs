@@ -53,6 +53,14 @@ public class WalletDisplayTests
     }
 
     [Fact]
+    public void HeaderValueIsTheEstimateOrNotSet()
+    {
+        Assert.Equal("5,105,256 aUEC", WalletDisplay.HeaderValue(5_105_256));
+        Assert.Equal("-2,425 aUEC", WalletDisplay.HeaderValue(-2_425)); // impossible renders, never clamps
+        Assert.Equal("not set", WalletDisplay.HeaderValue(null));
+    }
+
+    [Fact]
     public void UntrackedTitleFollowsTheSign()
     {
         Assert.Equal("Untracked income", WalletDisplay.UntrackedTitle(80_000));
