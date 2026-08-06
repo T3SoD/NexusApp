@@ -33,14 +33,20 @@ public static class WalletOcrTrigger
         return true;
     }
 
-    /// <summary>Dual-recognition gate: two independent OCR passes of the same pixels (plain and
-    /// inverted preprocessing) must parse to the same balance for a grab to count. Independent
-    /// agreement kills most single-digit confusions.</summary>
-    public static long? AgreedBalance(string? a, string? b)
+    /// <summary>Dual-recognition verdict for one grab (two OCR passes over the same pixels,
+    /// inverted and plain). Both parse and agree: the grab counts. Both parse and DISAGREE:
+    /// the grab is rejected, because two engines reading different numbers from the same
+    /// pixels is the misread signal this exists to catch. Only one parses: it stands, since
+    /// the burst's cross-grab agreement still guards a lone misread. Requiring both to read
+    /// was tried first and rejected 11 of 12 live grabs (the plain pass fails routinely
+    /// against the animated mobiGlas background).</summary>
+    public static string? BestRead(string? a, string? b)
     {
         var va = a is null ? null : ExtractBalance(a);
         var vb = b is null ? null : ExtractBalance(b);
-        return va is not null && va == vb ? va : null;
+        if (va is not null && vb is not null) return va == vb ? a : null;
+        if (va is not null) return a;
+        return vb is not null ? b : null;
     }
 
     // The wallet region reads more than the number (labels, the clock, flicker). The balance is

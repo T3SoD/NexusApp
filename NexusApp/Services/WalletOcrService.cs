@@ -47,11 +47,11 @@ public sealed class WalletOcrService : IDisposable
         catch { _available = false; }
     }
 
-    // Dual recognition (calibration round 2, 2026-08-06): the SAME captured pixels run through
-    // OCR twice, inverted and plain, and the grab only counts when both passes parse to the same
-    // balance (WalletOcrTrigger.AgreedBalance). Independent agreement kills the single-digit
-    // confusions one pass produces alone. The region is a small strip, so the second pass is
-    // cheap. Returns the inverted pass's text on agreement (the caller re-extracts), else null.
+    // Dual recognition (calibration rounds 2-3, 2026-08-06): the SAME captured pixels run
+    // through OCR twice, inverted and plain, and WalletOcrTrigger.BestRead grades the pair:
+    // agreement counts, a parse disagreement rejects the grab (the misread signal), and a
+    // single reading pass stands alone because the burst's cross-grab agreement guards it.
+    // The region is a small strip, so the second pass is cheap.
     public async Task<string?> ScanRegionTextAsync()
     {
         if (!IsAvailable || _engine is null || !_hasRegion) return null;
@@ -65,7 +65,7 @@ public sealed class WalletOcrService : IDisposable
             var plain    = Preprocess(raw, _w, _h, invert: false, out int pw2, out int ph2);
             var a = (await _engine.RecognizeAsync(ToSoftwareBitmap(inverted, iw, ih))).Text;
             var b = (await _engine.RecognizeAsync(ToSoftwareBitmap(plain, pw2, ph2))).Text;
-            return WalletOcrTrigger.AgreedBalance(a, b) is not null ? a : null;
+            return WalletOcrTrigger.BestRead(a, b);
         }
         catch { }
 

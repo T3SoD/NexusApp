@@ -62,24 +62,27 @@ public class WalletOcrTriggerTests
         Assert.Null(WalletOcrTrigger.ExtractBalance(ocrText));
     }
 
-    // Dual recognition: a grab only counts when the plain and inverted OCR passes parse to the
-    // same balance. Independent agreement kills the single-digit confusions (6 vs 2 class).
+    // Dual-recognition verdict per grab (calibration round 3, 2026-08-06 16:07 live evidence:
+    // the plain pass fails routinely against the animated mobiGlas background, so requiring
+    // both passes rejected 11 of 12 real grabs). Agreement is preferred, a genuine parse
+    // DISAGREEMENT rejects the grab (that is the misread signal), and a single reading pass
+    // stands alone because the burst's cross-grab agreement still guards it.
     [Theory]
-    [InlineData("5,105,256", "5105256", 5105256L)]
-    [InlineData("5,101.952", "5101952", 5101952L)]
-    public void AgreedBalanceRequiresBothPassesToMatch(string a, string b, long expected)
+    [InlineData("5,105,256", "5105256", "5,105,256")]  // both agree: keep the first pass's text
+    [InlineData("5,101,948 I.", "", "5,101,948 I.")]   // only one pass reads: it stands
+    [InlineData(null, "846", "846")]
+    public void BestReadPrefersAgreementThenTheOnlyReadingPass(string? a, string? b, string expected)
     {
-        Assert.Equal(expected, WalletOcrTrigger.AgreedBalance(a, b));
+        Assert.Equal(expected, WalletOcrTrigger.BestRead(a, b));
     }
 
     [Theory]
-    [InlineData("5,105,256", "5,105,252")] // last-digit disagreement: the exact bug class
-    [InlineData("5,105,256", null)]
-    [InlineData(null, null)]
+    [InlineData("5,105,256", "5,105,252")] // both parse, values differ: the true misread signal
+    [InlineData("", null)]
     [InlineData("no digits", "none here")]
-    public void DisagreementOrSilenceYieldsNothing(string? a, string? b)
+    public void BestReadRejectsDisagreementAndSilence(string? a, string? b)
     {
-        Assert.Null(WalletOcrTrigger.AgreedBalance(a, b));
+        Assert.Null(WalletOcrTrigger.BestRead(a, b));
     }
 
     [Fact]
