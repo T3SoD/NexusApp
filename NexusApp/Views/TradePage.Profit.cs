@@ -184,6 +184,10 @@ public sealed partial class TradePage
 
         _profitBody.Children.Clear();
 
+        // WALLET block first (OCR wallet ruling 2026-08-06: top of this panel), then the rule,
+        // then the SESSION PROFIT surfaces unchanged below it.
+        BuildWalletBlock();
+
         // Eyebrow (Hud.Header idiom: amber dash + amber 10.5 bold).
         var eye = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 9) };
         eye.Children.Add(new Border
@@ -250,7 +254,7 @@ public sealed partial class TradePage
         else deriv.Text = derivText;
         _profitBody.Children.Add(deriv);
 
-        BuildProfitLedgerSection(txs, voided, entrance, live);
+        BuildProfitLedgerSection(txs, App.Wallet.SessionUntracked, voided, entrance, live);
         BuildProfitHistoryStrip();
         BuildProfitFooter(ProfitDisplay.State(settled, net, sessionLive: true) == ProfitState.Negative);
     }
@@ -260,14 +264,16 @@ public sealed partial class TradePage
     // (review fix, 2026-08-05: the panel used to grow one row per transaction with nothing above
     // it scrolling, so a long session clipped the history strip and footer off the page), capped
     // at the latest LedgerRowCap rows with a dim note naming the fold. ──
-    private void BuildProfitLedgerSection(IReadOnlyList<CommodityTransaction> txs, int voided, bool entrance, bool live)
+    private void BuildProfitLedgerSection(IReadOnlyList<CommodityTransaction> txs,
+        IReadOnlyList<UntrackedEntry> untracked, int voided, bool entrance, bool live)
     {
         var head = new Grid();
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.Children.Add(ProfitSectionTitle("This session"));
         var count = ProfitSectionTitle(
-            $"{txs.Count} transaction{(txs.Count == 1 ? "" : "s")}{(voided > 0 ? $", {voided} voided" : "")}");
+            $"{txs.Count} transaction{(txs.Count == 1 ? "" : "s")}{(voided > 0 ? $", {voided} voided" : "")}"
+            + (untracked.Count > 0 ? $", {untracked.Count} untracked" : ""));
         Grid.SetColumn(count, 1);
         head.Children.Add(count);
         _profitBody.Children.Add(new Border
@@ -276,7 +282,7 @@ public sealed partial class TradePage
             Margin = new Thickness(0, 18, 0, 8), Padding = new Thickness(0, 14, 0, 0), Child = head,
         });
 
-        if (txs.Count == 0)
+        if (txs.Count == 0 && untracked.Count == 0)
         {
             _profitBody.Children.Add(new TextBlock
             {
@@ -290,16 +296,17 @@ public sealed partial class TradePage
 
         var rows = new StackPanel();
         int i = 0;
-        foreach (var tx in txs.Reverse().Take(ProfitDisplay.LedgerRowCap))
+        // Untracked wallet rows interleave by stamp (spec 11.4): one money timeline, one cap.
+        foreach (var item in WalletDisplay.MergeRows(txs, untracked, ProfitDisplay.LedgerRowCap))
         {
-            var row = ProfitRow(tx);
+            var row = item is CommodityTransaction tx ? ProfitRow(tx) : UntrackedRow((UntrackedEntry)item);
             // Cascade rides the expand only, the CommandPage entrance convention - a data tick
             // repaints statically under the reader.
             if (entrance) CascadeIn(row, Math.Min(i, 6));
             rows.Children.Add(row);
             i++;
         }
-        int hidden = ProfitDisplay.LedgerHiddenCount(txs.Count);
+        int hidden = ProfitDisplay.LedgerHiddenCount(txs.Count + untracked.Count);
         if (hidden > 0)
         {
             // The fold, named at the bottom of the scroll region where the older rows would sit.
@@ -420,6 +427,270 @@ public sealed partial class TradePage
             Background = Brushes.Transparent, Child = grid,
         };
         if (isVoided) row.Opacity = 0.45;   // mock .row.voidRow, section 9 ruling 2
+        row.MouseEnter += (_, _) => { row.Background = Hud.Br("Bg3Brush"); row.BorderBrush = Hud.Br("NavBorderBrush"); };
+        row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; row.BorderBrush = Brushes.Transparent; };
+        return row;
+    }
+
+    private bool _walletEditorOpen;   // survives panel rebuilds; the TextBox itself does not
+
+    // ── WALLET block (OCR wallet spec sections 5/6/11; ruling 2026-08-06: top of this panel).
+    // Estimate, provenance, state chip, inline SET BALANCE editor. All words and arithmetic come
+    // from WalletDisplay and WalletTracker; this paints. Colors follow the superseded mock's
+    // .wpBig/.stateChip values, which cite the app's own palette tokens. ──
+    private void BuildWalletBlock()
+    {
+        var wallet = App.Wallet;
+        var state = WalletDisplay.State(wallet.HasAnchor, wallet.Estimate, wallet.AnchorUtc,
+                                        DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 9) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var eye = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        eye.Children.Add(new Border
+        {
+            Width = 16, Height = 2, Background = Hud.Br("AccentBrush"), Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Effect = new DropShadowEffect { Color = Hud.Col("AccentColor"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 },
+        });
+        eye.Children.Add(new TextBlock
+        {
+            Text = WalletDisplay.BlockLabel, FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush"),
+        });
+        head.Children.Add(eye);
+
+        var stateChip = new Border
+        {
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(10, 4, 10, 4), VerticalAlignment = VerticalAlignment.Center,
+            BorderBrush = WalletStateBorder(state),
+            Child = new TextBlock
+            {
+                Text = WalletDisplay.StateChipWord(state), FontFamily = Hud.Font("UiFont"),
+                FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = WalletStateBrush(state),
+            },
+        };
+        Grid.SetColumn(stateChip, 1);
+        head.Children.Add(stateChip);
+        _profitBody.Children.Add(head);
+
+        // The estimate: 28px mono, deliberately under the 40px SESSION PROFIT hero below - the
+        // panel keeps one hero number. N0 renders the minus sign; IMPOSSIBLE stays red, unclamped.
+        var bigRow = new StackPanel { Orientation = Orientation.Horizontal };
+        bigRow.Children.Add(new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 28, FontWeight = FontWeights.Medium,
+            Foreground = WalletValueBrush(state),
+            Text = wallet.Estimate is { } est ? ProfitDisplay.Format(est) : ProfitDisplay.NoneValue,
+        });
+        if (wallet.HasAnchor)
+        {
+            bigRow.Children.Add(new TextBlock
+            {
+                Text = "aUEC", FontFamily = Hud.Font("UiFont"), FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(8, 0, 0, 3),
+                VerticalAlignment = VerticalAlignment.Bottom,
+            });
+        }
+        _profitBody.Children.Add(bigRow);
+
+        // Provenance and the editor affordance on one line; the editor itself unfolds below.
+        var provRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+        provRow.Children.Add(new TextBlock
+        {
+            Text = WalletDisplay.Provenance(wallet.AnchorSource, wallet.AnchorUtc, DateTime.UtcNow),
+            FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 420, VerticalAlignment = VerticalAlignment.Center,
+        });
+        var editLink = new TextBlock
+        {
+            Text = wallet.HasAnchor ? "RE-ANCHOR" : "SET BALANCE",
+            FontFamily = Hud.Font("UiFont"), FontSize = 10, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("AccentBrush"), Margin = new Thickness(14, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
+        };
+        editLink.MouseLeftButtonUp += (_, _) =>
+        {
+            _walletEditorOpen = !_walletEditorOpen;
+            InteractionLog.Click("Wallet set balance", editLink);
+            RebuildProfitPanel(entrance: false);
+        };
+        provRow.Children.Add(editLink);
+        _profitBody.Children.Add(provRow);
+
+        if (_walletEditorOpen) _profitBody.Children.Add(BuildWalletEditor());
+
+        // The rule between the WALLET block and the SESSION PROFIT eyebrow.
+        _profitBody.Children.Add(new Border
+        {
+            BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 14, 0, 14),
+        });
+    }
+
+    private static Brush WalletValueBrush(WalletUiState state) => state switch
+    {
+        WalletUiState.Current => Hud.Br("FgBrush"),
+        WalletUiState.Aging => Hud.Br("AccentBrush"),
+        WalletUiState.Impossible => Hud.Br("DangerBrush"),
+        _ => Hud.Br("FgDimBrush"),
+    };
+
+    private static Brush WalletStateBrush(WalletUiState state) => state switch
+    {
+        WalletUiState.Current => Hud.Br("OkBrush"),
+        WalletUiState.Aging => Hud.Br("AccentBrush"),
+        WalletUiState.Impossible => Hud.Br("DangerBrush"),
+        _ => Hud.Br("FgDimBrush"),
+    };
+
+    // Mock .stateChip border alphas: tracking rgba(102,230,166,0.42), amber-strong 0.42,
+    // impossible rgba(255,107,107,0.5); dim states ride the shared nav border.
+    private static Brush WalletStateBorder(WalletUiState state) => state switch
+    {
+        WalletUiState.Current => new SolidColorBrush(Color.FromArgb(0x6B, 0x66, 0xE6, 0xA6)),
+        WalletUiState.Aging => new SolidColorBrush(Color.FromArgb(0x6B, 0xFF, 0xB2, 0x3E)),
+        WalletUiState.Impossible => new SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0x6B, 0x6B)),
+        _ => Hud.Br("NavBorderBrush"),
+    };
+
+    // The inline anchor editor (mock .anchorBox: amber-strong border on Bg3, explicit SET,
+    // digits stripped on commit, no keyboard-only path).
+    private FrameworkElement BuildWalletEditor()
+    {
+        var box = new TextBox
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 13, Width = 170,
+            Background = Hud.Br("Bg2NavBrush"), Foreground = Hud.Br("FgBrush"),
+            BorderBrush = Hud.Br("NavBorderBrush"), Padding = new Thickness(8, 5, 8, 5),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var set = new Border
+        {
+            Background = Hud.Br("AccentFaintBrush"), BorderBrush = Hud.Br("AccentBrush"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(10, 0, 0, 0),
+            Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = "SET", FontFamily = Hud.Font("UiFont"), FontSize = 10,
+                FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush"),
+            },
+        };
+        set.MouseLeftButtonUp += (_, _) =>
+        {
+            var digits = new string(box.Text.Where(char.IsDigit).ToArray());
+            if (digits.Length == 0 || !long.TryParse(digits, out var value)) return;
+            InteractionLog.Click("Wallet balance SET", set);
+            _walletEditorOpen = false;
+            App.Wallet.SetManualBalance(value);   // its Changed repaints this panel
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(box);
+        row.Children.Add(set);
+
+        var content = new StackPanel();
+        content.Children.Add(row);
+        content.Children.Add(new TextBlock
+        {
+            Text = "Type the balance the game shows. Trades already in this session's ledger count as included.",
+            FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 430, Margin = new Thickness(0, 8, 0, 0),
+        });
+
+        return new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x6B, 0xFF, 0xB2, 0x3E)),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+            Background = Hud.Br("Bg3Brush"), Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 12, 0, 0), Child = content,
+        };
+    }
+
+    // One untracked row (spec 11.4): the ledger grid with an amber diamond, the UNTRACKED badge,
+    // and the signed unexplained amount. Amber family, never cyan, never counted into any total.
+    private static Border UntrackedRow(UntrackedEntry entry)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        grid.Children.Add(new TextBlock
+        {
+            Text = entry.Utc.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture),
+            FontFamily = Hud.Font("MonoFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        // 16x16 diamond, the ledger arrow's stroke treatment in amber: neither a sell nor a buy.
+        var diamond = new Path
+        {
+            Width = 16, Height = 16,
+            Data = Geometry.Parse("M8,3 L13,8 L8,13 L3,8 Z"),
+            Stroke = Hud.Br("AccentBrush"), StrokeThickness = 1.6,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0),
+        };
+        Grid.SetColumn(diamond, 1);
+        grid.Children.Add(diamond);
+
+        var mainLine = new StackPanel { Orientation = Orientation.Horizontal };
+        mainLine.Children.Add(new TextBlock
+        {
+            Text = WalletDisplay.UntrackedTitle(entry.Amount),
+            FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
+        });
+        mainLine.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xB2, 0x3E)),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = WalletDisplay.UntrackedBadge, FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+                Foreground = Hud.Br("AccentBrush"),
+            },
+        });
+        var main = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        main.Children.Add(mainLine);
+        main.Children.Add(new TextBlock
+        {
+            Text = WalletDisplay.UntrackedWhere,
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+            Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            ToolTip = "Unexplained wallet delta: an OCR capture read a balance the trade ledger "
+                    + "cannot account for. Mission pay, fees, rentals and ship purchases land here.",
+        });
+        Grid.SetColumn(main, 2);
+        grid.Children.Add(main);
+
+        var amount = new TextBlock
+        {
+            FontFamily = Hud.Font("MonoFont"), FontSize = 14, TextAlignment = TextAlignment.Right,
+            Foreground = Hud.Br("AccentBrush"),
+            Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+        };
+        amount.Inlines.Add(new Run(ProfitDisplay.Signed(entry.Amount)));
+        amount.Inlines.Add(new Run(" aUEC")
+        {
+            FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
+        });
+        Grid.SetColumn(amount, 3);
+        grid.Children.Add(amount);
+
+        var row = new Border
+        {
+            Padding = new Thickness(10, 9, 10, 9), CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent,
+            Background = Brushes.Transparent, Child = grid,
+        };
         row.MouseEnter += (_, _) => { row.Background = Hud.Br("Bg3Brush"); row.BorderBrush = Hud.Br("NavBorderBrush"); };
         row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; row.BorderBrush = Brushes.Transparent; };
         return row;

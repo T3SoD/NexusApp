@@ -170,6 +170,9 @@ public sealed partial class TradePage : UserControl
         // Session profit ticks (issue #39): same visibility gate as the other live feeds - a
         // settlement that lands while the user is elsewhere is caught by Refresh() on re-entry.
         App.Profit.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
+        // Wallet ticks (OCR wallet, 2026-08-06): a confirmed capture, an untracked row or a manual
+        // set repaints the WALLET block atop the same panel; same visibility gate as the profit tick.
+        App.Wallet.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
         // The old SctConsentChanged subscription is gone with the separate toggle. Turning market
         // data off publishes no snapshot and so raises no Changed, but the painted SCT badges still
         // have to leave the screen - MainWindow's consent strip calls Refresh() on this page for
