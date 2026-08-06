@@ -67,4 +67,22 @@ public class WalletOcrTriggerTests
     {
         Assert.Equal(1067200L, WalletOcrTrigger.ExtractBalance("14:02 1,067,200 aUEC"));
     }
+
+    // The wallet region can catch the player handle under the balance, and handles may embed
+    // digits (leetspeak). Live calibration 2026-08-06: a real capture read the handle line while
+    // missing the number entirely, so letter-flanked digits must never become a balance.
+    [Theory]
+    [InlineData("PL4Y3RNAME")]
+    [InlineData("H4ULER")]
+    public void LetterFlankedDigitsAreNeverABalance(string ocrText)
+    {
+        Assert.Null(WalletOcrTrigger.ExtractBalance(ocrText));
+    }
+
+    [Fact]
+    public void StandaloneNumberStillWinsBesideALeetHandle()
+    {
+        Assert.Equal(5105256L, WalletOcrTrigger.ExtractBalance("5105256 PL4Y3RNAME"));
+        Assert.Equal(846L, WalletOcrTrigger.ExtractBalance("H4ULER 846"));
+    }
 }

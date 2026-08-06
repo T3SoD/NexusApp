@@ -10,7 +10,12 @@ public static class WalletOcrTrigger
     // Balances above this are treated as OCR misreads, not wealth.
     public const long MaxPlausibleBalance = 99_999_999_999;
 
-    private static readonly Regex DigitGroup = new("[0-9][0-9.,]*", RegexOptions.Compiled);
+    // Letter-flanked digits are handle leetspeak (PL4Y3R), not money: the wallet region can
+    // catch the player handle under the balance (live calibration, 2026-08-06). The trade-off
+    // is documented: a read that glues the label to the number ("aUEC5105256") is rejected too,
+    // which only costs one capture; the next scan retries.
+    private static readonly Regex DigitGroup =
+        new("(?<![A-Za-z0-9])[0-9][0-9.,]*(?![A-Za-z0-9])", RegexOptions.Compiled);
 
     public static bool IsMobiGlasOpenSignal(string raw) =>
         raw.Contains("<VehicleListQuery>", StringComparison.Ordinal) &&

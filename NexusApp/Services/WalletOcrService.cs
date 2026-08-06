@@ -10,11 +10,13 @@ namespace NexusApp.Services;
 // struct, the constants, and the [DllImport] declarations from OcrService.
 // OcrService is the LOCKED, proven Rock/RS scan path and must NOT be modified,
 // so the pieces this wallet scanner needs are copied verbatim here, the same
-// arrangement ContractOcrService documents. Preprocess keeps the RS values
-// (scale = 6, invert + x1.4 contrast + 24px padding): the wallet region is a
-// small digit strip like the RS readout, not a large panel, so the heavy
-// upscale is affordable and the small mobiGlas glyphs need it. The live
-// calibration session validates this choice before UI polish.
+// arrangement ContractOcrService documents. Preprocess is scale = 6, invert,
+// 24px padding, and NO contrast boost: live calibration (2026-08-06, two real
+// mobiGlas samples) proved the RS path's x1.4 contrast saturates the balance
+// digits' glow after inversion - OCR then reads the player handle line and
+// misses the number entirely. With the boost removed, both samples read the
+// full balance. The wallet region is a small digit strip, so the heavy
+// upscale is affordable and the small mobiGlas glyphs need it.
 
 public sealed class WalletOcrService : IDisposable
 {
@@ -65,9 +67,10 @@ public sealed class WalletOcrService : IDisposable
     }
 
     // ── Preprocessing ──────────────────────────────────────────────────────────
-    // Same invert + x1.4 contrast + 24px padding as OcrService.Preprocess, and
-    // the same scale = 6: the wallet balance is small-glyph digits like the RS
-    // readout it was tuned for.
+    // Invert + 24px padding + scale = 6 as the RS path, but WITHOUT its x1.4
+    // contrast boost: calibrated against real mobiGlas captures (see the class
+    // header). The glowing balance digits survive plain inversion and die under
+    // the boost.
 
     private static byte[] Preprocess(byte[] bgra, int w, int h, out int outW, out int outH)
     {
@@ -85,9 +88,9 @@ public sealed class WalletOcrService : IDisposable
             {
                 int src = (sy * w + sx) * 4;
 
-                byte ib = (byte)Math.Min(255, (255 - bgra[src])     * 14 / 10);
-                byte ig = (byte)Math.Min(255, (255 - bgra[src + 1]) * 14 / 10);
-                byte ir = (byte)Math.Min(255, (255 - bgra[src + 2]) * 14 / 10);
+                byte ib = (byte)(255 - bgra[src]);
+                byte ig = (byte)(255 - bgra[src + 1]);
+                byte ir = (byte)(255 - bgra[src + 2]);
 
                 for (int dy = 0; dy < scale; dy++)
                     for (int dx = 0; dx < scale; dx++)
