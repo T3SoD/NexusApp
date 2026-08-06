@@ -210,6 +210,32 @@ public class WalletTrackerTests : IDisposable
         Assert.Equal(500_000, rig.Wallet.Estimate);
     }
 
+    // Defense in depth for partial reads (live failure 16:44): a confirmed value whose digit
+    // string is a strict PREFIX of the current estimate's digits is an animation-truncated
+    // read, not money. It must change nothing: no row, no re-anchor.
+    [Fact]
+    public void PartialPrefixReadIsRejectedEntirely()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(5_101_948, U(13, 0, 0), U(13, 0, 1));
+        rig.Wallet.OnBalanceCaptured(5_101, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Empty(LoadUntracked(rig));
+        Assert.Equal(5_101_948, rig.Wallet.Estimate); // the anchor did not move either
+    }
+
+    [Fact]
+    public void AGenuineLargeDropStillReconciles()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(5_101_948, U(13, 0, 0), U(13, 0, 1));
+        rig.Wallet.OnBalanceCaptured(4_999_000, U(13, 10, 0), U(13, 10, 1)); // not a digit prefix
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(-102_948, entry.Amount);
+        Assert.Equal(4_999_000, rig.Wallet.Estimate);
+    }
+
     [Fact]
     public void ChannelsAreIsolated()
     {

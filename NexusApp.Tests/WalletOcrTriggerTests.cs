@@ -102,6 +102,21 @@ public class WalletOcrTriggerTests
         Assert.Null(WalletOcrTrigger.ExtractBalance(ocrText));
     }
 
+    // Live failure 2026-08-06 16:44: OCR read the trailing 8 as the letter B ("5,101.94B") and
+    // the letter-flank rule backtracked into accepting the truncated "5,101". A digit run that
+    // touches a letter is a misread; it must be discarded WHOLE, never shortened.
+    [Theory]
+    [InlineData("5,101.94B")]
+    [InlineData("Ä 5,101,94B")]
+    [InlineData("123,456X 78")] // even when a shorter clean token (78) exists, the poisoned run never yields "123,456"
+    public void LetterTouchedRunsAreDiscardedWholeNeverTruncated(string ocrText)
+    {
+        var result = WalletOcrTrigger.ExtractBalance(ocrText);
+        Assert.True(result is null or 78, $"got {result}");
+        Assert.NotEqual(5101L, result);
+        Assert.NotEqual(123456L, result);
+    }
+
     [Fact]
     public void StandaloneNumberStillWinsBesideALeetHandle()
     {

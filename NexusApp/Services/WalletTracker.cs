@@ -114,6 +114,16 @@ public sealed class WalletTracker : IDisposable
         var estimateAtCapture = ch.Anchor + LedgerDeltaBetween(ch.AnchorUtc, captureUtc);
         var unexplained = balance - estimateAtCapture;
 
+        // Partial-read guard (live failure 2026-08-06 16:44): a value whose digits are a strict
+        // prefix of the estimate's digits is an animation-truncated read, not money. A real
+        // balance landing exactly on a proper digit prefix of itself is effectively impossible;
+        // rejecting changes nothing and the next burst carries the true value.
+        if (IsStrictDigitPrefix(balance, estimateAtCapture))
+        {
+            Logger.Info("[WALLET] reconcile rejected partial read");
+            return;
+        }
+
         if (TradeRacesTheCapture(triggerUtc, captureUtc))
         {
             Logger.Info("[WALLET] reconcile skipped-race");
@@ -133,6 +143,13 @@ public sealed class WalletTracker : IDisposable
         ch.AnchorUtc = captureUtc;
         ch.Source = "Ocr";
         QueueFlush();
+    }
+
+    private static bool IsStrictDigitPrefix(long value, long reference)
+    {
+        var v = Math.Abs(value).ToString(CultureInfo.InvariantCulture);
+        var r = Math.Abs(reference).ToString(CultureInfo.InvariantCulture);
+        return v.Length < r.Length && r.StartsWith(v, StringComparison.Ordinal);
     }
 
     // Unvoided settlements with AnchorUtc < t <= endUtc, signed (sell in, buy out).
