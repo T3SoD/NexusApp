@@ -33,6 +33,16 @@ public static class WalletOcrTrigger
         return true;
     }
 
+    /// <summary>Dual-recognition gate: two independent OCR passes of the same pixels (plain and
+    /// inverted preprocessing) must parse to the same balance for a grab to count. Independent
+    /// agreement kills most single-digit confusions.</summary>
+    public static long? AgreedBalance(string? a, string? b)
+    {
+        var va = a is null ? null : ExtractBalance(a);
+        var vb = b is null ? null : ExtractBalance(b);
+        return va is not null && va == vb ? va : null;
+    }
+
     // The wallet region reads more than the number (labels, the clock, flicker). The balance is
     // the digit group with the most digits; comma and period both count as thousands separators.
     public static long? ExtractBalance(string ocrText)

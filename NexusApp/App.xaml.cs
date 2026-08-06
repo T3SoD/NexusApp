@@ -469,7 +469,8 @@ public partial class App : Application
         if (Settings.Current.WalletRegion is { } wor) WalletOcr.SetRegion(wor.X, wor.Y, wor.Width, wor.Height);
         WalletCap = new WalletCapture(GameLogFeed,
             capture: () => WalletOcr.ScanRegionTextAsync(),
-            canCapture: () => Settings.Current.WalletOcrEnabled && WalletOcr.HasRegion && IsForegroundRelevant);
+            canCapture: () => Settings.Current.WalletOcrEnabled && WalletOcr.HasRegion && IsForegroundRelevant,
+            currentEstimate: () => Wallet.Estimate);
         WalletCap.BalanceCaptured += (balance, triggerUtc, captureUtc) =>
             Wallet.OnBalanceCaptured(balance, triggerUtc, captureUtc);
     }

@@ -62,6 +62,26 @@ public class WalletOcrTriggerTests
         Assert.Null(WalletOcrTrigger.ExtractBalance(ocrText));
     }
 
+    // Dual recognition: a grab only counts when the plain and inverted OCR passes parse to the
+    // same balance. Independent agreement kills the single-digit confusions (6 vs 2 class).
+    [Theory]
+    [InlineData("5,105,256", "5105256", 5105256L)]
+    [InlineData("5,101.952", "5101952", 5101952L)]
+    public void AgreedBalanceRequiresBothPassesToMatch(string a, string b, long expected)
+    {
+        Assert.Equal(expected, WalletOcrTrigger.AgreedBalance(a, b));
+    }
+
+    [Theory]
+    [InlineData("5,105,256", "5,105,252")] // last-digit disagreement: the exact bug class
+    [InlineData("5,105,256", null)]
+    [InlineData(null, null)]
+    [InlineData("no digits", "none here")]
+    public void DisagreementOrSilenceYieldsNothing(string? a, string? b)
+    {
+        Assert.Null(WalletOcrTrigger.AgreedBalance(a, b));
+    }
+
     [Fact]
     public void MostDigitsWinsOverEarlierShorterGroups()
     {

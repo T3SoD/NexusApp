@@ -13,6 +13,7 @@ public class WalletCaptureTests
         public List<TimeSpan> Delays = new();
         public Queue<string?> Grabs = new();
         public bool CanCapture = true;
+        public long? Estimate;
         public Func<string?, string?>? OnGrab;
         public List<(long Balance, DateTime TriggerUtc, DateTime CaptureUtc)> Captured = new();
         public WalletCapture Cap;
@@ -28,7 +29,8 @@ public class WalletCaptureTests
                 },
                 canCapture: () => CanCapture,
                 utcNow: () => Now,
-                delay: ts => { Delays.Add(ts); Now += ts; return Task.CompletedTask; });
+                delay: ts => { Delays.Add(ts); Now += ts; return Task.CompletedTask; },
+                currentEstimate: () => Estimate);
             Cap.BalanceCaptured += (b, t, c) => Captured.Add((b, t, c));
         }
 
@@ -87,20 +89,62 @@ public class WalletCaptureTests
         Assert.Equal("timeout", h.Cap.LastOutcome);
     }
 
-    // The fourth grab exists so the faster cadence still spans the mobiGlas boot animation: a
-    // value from grab 1 confirming at grab 4 must succeed.
+    // The extra grabs exist so the faster cadence still spans the mobiGlas boot animation: a
+    // value from grab 1 confirming at the last grab must succeed.
     [Fact]
-    public void FourthGrabCanStillConfirm()
+    public void SixthGrabCanStillConfirm()
     {
         var h = new Harness();
-        h.Grabs.Enqueue("5,230,346");
-        h.Grabs.Enqueue("1,111");
-        h.Grabs.Enqueue("2,222");
+        foreach (var t in new[] { "5,230,346", "1,111", "2,222", "3,333", "4,444", "5,230,346" })
+            h.Grabs.Enqueue(t);
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(5230346, hit.Balance);
+    }
+
+    // Speed: a single read that exactly matches the current estimate confirms instantly - it
+    // agrees with what the tracker already believes, so a second grab adds nothing.
+    [Fact]
+    public void InstantConfirmWhenTheGrabMatchesTheEstimate()
+    {
+        var h = new Harness { Estimate = 5230346 };
         h.Grabs.Enqueue("5,230,346");
         h.Trigger();
 
         var hit = Assert.Single(h.Captured);
         Assert.Equal(5230346, hit.Balance);
+        // settle only: no grab spacing was ever awaited
+        Assert.Equal(TriggerUtc + WalletCapture.SettleDelay, hit.CaptureUtc);
+        Assert.Single(h.Delays);
+    }
+
+    [Fact]
+    public void MismatchedEstimateStillNeedsAgreement()
+    {
+        var h = new Harness { Estimate = 999 };
+        h.Grabs.Enqueue("5,230,346");
+        h.Grabs.Enqueue("5,230,346");
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(5230346, hit.Balance);
+        Assert.Equal(2, h.Delays.Count); // settle + one spacing: the normal two-read path
+    }
+
+    // Speed: an unreadable grab retries fast; the boot animation resolves in fractions of the
+    // normal spacing.
+    [Fact]
+    public void EmptyGrabsRetryFast()
+    {
+        var h = new Harness();
+        h.Grabs.Enqueue(null);
+        h.Grabs.Enqueue("846");
+        h.Grabs.Enqueue("846");
+        h.Trigger();
+
+        Assert.Single(h.Captured);
+        Assert.Contains(WalletCapture.RetrySpacing, h.Delays);
     }
 
     [Fact]

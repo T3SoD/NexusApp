@@ -8,17 +8,20 @@ namespace NexusApp.Services;
 public sealed class WalletCapture : IDisposable
 {
     // Cadence tightened at the owner's ask (2026-08-06): confirm can land ~550 ms after the
-    // trigger line. The fourth grab keeps the burst spanning the mobiGlas boot animation that
-    // the original slower spacing covered with three.
+    // trigger line, or at settle+one-grab when the read matches the current estimate. Empty
+    // grabs retry fast (the mobiGlas boot animation resolves in fractions of a spacing), and
+    // six grabs keep the burst spanning a slow boot inside the same budget.
     public static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(250);
     public static readonly TimeSpan GrabSpacing = TimeSpan.FromMilliseconds(300);
+    public static readonly TimeSpan RetrySpacing = TimeSpan.FromMilliseconds(150);
     public static readonly TimeSpan BurstBudget = TimeSpan.FromSeconds(5);
-    public const int MaxGrabs = 4;
+    public const int MaxGrabs = 6;
 
     private readonly Func<Task<string?>> _capture;
     private readonly Func<bool> _canCapture;
     private readonly Func<DateTime> _utcNow;
     private readonly Func<TimeSpan, Task> _delay;
+    private readonly Func<long?> _currentEstimate;
     private readonly GameLogSubscription? _sub;
     private int _busy;
 
@@ -30,12 +33,13 @@ public sealed class WalletCapture : IDisposable
 
     public WalletCapture(GameLogFeed? feed = null, Func<Task<string?>>? capture = null,
                          Func<bool>? canCapture = null, Func<DateTime>? utcNow = null,
-                         Func<TimeSpan, Task>? delay = null)
+                         Func<TimeSpan, Task>? delay = null, Func<long?>? currentEstimate = null)
     {
         _capture = capture ?? (() => Task.FromResult<string?>(null));
         _canCapture = canCapture ?? (() => false);
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
         _delay = delay ?? (ts => Task.Delay(ts));
+        _currentEstimate = currentEstimate ?? (() => null);
         if (feed != null)
         {
             _sub = feed.Subscribe(OnLine, includeReplay: false);
@@ -101,7 +105,10 @@ public sealed class WalletCapture : IDisposable
 
                 if (value is not null)
                 {
-                    if (seen.Contains(value.Value))
+                    // A read agreeing with the current estimate needs no second opinion: it
+                    // confirms what the tracker already believes. Otherwise the usual rule:
+                    // the same value seen twice inside the burst.
+                    if (value == _currentEstimate() || seen.Contains(value.Value))
                     {
                         var captureUtc = triggerUtc + (_utcNow() - start);
                         Finish("confirmed");
@@ -113,7 +120,7 @@ public sealed class WalletCapture : IDisposable
 
                 if (grab < MaxGrabs)
                 {
-                    await _delay(GrabSpacing).ConfigureAwait(false);
+                    await _delay(value is null ? RetrySpacing : GrabSpacing).ConfigureAwait(false);
                 }
             }
             Finish("timeout");

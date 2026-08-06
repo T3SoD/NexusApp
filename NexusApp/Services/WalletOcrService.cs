@@ -47,6 +47,11 @@ public sealed class WalletOcrService : IDisposable
         catch { _available = false; }
     }
 
+    // Dual recognition (calibration round 2, 2026-08-06): the SAME captured pixels run through
+    // OCR twice, inverted and plain, and the grab only counts when both passes parse to the same
+    // balance (WalletOcrTrigger.AgreedBalance). Independent agreement kills the single-digit
+    // confusions one pass produces alone. The region is a small strip, so the second pass is
+    // cheap. Returns the inverted pass's text on agreement (the caller re-extracts), else null.
     public async Task<string?> ScanRegionTextAsync()
     {
         if (!IsAvailable || _engine is null || !_hasRegion) return null;
@@ -56,10 +61,11 @@ public sealed class WalletOcrService : IDisposable
 
         try
         {
-            var processed = Preprocess(raw, _w, _h, out int pw, out int ph);
-            var softBmp   = ToSoftwareBitmap(processed, pw, ph);
-            var result    = await _engine.RecognizeAsync(softBmp);
-            return result.Text;
+            var inverted = Preprocess(raw, _w, _h, invert: true, out int iw, out int ih);
+            var plain    = Preprocess(raw, _w, _h, invert: false, out int pw2, out int ph2);
+            var a = (await _engine.RecognizeAsync(ToSoftwareBitmap(inverted, iw, ih))).Text;
+            var b = (await _engine.RecognizeAsync(ToSoftwareBitmap(plain, pw2, ph2))).Text;
+            return WalletOcrTrigger.AgreedBalance(a, b) is not null ? a : null;
         }
         catch { }
 
@@ -67,12 +73,12 @@ public sealed class WalletOcrService : IDisposable
     }
 
     // ── Preprocessing ──────────────────────────────────────────────────────────
-    // Invert + 24px padding + scale = 6 as the RS path, but WITHOUT its x1.4
-    // contrast boost: calibrated against real mobiGlas captures (see the class
-    // header). The glowing balance digits survive plain inversion and die under
-    // the boost.
+    // 24px padding + scale = 6 as the RS path, but WITHOUT its x1.4 contrast
+    // boost: calibrated against real mobiGlas captures (see the class header).
+    // Both polarities exist because dual recognition runs each grab through the
+    // engine twice: inverted (dark digits on light) and plain (as captured).
 
-    private static byte[] Preprocess(byte[] bgra, int w, int h, out int outW, out int outH)
+    private static byte[] Preprocess(byte[] bgra, int w, int h, bool invert, out int outW, out int outH)
     {
         const int scale   = 6;
         const int padding = 24;
@@ -81,16 +87,16 @@ public sealed class WalletOcrService : IDisposable
         outH = h * scale + padding * 2;
 
         var output = new byte[outW * outH * 4];
-        Array.Fill(output, (byte)255);
+        Array.Fill(output, invert ? (byte)255 : (byte)0);
 
         for (int sy = 0; sy < h; sy++)
             for (int sx = 0; sx < w; sx++)
             {
                 int src = (sy * w + sx) * 4;
 
-                byte ib = (byte)(255 - bgra[src]);
-                byte ig = (byte)(255 - bgra[src + 1]);
-                byte ir = (byte)(255 - bgra[src + 2]);
+                byte ib = invert ? (byte)(255 - bgra[src]) : bgra[src];
+                byte ig = invert ? (byte)(255 - bgra[src + 1]) : bgra[src + 1];
+                byte ir = invert ? (byte)(255 - bgra[src + 2]) : bgra[src + 2];
 
                 for (int dy = 0; dy < scale; dy++)
                     for (int dx = 0; dx < scale; dx++)
