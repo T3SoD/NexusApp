@@ -53,9 +53,10 @@ public class WalletCaptureTests
         var hit = Assert.Single(h.Captured);
         Assert.Equal(5230346, hit.Balance);
         Assert.Equal(TriggerUtc, hit.TriggerUtc);
-        // settle 500 ms + one grab spacing 500 ms, measured on the injected clock, applied to
-        // the trigger line's own stamp: the anchor never touches the wall clock.
-        Assert.Equal(TriggerUtc + TimeSpan.FromMilliseconds(1000), hit.CaptureUtc);
+        // settle 250 ms + one grab spacing 300 ms (owner, 2026-08-06: faster than the original
+        // 2 s feel), measured on the injected clock, applied to the trigger line's own stamp:
+        // the anchor never touches the wall clock.
+        Assert.Equal(TriggerUtc + TimeSpan.FromMilliseconds(550), hit.CaptureUtc);
         Assert.Equal("confirmed", h.Cap.LastOutcome);
     }
 
@@ -73,16 +74,33 @@ public class WalletCaptureTests
     }
 
     [Fact]
-    public void ThreeDisagreeingGrabsTimeOut()
+    public void AllDisagreeingGrabsTimeOut()
     {
         var h = new Harness();
         h.Grabs.Enqueue("1,111");
         h.Grabs.Enqueue("2,222");
         h.Grabs.Enqueue("3,333");
+        h.Grabs.Enqueue("4,444");
         h.Trigger();
 
         Assert.Empty(h.Captured);
         Assert.Equal("timeout", h.Cap.LastOutcome);
+    }
+
+    // The fourth grab exists so the faster cadence still spans the mobiGlas boot animation: a
+    // value from grab 1 confirming at grab 4 must succeed.
+    [Fact]
+    public void FourthGrabCanStillConfirm()
+    {
+        var h = new Harness();
+        h.Grabs.Enqueue("5,230,346");
+        h.Grabs.Enqueue("1,111");
+        h.Grabs.Enqueue("2,222");
+        h.Grabs.Enqueue("5,230,346");
+        h.Trigger();
+
+        var hit = Assert.Single(h.Captured);
+        Assert.Equal(5230346, hit.Balance);
     }
 
     [Fact]

@@ -7,10 +7,13 @@ namespace NexusApp.Services;
 // measured elapsed time, so anchor math never mixes clocks with the ledger.
 public sealed class WalletCapture : IDisposable
 {
-    public static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(500);
-    public static readonly TimeSpan GrabSpacing = TimeSpan.FromMilliseconds(500);
+    // Cadence tightened at the owner's ask (2026-08-06): confirm can land ~550 ms after the
+    // trigger line. The fourth grab keeps the burst spanning the mobiGlas boot animation that
+    // the original slower spacing covered with three.
+    public static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(250);
+    public static readonly TimeSpan GrabSpacing = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan BurstBudget = TimeSpan.FromSeconds(5);
-    public const int MaxGrabs = 3;
+    public const int MaxGrabs = 4;
 
     private readonly Func<Task<string?>> _capture;
     private readonly Func<bool> _canCapture;
