@@ -132,6 +132,7 @@ public sealed class CommandPage : UserControl
         // through the dispatcher, the feed's probe is DispatcherTimer-pumped); same guard-and-
         // catch-up idiom as the hauls subscription above.
         if (App.Profit != null) App.Profit.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
+        if (App.Wallet != null) App.Wallet.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
         App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
 
         // REMAINING countdown (app review F11). Every other trigger on this page is a DATA change,
@@ -963,6 +964,9 @@ public sealed class CommandPage : UserControl
         var profit = Hud.Panel(SessionProfit(), chamfer: 14, padding: new Thickness(18));
         profit.Margin = new Thickness(0, 12, 0, 0);
         right.Children.Add(profit);
+        var wallet = Hud.Panel(WalletCard(), chamfer: 14, padding: new Thickness(18));
+        wallet.Margin = new Thickness(0, 12, 0, 0);
+        right.Children.Add(wallet);
         var risk = NetworkRisk();
         if (risk != null) { risk.Margin = new Thickness(0, 12, 0, 0); right.Children.Add(risk); }
         var shardCard = ShardCard();
@@ -1102,6 +1106,55 @@ public sealed class CommandPage : UserControl
         if (ledger.UnvoidedCount > 0) session.Inlines.Add(new Run(" aUEC"));
         if (state == ProfitState.Offline) session.Inlines.Add(new Run("  (game offline)"));
         sp.Children.Add(session);
+        return sp;
+    }
+
+    // Wallet quick reference (OCR wallet; owner 2026-08-06: Operations gains a wallet card,
+    // overriding the spec's not-in-v1 note). The estimate leads exact, never compacted - a
+    // wallet is a balance, not a trend; provenance foots it, and the untracked count appears
+    // only when there is one. Same WalletDisplay folds the Trade block renders.
+    private UIElement WalletCard()
+    {
+        var sp = new StackPanel();
+        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade"));
+        if (App.Wallet == null) return sp;
+
+        var w = App.Wallet;
+        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
+                                        DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        var value = new TextBlock
+        {
+            FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold,
+            Foreground = state switch
+            {
+                WalletUiState.Current => Br("FgBrush"),
+                WalletUiState.Aging => Br("AccentBrush"),
+                WalletUiState.Impossible => Br("DangerBrush"),
+                _ => Br("FgDimBrush"),
+            },
+        };
+        value.Inlines.Add(new Run(w.Estimate is { } est ? ProfitDisplay.Format(est) : ProfitDisplay.NoneValue));
+        if (w.HasAnchor)
+            value.Inlines.Add(new Run("  aUEC") { FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
+        sp.Children.Add(value);
+
+        sp.Children.Add(new TextBlock
+        {
+            Text = w.HasAnchor
+                ? WalletDisplay.Provenance(w.AnchorSource, w.AnchorUtc, DateTime.UtcNow)
+                : WalletDisplay.CardHint,
+            FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"),
+            Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
+        });
+
+        int untracked = App.Wallet.SessionUntracked.Count;
+        if (untracked > 0)
+        {
+            var foot = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0) };
+            foot.Inlines.Add(new Run("THIS SESSION ") { FontWeight = FontWeights.Bold });
+            foot.Inlines.Add(new Run($"{untracked} untracked row{(untracked == 1 ? "" : "s")}") { FontFamily = Mono });
+            sp.Children.Add(foot);
+        }
         return sp;
     }
 
