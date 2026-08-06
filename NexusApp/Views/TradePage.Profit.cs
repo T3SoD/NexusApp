@@ -642,7 +642,7 @@ public sealed partial class TradePage
         var mainLine = new StackPanel { Orientation = Orientation.Horizontal };
         mainLine.Children.Add(new TextBlock
         {
-            Text = WalletDisplay.UntrackedTitle(entry.Amount),
+            Text = WalletDisplay.UntrackedTitle(entry.Amount, entry.Label),
             FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
         });
         mainLine.Children.Add(new Border

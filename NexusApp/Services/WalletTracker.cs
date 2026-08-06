@@ -20,6 +20,11 @@ public sealed class WalletTracker : IDisposable
     // Anchor age past which the UI shows AGING (spec section 6 item 2).
     public static readonly TimeSpan AgingThreshold = TimeSpan.FromMinutes(30);
 
+    // Recent contract completions kept for income attribution (spec section 12). In-memory
+    // only: the current Game.log replays them on app start, and completions from older game
+    // sessions cannot be attributed anyway.
+    public const int CompletionMemory = 64;
+
     private readonly ProfitTracker _profit;
     private readonly GameLogFeed _feed;
     private readonly bool _ownsFeed;
@@ -31,6 +36,10 @@ public sealed class WalletTracker : IDisposable
     private string? _feedPath;
     private DateTime? _sessionStartUtc;
     private bool _flushPending;
+
+    // Feed thread writes, the burst task reads at reconcile time; the lock covers both.
+    private readonly object _completionsLock = new();
+    private readonly List<(DateTime Utc, string Name)> _completions = new();
 
     public event Action? Changed;
 
@@ -130,9 +139,13 @@ public sealed class WalletTracker : IDisposable
         }
         else if (unexplained != 0)
         {
-            ch.Untracked.Add(new UntrackedEntry { Utc = captureUtc, Amount = unexplained });
+            // Completions pay in, never out: only income asks the log for a name. The window is
+            // the span the unexplained money accumulated over, previous anchor to this capture.
+            var label = unexplained > 0 ? CompletionLabel(ch.AnchorUtc, captureUtc) : null;
+            ch.Untracked.Add(new UntrackedEntry { Utc = captureUtc, Amount = unexplained, Label = label });
             while (ch.Untracked.Count > WalletStore.UntrackedCap) ch.Untracked.RemoveAt(0);
             Logger.Info($"[WALLET] reconcile recorded {(unexplained > 0 ? "income" : "purchase")} {unexplained}");
+            if (label is not null) Logger.Info($"[WALLET] income attributed: \"{label}\"");
         }
         else
         {
@@ -183,6 +196,33 @@ public sealed class WalletTracker : IDisposable
     public void Ingest(GameLogEntry e)
     {
         if (_sessionStartUtc is null) TryLatchSession(e.Raw);
+        if (WalletOcrTrigger.TryParseContractComplete(e.Raw, out var name, out var utc))
+        {
+            lock (_completionsLock)
+            {
+                _completions.Add((utc, name));
+                while (_completions.Count > CompletionMemory) _completions.RemoveAt(0);
+            }
+        }
+    }
+
+    // A completion the anchored balance already contained explains nothing, so the window opens
+    // strictly after the anchor. One hit names the row; several only count (naming one of them
+    // would be a guess); none stays the plain untracked row.
+    private string? CompletionLabel(DateTime anchorUtc, DateTime captureUtc)
+    {
+        List<string> hits;
+        lock (_completionsLock)
+        {
+            hits = _completions.Where(c => c.Utc > anchorUtc && c.Utc <= captureUtc)
+                               .Select(c => c.Name).ToList();
+        }
+        return hits.Count switch
+        {
+            0 => null,
+            1 => hits[0],
+            _ => $"{hits.Count} contracts completed",
+        };
     }
 
     // New SC session (Game.log reset): the anchor survives (money does not reset with the log),

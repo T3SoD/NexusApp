@@ -351,6 +351,81 @@ public class WalletTrackerTests : IDisposable
         Assert.Equal(1, changed);
     }
 
+    // Real notification shape (see WalletLogFixtures.ContractCompleteLine) with a test-chosen
+    // stamp and name, so window arithmetic uses the same clock as the captures.
+    private static string CompletionLine(DateTime utc, string name) =>
+        $"<{utc:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}> [Notice] <SHUDEvent_OnNotification> Added notification " +
+        $"\"Contract Complete: {name}: \" [100] to queue. New queue size: 1, " +
+        "MissionId: [a3c22670-0a01-4f20-87ce-6e0d3ac098b8], ObjectiveId: [] " +
+        "[Team_CoreGameplayFeatures][Missions][Comms]";
+
+    [Fact]
+    public void IncomeAfterACompletionGetsTheContractName()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(CompletionLine(U(13, 5, 0), "Security Patrol"));
+        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 10, 0), U(13, 10, 1));
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(80_000, entry.Amount);
+        Assert.Equal("Security Patrol", entry.Label);
+    }
+
+    // The window opens at the previous anchor: a completion the anchored balance already
+    // contained must not explain later money.
+    [Fact]
+    public void ACompletionBeforeTheAnchorDoesNotLabel()
+    {
+        using var rig = NewRig();
+        rig.LatchWallet(CompletionLine(U(12, 55, 0), "Security Patrol"));
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    [Fact]
+    public void SeveralCompletionsInTheWindowLabelTheCount()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(CompletionLine(U(13, 3, 0), "Cargo Haul Alpha"));
+        rig.LatchWallet(CompletionLine(U(13, 7, 0), "Cargo Haul Beta"));
+        rig.Wallet.OnBalanceCaptured(1_150_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Equal("2 contracts completed", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // Completions pay in, never out: a spend beside a completion stays plain.
+    [Fact]
+    public void PurchasesNeverGetALabel()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(CompletionLine(U(13, 5, 0), "Security Patrol"));
+        rig.Wallet.OnBalanceCaptured(920_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // Each capture re-anchors, so the next window opens where this one closed: one completion
+    // can never explain two rows.
+    [Fact]
+    public void AConsumedCompletionDoesNotLabelTheNextRow()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(CompletionLine(U(13, 5, 0), "Security Patrol"));
+        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 10, 0), U(13, 10, 1));
+        rig.Wallet.OnBalanceCaptured(1_090_000, U(13, 20, 0), U(13, 20, 1));
+
+        var entries = LoadUntracked(rig);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("Security Patrol", entries[0].Label);
+        Assert.Null(entries[1].Label);
+    }
+
     private static IReadOnlyList<NexusApp.Models.UntrackedEntry> LoadUntracked(Rig rig)
     {
         // Read through the store so assertions see exactly what persists (flushes are immediate

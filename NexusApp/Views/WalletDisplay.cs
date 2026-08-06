@@ -73,8 +73,10 @@ internal static class WalletDisplay
     // surfaces use this location-free variant.
     internal const string CardHint = "No anchor yet. Open your mobiGlas in game, or set a balance on Trade.";
 
-    internal static string UntrackedTitle(long amount) =>
-        amount >= 0 ? "Untracked income" : "Untracked purchase";
+    // The attribution label (contract name or "N contracts completed") replaces the generic
+    // title when the tracker found one; the UNTRACKED badge beside it keeps the row's nature.
+    internal static string UntrackedTitle(long amount, string? label = null) =>
+        label ?? (amount >= 0 ? "Untracked income" : "Untracked purchase");
 
     /// <summary>The session timeline with untracked rows interleaved by stamp, newest first,
     /// capped like the plain ledger. Items are CommodityTransaction or UntrackedEntry.</summary>

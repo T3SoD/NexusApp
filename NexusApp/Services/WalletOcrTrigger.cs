@@ -19,9 +19,43 @@ public static class WalletOcrTrigger
     private static readonly Regex DigitGroup =
         new("(?<![A-Za-z0-9])(?>[0-9][0-9.,]*)(?![A-Za-z0-9])", RegexOptions.Compiled);
 
+    // Contract completion HUD notification (2026-08-06 recon): the display name sits between
+    // this marker and the text-closing ': " [' before the queue index. Names carry colons, so
+    // only that exact closing sequence ends the text; a marker line without it is a multi-line
+    // notification fragment and is rejected whole.
+    private const string CompleteMarker = "Added notification \"Contract Complete: ";
+    private const string NotificationClose = ": \" [";
+
+    // <EM4>...</EM4> spans are rep/beacon meta tags beside the name, dropped whole; any other
+    // stray tag drops too.
+    private static readonly Regex NotificationMeta =
+        new("<EM4>.*?</EM4>|<[^>]*>", RegexOptions.Compiled);
+    private static readonly Regex WhitespaceRun = new(@"\s+", RegexOptions.Compiled);
+
     public static bool IsMobiGlasOpenSignal(string raw) =>
         raw.Contains("<VehicleListQuery>", StringComparison.Ordinal) &&
         raw.Contains("Fetching vehicle list for player", StringComparison.Ordinal);
+
+    /// <summary>Contract completion line: out comes the cleaned display name and the line's own
+    /// stamp. The payout amount is NOT here by design: Game.log logs which contract completed,
+    /// almost never what it paid (one Awarded line in 395 logs), so the amount stays the wallet
+    /// delta's job.</summary>
+    public static bool TryParseContractComplete(string raw, out string name, out DateTime utc)
+    {
+        name = "";
+        utc = default;
+        var start = raw.IndexOf(CompleteMarker, StringComparison.Ordinal);
+        if (start < 0) return false;
+        if (!TryParseLineUtc(raw, out utc)) return false;
+        start += CompleteMarker.Length;
+        var close = raw.IndexOf(NotificationClose, start, StringComparison.Ordinal);
+        if (close < 0) return false;
+        var cleaned = WhitespaceRun.Replace(
+            NotificationMeta.Replace(raw.Substring(start, close - start), " "), " ").Trim();
+        if (cleaned.Length == 0) return false;
+        name = cleaned;
+        return true;
+    }
 
     public static bool TryParseLineUtc(string raw, out DateTime utc)
     {

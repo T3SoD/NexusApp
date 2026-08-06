@@ -104,4 +104,35 @@ public class WalletStoreTests : IDisposable
         var impossible = Path.Combine(blocker, "wallet.json");
         Assert.False(WalletStore.Save(impossible, new WalletState()));
     }
+
+    [Fact]
+    public void LabelRoundTripsAndPreLabelFilesLoadNull()
+    {
+        var path = TempPath();
+        var state = new WalletState();
+        state.Channels.Add(new WalletChannelState
+        {
+            Channel = GameChannel.Live,
+            Anchor = 1_051_250,
+            AnchorUtc = new DateTime(2026, 8, 6, 0, 28, 11, DateTimeKind.Utc),
+            Source = "Ocr",
+            Untracked = { new UntrackedEntry
+            {
+                Utc = new DateTime(2026, 8, 6, 0, 28, 11, DateTimeKind.Utc),
+                Amount = 51_250, Label = "Security Patrol",
+            } },
+        });
+
+        Assert.True(WalletStore.Save(path, state));
+        var loaded = WalletStore.Load(path, out _);
+        Assert.Equal("Security Patrol", Assert.Single(loaded!.Channels.Single().Untracked).Label);
+
+        // Files written before the label existed carry no Label property: they load with null.
+        File.WriteAllText(path, "{\"Schema\":1,\"Channels\":[{\"Channel\":0,\"Anchor\":1," +
+            "\"AnchorUtc\":\"2026-08-06T00:00:00Z\",\"Source\":\"Ocr\"," +
+            "\"Untracked\":[{\"Utc\":\"2026-08-06T00:30:00Z\",\"Amount\":-7}]}]}");
+        var legacy = WalletStore.Load(path, out var reason);
+        Assert.Null(reason);
+        Assert.Null(Assert.Single(legacy!.Channels.Single().Untracked).Label);
+    }
 }

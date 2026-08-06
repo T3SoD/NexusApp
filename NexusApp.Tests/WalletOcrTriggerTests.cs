@@ -123,4 +123,38 @@ public class WalletOcrTriggerTests
         Assert.Equal(5105256L, WalletOcrTrigger.ExtractBalance("5105256 PL4Y3RNAME"));
         Assert.Equal(846L, WalletOcrTrigger.ExtractBalance("H4ULER 846"));
     }
+
+    [Fact]
+    public void ParsesAContractCompletionNameAndStamp()
+    {
+        Assert.True(WalletOcrTrigger.TryParseContractComplete(
+            WalletLogFixtures.ContractCompleteLine, out var name, out var utc));
+        Assert.Equal("Rookie Rank - Direct Medium Cargo Haul", name);
+        Assert.Equal(new DateTime(2026, 8, 6, 0, 28, 10, 500, DateTimeKind.Utc), utc);
+    }
+
+    [Fact]
+    public void StripsMetaMarkupAndKeepsColonsInsideTheName()
+    {
+        Assert.True(WalletOcrTrigger.TryParseContractComplete(
+            WalletLogFixtures.ContractCompleteMarkupLine, out var name, out _));
+        Assert.Equal("Jorrit Dossier: Project Hyperion", name);
+    }
+
+    [Fact]
+    public void AnAcceptanceNotificationIsNotACompletion()
+    {
+        Assert.False(WalletOcrTrigger.TryParseContractComplete(
+            WalletLogFixtures.ContractAcceptedLine, out _, out _));
+    }
+
+    // Recon hazard: notification text can span lines ("You sent :\n1306500 aUEC"), so a line
+    // that carries the marker but not the closing sequence must be rejected, never guessed at.
+    [Fact]
+    public void ATruncatedNotificationLineIsRejected()
+    {
+        var closeAt = WalletLogFixtures.ContractCompleteLine.IndexOf(": \" [", StringComparison.Ordinal);
+        var truncated = WalletLogFixtures.ContractCompleteLine.Substring(0, closeAt);
+        Assert.False(WalletOcrTrigger.TryParseContractComplete(truncated, out _, out _));
+    }
 }

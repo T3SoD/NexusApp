@@ -78,6 +78,15 @@ public class WalletDisplayTests
     }
 
     [Fact]
+    public void UntrackedTitlePrefersTheAttributionLabel()
+    {
+        Assert.Equal("Security Patrol", WalletDisplay.UntrackedTitle(51_250, "Security Patrol"));
+        Assert.Equal("2 contracts completed", WalletDisplay.UntrackedTitle(90_000, "2 contracts completed"));
+        Assert.Equal("Untracked income", WalletDisplay.UntrackedTitle(51_250, null));
+        Assert.Equal("Untracked purchase", WalletDisplay.UntrackedTitle(-7, null));
+    }
+
+    [Fact]
     public void MergeRowsInterleavesNewestFirstAndCaps()
     {
         var t1 = new CommodityTransaction { TimestampUtc = Now.AddMinutes(-40), Kind = TransactionKind.Buy, Amount = 1 };

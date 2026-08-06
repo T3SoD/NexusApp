@@ -9,6 +9,12 @@ public sealed class UntrackedEntry
 {
     public DateTime Utc { get; set; }
     public long Amount { get; set; }
+
+    // Attribution, income rows only: the contract display name when exactly one completion sits
+    // in the reconciliation window, "N contracts completed" when several, null when none (and
+    // null in every pre-label wallet.json). The amount above is still the OCR delta; the log
+    // supplies only the name.
+    public string? Label { get; set; }
 }
 
 // Per-channel wallet anchor plus the untracked rows it has accumulated. The anchor is the last
