@@ -289,4 +289,25 @@ public class ProfitTrackerTests : IDisposable
         Assert.Equal(SellAmount, entry.Net);
         Assert.StartsWith("Live|", entry.SessionKey);
     }
+
+    [Fact]
+    public void Ingest_FeedsShopPurchasesWithoutTouchingTradingTotals()
+    {
+        using var t = Tracker(out _);
+        Feed(t, ShopPurchaseParserTests.BuyLine, ShopPurchaseParserTests.SuccessResponseLine);
+
+        Assert.Single(t.Purchases.Purchases);
+        Assert.Null(t.Purchases.Purchases[0].Refused);
+        Assert.Equal(0, t.Ledger.Bought);   // a shop purchase is not a trade
+        Assert.Equal(0, t.Ledger.Sold);
+        Assert.Equal(0, t.Ledger.Net);
+    }
+
+    [Fact]
+    public void Ingest_DedupesShopPurchasesOnReplay()
+    {
+        using var t = Tracker(out _);
+        Feed(t, ShopPurchaseParserTests.BuyLine, ShopPurchaseParserTests.BuyLine);
+        Assert.Single(t.Purchases.Purchases);
+    }
 }

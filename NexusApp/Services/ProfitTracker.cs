@@ -54,6 +54,11 @@ public sealed class ProfitTracker : IDisposable
     /// <summary>The current log session's ledger. Rolled (never replaced) on a session boundary.</summary>
     public SessionLedger Ledger { get; } = new();
 
+    // Shop kiosk transactions, replayed from the same feed as commodity trades so purchase rows
+    // regenerate on start and never need persisting. Deliberately a separate ledger: Bought,
+    // Sold, and Net are trading figures and a shop purchase is not a trade.
+    public PurchaseLedger Purchases { get; } = new();
+
     /// <summary>The persisted per-channel history (profit_history.json), current session included.
     /// Read through ProfitHistory for the derived all-time figures.</summary>
     public ProfitHistoryState History { get; }
@@ -68,6 +73,7 @@ public sealed class ProfitTracker : IDisposable
     {
         Flush();
         Ledger.Reset();
+        Purchases.Reset();
         _sessionKey = null;
         Changed?.Invoke();
     }
@@ -91,6 +97,15 @@ public sealed class ProfitTracker : IDisposable
     {
         var raw = e.Raw;
         if (_sessionKey is null) TryLatchSession(raw);
+
+        if (ShopPurchaseParser.LooksShopRelevant(raw))
+        {
+            if (ShopPurchaseParser.ParseBuy(raw) is { } shopBuy) Purchases.Apply(shopBuy);
+            else if (ShopPurchaseParser.ParseSell(raw) is { } shopSell) Purchases.Apply(shopSell);
+            else if (ShopPurchaseParser.ParseFlowResult(raw) is { } shopResult) Purchases.ApplyResult(shopResult);
+            return;
+        }
+
         if (!CommodityLogParser.LooksCommodityRelevant(raw)) return;
 
         if (CommodityLogParser.ParseBuy(raw) is { } buy) { Stamp(buy); Apply(buy); return; }
