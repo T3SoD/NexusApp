@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using NexusApp.Services;
 using Xunit;
 
@@ -35,14 +34,13 @@ public class WalletTrackerTests : IDisposable
         public string WalletPath;
         public List<Action> Posts = new();
 
-        public Rig(string dir, bool immediateFlush = true, Func<string, string?>? resolveItemName = null)
+        public Rig(string dir, bool immediateFlush = true)
         {
             WalletPath = Path.Combine(dir, "wallet.json");
             Profit = new ProfitTracker(historyPath: Path.Combine(dir, "profit_history.json"),
                                        channel: () => Channel, flushScheduler: a => a());
             Wallet = new WalletTracker(Profit, walletPath: WalletPath, channel: () => Channel,
-                                       flushScheduler: immediateFlush ? a => a() : Posts.Add,
-                                       resolveItemName: resolveItemName);
+                                       flushScheduler: immediateFlush ? a => a() : Posts.Add);
         }
 
         public void FeedProfit(params string[] lines)
@@ -61,12 +59,12 @@ public class WalletTrackerTests : IDisposable
         }
     }
 
-    private Rig NewRig(bool immediateFlush = true, Func<string, string?>? resolveItemName = null)
+    private Rig NewRig(bool immediateFlush = true)
     {
         var dir = Path.Combine(Path.GetTempPath(), "nexus-wallet-tracker-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
         _tempDirs.Add(dir);
-        return new Rig(dir, immediateFlush, resolveItemName);
+        return new Rig(dir, immediateFlush);
     }
 
     public void Dispose()
@@ -379,151 +377,67 @@ public class WalletTrackerTests : IDisposable
         $"client_price[{price}.000000] itemClassGUID[7d50411f-088c-4c99-b85a-a6eaf95504c3] " +
         $"itemName[{token}] quantity[1]  [Team_CoreGameplayFeatures][Shops][UI]";
 
-    // A fake table so these tests never depend on the shipped item_names.json.
-    private static string? FakeNames(string token) => token switch
-    {
-        "crlf_consumable_healing_01" => "MedPen (Hemozal)",
-        "Carryable_1H_CY_medical_canister_healing_1" => "C-71 Medical Case",
-        _ => null,
-    };
+    private static string SellLine(DateTime utc, string token, long price,
+                                   string shop = "SCShop_RestStop_Pharmacy-001") =>
+        $"<{utc:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}> [Notice] " +
+        "<CEntityComponentShopUIProvider::SendShopSellRequest> Sending SShopSellRequest - " +
+        $"playerId[REDACTED] shopId[751893855885] shopName[{shop}] kioskId[751893855882] " +
+        $"client_price[{price}.000000] itemClassGUID[38555f2d-975f-4e3c-8d04-8196b59b17c6] " +
+        $"itemName[{token}] quantity[1]  [Team_CoreGameplayFeatures][Shops][UI]";
+
+    private static string FlowResultLine(DateTime utc, string result, string type = "Buying") =>
+        $"<{utc:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}> [Notice] " +
+        "<CEntityComponentShopUIProvider::RmShopFlowResponse> Received ShopFlowResponse - " +
+        "playerId[REDACTED] shopId[751893855885] shopName[SCShop_RestStop_Pharmacy-001] " +
+        $"kioskId[751893855882] kioskState[BuyRequestProcessing] result[{result}] type[{type}] " +
+        "[Team_CoreGameplayFeatures][Shops][UI]";
 
     [Fact]
-    public void ASpendAfterAPurchaseGetsTheItemName()
+    public void PurchasesExplainASpendSoNoUntrackedRowIsWritten()
     {
-        using var rig = NewRig(resolveItemName: FakeNames);
+        using var rig = NewRig();
         rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 5, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
+        rig.Wallet.OnBalanceCaptured(998_530, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Empty(LoadUntracked(rig));
+        Assert.Equal(998_530, rig.Wallet.Estimate);
+    }
+
+    [Fact]
+    public void AShortfallLeavesAResidualRowOfExactlyTheDifference()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 5, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
+        rig.Wallet.OnBalanceCaptured(998_380, U(13, 10, 0), U(13, 10, 1));   // 150 more went out
 
         var entry = Assert.Single(LoadUntracked(rig));
-        Assert.Equal(-100_000, entry.Amount);
-        Assert.Equal("C-71 Medical Case", entry.Label);
+        Assert.Equal(-150, entry.Amount);
+        Assert.Null(entry.Label);
     }
 
-    // The design's central safety claim: purchase price ranks candidates and never enters the
-    // wallet arithmetic. The delta here (-60,000) is deliberately different from the purchase
-    // price (100,000), so a regression that let the price leak into the balance math would show
-    // up as a wrong Amount even though the Label still comes out right.
     [Fact]
-    public void PriceRanksTheCandidateButNeverEntersTheBalanceMath()
+    public void ARefusedPurchaseDoesNotSpendMoney()
     {
-        using var rig = NewRig(resolveItemName: FakeNames);
+        using var rig = NewRig();
         rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.Wallet.OnBalanceCaptured(940_000, U(13, 10, 0), U(13, 10, 1)); // spent 60,000, not the 100,000 price
+        rig.FeedProfit(PurchaseLine(U(13, 5, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
+        rig.FeedProfit(FlowResultLine(U(13, 5, 1), "InsufficientFunds"));
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 10, 0), U(13, 10, 1));
 
-        var entry = Assert.Single(LoadUntracked(rig));
-        Assert.Equal(-60_000, entry.Amount);
-        Assert.Equal("C-71 Medical Case", entry.Label);
+        Assert.Empty(LoadUntracked(rig));
     }
 
     [Fact]
-    public void SeveralPurchasesNameTheLargestAndCountTheRest()
+    public void AShopSellCountsAsIncome()
     {
-        using var rig = NewRig(resolveItemName: FakeNames);
+        using var rig = NewRig();
         rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 3, 0), "crlf_consumable_healing_01", 265));
-        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.LatchWallet(PurchaseLine(U(13, 7, 0), "crlf_medgun_vial_01", 500));
-        rig.Wallet.OnBalanceCaptured(899_235, U(13, 10, 0), U(13, 10, 1));
+        rig.FeedProfit(SellLine(U(13, 5, 0), "behr_shotgun_ballistic_01_mag", 119));
+        rig.Wallet.OnBalanceCaptured(1_000_119, U(13, 10, 0), U(13, 10, 1));
 
-        Assert.Equal("C-71 Medical Case + 2 more", Assert.Single(LoadUntracked(rig)).Label);
-    }
-
-    [Fact]
-    public void AnUnresolvedTokenFallsBackToTheShopName()
-    {
-        using var rig = NewRig(resolveItemName: _ => null);
-        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_medgun_vial_01", 500));
-        rig.Wallet.OnBalanceCaptured(999_500, U(13, 10, 0), U(13, 10, 1));
-
-        Assert.Equal("RestStop Pharmacy", Assert.Single(LoadUntracked(rig)).Label);
-    }
-
-    [Fact]
-    public void AnUnresolvedTokenStillCountsTheOthers()
-    {
-        using var rig = NewRig(resolveItemName: _ => null);
-        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 3, 0), "crlf_medgun_vial_01", 500));
-        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_consumable_steroid_01", 295));
-        rig.Wallet.OnBalanceCaptured(999_205, U(13, 10, 0), U(13, 10, 1));
-
-        Assert.Equal("RestStop Pharmacy + 1 more", Assert.Single(LoadUntracked(rig)).Label);
-    }
-
-    // Regression guard for the default resolver (the one built when no resolveItemName is
-    // injected): a broken catalog must degrade to the shop-name fallback, not escape
-    // OnBalanceCaptured and strand the anchor. Poisons the real ItemNameCatalog singleton so the
-    // default lambda's own catalog call throws, then restores it in a finally. The singleton is
-    // process-wide, so this class is pinned to the ItemNameCatalogSingletonCollection, which
-    // disables parallelization and keeps the poison window from overlapping another test class.
-    [Fact]
-    public void DefaultResolverDegradesToShopNameWhenTheCatalogThrows()
-    {
-        var instanceField = typeof(ItemNameCatalog).GetField("_instance",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-        var namesField = typeof(ItemNameCatalog).GetField("_names",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var original = instanceField.GetValue(null);
-        var poisoned = new ItemNameCatalog(new Dictionary<string, string>(), new Dictionary<string, string>());
-        namesField.SetValue(poisoned, null); // any Resolve call on this instance now throws
-        instanceField.SetValue(null, poisoned);
-
-        try
-        {
-            using var rig = NewRig(); // no injected resolver: exercises the default lambda
-            rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-            rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_consumable_healing_01", 100_000));
-            rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
-
-            var entry = Assert.Single(LoadUntracked(rig));
-            Assert.Equal(-100_000, entry.Amount);
-            Assert.Equal("RestStop Pharmacy", entry.Label); // catalog threw; shop-name fallback, not a crash
-            Assert.True(rig.Wallet.HasAnchor);
-            Assert.Equal(900_000, rig.Wallet.Estimate); // the re-anchor at the end of the method still ran
-        }
-        finally
-        {
-            instanceField.SetValue(null, original);
-        }
-    }
-
-    // The window opens at the previous anchor, mirroring completions: a purchase the anchored
-    // balance already contained must not explain later money.
-    [Fact]
-    public void APurchaseBeforeTheAnchorDoesNotLabel()
-    {
-        using var rig = NewRig(resolveItemName: FakeNames);
-        rig.LatchWallet(PurchaseLine(U(12, 55, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
-
-        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
-    }
-
-    // Boundary: the anchor instant itself is excluded, the capture instant is included.
-    [Fact]
-    public void APurchaseExactlyAtTheAnchorIsExcluded()
-    {
-        using var rig = NewRig(resolveItemName: FakeNames);
-        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 0, 1), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
-
-        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
-    }
-
-    [Fact]
-    public void APurchaseExactlyAtTheCaptureIsIncluded()
-    {
-        using var rig = NewRig(resolveItemName: FakeNames);
-        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 10, 1), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
-        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
-
-        Assert.Equal("C-71 Medical Case", Assert.Single(LoadUntracked(rig)).Label);
+        Assert.Empty(LoadUntracked(rig));
     }
 
     // The regression guard that matters most: income keeps using contract attribution and never
@@ -531,14 +445,14 @@ public class WalletTrackerTests : IDisposable
     [Fact]
     public void IncomeStillGetsTheContractName()
     {
-        using var rig = NewRig(resolveItemName: FakeNames);
+        using var rig = NewRig();
         rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
-        rig.LatchWallet(PurchaseLine(U(13, 4, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.FeedProfit(PurchaseLine(U(13, 4, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
         rig.LatchWallet(CompletionLine(U(13, 5, 0), "Security Patrol"));
-        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 10, 0), U(13, 10, 1));
+        rig.Wallet.OnBalanceCaptured(1_078_530, U(13, 10, 0), U(13, 10, 1));
 
         var entry = Assert.Single(LoadUntracked(rig));
-        Assert.Equal(80_000, entry.Amount);
+        Assert.Equal(80_000, entry.Amount);            // 1,078,530 - (1,000,000 - 1,470)
         Assert.Equal("Security Patrol", entry.Label);
     }
 
