@@ -25,6 +25,10 @@ public sealed class WalletTracker : IDisposable
     // sessions cannot be attributed anyway.
     public const int CompletionMemory = 64;
 
+    // Recent shop purchases kept for spend attribution, mirroring CompletionMemory. In-memory
+    // only for the same reason: the current Game.log replays them on app start.
+    public const int PurchaseMemory = 64;
+
     private readonly ProfitTracker _profit;
     private readonly GameLogFeed _feed;
     private readonly bool _ownsFeed;
@@ -41,10 +45,15 @@ public sealed class WalletTracker : IDisposable
     private readonly object _completionsLock = new();
     private readonly List<(DateTime Utc, string Name)> _completions = new();
 
+    private readonly object _purchasesLock = new();
+    private readonly List<(DateTime Utc, string Token, long Price, string ShopName)> _purchases = new();
+    private readonly Func<string, string?> _resolveItemName;
+
     public event Action? Changed;
 
     public WalletTracker(ProfitTracker profit, GameLogFeed? feed = null, string? walletPath = null,
-                         Func<GameChannel>? channel = null, Action<Action>? flushScheduler = null)
+                         Func<GameChannel>? channel = null, Action<Action>? flushScheduler = null,
+                         Func<string, string?>? resolveItemName = null)
     {
         _profit = profit;
         _feed = feed ?? new GameLogFeed();
@@ -55,6 +64,7 @@ public sealed class WalletTracker : IDisposable
         _feedPath = string.IsNullOrEmpty(_feed.Path) ? null : _feed.Path;
         _state = WalletStore.Load(_walletPath, out var reason) ?? new WalletState();
         if (reason is not null) Logger.Info($"[WALLET] starting fresh wallet state: {reason}");
+        _resolveItemName = resolveItemName ?? (t => ItemNameCatalog.Instance.Resolve(t));
         _sub = _feed.Subscribe(Ingest, includeReplay: true, onLogReset: Reset, onStarted: OnFeedStarted);
         _profit.Changed += OnProfitChanged;
     }
@@ -141,11 +151,13 @@ public sealed class WalletTracker : IDisposable
         {
             // Completions pay in, never out: only income asks the log for a name. The window is
             // the span the unexplained money accumulated over, previous anchor to this capture.
-            var label = unexplained > 0 ? CompletionLabel(ch.AnchorUtc, captureUtc) : null;
+            var label = unexplained > 0 ? CompletionLabel(ch.AnchorUtc, captureUtc)
+                                        : PurchaseLabel(ch.AnchorUtc, captureUtc);
             ch.Untracked.Add(new UntrackedEntry { Utc = captureUtc, Amount = unexplained, Label = label });
             while (ch.Untracked.Count > WalletStore.UntrackedCap) ch.Untracked.RemoveAt(0);
             Logger.Info($"[WALLET] reconcile recorded {(unexplained > 0 ? "income" : "purchase")} {unexplained}");
-            if (label is not null) Logger.Info($"[WALLET] income attributed: \"{label}\"");
+            if (label is not null)
+                Logger.Info($"[WALLET] {(unexplained > 0 ? "income" : "purchase")} attributed: \"{label}\"");
         }
         else
         {
@@ -204,6 +216,16 @@ public sealed class WalletTracker : IDisposable
                 while (_completions.Count > CompletionMemory) _completions.RemoveAt(0);
             }
         }
+
+        if (ShopPurchaseParser.LooksShopRelevant(e.Raw) &&
+            ShopPurchaseParser.ParseBuy(e.Raw) is { } buy)
+        {
+            lock (_purchasesLock)
+            {
+                _purchases.Add((buy.TimestampUtc, buy.ItemToken, buy.Price, buy.ShopName));
+                while (_purchases.Count > PurchaseMemory) _purchases.RemoveAt(0);
+            }
+        }
     }
 
     // A completion the anchored balance already contained explains nothing, so the window opens
@@ -223,6 +245,39 @@ public sealed class WalletTracker : IDisposable
             1 => hits[0],
             _ => $"{hits.Count} contracts completed",
         };
+    }
+
+    // The mirror of CompletionLabel for money going out. Completions carry no amount, so naming
+    // one of several would be a guess; purchases carry a price, so the largest is evidence. The
+    // price ranks candidates and nothing else: it never reaches the anchor arithmetic.
+    private string? PurchaseLabel(DateTime anchorUtc, DateTime captureUtc)
+    {
+        List<(DateTime Utc, string Token, long Price, string ShopName)> hits;
+        lock (_purchasesLock)
+        {
+            hits = _purchases.Where(p => p.Utc > anchorUtc && p.Utc <= captureUtc).ToList();
+        }
+        if (hits.Count == 0) return null;
+
+        var top = hits.OrderByDescending(p => p.Price).First();
+        var name = _resolveItemName(top.Token);
+        if (name is null)
+        {
+            Logger.Info($"[WALLET] purchase name unresolved: {top.Token}");
+            name = ShopDisplayName(top.ShopName);
+        }
+        return hits.Count == 1 ? name : $"{name} + {hits.Count - 1} more";
+    }
+
+    // "SCShop_RestStop_Pharmacy-001" reads as "RestStop Pharmacy". Deterministic, no guessing:
+    // drop the SCShop_ prefix, drop a trailing -NNN instance number, underscores become spaces.
+    private static string ShopDisplayName(string shopName)
+    {
+        var s = shopName;
+        if (s.StartsWith("SCShop_", StringComparison.Ordinal)) s = s.Substring(7);
+        var dash = s.LastIndexOf('-');
+        if (dash > 0 && s.Substring(dash + 1).All(char.IsDigit)) s = s.Substring(0, dash);
+        return s.Replace('_', ' ').Trim();
     }
 
     // New SC session (Game.log reset): the anchor survives (money does not reset with the log),

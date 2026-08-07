@@ -26,13 +26,14 @@ public class WalletTrackerTests : IDisposable
         public string WalletPath;
         public List<Action> Posts = new();
 
-        public Rig(string dir, bool immediateFlush = true)
+        public Rig(string dir, bool immediateFlush = true, Func<string, string?>? resolveItemName = null)
         {
             WalletPath = Path.Combine(dir, "wallet.json");
             Profit = new ProfitTracker(historyPath: Path.Combine(dir, "profit_history.json"),
                                        channel: () => Channel, flushScheduler: a => a());
             Wallet = new WalletTracker(Profit, walletPath: WalletPath, channel: () => Channel,
-                                       flushScheduler: immediateFlush ? a => a() : Posts.Add);
+                                       flushScheduler: immediateFlush ? a => a() : Posts.Add,
+                                       resolveItemName: resolveItemName);
         }
 
         public void FeedProfit(params string[] lines)
@@ -51,12 +52,12 @@ public class WalletTrackerTests : IDisposable
         }
     }
 
-    private Rig NewRig(bool immediateFlush = true)
+    private Rig NewRig(bool immediateFlush = true, Func<string, string?>? resolveItemName = null)
     {
         var dir = Path.Combine(Path.GetTempPath(), "nexus-wallet-tracker-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
         _tempDirs.Add(dir);
-        return new Rig(dir, immediateFlush);
+        return new Rig(dir, immediateFlush, resolveItemName);
     }
 
     public void Dispose()
@@ -359,6 +360,125 @@ public class WalletTrackerTests : IDisposable
         "MissionId: [a3c22670-0a01-4f20-87ce-6e0d3ac098b8], ObjectiveId: [] " +
         "[Team_CoreGameplayFeatures][Missions][Comms]";
 
+    // Real buy shape (see ShopPurchaseParserTests) with a test-chosen stamp, token, and price,
+    // so window arithmetic uses the same clock as the captures.
+    private static string PurchaseLine(DateTime utc, string token, long price,
+                                       string shop = "SCShop_RestStop_Pharmacy-001") =>
+        $"<{utc:yyyy-MM-dd'T'HH:mm:ss.fff'Z'}> [Notice] " +
+        "<CEntityComponentShopUIProvider::SendShopBuyRequest> Sending SShopBuyRequest - " +
+        $"playerId[REDACTED] shopId[751893855885] shopName[{shop}] kioskId[751893855882] " +
+        $"client_price[{price}.000000] itemClassGUID[7d50411f-088c-4c99-b85a-a6eaf95504c3] " +
+        $"itemName[{token}] quantity[1]  [Team_CoreGameplayFeatures][Shops][UI]";
+
+    // A fake table so these tests never depend on the shipped item_names.json.
+    private static string? FakeNames(string token) => token switch
+    {
+        "crlf_consumable_healing_01" => "MedPen (Hemozal)",
+        "Carryable_1H_CY_medical_canister_healing_1" => "C-71 Medical Case",
+        _ => null,
+    };
+
+    [Fact]
+    public void ASpendAfterAPurchaseGetsTheItemName()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(-100_000, entry.Amount);
+        Assert.Equal("C-71 Medical Case", entry.Label);
+    }
+
+    [Fact]
+    public void SeveralPurchasesNameTheLargestAndCountTheRest()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 3, 0), "crlf_consumable_healing_01", 265));
+        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.LatchWallet(PurchaseLine(U(13, 7, 0), "crlf_medgun_vial_01", 500));
+        rig.Wallet.OnBalanceCaptured(899_235, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Equal("C-71 Medical Case + 2 more", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    [Fact]
+    public void AnUnresolvedTokenFallsBackToTheShopName()
+    {
+        using var rig = NewRig(resolveItemName: _ => null);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_medgun_vial_01", 500));
+        rig.Wallet.OnBalanceCaptured(999_500, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Equal("RestStop Pharmacy", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    [Fact]
+    public void AnUnresolvedTokenStillCountsTheOthers()
+    {
+        using var rig = NewRig(resolveItemName: _ => null);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 3, 0), "crlf_medgun_vial_01", 500));
+        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_consumable_steroid_01", 295));
+        rig.Wallet.OnBalanceCaptured(999_205, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Equal("RestStop Pharmacy + 1 more", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // The window opens at the previous anchor, mirroring completions: a purchase the anchored
+    // balance already contained must not explain later money.
+    [Fact]
+    public void APurchaseBeforeTheAnchorDoesNotLabel()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.LatchWallet(PurchaseLine(U(12, 55, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // Boundary: the anchor instant itself is excluded, the capture instant is included.
+    [Fact]
+    public void APurchaseExactlyAtTheAnchorIsExcluded()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 0, 1), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Null(Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    [Fact]
+    public void APurchaseExactlyAtTheCaptureIsIncluded()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 10, 1), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+
+        Assert.Equal("C-71 Medical Case", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // The regression guard that matters most: income keeps using contract attribution and never
+    // looks at purchases, even when a purchase sits in the same window.
+    [Fact]
+    public void IncomeStillGetsTheContractName()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 4, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.LatchWallet(CompletionLine(U(13, 5, 0), "Security Patrol"));
+        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 10, 0), U(13, 10, 1));
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(80_000, entry.Amount);
+        Assert.Equal("Security Patrol", entry.Label);
+    }
+
     [Fact]
     public void IncomeAfterACompletionGetsTheContractName()
     {
@@ -397,9 +517,10 @@ public class WalletTrackerTests : IDisposable
         Assert.Equal("2 contracts completed", Assert.Single(LoadUntracked(rig)).Label);
     }
 
-    // Completions pay in, never out: a spend beside a completion stays plain.
+    // Completions pay in, never out: a completion must never explain money going out. Purchases
+    // label spend rows now, but only from shop-buy lines, and there are none here.
     [Fact]
-    public void PurchasesNeverGetALabel()
+    public void ACompletionDoesNotLabelASpend()
     {
         using var rig = NewRig();
         rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
