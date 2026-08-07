@@ -1,40 +1,77 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using NexusApp.Models;
 
 namespace NexusApp.Services;
 
-// One shop purchase read off a Game.log kiosk line. Price is the client's own figure
-// (client_price), kept for ranking candidates only; it never enters wallet arithmetic.
-public sealed record ShopPurchase(
-    DateTime TimestampUtc, string ItemToken, long Price, int Quantity, string ShopName);
+// The kiosk's answer to a request: Success settles it, anything else refuses it. Routing is by
+// shopId plus kioskId because the response carries no item or price.
+public sealed record ShopFlowResult(
+    DateTime TimestampUtc, string Result, string ShopId, string KioskId, ShopTransactionKind Kind);
 
-// Pure, stateless parsing of the non-commodity shop buy line, sibling of CommodityLogParser.
-// One shape, never generalized. No file I/O, no PII: playerId[..] is matched but never read.
-// The commodity kiosk is a different provider and stays with CommodityLogParser.
+// Pure, stateless parsing of the three non-commodity shop line shapes, sibling of
+// CommodityLogParser. No file I/O, no PII: playerId[..] is matched but never read. The trailing
+// team tag is NOT part of any pattern: it reads [Team_NAPU] on 2025 builds and
+// [Team_CoreGameplayFeatures] today. The commodity kiosk is a different provider entirely.
 public static class ShopPurchaseParser
 {
-    private static readonly Regex Buy = new(
+    private const string Head =
         @"<(?<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] " +
-        @"<CEntityComponentShopUIProvider::SendShopBuyRequest> Sending SShopBuyRequest - " +
+        @"<CEntityComponentShopUIProvider::";
+
+    private const string Body =
         @"playerId\[[^\]]+\] shopId\[(?<shop>\d+)\] shopName\[(?<name>[^\]]+)\] kioskId\[(?<kiosk>\d+)\] " +
         @"client_price\[(?<price>[0-9.]+)\] itemClassGUID\[(?<guid>[0-9a-f-]+)\] " +
-        @"itemName\[(?<item>[^\]]+)\] quantity\[(?<qty>\d+)\]",
+        @"itemName\[(?<item>[^\]]+)\] quantity\[(?<qty>\d+)\]";
+
+    private static readonly Regex Buy =
+        new(Head + @"SendShopBuyRequest> Sending SShopBuyRequest - " + Body, RegexOptions.Compiled);
+
+    private static readonly Regex Sell =
+        new(Head + @"SendShopSellRequest> Sending SShopSellRequest - " + Body, RegexOptions.Compiled);
+
+    private static readonly Regex Flow = new(
+        Head + @"RmShopFlowResponse> Received ShopFlowResponse - " +
+        @"playerId\[[^\]]+\] shopId\[(?<shop>\d+)\] shopName\[[^\]]+\] kioskId\[(?<kiosk>\d+)\] " +
+        @"kioskState\[[^\]]+\] result\[(?<result>\w+)\] type\[(?<type>Buying|Selling)\]",
         RegexOptions.Compiled);
 
-    // Cheap pre-filter so the tracker can skip the bulk of lines before running regex.
+    // Cheap pre-filter so the trackers can skip the bulk of lines before running regex.
     public static bool LooksShopRelevant(string raw) =>
         raw.Contains("CEntityComponentShopUIProvider");
 
-    public static ShopPurchase? ParseBuy(string raw)
+    public static ShopPurchase? ParseBuy(string raw) => Parse(Buy, raw, ShopTransactionKind.Buy);
+
+    public static ShopPurchase? ParseSell(string raw) => Parse(Sell, raw, ShopTransactionKind.Sell);
+
+    private static ShopPurchase? Parse(Regex re, string raw, ShopTransactionKind kind)
     {
-        var m = Buy.Match(raw);
+        var m = re.Match(raw);
         if (!m.Success) return null;
-        return new ShopPurchase(
+        return new ShopPurchase
+        {
+            TimestampUtc = ParseStamp(m.Groups["ts"].Value),
+            Kind = kind,
+            Price = ParseAuec(m.Groups["price"].Value),
+            Quantity = int.Parse(m.Groups["qty"].Value, CultureInfo.InvariantCulture),
+            ItemToken = m.Groups["item"].Value,
+            ItemGuid = m.Groups["guid"].Value,
+            ShopName = m.Groups["name"].Value,
+            ShopId = m.Groups["shop"].Value,
+            KioskId = m.Groups["kiosk"].Value,
+        };
+    }
+
+    public static ShopFlowResult? ParseFlowResult(string raw)
+    {
+        var m = Flow.Match(raw);
+        if (!m.Success) return null;
+        return new ShopFlowResult(
             ParseStamp(m.Groups["ts"].Value),
-            m.Groups["item"].Value,
-            ParseAuec(m.Groups["price"].Value),
-            int.Parse(m.Groups["qty"].Value, CultureInfo.InvariantCulture),
-            m.Groups["name"].Value);
+            m.Groups["result"].Value,
+            m.Groups["shop"].Value,
+            m.Groups["kiosk"].Value,
+            m.Groups["type"].Value == "Buying" ? ShopTransactionKind.Buy : ShopTransactionKind.Sell);
     }
 
     private static DateTime ParseStamp(string ts) =>
