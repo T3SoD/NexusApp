@@ -19,11 +19,19 @@ public sealed class ItemNameCatalog
     public int Count => _names.Count;
 
     /// <summary>The display name for a log itemName token, or null when the table does not know
-    /// it (a new item on a newer game build than the table). Callers fall back to the shop name
-    /// rather than render a guess.</summary>
+    /// it (a new item on a newer game build than the table) or the shipped value is not really a
+    /// name. Callers fall back to the shop name rather than render a guess.</summary>
     public string? Resolve(string? itemToken) =>
         !string.IsNullOrWhiteSpace(itemToken) && _names.TryGetValue(itemToken, out var name)
+            && IsRealName(name)
             ? name : null;
+
+    // Two shapes the extraction leaves behind that are not display names: an unresolved
+    // localization pointer ("@mp_ePistol", CIG never localized that string) and a placeholder
+    // the source data itself ships with ("Placeholder - CBD Boots"). Rendering either to the
+    // player is worse than falling back to the shop name.
+    private static bool IsRealName(string name) =>
+        !name.StartsWith('@') && !name.StartsWith("PLACEHOLDER", StringComparison.OrdinalIgnoreCase);
 
     // Lazy app-wide instance, the CommodityNameCatalog idiom: loaded on first attribution,
     // never on the startup path.

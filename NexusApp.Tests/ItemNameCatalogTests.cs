@@ -42,6 +42,25 @@ public class ItemNameCatalogTests
         Assert.Null(catalog.Resolve(null));
     }
 
+    // The shipped table carries two non-name shapes left over from extraction: an unresolved
+    // localization pointer ("@mp_ePistol") and a placeholder string, either case
+    // ("Placeholder - ..." or "PLACEHOLDER - ..."). Both must miss like an unknown token so the
+    // caller falls back to the shop name instead of rendering either one to the player.
+    [Fact]
+    public void Resolve_TreatsUnresolvedPointersAndPlaceholdersAsMisses()
+    {
+        var catalog = From("""
+            {"names":{
+              "mp_ePistol":"@mp_ePistol",
+              "cbd_boots_01_01_01":"Placeholder - CBD Boots",
+              "cbd_hat_03_01_CFP_var2":"PLACEHOLDER - cbd_hat_03_01_CFP_var2"
+            }}
+            """);
+        Assert.Null(catalog.Resolve("mp_ePistol"));
+        Assert.Null(catalog.Resolve("cbd_boots_01_01_01"));
+        Assert.Null(catalog.Resolve("cbd_hat_03_01_CFP_var2"));
+    }
+
     [Fact]
     public void Load_ReportsCount()
     {

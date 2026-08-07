@@ -48,6 +48,7 @@ public sealed class WalletTracker : IDisposable
     private readonly object _purchasesLock = new();
     private readonly List<(DateTime Utc, string Token, long Price, string ShopName)> _purchases = new();
     private readonly Func<string, string?> _resolveItemName;
+    private bool _catalogFailureLogged;
 
     public event Action? Changed;
 
@@ -64,7 +65,24 @@ public sealed class WalletTracker : IDisposable
         _feedPath = string.IsNullOrEmpty(_feed.Path) ? null : _feed.Path;
         _state = WalletStore.Load(_walletPath, out var reason) ?? new WalletState();
         if (reason is not null) Logger.Info($"[WALLET] starting fresh wallet state: {reason}");
-        _resolveItemName = resolveItemName ?? (t => ItemNameCatalog.Instance.Resolve(t));
+        // Default resolver must not let a broken catalog (missing/corrupt embedded resource)
+        // escape into OnBalanceCaptured: that would skip the re-anchor at the bottom of the
+        // method and strand the wallet on a stale anchor for the rest of the session. Degrade to
+        // the shop-name fallback instead, and log the failure once so it still surfaces in the
+        // app log monitor without spamming it on every later capture.
+        _resolveItemName = resolveItemName ?? (t =>
+        {
+            try { return ItemNameCatalog.Instance.Resolve(t); }
+            catch (Exception ex)
+            {
+                if (!_catalogFailureLogged)
+                {
+                    _catalogFailureLogged = true;
+                    Logger.Info($"[WALLET] item name catalog unavailable, purchases fall back to shop names: {ex.Message}");
+                }
+                return null;
+            }
+        });
         _sub = _feed.Subscribe(Ingest, includeReplay: true, onLogReset: Reset, onStarted: OnFeedStarted);
         _profit.Changed += OnProfitChanged;
     }

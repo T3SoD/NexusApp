@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using NexusApp.Services;
 using Xunit;
 
@@ -391,6 +392,23 @@ public class WalletTrackerTests : IDisposable
         Assert.Equal("C-71 Medical Case", entry.Label);
     }
 
+    // The design's central safety claim: purchase price ranks candidates and never enters the
+    // wallet arithmetic. The delta here (-60,000) is deliberately different from the purchase
+    // price (100,000), so a regression that let the price leak into the balance math would show
+    // up as a wrong Amount even though the Label still comes out right.
+    [Fact]
+    public void PriceRanksTheCandidateButNeverEntersTheBalanceMath()
+    {
+        using var rig = NewRig(resolveItemName: FakeNames);
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.LatchWallet(PurchaseLine(U(13, 5, 0), "Carryable_1H_CY_medical_canister_healing_1", 100_000));
+        rig.Wallet.OnBalanceCaptured(940_000, U(13, 10, 0), U(13, 10, 1)); // spent 60,000, not the 100,000 price
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(-60_000, entry.Amount);
+        Assert.Equal("C-71 Medical Case", entry.Label);
+    }
+
     [Fact]
     public void SeveralPurchasesNameTheLargestAndCountTheRest()
     {
@@ -425,6 +443,43 @@ public class WalletTrackerTests : IDisposable
         rig.Wallet.OnBalanceCaptured(999_205, U(13, 10, 0), U(13, 10, 1));
 
         Assert.Equal("RestStop Pharmacy + 1 more", Assert.Single(LoadUntracked(rig)).Label);
+    }
+
+    // Regression guard for the default resolver (the one built when no resolveItemName is
+    // injected): a broken catalog must degrade to the shop-name fallback, not escape
+    // OnBalanceCaptured and strand the anchor. Poisons the real ItemNameCatalog singleton so the
+    // default lambda's own catalog call throws, then restores it; the singleton is process-wide
+    // but only WalletTracker's default resolver ever reads it, and xunit runs the fact methods
+    // of this class one at a time, so the poison window never overlaps another test.
+    [Fact]
+    public void DefaultResolverDegradesToShopNameWhenTheCatalogThrows()
+    {
+        var instanceField = typeof(ItemNameCatalog).GetField("_instance",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var namesField = typeof(ItemNameCatalog).GetField("_names",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var original = instanceField.GetValue(null);
+        var poisoned = new ItemNameCatalog(new Dictionary<string, string>());
+        namesField.SetValue(poisoned, null); // any Resolve call on this instance now throws
+        instanceField.SetValue(null, poisoned);
+
+        try
+        {
+            using var rig = NewRig(); // no injected resolver: exercises the default lambda
+            rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+            rig.LatchWallet(PurchaseLine(U(13, 5, 0), "crlf_consumable_healing_01", 100_000));
+            rig.Wallet.OnBalanceCaptured(900_000, U(13, 10, 0), U(13, 10, 1));
+
+            var entry = Assert.Single(LoadUntracked(rig));
+            Assert.Equal(-100_000, entry.Amount);
+            Assert.Equal("RestStop Pharmacy", entry.Label); // catalog threw; shop-name fallback, not a crash
+            Assert.True(rig.Wallet.HasAnchor);
+            Assert.Equal(900_000, rig.Wallet.Estimate); // the re-anchor at the end of the method still ran
+        }
+        finally
+        {
+            instanceField.SetValue(null, original);
+        }
     }
 
     // The window opens at the previous anchor, mirroring completions: a purchase the anchored
