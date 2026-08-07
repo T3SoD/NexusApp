@@ -5,6 +5,14 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
+// DefaultResolverDegradesToShopNameWhenTheCatalogThrows mutates ItemNameCatalog's process-wide
+// static singleton. xUnit runs different test classes as separate collections in parallel by
+// default, so without this the poison window could overlap any other class's tests. Pinning
+// WalletTrackerTests to a collection with DisableParallelization keeps that window isolated.
+[CollectionDefinition(ItemNameCatalogSingletonCollection.Name, DisableParallelization = true)]
+public class ItemNameCatalogSingletonCollection { public const string Name = "ItemNameCatalog singleton"; }
+
+[Collection(ItemNameCatalogSingletonCollection.Name)]
 public class WalletTrackerTests : IDisposable
 {
     private readonly List<string> _tempDirs = new();
@@ -448,9 +456,9 @@ public class WalletTrackerTests : IDisposable
     // Regression guard for the default resolver (the one built when no resolveItemName is
     // injected): a broken catalog must degrade to the shop-name fallback, not escape
     // OnBalanceCaptured and strand the anchor. Poisons the real ItemNameCatalog singleton so the
-    // default lambda's own catalog call throws, then restores it; the singleton is process-wide
-    // but only WalletTracker's default resolver ever reads it, and xunit runs the fact methods
-    // of this class one at a time, so the poison window never overlaps another test.
+    // default lambda's own catalog call throws, then restores it in a finally. The singleton is
+    // process-wide, so this class is pinned to the ItemNameCatalogSingletonCollection, which
+    // disables parallelization and keeps the poison window from overlapping another test class.
     [Fact]
     public void DefaultResolverDegradesToShopNameWhenTheCatalogThrows()
     {
