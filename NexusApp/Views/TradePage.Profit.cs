@@ -296,9 +296,9 @@ public sealed partial class TradePage
 
         var rows = new StackPanel();
         int i = 0;
+        var purchases = App.Profit.Purchases.Purchases;
         // Untracked wallet rows interleave by stamp (spec 11.4): one money timeline, one cap.
-        foreach (var item in WalletDisplay.MergeRows(txs, untracked, App.Profit.Purchases.Purchases,
-                                                     ProfitDisplay.LedgerRowCap))
+        foreach (var item in WalletDisplay.MergeRows(txs, untracked, purchases, ProfitDisplay.LedgerRowCap))
         {
             var row = item switch
             {
@@ -312,7 +312,9 @@ public sealed partial class TradePage
             rows.Children.Add(row);
             i++;
         }
-        int hidden = ProfitDisplay.LedgerHiddenCount(txs.Count + untracked.Count);
+        // The fold count must match MergeRows' own total, purchases included, or the note
+        // undercounts what the cap silently dropped (review fix, 2026-08-07).
+        int hidden = ProfitDisplay.LedgerHiddenCount(txs.Count + untracked.Count + purchases.Count);
         if (hidden > 0)
         {
             // The fold, named at the bottom of the scroll region where the older rows would sit.

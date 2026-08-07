@@ -153,4 +153,38 @@ public class WalletDisplayTests
                   11_000, 1, "RADR_UNKNOWN_TOKEN", "SCShop_OmegaPro_NewBabbage");
         Assert.Equal("OmegaPro NewBabbage", WalletDisplay.PurchaseTitle(p));
     }
+
+    // Trades plus untracked alone sit exactly at the cap (3 rows) and would not overflow on
+    // their own. Purchases are what push the combined total to 5, proving MergeRows caps all
+    // three sequences together rather than the two it merged before purchase rows existed.
+    [Fact]
+    public void MergeRows_PurchasesCanPushTheCombinedTotalPastTheCap()
+    {
+        var utc = new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc);
+        var tx = new CommodityTransaction { TimestampUtc = utc.AddMinutes(-50), Kind = TransactionKind.Buy, Amount = 1 };
+        var u1 = new UntrackedEntry { Utc = utc.AddMinutes(-40), Amount = 2 };
+        var u2 = new UntrackedEntry { Utc = utc.AddMinutes(-30), Amount = 3 };
+        var p1 = P(utc.AddMinutes(-20), 100, 1, "tokA", "SCShop_A-001");
+        var p2 = P(utc.AddMinutes(-10), 200, 1, "tokB", "SCShop_B-001");
+
+        var merged = WalletDisplay.MergeRows(new[] { tx }, new[] { u1, u2 }, new[] { p1, p2 }, cap: 3);
+
+        Assert.Equal(3, merged.Count);
+        Assert.Same(p2, merged[0]);   // -10 min, newest
+        Assert.Same(p1, merged[1]);   // -20 min
+        Assert.Same(u2, merged[2]);   // -30 min; tx and u1 fell to the cap
+    }
+
+    // ProfitDisplay.LedgerHiddenCount only ever sees the int its caller hands it; it cannot tell
+    // whether that total included purchases. This pins the arithmetic against a purchase-inclusive
+    // total (the exact regression shape: 30 trades, 5 untracked, 40 purchases), but it cannot
+    // reach TradePage.Profit.cs's own call site directly, since that WPF view code does not
+    // compile in this test project. The merge-side test above covers the row-dropping behaviour;
+    // this one covers only the fold-note arithmetic in isolation.
+    [Fact]
+    public void LedgerHiddenCount_AccountsForAPurchaseInclusiveTotal()
+    {
+        const int txs = 30, untracked = 5, purchases = 40;
+        Assert.Equal(25, ProfitDisplay.LedgerHiddenCount(txs + untracked + purchases));
+    }
 }
