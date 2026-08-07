@@ -467,7 +467,7 @@ public class WalletTrackerTests : IDisposable
         var namesField = typeof(ItemNameCatalog).GetField("_names",
             BindingFlags.NonPublic | BindingFlags.Instance)!;
         var original = instanceField.GetValue(null);
-        var poisoned = new ItemNameCatalog(new Dictionary<string, string>());
+        var poisoned = new ItemNameCatalog(new Dictionary<string, string>(), new Dictionary<string, string>());
         namesField.SetValue(poisoned, null); // any Resolve call on this instance now throws
         instanceField.SetValue(null, poisoned);
 

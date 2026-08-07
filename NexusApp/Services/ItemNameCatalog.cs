@@ -11,20 +11,29 @@ namespace NexusApp.Services;
 // tooling stays local, only this table ships. Used by the wallet's purchase attribution.
 public sealed class ItemNameCatalog
 {
+    private readonly Dictionary<string, string> _guids;
     private readonly Dictionary<string, string> _names;
 
-    public ItemNameCatalog(Dictionary<string, string> names) =>
+    public ItemNameCatalog(Dictionary<string, string> guids, Dictionary<string, string> names)
+    {
+        _guids = new Dictionary<string, string>(guids, StringComparer.OrdinalIgnoreCase);
         _names = new Dictionary<string, string>(names, StringComparer.OrdinalIgnoreCase);
+    }
 
     public int Count => _names.Count;
 
-    /// <summary>The display name for a log itemName token, or null when the table does not know
-    /// it (a new item on a newer game build than the table) or the shipped value is not really a
-    /// name. Callers fall back to the shop name rather than render a guess.</summary>
-    public string? Resolve(string? itemToken) =>
-        !string.IsNullOrWhiteSpace(itemToken) && _names.TryGetValue(itemToken, out var name)
-            && IsRealName(name)
-            ? name : null;
+    /// <summary>The display name for a logged item, GUID first and token second, or null when
+    /// neither map knows it. Callers fall back to the shop name rather than render a guess.
+    /// The GUID is preferred because CIG's entity tokens and localization keys disagree for some
+    /// items, and the entity record the GUID points at names the correct key.</summary>
+    public string? Resolve(string? itemGuid, string? itemToken)
+    {
+        if (!string.IsNullOrWhiteSpace(itemGuid) && _guids.TryGetValue(itemGuid, out var byGuid)
+            && IsRealName(byGuid)) return byGuid;
+        if (!string.IsNullOrWhiteSpace(itemToken) && _names.TryGetValue(itemToken, out var byToken)
+            && IsRealName(byToken)) return byToken;
+        return null;
+    }
 
     // Two shapes the extraction leaves behind that are not display names: an unresolved
     // localization pointer ("@mp_ePistol", CIG never localized that string) and a placeholder
@@ -50,11 +59,15 @@ public sealed class ItemNameCatalog
     {
         var raw = JsonSerializer.Deserialize<RawFile>(stream)
                   ?? throw new InvalidOperationException("item_names.json deserialized to null");
-        return new ItemNameCatalog(raw.Names ?? new Dictionary<string, string>());
+        return new ItemNameCatalog(raw.Guids ?? new Dictionary<string, string>(),
+                                   raw.Names ?? new Dictionary<string, string>());
     }
 
     private sealed class RawFile
     {
+        [System.Text.Json.Serialization.JsonPropertyName("guids")]
+        public Dictionary<string, string>? Guids { get; set; }
+
         [System.Text.Json.Serialization.JsonPropertyName("names")]
         public Dictionary<string, string>? Names { get; set; }
     }

@@ -72,7 +72,7 @@ public sealed class WalletTracker : IDisposable
         // app log monitor without spamming it on every later capture.
         _resolveItemName = resolveItemName ?? (t =>
         {
-            try { return ItemNameCatalog.Instance.Resolve(t); }
+            try { return ItemNameCatalog.Instance.Resolve(null, t); }
             catch (Exception ex)
             {
                 if (!_catalogFailureLogged)

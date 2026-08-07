@@ -5,77 +5,83 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// Token to display name lookup. A miss returns null so callers fall back rather than guess.
+// GUID first, token second. Both maps exist because CIG's entity tokens and localization keys
+// disagree for some items, and because either identifier can drift between patches.
 public class ItemNameCatalogTests
 {
     private static ItemNameCatalog From(string json) =>
         ItemNameCatalog.Load(new MemoryStream(Encoding.UTF8.GetBytes(json)));
 
     private const string Sample = """
-        {"names":{
+        {"guids":{
+          "d4408421-e939-4e34-9902-0644fa6934be":"'Chaos' III Missile"
+        },
+        "names":{
           "crlf_consumable_healing_01":"MedPen (Hemozal)",
-          "Carryable_1H_CY_medical_canister_healing_1":"C-71 Medical Case"
+          "Carryable_1H_CY_medical_canister_healing_1":"C-71 Medical Case",
+          "at_symbol":"@mp_ePistol",
+          "placeholder_item":"PLACEHOLDER - placeholder_item"
         }}
         """;
 
     [Fact]
-    public void Resolve_ReturnsDisplayName()
+    public void Resolve_PrefersTheGuid()
     {
-        var catalog = From(Sample);
-        Assert.Equal("MedPen (Hemozal)", catalog.Resolve("crlf_consumable_healing_01"));
+        Assert.Equal("'Chaos' III Missile",
+            From(Sample).Resolve("d4408421-e939-4e34-9902-0644fa6934be", "unknown_token"));
+    }
+
+    [Fact]
+    public void Resolve_FallsBackToTheTokenWhenTheGuidMisses()
+    {
+        Assert.Equal("MedPen (Hemozal)",
+            From(Sample).Resolve("00000000-0000-0000-0000-000000000000", "crlf_consumable_healing_01"));
         Assert.Equal("C-71 Medical Case",
-            catalog.Resolve("Carryable_1H_CY_medical_canister_healing_1"));
+            From(Sample).Resolve(null, "Carryable_1H_CY_medical_canister_healing_1"));
     }
 
     [Fact]
-    public void Resolve_IsCaseInsensitive()
+    public void Resolve_IsCaseInsensitiveOnBothKeys()
     {
-        Assert.Equal("MedPen (Hemozal)", From(Sample).Resolve("CRLF_CONSUMABLE_HEALING_01"));
+        var c = From(Sample);
+        Assert.Equal("'Chaos' III Missile", c.Resolve("D4408421-E939-4E34-9902-0644FA6934BE", null));
+        Assert.Equal("MedPen (Hemozal)", c.Resolve(null, "CRLF_CONSUMABLE_HEALING_01"));
     }
 
     [Fact]
-    public void Resolve_ReturnsNullOnMiss()
+    public void Resolve_ReturnsNullWhenBothMiss()
     {
-        var catalog = From(Sample);
-        Assert.Null(catalog.Resolve("crlf_medgun_vial_01"));
-        Assert.Null(catalog.Resolve(""));
-        Assert.Null(catalog.Resolve(null));
+        var c = From(Sample);
+        Assert.Null(c.Resolve("nope", "also_nope"));
+        Assert.Null(c.Resolve(null, null));
+        Assert.Null(c.Resolve("", ""));
     }
 
-    // The shipped table carries two non-name shapes left over from extraction: an unresolved
-    // localization pointer ("@mp_ePistol") and a placeholder string, either case
-    // ("Placeholder - ..." or "PLACEHOLDER - ..."). Both must miss like an unknown token so the
-    // caller falls back to the shop name instead of rendering either one to the player.
     [Fact]
-    public void Resolve_TreatsUnresolvedPointersAndPlaceholdersAsMisses()
+    public void Resolve_RejectsNonNames()
     {
-        var catalog = From("""
-            {"names":{
-              "mp_ePistol":"@mp_ePistol",
-              "cbd_boots_01_01_01":"Placeholder - CBD Boots",
-              "cbd_hat_03_01_CFP_var2":"PLACEHOLDER - cbd_hat_03_01_CFP_var2"
-            }}
-            """);
-        Assert.Null(catalog.Resolve("mp_ePistol"));
-        Assert.Null(catalog.Resolve("cbd_boots_01_01_01"));
-        Assert.Null(catalog.Resolve("cbd_hat_03_01_CFP_var2"));
+        var c = From(Sample);
+        Assert.Null(c.Resolve(null, "at_symbol"));          // "@mp_ePistol" is a loc pointer
+        Assert.Null(c.Resolve(null, "placeholder_item"));   // "PLACEHOLDER - ..." is not a name
     }
 
     [Fact]
     public void Load_ReportsCount()
     {
-        Assert.Equal(2, From(Sample).Count);
-        Assert.Equal(0, From("""{"names":{}}""").Count);
+        Assert.Equal(4, From(Sample).Count);
+        Assert.Equal(0, From("""{"guids":{},"names":{}}""").Count);
     }
 
-    // The shipped table, loaded the way the app loads it. Guards the csproj registration and
-    // the resource name, which a rename would silently break.
+    // The shipped table, loaded the way the app loads it. Guards the csproj registration and the
+    // resource name, and pins the four GUIDs captured live on 2026-08-07.
     [Fact]
-    public void LoadEmbedded_ResolvesKnownItems()
+    public void LoadEmbedded_ResolvesTheLiveCapturedItems()
     {
-        var catalog = ItemNameCatalog.LoadEmbedded();
-        Assert.True(catalog.Count > 8000);
-        Assert.Equal("MedPen (Hemozal)", catalog.Resolve("crlf_consumable_healing_01"));
-        Assert.Equal("ParaMed Medical Device", catalog.Resolve("crlf_medgun_01"));
+        var c = ItemNameCatalog.LoadEmbedded();
+        Assert.True(c.Count > 8000);
+        Assert.Equal("'Chaos' III Missile", c.Resolve("d4408421-e939-4e34-9902-0644fa6934be", null));
+        Assert.Equal("APX Fire Extinguisher", c.Resolve("1b6a6b76-f3fc-402c-a24a-204f2eeae6f7", null));
+        Assert.Equal("Agure", c.Resolve("94e97499-375e-4c63-a2ea-c605a4d3f461", null));
+        Assert.Equal("CorticoPen (Sterogen)", c.Resolve("354ec8a6-32eb-4747-8e75-03d2703edfd6", null));
     }
 }
