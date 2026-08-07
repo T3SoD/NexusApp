@@ -94,11 +94,63 @@ public class WalletDisplayTests
         var u1 = new UntrackedEntry { Utc = Now.AddMinutes(-20), Amount = 3 };
         var u2 = new UntrackedEntry { Utc = Now.AddMinutes(-5), Amount = 4 };
 
-        var merged = WalletDisplay.MergeRows(new[] { t1, t2 }, new[] { u1, u2 }, cap: 3);
+        var merged = WalletDisplay.MergeRows(new[] { t1, t2 }, new[] { u1, u2 }, Array.Empty<ShopPurchase>(), cap: 3);
 
         Assert.Equal(3, merged.Count);
         Assert.Same(u2, merged[0]); // -5 min
         Assert.Same(t2, merged[1]); // -10 min
         Assert.Same(u1, merged[2]); // -20 min; t1 fell to the cap
+    }
+
+    private static ShopPurchase P(DateTime utc, long price, int qty, string token, string shop) =>
+        new()
+        {
+            TimestampUtc = utc, Kind = ShopTransactionKind.Buy, Price = price, Quantity = qty,
+            ItemToken = token, ItemGuid = "", ShopName = shop, ShopId = "S1", KioskId = "K1",
+        };
+
+    [Fact]
+    public void MergeRows_InterleavesPurchasesByTime()
+    {
+        var utc = new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc);
+        var purchases = new[]
+        {
+            P(utc.AddMinutes(2), 1_470, 2, "MISL_S03_IR_VNCL_Chaos", "SCShop_Centermass_NewBabbage"),
+            P(utc.AddMinutes(4), 1_150, 1, "kegr_fire_extinguisher_01", "SCShop_Shubin-001"),
+        };
+        var merged = WalletDisplay.MergeRows(
+            Array.Empty<CommodityTransaction>(), Array.Empty<UntrackedEntry>(), purchases, 50);
+
+        Assert.Equal(2, merged.Count);
+        Assert.Equal(1_150, ((ShopPurchase)merged[0]).Price);   // newest first
+        Assert.Equal(1_470, ((ShopPurchase)merged[1]).Price);
+    }
+
+    [Fact]
+    public void MergeRows_RefusedPurchasesAreStillShown()
+    {
+        var utc = new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc);
+        var p = P(utc, 500, 1, "tok", "SCShop_Test-001");
+        p.Refused = "InsufficientFunds";
+        var merged = WalletDisplay.MergeRows(
+            Array.Empty<CommodityTransaction>(), Array.Empty<UntrackedEntry>(), new[] { p }, 50);
+        Assert.Single(merged);
+    }
+
+    [Fact]
+    public void ShopDisplayName_StripsThePrefixAndInstanceSuffix()
+    {
+        Assert.Equal("RestStop Pharmacy", WalletDisplay.ShopDisplayName("SCShop_RestStop_Pharmacy-001"));
+        Assert.Equal("Centermass NewBabbage", WalletDisplay.ShopDisplayName("SCShop_Centermass_NewBabbage"));
+        Assert.Equal("Admin lt base g", WalletDisplay.ShopDisplayName("SCShop_Admin_lt_base_g"));
+        Assert.Equal("Odd-Name", WalletDisplay.ShopDisplayName("Odd-Name"));
+    }
+
+    [Fact]
+    public void PurchaseTitle_FallsBackToTheShopNameWhenUnresolved()
+    {
+        var p = P(new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc),
+                  11_000, 1, "RADR_UNKNOWN_TOKEN", "SCShop_OmegaPro_NewBabbage");
+        Assert.Equal("OmegaPro NewBabbage", WalletDisplay.PurchaseTitle(p));
     }
 }

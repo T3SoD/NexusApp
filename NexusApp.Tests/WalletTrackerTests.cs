@@ -4,10 +4,8 @@ using Xunit;
 
 namespace NexusApp.Tests;
 
-// DefaultResolverDegradesToShopNameWhenTheCatalogThrows mutates ItemNameCatalog's process-wide
-// static singleton. xUnit runs different test classes as separate collections in parallel by
-// default, so without this the poison window could overlap any other class's tests. Pinning
-// WalletTrackerTests to a collection with DisableParallelization keeps that window isolated.
+// The test that mutated ItemNameCatalog's process-wide static singleton has been removed.
+// This collection no longer guards anything; it is retained only to avoid churn.
 [CollectionDefinition(ItemNameCatalogSingletonCollection.Name, DisableParallelization = true)]
 public class ItemNameCatalogSingletonCollection { public const string Name = "ItemNameCatalog singleton"; }
 
@@ -511,7 +509,7 @@ public class WalletTrackerTests : IDisposable
     }
 
     // Completions pay in, never out: a completion must never explain money going out. Purchases
-    // label spend rows now, but only from shop-buy lines, and there are none here.
+    // now render as their own ledger rows rather than labeling this one, and there are none here.
     [Fact]
     public void ACompletionDoesNotLabelASpend()
     {

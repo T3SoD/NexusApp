@@ -297,9 +297,15 @@ public sealed partial class TradePage
         var rows = new StackPanel();
         int i = 0;
         // Untracked wallet rows interleave by stamp (spec 11.4): one money timeline, one cap.
-        foreach (var item in WalletDisplay.MergeRows(txs, untracked, ProfitDisplay.LedgerRowCap))
+        foreach (var item in WalletDisplay.MergeRows(txs, untracked, App.Profit.Purchases.Purchases,
+                                                     ProfitDisplay.LedgerRowCap))
         {
-            var row = item is CommodityTransaction tx ? ProfitRow(tx) : UntrackedRow((UntrackedEntry)item);
+            var row = item switch
+            {
+                CommodityTransaction tx => ProfitRow(tx),
+                ShopPurchase p => PurchaseRow(p),
+                _ => UntrackedRow((UntrackedEntry)item),
+            };
             // Cascade rides the expand only, the CommandPage entrance convention - a data tick
             // repaints statically under the reader.
             if (entrance) CascadeIn(row, Math.Min(i, 6));
@@ -694,6 +700,64 @@ public sealed partial class TradePage
         row.MouseEnter += (_, _) => { row.Background = Hud.Br("Bg3Brush"); row.BorderBrush = Hud.Br("NavBorderBrush"); };
         row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; row.BorderBrush = Brushes.Transparent; };
         return row;
+    }
+
+    // One shop purchase row: time, a neutral square glyph, the item/quantity/shop, and the signed
+    // amount (same grid as ProfitRow and UntrackedRow, so columns line up). Neither OkBrush nor
+    // DangerBrush applies here: a purchase is spending, not a profitable sale or a loss.
+    private static Border PurchaseRow(ShopPurchase p)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var dim = p.Refused is not null;
+
+        grid.Children.Add(new TextBlock
+        {
+            Text = p.TimestampUtc.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture),
+            FontFamily = Hud.Font("MonoFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        // 16x16 square: neither the trade arrow nor the untracked diamond.
+        var glyph = new Path
+        {
+            Width = 16, Height = 16,
+            Data = Geometry.Parse("M4,4 L12,4 L12,12 L4,12 Z"),
+            Stroke = Hud.Br(dim ? "FgDimBrush" : "FgBrush"), StrokeThickness = 1.6,
+            StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0),
+        };
+        Grid.SetColumn(glyph, 1);
+        grid.Children.Add(glyph);
+
+        var qty = p.Quantity > 1 ? $"  x{p.Quantity}" : "";
+        var title = new TextBlock
+        {
+            Text = $"{WalletDisplay.PurchaseTitle(p)}{qty}   {WalletDisplay.ShopDisplayName(p.ShopName)}",
+            FontFamily = Hud.Font("UiFont"), FontSize = 11,
+            Foreground = Hud.Br(dim ? "FgDimBrush" : "FgBrush"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0),
+        };
+        Grid.SetColumn(title, 2);
+        grid.Children.Add(title);
+
+        var sign = p.Kind == ShopTransactionKind.Sell ? "+" : "-";
+        var amount = new TextBlock
+        {
+            Text = dim ? p.Refused : $"{sign}{p.Price:N0}",
+            FontFamily = Hud.Font("MonoFont"), FontSize = 11,
+            Foreground = Hud.Br(dim ? "FgDimBrush" : "FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
+        };
+        Grid.SetColumn(amount, 3);
+        grid.Children.Add(amount);
+
+        return new Border { Child = grid, Padding = new Thickness(0, 5, 0, 5) };
     }
 
     // ── PROFIT HISTORY strip (S3b/S5; mock .histSec): the ALL TIME header outlives the chart

@@ -78,15 +78,41 @@ internal static class WalletDisplay
     internal static string UntrackedTitle(long amount, string? label = null) =>
         label ?? (amount >= 0 ? "Untracked income" : "Untracked purchase");
 
-    /// <summary>The session timeline with untracked rows interleaved by stamp, newest first,
-    /// capped like the plain ledger. Items are CommodityTransaction or UntrackedEntry.</summary>
+    /// <summary>The session timeline with untracked rows and shop purchases interleaved by stamp,
+    /// newest first, capped like the plain ledger. Items are CommodityTransaction, UntrackedEntry,
+    /// or ShopPurchase.</summary>
     internal static IReadOnlyList<object> MergeRows(IReadOnlyList<CommodityTransaction> txs,
-                                                    IReadOnlyList<UntrackedEntry> untracked, int cap)
+                                                    IReadOnlyList<UntrackedEntry> untracked,
+                                                    IReadOnlyList<ShopPurchase> purchases, int cap)
     {
-        var all = new List<(DateTime T, object Item)>(txs.Count + untracked.Count);
+        var all = new List<(DateTime T, object Item)>(txs.Count + untracked.Count + purchases.Count);
         foreach (var tx in txs) all.Add((tx.TimestampUtc, tx));
         foreach (var u in untracked) all.Add((u.Utc, u));
+        foreach (var p in purchases) all.Add((p.TimestampUtc, p));
         return all.OrderByDescending(x => x.T).Take(cap).Select(x => x.Item).ToList();
+    }
+
+    // "SCShop_RestStop_Pharmacy-001" reads as "RestStop Pharmacy". Deterministic, no guessing:
+    // drop the SCShop_ prefix, drop a trailing -NNN instance number, underscores become spaces.
+    public static string ShopDisplayName(string shopName)
+    {
+        var s = shopName;
+        if (s.StartsWith("SCShop_", StringComparison.Ordinal)) s = s.Substring(7);
+        var dash = s.LastIndexOf('-');
+        if (dash > 0 && s.Substring(dash + 1).All(char.IsDigit)) s = s.Substring(0, dash);
+        return s.Replace('_', ' ').Trim();
+    }
+
+    /// <summary>The item's display name, or the cleaned shop name when the catalog knows neither
+    /// the GUID nor the token. Never blank, never a guess.</summary>
+    public static string PurchaseTitle(ShopPurchase p)
+    {
+        string? name = null;
+        try { name = ItemNameCatalog.Instance.Resolve(p.ItemGuid, p.ItemToken); }
+        catch (Exception ex) { Logger.Info($"[WALLET] item catalog unavailable: {ex.Message}"); }
+        if (name is not null) return name;
+        Logger.Info($"[WALLET] purchase name unresolved: {p.ItemToken}");
+        return ShopDisplayName(p.ShopName);
     }
 }
 
