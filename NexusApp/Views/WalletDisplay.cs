@@ -92,28 +92,18 @@ internal static class WalletDisplay
         return all.OrderByDescending(x => x.T).Take(cap).Select(x => x.Item).ToList();
     }
 
-    // "SCShop_RestStop_Pharmacy-001" reads as "RestStop Pharmacy". Deterministic, no guessing:
-    // drop the SCShop_ prefix, drop a trailing -NNN instance number, underscores become spaces.
-    public static string ShopDisplayName(string shopName)
-    {
-        var s = shopName;
-        if (s.StartsWith("SCShop_", StringComparison.Ordinal)) s = s.Substring(7);
-        var dash = s.LastIndexOf('-');
-        if (dash > 0 && s.Substring(dash + 1).All(char.IsDigit)) s = s.Substring(0, dash);
-        return s.Replace('_', ' ').Trim();
-    }
+    // "SCShop_RestStop_Pharmacy-001" reads as "RestStop Pharmacy". Deterministic, no guessing.
+    // Same cleaner the commodity WHERE line uses (review fix 2026-08-07: two independently-written
+    // token cleaners were rendering into the same merged ledger column with different outputs);
+    // this is now a thin alias so both surfaces can never drift again.
+    public static string ShopDisplayName(string shopName) => ProfitDisplay.ShopLabel(shopName);
 
     /// <summary>The item's display name, or the cleaned shop name when the catalog knows neither
-    /// the GUID nor the token. Never blank, never a guess.</summary>
-    public static string PurchaseTitle(ShopPurchase p)
-    {
-        string? name = null;
-        try { name = ItemNameCatalog.Instance.Resolve(p.ItemGuid, p.ItemToken); }
-        catch (Exception ex) { Logger.Info($"[WALLET] item catalog unavailable: {ex.Message}"); }
-        if (name is not null) return name;
-        Logger.Info($"[WALLET] purchase name unresolved: {p.ItemToken}");
-        return ShopDisplayName(p.ShopName);
-    }
+    /// the GUID nor the token. Never blank, never a guess. Reads the name resolved once at apply
+    /// time (ProfitTracker.Ingest via ItemNameCatalog.ResolvePurchaseName) rather than touching the
+    /// catalog here - a purchase whose name was never populated (tests construct ShopPurchase
+    /// directly) still renders correctly, it just falls straight to the cleaned shop name.</summary>
+    public static string PurchaseTitle(ShopPurchase p) => p.DisplayName ?? ShopDisplayName(p.ShopName);
 }
 
 // Public, not internal: xunit test methods are public and CS0051 forbids an internal type in

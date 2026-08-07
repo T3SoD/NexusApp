@@ -100,9 +100,13 @@ public sealed class ProfitTracker : IDisposable
 
         if (ShopPurchaseParser.LooksShopRelevant(raw))
         {
-            if (ShopPurchaseParser.ParseBuy(raw) is { } shopBuy) Purchases.Apply(shopBuy);
-            else if (ShopPurchaseParser.ParseSell(raw) is { } shopSell) Purchases.Apply(shopSell);
-            else if (ShopPurchaseParser.ParseFlowResult(raw) is { } shopResult) Purchases.ApplyResult(shopResult);
+            // Mirrors the commodity path below: flush only when the ledger actually changed, never
+            // on a replayed duplicate or an orphan result, or replay would repaint on every line.
+            bool changed = false;
+            if (ShopPurchaseParser.ParseBuy(raw) is { } shopBuy) changed = ApplyPurchase(shopBuy);
+            else if (ShopPurchaseParser.ParseSell(raw) is { } shopSell) changed = ApplyPurchase(shopSell);
+            else if (ShopPurchaseParser.ParseFlowResult(raw) is { } shopResult) changed = Purchases.ApplyResult(shopResult);
+            if (changed) QueueFlush();
             return;
         }
 
@@ -112,6 +116,16 @@ public sealed class ProfitTracker : IDisposable
         if (CommodityLogParser.ParseSell(raw) is { } sell) { Stamp(sell); Apply(sell); return; }
         if (CommodityLogParser.ParseTransactionError(raw) is { } err && Ledger.ApplyError(err))
             QueueFlush();
+    }
+
+    // Applies a shop purchase and, on a real (non-replayed) apply only, resolves and stamps its
+    // display name once here so WalletDisplay.PurchaseTitle never touches the item catalog, or its
+    // unresolved-token log, during a render pass.
+    private bool ApplyPurchase(ShopPurchase p)
+    {
+        if (!Purchases.Apply(p)) return false;
+        p.DisplayName = ItemNameCatalog.ResolvePurchaseName(p.ItemGuid, p.ItemToken);
+        return true;
     }
 
     // Where the player was when this settlement logged. The shop token cannot say (kiosk

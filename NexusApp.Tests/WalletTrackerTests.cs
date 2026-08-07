@@ -443,6 +443,52 @@ public class WalletTrackerTests : IDisposable
         Assert.Empty(LoadUntracked(rig));
     }
 
+    // Finding 2, the concrete failure: an 11,000 aUEC kiosk buy lands, the mobiGlas capture fires
+    // two seconds later on the pre-charge balance, and without a race guard on purchases the app
+    // would compute a phantom +11,000 income row. The commodity path already has this guard
+    // (RaceGuardSkipsWhenATradeIsInsideTheWindow above); purchases need the same one.
+    [Fact]
+    public void RaceGuardSkipsWhenAPurchaseIsInsideTheWindow()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 4, 58), "RADR_UNKNOWN_TOKEN", 11_000)); // 2 s before the trigger
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 5, 0), U(13, 5, 1)); // reads the pre-charge balance
+
+        Assert.Empty(LoadUntracked(rig));              // the phantom +11,000 was not booked
+        Assert.Equal(1_000_000, rig.Wallet.Estimate);   // re-anchored to the scan, not the ledger math
+    }
+
+    // A settled purchase outside the 6 s window is not a race: the delta it explains still counts,
+    // proving the new guard did not just start swallowing every purchase.
+    [Fact]
+    public void OldPurchasesDoNotTripTheGuard()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 5, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
+        rig.Wallet.OnBalanceCaptured(998_380, U(13, 10, 0), U(13, 10, 1)); // 150 more went out
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(-150, entry.Amount);
+    }
+
+    // A refused purchase contributes nothing to LedgerDeltaBetween (SettledDeltaBetween skips it),
+    // so it cannot be the cause of a capture-vs-ledger mismatch and must not trip the race guard
+    // either: genuine income landing in the same window still gets recorded.
+    [Fact]
+    public void RaceGuardIgnoresARefusedPurchaseInsideTheWindow()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 4, 58), "RADR_UNKNOWN_TOKEN", 11_000));
+        rig.FeedProfit(FlowResultLine(U(13, 4, 59), "InsufficientFunds"));
+        rig.Wallet.OnBalanceCaptured(1_080_000, U(13, 5, 0), U(13, 5, 1));
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(80_000, entry.Amount);
+    }
+
     [Fact]
     public void AShopSellCountsAsIncome()
     {

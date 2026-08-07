@@ -189,6 +189,11 @@ public sealed class WalletTracker : IDisposable
 
     // True when the scanned pixels and the ledger could straddle the same kiosk event. A voided
     // trade reaches further back: its void response landed up to a void-window after the request.
+    // A settled shop purchase gets the same plain-floor check as a settled trade (spec 11.3 applies
+    // equally: an 11,000 aUEC kiosk buy two seconds before the capture is exactly this race). A
+    // refused purchase is excluded rather than given its own extended window: SettledDeltaBetween
+    // already skips refused rows, so they contribute nothing to the delta and cannot be the cause
+    // of a mismatch this guard exists to catch.
     private bool TradeRacesTheCapture(DateTime triggerUtc, DateTime captureUtc)
     {
         var plainFloor = triggerUtc - RaceGuard;
@@ -198,6 +203,12 @@ public sealed class WalletTracker : IDisposable
             if (tx.TimestampUtc > captureUtc) continue;
             var floor = tx.Voided is null ? plainFloor : voidedFloor;
             if (tx.TimestampUtc >= floor) return true;
+        }
+        foreach (var p in _profit.Purchases.Purchases)
+        {
+            if (p.Refused is not null) continue;
+            if (p.TimestampUtc > captureUtc) continue;
+            if (p.TimestampUtc >= plainFloor) return true;
         }
         return false;
     }

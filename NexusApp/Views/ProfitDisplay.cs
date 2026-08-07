@@ -138,14 +138,20 @@ internal static class ProfitDisplay
     internal static string LedgerEarlierNote(int hidden) =>
         $"and {Format(hidden)} earlier this session";
 
-    // Mechanical shop-token cleanup only (S3): strip the SCShop_ prefix and the _Int_X interior
-    // suffix, unscore the rest. The raw token stays in the row tooltip.
+    // Mechanical shop-token cleanup only (S3): strip the SCShop_ prefix, the trailing -NNN kiosk
+    // instance number, and the _Int_X interior suffix, then unscore the rest. The raw token stays
+    // in the row tooltip. The canonical cleaner for every shop-token surface in the app
+    // (WalletDisplay.ShopDisplayName calls this rather than keeping its own rules, review fix
+    // 2026-08-07): both patterns are real game vocabulary, so the merge applies both instead of
+    // picking one.
     internal static string ShopLabel(string token)
     {
         var t = token;
         if (t.StartsWith("SCShop_", StringComparison.Ordinal)) t = t["SCShop_".Length..];
+        var dash = t.LastIndexOf('-');
+        if (dash > 0 && t[(dash + 1)..].All(char.IsDigit)) t = t[..dash];
         if (t.Length > 6 && t[^6..^1] == "_Int_" && char.IsUpper(t[^1])) t = t[..^6];
-        return t.Replace('_', ' ');
+        return t.Replace('_', ' ').Trim();
     }
 
     /// <summary>"612 sessions, since Jun 12": the count outlives the chart cap (S3b).</summary>

@@ -35,17 +35,48 @@ public sealed class ItemNameCatalog
         return null;
     }
 
-    // Two shapes the extraction leaves behind that are not display names: an unresolved
-    // localization pointer ("@mp_ePistol", CIG never localized that string) and a placeholder
-    // the source data itself ships with ("Placeholder - CBD Boots"). Rendering either to the
-    // player is worse than falling back to the shop name.
+    // Three shapes the extraction leaves behind that are not display names: an unresolved
+    // localization pointer ("@mp_ePistol", CIG never localized that string), a placeholder the
+    // source data itself ships with ("Placeholder - CBD Boots"), and CIG's own missing-entry
+    // marker ("<-=MISSING=->", 18 rows in item_names.json, e.g. DebugGun). Rendering any of them
+    // to the player is worse than falling back to the shop name.
     private static bool IsRealName(string name) =>
-        !name.StartsWith('@') && !name.StartsWith("PLACEHOLDER", StringComparison.OrdinalIgnoreCase);
+        !name.StartsWith('@') && !name.StartsWith("PLACEHOLDER", StringComparison.OrdinalIgnoreCase)
+        && !name.StartsWith("<-=MISSING=->", StringComparison.Ordinal);
 
     // Lazy app-wide instance, the CommodityNameCatalog idiom: loaded on first attribution,
     // never on the startup path.
     private static ItemNameCatalog? _instance;
     public static ItemNameCatalog Instance => _instance ??= LoadEmbedded();
+
+    // Per-app-run coverage-report gate for the unresolved-token line (the MarketQueries.LogMissOnce
+    // / UnmatchedBlueprintLog idiom): one log line per distinct token, not one per purchase, so a
+    // session with many purchases of the same unrecognized item never floods nexus.log.
+    private static readonly HashSet<string> _loggedUnresolved = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Resolve a shop purchase's display name ONCE, at the point the purchase enters the
+    /// ledger (ProfitTracker.Ingest), so WalletDisplay.PurchaseTitle never touches the catalog
+    /// during a render. Never throws: a broken or missing embedded resource degrades to null so
+    /// the caller falls back to the shop name instead of losing the row. The unresolved-token line
+    /// logs once per distinct token per app run, staying a coverage report rather than a per-row
+    /// flood.</summary>
+    public static string? ResolvePurchaseName(string? itemGuid, string? itemToken)
+    {
+        string? name;
+        try { name = Instance.Resolve(itemGuid, itemToken); }
+        catch (Exception ex)
+        {
+            Logger.Info($"[WALLET] item catalog unavailable: {ex.Message}");
+            return null;
+        }
+        if (name is not null) return name;
+        lock (_loggedUnresolved)
+        {
+            if (!_loggedUnresolved.Add(itemToken ?? "")) return null;
+        }
+        Logger.Info($"[WALLET] purchase name unresolved: {itemToken}");
+        return null;
+    }
 
     public static ItemNameCatalog LoadEmbedded()
     {

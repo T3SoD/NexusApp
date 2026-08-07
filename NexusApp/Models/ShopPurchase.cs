@@ -24,6 +24,13 @@ public sealed class ShopPurchase
     // more likely a response we did not see than a purchase that failed.
     public string? Refused { get; set; }
 
+    // The item catalog's resolved name, stamped ONCE when this purchase entered the ledger
+    // (ProfitTracker.Ingest). Null until populated, and stays null when the catalog knows neither
+    // the GUID nor the token - WalletDisplay.PurchaseTitle falls back to the cleaned shop name in
+    // that case rather than re-querying the catalog on every render. Tests that construct a
+    // ShopPurchase directly leave this unset and still get a correct title.
+    public string? DisplayName { get; set; }
+
     // Replay dedupe, the CommodityTransaction.Key idiom. Two different items cannot share a
     // kiosk inside one millisecond.
     public string Key => string.Create(CultureInfo.InvariantCulture,

@@ -146,12 +146,41 @@ public class WalletDisplayTests
         Assert.Equal("Odd-Name", WalletDisplay.ShopDisplayName("Odd-Name"));
     }
 
+    // Finding 5: ShopDisplayName used to strip only the -NNN instance suffix, and
+    // ProfitDisplay.ShopLabel used to strip only the _Int_X interior suffix, so the same token
+    // rendered two different ways depending on which surface drew the row. Both patterns are real
+    // shop-token vocabulary, so the merged cleaner applies both, and ShopDisplayName is now a thin
+    // alias for ProfitDisplay.ShopLabel rather than its own rules.
+    [Fact]
+    public void ShopDisplayName_AlsoStripsTheInteriorSuffix()
+        => Assert.Equal("Trdpst Warehouse OTLW", WalletDisplay.ShopDisplayName("SCShop_Trdpst_Warehouse_OTLW_Int_B"));
+
+    [Theory]
+    [InlineData("SCShop_RestStop_Pharmacy-001")]
+    [InlineData("SCShop_Trdpst_Warehouse_OTLW_Int_B")]
+    [InlineData("SCShop_Admin_lt_base_g")]
+    [InlineData("Odd-Name")]
+    public void ShopDisplayName_IsTheSameCleanerAsProfitDisplayShopLabel(string token)
+        => Assert.Equal(ProfitDisplay.ShopLabel(token), WalletDisplay.ShopDisplayName(token));
+
     [Fact]
     public void PurchaseTitle_FallsBackToTheShopNameWhenUnresolved()
     {
         var p = P(new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc),
                   11_000, 1, "RADR_UNKNOWN_TOKEN", "SCShop_OmegaPro_NewBabbage");
         Assert.Equal("OmegaPro NewBabbage", WalletDisplay.PurchaseTitle(p));
+    }
+
+    // Finding 3(a): PurchaseTitle reads the name resolved once at apply time rather than resolving
+    // it itself. A populated DisplayName wins outright, even over a token/shop pair that would
+    // resolve or clean up differently, proving no catalog lookup happens here.
+    [Fact]
+    public void PurchaseTitle_PrefersAPopulatedDisplayNameOverResolvingAgain()
+    {
+        var p = P(new DateTime(2026, 8, 7, 13, 0, 0, DateTimeKind.Utc),
+                  500, 1, "RADR_UNKNOWN_TOKEN", "SCShop_OmegaPro_NewBabbage");
+        p.DisplayName = "Pre-Resolved Item Name";
+        Assert.Equal("Pre-Resolved Item Name", WalletDisplay.PurchaseTitle(p));
     }
 
     // Trades plus untracked alone sit exactly at the cap (3 rows) and would not overflow on

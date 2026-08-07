@@ -310,4 +310,106 @@ public class ProfitTrackerTests : IDisposable
         Feed(t, ShopPurchaseParserTests.BuyLine, ShopPurchaseParserTests.BuyLine);
         Assert.Single(t.Purchases.Purchases);
     }
+
+    // Finding 1: a shop purchase must repaint the ledger exactly like a commodity trade does, or a
+    // player buying at a kiosk with the profit panel open sees nothing until an unrelated event
+    // triggers a redraw.
+    [Fact]
+    public void Ingest_ShopPurchase_RaisesChangedLikeACommodityTrade()
+    {
+        var t = Tracker(out _);
+        int changed = 0;
+        t.Changed += () => changed++;
+
+        Feed(t, ShopPurchaseParserTests.BuyLine);
+
+        Assert.Equal(1, changed);
+    }
+
+    // A replayed duplicate line changes nothing in the ledger and must not repaint again, or a
+    // startup replay of a whole log would redraw once per line instead of once per batch.
+    [Fact]
+    public void Ingest_ReplayedShopPurchase_DoesNotRaiseChangedAgain()
+    {
+        var t = Tracker(out _);
+        int changed = 0;
+        t.Changed += () => changed++;
+
+        Feed(t, ShopPurchaseParserTests.BuyLine);
+        Feed(t, ShopPurchaseParserTests.BuyLine);
+
+        Assert.Equal(1, changed);
+    }
+
+    // A shop flow result with no matching request is an orphan (dropped, ApplyResult returns
+    // false) and must not repaint either.
+    [Fact]
+    public void Ingest_OrphanShopResult_DoesNotRaiseChanged()
+    {
+        var t = Tracker(out _);
+        int changed = 0;
+        t.Changed += () => changed++;
+
+        Feed(t, ShopPurchaseParserTests.SuccessResponseLine);
+
+        Assert.Equal(0, changed);
+    }
+
+    // A Success result changes Refused on nothing (the row stays settled) but IS a real, non-
+    // replayed apply (ApplyResult returns true), so it still must repaint - the refusal badge and
+    // the "answered" state are new information even when the amount does not move.
+    [Fact]
+    public void Ingest_ShopResultThatConsumesARequest_RaisesChanged()
+    {
+        var t = Tracker(out _);
+        Feed(t, ShopPurchaseParserTests.BuyLine);
+        int changed = 0;
+        t.Changed += () => changed++;
+
+        Feed(t, ShopPurchaseParserTests.SuccessResponseLine);
+
+        Assert.Equal(1, changed);
+    }
+
+    // Finding 3(a): the display name resolves ONCE, right here at apply time, rather than on every
+    // render. BuyLineQuantityTwo carries a GUID/token pair the shipped catalog actually knows (see
+    // ItemNameCatalogTests.ResolvePurchaseName_ResolvesAKnownGuid).
+    [Fact]
+    public void Ingest_ShopPurchase_ResolvesAndStampsTheDisplayNameOnce()
+    {
+        var t = Tracker(out _);
+        Feed(t, ShopPurchaseParserTests.BuyLineQuantityTwo);
+
+        var p = Assert.Single(t.Purchases.Purchases);
+        Assert.Equal("'Chaos' III Missile", p.DisplayName);
+    }
+
+    // A token the catalog does not know leaves DisplayName null rather than the shop-name fallback
+    // text: WalletDisplay.PurchaseTitle owns the fallback, so ProfitTracker stores only what the
+    // catalog itself resolved (or nothing).
+    [Fact]
+    public void Ingest_ShopPurchase_UnknownTokenLeavesDisplayNameNull()
+    {
+        var line = ShopPurchaseParserTests.BuyLine
+            .Replace("crlf_consumable_healing_01", "zzz_unit_test_unknown_token_ptx")
+            .Replace("7d50411f-088c-4c99-b85a-a6eaf95504c3", "00000000-0000-0000-0000-000000000000");
+        var t = Tracker(out _);
+
+        Feed(t, line);
+
+        var p = Assert.Single(t.Purchases.Purchases);
+        Assert.Null(p.DisplayName);
+    }
+
+    // A replayed duplicate line must not re-run catalog resolution: Purchases.Apply rejects it
+    // before ApplyPurchase ever touches ItemNameCatalog, so the original DisplayName survives.
+    [Fact]
+    public void Ingest_ReplayedShopPurchase_DoesNotReResolveTheDisplayName()
+    {
+        var t = Tracker(out _);
+        Feed(t, ShopPurchaseParserTests.BuyLineQuantityTwo, ShopPurchaseParserTests.BuyLineQuantityTwo);
+
+        var p = Assert.Single(t.Purchases.Purchases);
+        Assert.Equal("'Chaos' III Missile", p.DisplayName);
+    }
 }

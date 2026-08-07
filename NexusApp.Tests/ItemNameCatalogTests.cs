@@ -1,4 +1,6 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using NexusApp.Services;
 using Xunit;
@@ -79,6 +81,22 @@ public class ItemNameCatalogTests
         Assert.Null(c.Resolve(null, "placeholder_item"));   // "PLACEHOLDER - ..." is not a name
     }
 
+    // Finding 4: "<-=MISSING=->" is CIG's own missing-entry marker, 18 rows in the shipped table
+    // (e.g. DebugGun), and rendered as an item name before this fix.
+    [Fact]
+    public void Resolve_RejectsTheMissingMarker()
+    {
+        var json = """{"guids":{},"names":{"DebugGun":"<-=MISSING=->"}}""";
+        Assert.Null(From(json).Resolve(null, "DebugGun"));
+    }
+
+    [Fact]
+    public void LoadEmbedded_RejectsTheMissingMarkerOnARealShippedRow()
+    {
+        var c = ItemNameCatalog.LoadEmbedded();
+        Assert.Null(c.Resolve(null, "DebugGun"));
+    }
+
     [Fact]
     public void Load_ReportsCount()
     {
@@ -97,5 +115,42 @@ public class ItemNameCatalogTests
         Assert.Equal("APX Fire Extinguisher", c.Resolve("1b6a6b76-f3fc-402c-a24a-204f2eeae6f7", null));
         Assert.Equal("Agure", c.Resolve("94e97499-375e-4c63-a2ea-c605a4d3f461", null));
         Assert.Equal("CorticoPen (Sterogen)", c.Resolve("354ec8a6-32eb-4747-8e75-03d2703edfd6", null));
+    }
+
+    // Finding 3: ResolvePurchaseName is the wallet's shared entry point (ProfitTracker.Ingest at
+    // apply time, and the WalletDisplay.PurchaseTitle fallback for a purchase whose name was never
+    // populated). Same live-captured item as LoadEmbedded_ResolvesTheLiveCapturedItems above.
+    [Fact]
+    public void ResolvePurchaseName_ResolvesAKnownGuid()
+    {
+        Assert.Equal("'Chaos' III Missile",
+            ItemNameCatalog.ResolvePurchaseName("d4408421-e939-4e34-9902-0644fa6934be", "MISL_S03_IR_VNCL_Chaos"));
+    }
+
+    // Finding 3(b): the coverage-report log must fire once per distinct token, not once per call
+    // (the MarketQueries.LogMissOnce / UnmatchedBlueprintLog per-run dedupe idiom), or a session
+    // full of purchases of one unrecognized item would flood nexus.log. A Guid-suffixed token keeps
+    // this test independent of whatever else has run in the shared, parallel test process.
+    [Fact]
+    public void ResolvePurchaseName_LogsUnresolvedOnceOnlyPerToken()
+    {
+        var token = $"ZzzUnitTestUnresolved_{Guid.NewGuid():N}";
+
+        Assert.Null(ItemNameCatalog.ResolvePurchaseName(null, token));
+        Assert.Null(ItemNameCatalog.ResolvePurchaseName(null, token));
+        Assert.Null(ItemNameCatalog.ResolvePurchaseName(null, token));
+
+        var logPath = Environment.GetEnvironmentVariable("NEXUS_LOG_PATH");
+        Assert.NotNull(logPath);
+        var occurrences = TestFiles.ReadSharedLines(logPath!)
+            .Count(l => l.Contains($"[WALLET] purchase name unresolved: {token}"));
+        Assert.Equal(1, occurrences);
+    }
+
+    [Fact]
+    public void ResolvePurchaseName_ReturnsNullWhenBothKeysMiss()
+    {
+        Assert.Null(ItemNameCatalog.ResolvePurchaseName(null, null));
+        Assert.Null(ItemNameCatalog.ResolvePurchaseName("", ""));
     }
 }
