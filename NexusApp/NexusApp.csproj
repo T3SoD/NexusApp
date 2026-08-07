@@ -67,6 +67,7 @@
     <None Remove="Data\location_aliases.json" />
     <EmbeddedResource Include="Data\location_aliases.json" />
     <EmbeddedResource Include="Data\commodity_names.json" />
+    <EmbeddedResource Include="Data\item_names.json" />
     <None Update="README.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>

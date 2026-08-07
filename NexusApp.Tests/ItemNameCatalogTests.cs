@@ -48,4 +48,15 @@ public class ItemNameCatalogTests
         Assert.Equal(2, From(Sample).Count);
         Assert.Equal(0, From("""{"names":{}}""").Count);
     }
+
+    // The shipped table, loaded the way the app loads it. Guards the csproj registration and
+    // the resource name, which a rename would silently break.
+    [Fact]
+    public void LoadEmbedded_ResolvesKnownItems()
+    {
+        var catalog = ItemNameCatalog.LoadEmbedded();
+        Assert.True(catalog.Count > 8000);
+        Assert.Equal("MedPen (Hemozal)", catalog.Resolve("crlf_consumable_healing_01"));
+        Assert.Equal("ParaMed Medical Device", catalog.Resolve("crlf_medgun_01"));
+    }
 }
