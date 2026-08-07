@@ -31,6 +31,20 @@ public class ItemNameCatalogTests
             From(Sample).Resolve("d4408421-e939-4e34-9902-0644fa6934be", "unknown_token"));
     }
 
+    // A known token alone cannot prove the GUID is checked first, only that the token was
+    // consulted and missed. This pins precedence under a real conflict: same item, both maps
+    // populated, different values, GUID must win.
+    [Fact]
+    public void Resolve_GuidWinsWhenBothMapsKnowTheItem()
+    {
+        var json = """
+            {"guids":{"d4408421-e939-4e34-9902-0644fa6934be":"Name From Guid"},
+             "names":{"MISL_S03_IR_VNCL_Chaos":"Name From Token"}}
+            """;
+        Assert.Equal("Name From Guid",
+            From(json).Resolve("d4408421-e939-4e34-9902-0644fa6934be", "MISL_S03_IR_VNCL_Chaos"));
+    }
+
     [Fact]
     public void Resolve_FallsBackToTheTokenWhenTheGuidMisses()
     {
