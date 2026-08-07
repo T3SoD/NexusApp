@@ -147,6 +147,14 @@ public sealed class WalletTracker : IDisposable
             Logger.Info($"[WALLET] reconcile recorded {(unexplained > 0 ? "income" : "purchase")} {unexplained}");
             if (label is not null) Logger.Info($"[WALLET] income attributed: \"{label}\"");
             if (unexplained < 0) Logger.Info($"[WALLET] residual after purchases {unexplained}");
+
+            // An over-counted purchase (a refusal we never saw, a phantom buy line) can push
+            // unexplained positive even though the money never actually came in, and land in the
+            // income branch above with a real contract name attached. This does not change that
+            // behaviour; it only makes the failure mode visible in the log.
+            var purchaseDelta = _profit.Purchases.SettledDeltaBetween(ch.AnchorUtc, captureUtc);
+            if (unexplained > 0 && purchaseDelta != 0)
+                Logger.Info($"[WALLET] positive residual with purchases in window {unexplained}");
         }
         else
         {

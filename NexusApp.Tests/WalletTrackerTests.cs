@@ -417,6 +417,22 @@ public class WalletTrackerTests : IDisposable
         Assert.Null(entry.Label);
     }
 
+    // The over-count failure mode this diff introduces: if the purchase ledger ever subtracts
+    // more than actually left the wallet, unexplained goes positive and lands in the income
+    // branch. This pins today's actual behaviour (a positive row); it is not an endorsement, and
+    // whether a positive residual should still take a contract name is a separate open question.
+    [Fact]
+    public void AnOverCountedPurchaseSurfacesAsAPositiveRow()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(1_000_000, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(PurchaseLine(U(13, 5, 0), "MISL_S03_IR_VNCL_Chaos", 1_470));
+        rig.Wallet.OnBalanceCaptured(999_500, U(13, 10, 0), U(13, 10, 1));   // only 500 actually left
+
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(970, entry.Amount);
+    }
+
     [Fact]
     public void ARefusedPurchaseDoesNotSpendMoney()
     {
