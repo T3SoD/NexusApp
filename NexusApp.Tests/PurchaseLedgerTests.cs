@@ -127,14 +127,34 @@ public class PurchaseLedgerTests
     public void PendingIsNeitherSuccessNorFailureAndLeavesTheRowSettled()
     {
         var led = new PurchaseLedger();
-        led.Apply(Buy(U(13, 0, 0), 500));
-        Assert.True(led.ApplyResult(Result(U(13, 0, 1), "WaitingForPendingResult")));
+        led.Apply(Buy(U(13, 0, 0), 500, guid: "a"));
+        led.Apply(Buy(U(13, 0, 1), 300, guid: "b"));
+        Assert.True(led.ApplyResult(Result(U(13, 0, 2), "WaitingForPendingResult")));
         Assert.Null(led.Purchases[0].Refused);
-        Assert.Equal(-500, led.SettledDeltaBetween(U(12, 0, 0), U(14, 0, 0)));
+        Assert.Equal(-800, led.SettledDeltaBetween(U(12, 0, 0), U(14, 0, 0)));
 
-        // A real failure arriving later still refuses it.
-        Assert.True(led.ApplyResult(Result(U(13, 0, 2), "InsufficientFunds")));
+        // A real failure arriving later still refuses the SAME row, not the next one:
+        // WaitingForPendingResult must not have marked it answered.
+        Assert.True(led.ApplyResult(Result(U(13, 0, 3), "InsufficientFunds")));
         Assert.Equal("InsufficientFunds", led.Purchases[0].Refused);
+        Assert.Null(led.Purchases[1].Refused);
+    }
+
+    [Fact]
+    public void ASuccessAnsweredRowIsNeverReMatchedByALaterResult()
+    {
+        // Refused == null alone cannot tell "never answered" apart from "answered Success".
+        // Without a separate answered marker, the InsufficientFunds below would re-find row a
+        // (still the oldest Refused-null row) instead of the row it actually belongs to, b.
+        var led = new PurchaseLedger();
+        led.Apply(Buy(U(13, 0, 0), 100, guid: "a"));
+        led.Apply(Buy(U(13, 0, 1), 200, guid: "b"));
+        Assert.True(led.ApplyResult(Result(U(13, 0, 2), "Success")));            // answers a
+        Assert.True(led.ApplyResult(Result(U(13, 0, 3), "InsufficientFunds")));  // answers b
+
+        Assert.Null(led.Purchases[0].Refused);                        // a: Success, stays settled
+        Assert.Equal("InsufficientFunds", led.Purchases[1].Refused);  // b: the real failure
+        Assert.Equal(-100, led.SettledDeltaBetween(U(12, 0, 0), U(14, 0, 0)));
     }
 
     [Fact]

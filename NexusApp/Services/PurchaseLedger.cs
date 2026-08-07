@@ -15,6 +15,7 @@ public sealed class PurchaseLedger
     private readonly List<ShopPurchase> _purchases = new();
     private readonly HashSet<string> _keys = new();
     private readonly HashSet<string> _resultKeys = new();
+    private readonly HashSet<string> _answered = new();
 
     public IReadOnlyList<ShopPurchase> Purchases => _purchases;   // time-ordered (log order)
 
@@ -27,10 +28,16 @@ public sealed class PurchaseLedger
     }
 
     // A result routes by shopId plus kioskId (the response carries no item or price) to the
-    // OLDEST still-unrefused request of the same direction inside the window. Success confirms
-    // and changes nothing; anything else refuses the row, which then stops counting. A request
-    // that never receives a result stays SETTLED: 754 of 755 requests in the corpus do receive a
-    // Success, so a missing one is a response we did not see, not a failed purchase.
+    // OLDEST still-unrefused, still-UNANSWERED request of the same direction inside the window.
+    // Success confirms and changes nothing; anything else refuses the row, which then stops
+    // counting. A request that never receives a result stays SETTLED: 754 of 755 requests in the
+    // corpus do receive a Success, so a missing one is a response we did not see, not a failed
+    // purchase.
+    //
+    // _answered exists because Refused == null alone cannot tell "never answered" apart from
+    // "answered Success": both leave Refused null. Without a separate answered marker, a later
+    // result at the same kiosk re-scans, finds the already-Success'd row as the oldest still-
+    // unrefused candidate, and wrongly refuses it instead of the row it actually belongs to.
     public bool ApplyResult(ShopFlowResult r)
     {
         if (!_resultKeys.Add(ResultKey(r))) return false;   // replayed line, already handled
@@ -38,18 +45,23 @@ public sealed class PurchaseLedger
         for (var i = 0; i < _purchases.Count; i++)
         {
             var p = _purchases[i];
-            if (p.Kind != r.Kind || p.Refused is not null) continue;
+            if (p.Kind != r.Kind || p.Refused is not null || _answered.Contains(p.Key)) continue;
             if (!string.Equals(p.ShopId, r.ShopId, StringComparison.Ordinal)) continue;
             if (!string.Equals(p.KioskId, r.KioskId, StringComparison.Ordinal)) continue;
             var age = r.TimestampUtc - p.TimestampUtc;
             if (age < TimeSpan.Zero || age > SettleWindow) continue;
 
-            // Success confirms. WaitingForPendingResult is neither success nor failure: consume
-            // it and leave the row settled, so a later real result can still refuse it and an
-            // expiry falls to the settled default. Only an explicit failure refuses.
-            if (r.Result is "Success" or "WaitingForPendingResult") return true;
-            p.Refused = r.Result;
-            Logger.Info($"[LEDGER] shop {p.Kind} refused result {r.Result}");
+            // WaitingForPendingResult is neither success nor failure: consume it, but do NOT mark
+            // the row answered, so a later real result can still resolve this same row and an
+            // expiry falls to the settled default. Success and an explicit failure both settle
+            // the question of THIS row and must never be matched again.
+            if (r.Result == "WaitingForPendingResult") return true;
+            _answered.Add(p.Key);
+            if (r.Result != "Success")
+            {
+                p.Refused = r.Result;
+                Logger.Info($"[LEDGER] shop {p.Kind} refused result {r.Result}");
+            }
             return true;
         }
 
@@ -77,6 +89,7 @@ public sealed class PurchaseLedger
         _purchases.Clear();
         _keys.Clear();
         _resultKeys.Clear();
+        _answered.Clear();
         Logger.Info("[LEDGER] shop session reset");
     }
 
