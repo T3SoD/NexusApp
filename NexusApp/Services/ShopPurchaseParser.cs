@@ -4,8 +4,11 @@ using NexusApp.Models;
 
 namespace NexusApp.Services;
 
-// The kiosk's answer to a request: Success settles it, anything else refuses it. Routing is by
-// shopId plus kioskId because the response carries no item or price.
+// The kiosk's answer to a request: Success settles it, anything else refuses it. Neither shape
+// carries an item or a price, so routing never uses them. ShopUI routes by shopId plus kioskId.
+// Shopping carries NEITHER, so ShopId and KioskId are empty strings there and Kind is always Buy;
+// PurchaseLedger.ApplyResult routes it by provider and arrival order instead. Never compare those
+// ids without first checking the provider, or every Shopping purchase stops being settleable.
 public sealed record ShopFlowResult(
     DateTime TimestampUtc, string Result, string ShopId, string KioskId,
     ShopTransactionKind Kind, ShopProvider Provider);

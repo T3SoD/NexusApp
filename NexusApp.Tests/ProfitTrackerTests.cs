@@ -412,4 +412,38 @@ public class ProfitTrackerTests : IDisposable
         var p = Assert.Single(t.Purchases.Purchases);
         Assert.Equal("'Chaos' III Missile", p.DisplayName);
     }
+
+    // The captured ShoppingProvider pair is from a 2026-04-12 session; this file's fixture day is
+    // 2026-07-04. Restamping preserves the real 0.541 s request-to-response gap.
+    private static string OnFixtureDay(string line) =>
+        line.Replace("2026-04-12T03:02:4", "2026-07-04T13:02:4")
+            .Replace("2026-08-08T12:06:02.424Z", "2026-07-04T13:06:02.424Z");
+
+    [Fact]
+    public void ShoppingProviderBuyAndItsResponseBecomeOneSettledRow()
+    {
+        var t = Tracker(out _);
+        Feed(t, OpeningLine,
+             OnFixtureDay(ShopPurchaseParserTests.ShoppingBuyLine),
+             OnFixtureDay(ShopPurchaseParserTests.ShoppingResponseLine));
+
+        var row = Assert.Single(t.Purchases.Purchases);
+        Assert.Equal("Drink_bottle_vestal_01_a", row.ItemToken);
+        Assert.Equal(4L, row.Price);
+        Assert.Equal(ShopProvider.Shopping, row.Provider);
+        Assert.Null(row.Refused);
+    }
+
+    [Fact]
+    public void ShoppingProviderBuyNeverTouchesTradingProfit()
+    {
+        var t = Tracker(out _);
+        Feed(t, OpeningLine, OnFixtureDay(ShopPurchaseParserTests.ShoppingBuyShipLine));
+
+        // A 342,720 aUEC ship is not a trade. SessionLedger must not move.
+        Assert.Equal(0L, t.Ledger.Bought);
+        Assert.Equal(0L, t.Ledger.Sold);
+        Assert.Equal(0L, t.Ledger.Net);
+        Assert.Single(t.Purchases.Purchases);
+    }
 }

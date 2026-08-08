@@ -587,6 +587,54 @@ public class WalletTrackerTests : IDisposable
         Assert.Null(entries[1].Label);
     }
 
+    // Restampers for the shop fixtures, so both providers can be placed inside one wallet window.
+    private static string ShopUiBuyAt(string hhmmss, long price) =>
+        ShopPurchaseParserTests.BuyLine
+            .Replace("2026-08-06T20:50:55.423Z", $"2026-07-04T{hhmmss}.000Z")
+            .Replace("client_price[265.000000]", $"client_price[{price}.000000]");
+
+    private static string ShoppingBuyAt(string hhmmss, long price) =>
+        ShopPurchaseParserTests.ShoppingBuyShipLine
+            .Replace("2026-08-08T12:06:02.424Z", $"2026-07-04T{hhmmss}.000Z")
+            .Replace("client_price[342720.000000]", $"client_price[{price}.000000]");
+
+    [Fact]
+    public void ReconcileCountsBothShopProviders()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(5_775_175, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(
+            ShopUiBuyAt("13:05:00", 396),
+            ShopUiBuyAt("13:06:00", 234),
+            ShopUiBuyAt("13:07:00", 4_821),
+            ShoppingBuyAt("13:10:00", 342_720));
+
+        rig.Wallet.OnBalanceCaptured(5_427_004, U(13, 20, 0), U(13, 20, 1));
+
+        // The live 2026-08-08 capture, to the aUEC: 5,775,175 - (396 + 234 + 4,821) - 342,720
+        // is exactly 5,427,004, so nothing is left unexplained and no row may be written.
+        Assert.Empty(LoadUntracked(rig));
+        Assert.Equal(5_427_004, rig.Wallet.Estimate);
+    }
+
+    [Fact]
+    public void ReconcileLeavesExactlyTheMissingShoppingPurchase()
+    {
+        using var rig = NewRig();
+        rig.Wallet.OnBalanceCaptured(5_775_175, U(13, 0, 0), U(13, 0, 1));
+        rig.FeedProfit(
+            ShopUiBuyAt("13:05:00", 396),
+            ShopUiBuyAt("13:06:00", 234),
+            ShopUiBuyAt("13:07:00", 4_821));
+
+        rig.Wallet.OnBalanceCaptured(5_427_004, U(13, 20, 0), U(13, 20, 1));
+
+        // Withhold the ship and the ledger explains only 5,451. The residual must carry the rest
+        // rather than absorb it. This is also the pre-feature behaviour, which is the point.
+        var entry = Assert.Single(LoadUntracked(rig));
+        Assert.Equal(-342_720, entry.Amount);
+    }
+
     private static IReadOnlyList<NexusApp.Models.UntrackedEntry> LoadUntracked(Rig rig)
     {
         // Read through the store so assertions see exactly what persists (flushes are immediate
