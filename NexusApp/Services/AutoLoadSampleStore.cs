@@ -42,6 +42,6 @@ public sealed class AutoLoadSampleStore
             if (!File.Exists(_path)) return new();
             return JsonSerializer.Deserialize<List<AutoLoadSample>>(File.ReadAllText(_path)) ?? new();
         }
-        catch { return new(); }
+        catch (Exception ex) { Logger.Info($"[CARGO] auto-load sample read failed: {ex.Message}"); return new(); }
     }
 }

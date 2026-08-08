@@ -1,3 +1,4 @@
+using System.Globalization;
 using NexusApp.Models;
 using NexusApp.Services;
 using Xunit;
@@ -109,5 +110,32 @@ public class AutoLoadTrackerTests : IDisposable
         _tracker.Apply(Tx(auto: true));
         _tracker.Discard(_tracker.Entries[0]);
         Assert.Equal(2, fired);
+    }
+
+    // End-to-end wiring check: a real Game.log buy line goes through ProfitTracker.Ingest, which
+    // raises TransactionParsed, which this tracker (built with the DEFAULT clock, no fake _now)
+    // consumes via its own Apply subscription. Every other test in this file calls Apply directly
+    // and never exercises that event path. The fixture line's own stamp is replaced with a live
+    // DateTime.UtcNow stamp so it lands inside FreshWindow against the tracker's real clock.
+    [Fact]
+    public void ProfitTrackerIngest_RealBuyLine_OpensEntryViaEventPath()
+    {
+        var histPath = Path.Combine(Path.GetTempPath(), $"al_hist2_{Guid.NewGuid():N}.json");
+        using var profit = new ProfitTracker(historyPath: histPath);
+        using var tracker2 = new AutoLoadTracker(profit, _store);
+
+        var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        var raw = CommodityLogFixtures.BuyLine.Replace("2026-07-04T13:35:36.565Z", stamp);
+
+        profit.Ingest(new GameLogEntry { Raw = raw, Category = LogCategory.Other });
+
+        var e = Assert.Single(tracker2.Entries);
+        Assert.Equal(TransactionKind.Buy, e.Kind);
+        Assert.Equal(128m, e.Scu);   // 12800 cSCU / 100
+        var box = Assert.Single(e.Boxes);
+        Assert.Equal(32m, box.BoxSize);
+        Assert.Equal(4, box.UnitAmount);
+
+        try { File.Delete(histPath); } catch { }
     }
 }
