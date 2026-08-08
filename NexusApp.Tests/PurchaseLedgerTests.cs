@@ -187,4 +187,85 @@ public class PurchaseLedgerTests
         Assert.Equal(0, led.SettledDeltaBetween(U(12, 0, 0), U(14, 0, 0)));
         Assert.True(led.Apply(Buy(U(13, 0, 0), 100)));   // key set cleared too
     }
+
+    [Fact]
+    public void ApplyResult_DoesNotLetAShoppingResponseAnswerAShopUiRequest()
+    {
+        var ledger = new PurchaseLedger();
+        var t = new DateTime(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+        var shopUi = new ShopPurchase
+        {
+            TimestampUtc = t, Kind = ShopTransactionKind.Buy, Provider = ShopProvider.ShopUI,
+            Price = 500, Quantity = 1, ItemGuid = "guid-a", ShopId = "111", KioskId = "222",
+        };
+        ledger.Apply(shopUi);
+
+        // Carries no ids, as the real line does. It must find no candidate and be dropped.
+        var stray = new ShopFlowResult(t.AddSeconds(1), "Refused", "", "",
+            ShopTransactionKind.Buy, ShopProvider.Shopping);
+        Assert.False(ledger.ApplyResult(stray));
+        Assert.Null(shopUi.Refused);
+    }
+
+    [Fact]
+    public void ApplyResult_SettlesTheOldestUnansweredShoppingRequest()
+    {
+        var ledger = new PurchaseLedger();
+        var t = new DateTime(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+        var first = new ShopPurchase
+        {
+            TimestampUtc = t, Kind = ShopTransactionKind.Buy, Provider = ShopProvider.Shopping,
+            Price = 4, Quantity = 1, ItemGuid = "guid-first", ShopId = "9", KioskId = "0",
+        };
+        var second = new ShopPurchase
+        {
+            TimestampUtc = t.AddSeconds(1), Kind = ShopTransactionKind.Buy,
+            Provider = ShopProvider.Shopping,
+            Price = 9, Quantity = 1, ItemGuid = "guid-second", ShopId = "9", KioskId = "0",
+        };
+        ledger.Apply(first);
+        ledger.Apply(second);
+
+        // Refusing the oldest must leave the newer one alone, even though both share kioskId[0].
+        Assert.True(ledger.ApplyResult(new ShopFlowResult(
+            t.AddSeconds(2), "Refused", "", "", ShopTransactionKind.Buy, ShopProvider.Shopping)));
+        Assert.Equal("Refused", first.Refused);
+        Assert.Null(second.Refused);
+    }
+
+    [Fact]
+    public void ApplyResult_PairsAcrossTheMeasuredMaximumGap()
+    {
+        var ledger = new PurchaseLedger();
+        var t = new DateTime(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+        var buy = new ShopPurchase
+        {
+            TimestampUtc = t, Kind = ShopTransactionKind.Buy, Provider = ShopProvider.Shopping,
+            Price = 4, Quantity = 1, ItemGuid = "guid-gap", ShopId = "9", KioskId = "0",
+        };
+        ledger.Apply(buy);
+
+        // 5.26s is the widest request-to-response gap measured across 402 corpus logs. The old
+        // 5 second window clipped it.
+        Assert.True(ledger.ApplyResult(new ShopFlowResult(
+            t.AddSeconds(5.26), "Refused", "", "", ShopTransactionKind.Buy,
+            ShopProvider.Shopping)));
+        Assert.Equal("Refused", buy.Refused);
+    }
+
+    [Fact]
+    public void Apply_RejectsAPurchaseThatIsNotInAuec()
+    {
+        var ledger = new PurchaseLedger();
+        var t = new DateTime(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+        var foreign = new ShopPurchase
+        {
+            TimestampUtc = t, Kind = ShopTransactionKind.Buy, Provider = ShopProvider.Shopping,
+            Price = 100, Quantity = 1, ItemGuid = "guid-rec", ShopId = "9", KioskId = "0",
+            Currency = "REC",
+        };
+        Assert.False(ledger.Apply(foreign));
+        Assert.Empty(ledger.Purchases);
+        Assert.Equal(0, ledger.SettledDeltaBetween(t.AddSeconds(-1), t.AddSeconds(1)));
+    }
 }

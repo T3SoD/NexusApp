@@ -8,9 +8,11 @@ namespace NexusApp.Services;
 // trading figures, and a shop purchase is not a trade. No file I/O, no WPF.
 public sealed class PurchaseLedger
 {
-    // Observed request-to-response pairings run about 0.7 to 1.2 seconds; 5 seconds matches
-    // SessionLedger.VoidWindow and stays unambiguous because responses arrive in request order.
-    public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(5);
+    // Observed request-to-response pairings run 0.37s to 5.26s across 402 corpus logs, median
+    // 0.71s. 8 seconds clears the measured maximum with margin. Widening cannot reorder anything:
+    // _answered already makes each response answer exactly one row in sequence, and
+    // ShoppingProvider requests never overlap at all.
+    public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(8);
 
     private readonly List<ShopPurchase> _purchases = new();
     private readonly HashSet<string> _keys = new();
@@ -21,18 +23,27 @@ public sealed class PurchaseLedger
 
     public bool Apply(ShopPurchase p)
     {
+        // Money spent in another currency never left the aUEC wallet, so subtracting it would
+        // corrupt the reconciliation. Every one of the 73 ShoppingProvider events in the corpus
+        // is UEC; this guards a currency the game has not shipped yet.
+        if (!string.Equals(p.Currency, "UEC", StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.Info($"[LEDGER] shop buy ignored, currency {p.Currency} is not aUEC");
+            return false;
+        }
         if (!_keys.Add(p.Key)) return false;   // replay dedupe
         _purchases.Add(p);
         Logger.Info($"[LEDGER] shop {p.Kind} {p.Price} x{p.Quantity} at {p.ShopName}");
         return true;
     }
 
-    // A result routes by shopId plus kioskId (the response carries no item or price) to the
-    // OLDEST still-unrefused, still-UNANSWERED request of the same direction inside the window.
-    // Success confirms and changes nothing; anything else refuses the row, which then stops
-    // counting. A request that never receives a result stays SETTLED: 754 of 755 requests in the
-    // corpus do receive a Success, so a missing one is a response we did not see, not a failed
-    // purchase.
+    // A result routes to the OLDEST still-unrefused, still-UNANSWERED request of the same
+    // provider and direction inside the window. For ShopUI it also routes by shopId plus kioskId
+    // (the response carries no item or price); ShoppingProvider responses carry no ids at all, so
+    // for that provider arrival order alone decides. Success confirms and changes nothing;
+    // anything else refuses the row, which then stops counting. A request that never receives a
+    // result stays SETTLED: 754 of 755 requests in the corpus do receive a Success, so a missing
+    // one is a response we did not see, not a failed purchase.
     //
     // _answered exists because Refused == null alone cannot tell "never answered" apart from
     // "answered Success": both leave Refused null. Without a separate answered marker, a later
@@ -45,9 +56,16 @@ public sealed class PurchaseLedger
         for (var i = 0; i < _purchases.Count; i++)
         {
             var p = _purchases[i];
-            if (p.Kind != r.Kind || p.Refused is not null || _answered.Contains(p.Key)) continue;
-            if (!string.Equals(p.ShopId, r.ShopId, StringComparison.Ordinal)) continue;
-            if (!string.Equals(p.KioskId, r.KioskId, StringComparison.Ordinal)) continue;
+            if (p.Kind != r.Kind || p.Provider != r.Provider) continue;
+            if (p.Refused is not null || _answered.Contains(p.Key)) continue;
+            // ShoppingProvider responses carry no shopId and no kioskId, so they route by
+            // provider and arrival order alone. That is exact for this provider: across 402
+            // corpus logs no request ever began while another was still in flight.
+            if (r.Provider == ShopProvider.ShopUI)
+            {
+                if (!string.Equals(p.ShopId, r.ShopId, StringComparison.Ordinal)) continue;
+                if (!string.Equals(p.KioskId, r.KioskId, StringComparison.Ordinal)) continue;
+            }
             var age = r.TimestampUtc - p.TimestampUtc;
             if (age < TimeSpan.Zero || age > SettleWindow) continue;
 
@@ -96,5 +114,5 @@ public sealed class PurchaseLedger
     }
 
     private static string ResultKey(ShopFlowResult r) =>
-        $"{r.TimestampUtc:O}|{r.Kind}|{r.Result}|{r.ShopId}|{r.KioskId}";
+        $"{r.TimestampUtc:O}|{r.Provider}|{r.Kind}|{r.Result}|{r.ShopId}|{r.KioskId}";
 }
