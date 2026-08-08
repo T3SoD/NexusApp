@@ -27,6 +27,11 @@ public static class ShopPurchaseParser
     private static readonly Regex Buy =
         new(Head + @"SendShopBuyRequest> Sending SShopBuyRequest - " + Body, RegexOptions.Compiled);
 
+    // DORMANT MECHANIC, kept deliberately. Star Citizen does not let a player sell items back to a
+    // vendor; only commodity trading sells. This shape was last observed in March 2025 (builds
+    // 9508788 and 9593160, 15 lines across 3 sessions) and has not appeared in the 17 months since.
+    // The parser is retained so a restored mechanic works without new code, NOT because selling is
+    // a thing the game currently does. Do not cite its existence as evidence that it is.
     private static readonly Regex Sell =
         new(Head + @"SendShopSellRequest> Sending SShopSellRequest - " + Body, RegexOptions.Compiled);
 

@@ -489,6 +489,9 @@ public class WalletTrackerTests : IDisposable
         Assert.Equal(80_000, entry.Amount);
     }
 
+    // DORMANT MECHANIC, see ShopPurchaseParser.Sell. Vendor item selling was last observed in
+    // March 2025. This pins the sign of the arithmetic so a restored mechanic works, and is not
+    // evidence that the game currently allows it.
     [Fact]
     public void AShopSellCountsAsIncome()
     {

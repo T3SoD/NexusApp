@@ -70,6 +70,8 @@ public sealed class PurchaseLedger
     }
 
     /// <summary>Signed aUEC for settled rows with afterUtc &lt; t &lt;= endUtc: buys out, sells in.
+    /// In practice every row is a buy: vendor item selling is a dormant mechanic, last observed
+    /// March 2025 (see ShopPurchaseParser.Sell). The sell arm is kept for a restored mechanic.
     /// Mirrors the wallet's own window, which opens strictly after the anchor.</summary>
     public long SettledDeltaBetween(DateTime afterUtc, DateTime endUtc)
     {

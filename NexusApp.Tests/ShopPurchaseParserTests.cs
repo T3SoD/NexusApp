@@ -92,6 +92,9 @@ public class ShopPurchaseParserTests
         Assert.Equal("MISL_S03_IR_VNCL_Chaos", buy.ItemToken);
     }
 
+    // DORMANT MECHANIC. The game does not let a player sell items back to a vendor; only commodity
+    // trading sells. This shape was last seen in March 2025 and is kept so a restored mechanic
+    // needs no new code. The test pins the parse, not a claim that the game still does this.
     [Fact]
     public void ParseSell_ReadsTheSellShapeAndTheOldTeamTag()
     {
