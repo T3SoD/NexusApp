@@ -165,4 +165,133 @@ public class ShopPurchaseParserTests
         Assert.Equal(a.Key, b.Key);     // replay of the same line
         Assert.NotEqual(a.Key, c.Key);
     }
+
+    // ShoppingProvider: the same payload label and field order as the ShopUI buy, plus
+    // currencyType. kioskId is 0 on 59 of 73 corpus events. Captured 2026-04-12.
+    public const string ShoppingBuyLine =
+        "<2026-04-12T03:02:40.870Z> [Notice] " +
+        "<CEntityComponentShoppingProvider::SendStandardItemBuyRequest> " +
+        "Sending SShopBuyRequest - playerId[REDACTED] shopId[9829278768264] " +
+        "shopName[SCShop_NoodleBar_A_Food_RestStop] kioskId[0] client_price[4.000000] " +
+        "itemClassGUID[3d4210ba-aaa9-4154-b3a9-2b917d832257] itemName[Drink_bottle_vestal_01_a] " +
+        "quantity[1] currencyType[UEC] [Team_CoreGameplayFeatures][Shops][UI]";
+
+    // A ship through the same provider, captured live 2026-08-08. Proven against the wallet to
+    // the aUEC: client_price[342720] was the exact unexplained remainder of that capture.
+    public const string ShoppingBuyShipLine =
+        "<2026-08-08T12:06:02.424Z> [Notice] " +
+        "<CEntityComponentShoppingProvider::SendStandardItemBuyRequest> " +
+        "Sending SShopBuyRequest - playerId[REDACTED] shopId[751893855885] " +
+        "shopName[SCShop_PyroRestStop_Dealership_Rundown] kioskId[0] client_price[342720.000000] " +
+        "itemClassGUID[37659ff0-a803-4a4f-97ff-ad59822061ed] itemName[DRAK_Dragonfly] " +
+        "quantity[1] currencyType[UEC] [Team_CoreGameplayFeatures][Shops][UI]";
+
+    // Hypothetical. No non-UEC purchase exists in the corpus; the guard is for a future currency.
+    // static readonly, not const: string.Replace is not a compile-time constant expression.
+    public static readonly string ShoppingBuyForeignCurrencyLine =
+        ShoppingBuyLine.Replace("currencyType[UEC]", "currencyType[REC]");
+
+    // The ShoppingProvider answer is a DIFFERENT shape: the label reads "Shop Flow Response" and
+    // it carries no shopId, no kioskId, and no type.
+    public const string ShoppingResponseLine =
+        "<2026-04-12T03:02:41.411Z> [Notice] " +
+        "<CEntityComponentShoppingProvider::RmShopFlowResponse> " +
+        "Shop Flow Response - playerId[REDACTED] result[Success] " +
+        "[Team_CoreGameplayFeatures][Shops][UI]";
+
+    [Fact]
+    public void ParseBuy_ReadsTheShoppingProviderShape()
+    {
+        var buy = ShopPurchaseParser.ParseBuy(ShoppingBuyLine);
+        Assert.NotNull(buy);
+        Assert.Equal(ShopProvider.Shopping, buy!.Provider);
+        Assert.Equal(ShopTransactionKind.Buy, buy.Kind);
+        Assert.Equal(4L, buy.Price);
+        Assert.Equal(1, buy.Quantity);
+        Assert.Equal("Drink_bottle_vestal_01_a", buy.ItemToken);
+        Assert.Equal("3d4210ba-aaa9-4154-b3a9-2b917d832257", buy.ItemGuid);
+        Assert.Equal("SCShop_NoodleBar_A_Food_RestStop", buy.ShopName);
+        Assert.Equal("0", buy.KioskId);          // kioskId[0] is the common case here
+        Assert.Equal("UEC", buy.Currency);
+        Assert.Null(buy.Refused);
+    }
+
+    [Fact]
+    public void ParseBuy_ReadsAShipThroughTheShoppingProvider()
+    {
+        var buy = ShopPurchaseParser.ParseBuy(ShoppingBuyShipLine);
+        Assert.NotNull(buy);
+        Assert.Equal(342720L, buy!.Price);
+        Assert.Equal("DRAK_Dragonfly", buy.ItemToken);
+        Assert.Equal(ShopProvider.Shopping, buy.Provider);
+    }
+
+    [Fact]
+    public void ParseBuy_KeepsTheShopUiProviderOnItsOwnMarker()
+    {
+        var buy = ShopPurchaseParser.ParseBuy(BuyLine);
+        Assert.NotNull(buy);
+        Assert.Equal(ShopProvider.ShopUI, buy!.Provider);
+        Assert.Equal("UEC", buy.Currency);   // the field is absent on that provider; aUEC asserted
+    }
+
+    [Fact]
+    public void ParseBuy_CapturesAForeignCurrencyRatherThanFailingToMatch()
+    {
+        var buy = ShopPurchaseParser.ParseBuy(ShoppingBuyForeignCurrencyLine);
+        Assert.NotNull(buy);
+        Assert.Equal("REC", buy!.Currency);   // PurchaseLedger.Apply is what rejects it
+    }
+
+    [Fact]
+    public void ParseFlowResult_ReadsTheShoppingProviderResponse()
+    {
+        var r = ShopPurchaseParser.ParseFlowResult(ShoppingResponseLine);
+        Assert.NotNull(r);
+        Assert.Equal("Success", r!.Result);
+        Assert.Equal(ShopProvider.Shopping, r.Provider);
+        Assert.Equal(ShopTransactionKind.Buy, r.Kind);   // the only direction this provider has
+        Assert.Equal("", r.ShopId);                      // absent from the line, never compared
+        Assert.Equal("", r.KioskId);
+    }
+
+    [Fact]
+    public void ParseFlowResult_KeepsTheShopUiProviderOnItsOwnMarker()
+    {
+        var r = ShopPurchaseParser.ParseFlowResult(SuccessResponseLine);
+        Assert.Equal(ShopProvider.ShopUI, r!.Provider);
+    }
+
+    [Fact]
+    public void Parsers_DoNotCrossMatchBetweenProviders()
+    {
+        Assert.Null(ShopPurchaseParser.ParseBuy(ShoppingResponseLine));
+        Assert.Null(ShopPurchaseParser.ParseFlowResult(ShoppingBuyLine));
+        Assert.Null(ShopPurchaseParser.ParseSell(ShoppingBuyLine));
+    }
+
+    [Fact]
+    public void LooksShopRelevant_AcceptsBothProvidersAndRejectsCommodity()
+    {
+        Assert.True(ShopPurchaseParser.LooksShopRelevant(ShoppingBuyLine));
+        Assert.True(ShopPurchaseParser.LooksShopRelevant(ShoppingResponseLine));
+        Assert.True(ShopPurchaseParser.LooksShopRelevant(BuyLine));
+        Assert.False(ShopPurchaseParser.LooksShopRelevant(CommodityBuyLine));
+    }
+
+    [Fact]
+    public void Key_DistinguishesTheTwoProviders()
+    {
+        var shopping = ShopPurchaseParser.ParseBuy(ShoppingBuyLine)!;
+        var same = new ShopPurchase
+        {
+            TimestampUtc = shopping.TimestampUtc,
+            Kind = shopping.Kind,
+            Price = shopping.Price,
+            KioskId = shopping.KioskId,
+            ItemGuid = shopping.ItemGuid,
+            Provider = ShopProvider.ShopUI,
+        };
+        Assert.NotEqual(shopping.Key, same.Key);
+    }
 }

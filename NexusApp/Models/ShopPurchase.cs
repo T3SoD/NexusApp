@@ -2,6 +2,10 @@ using System.Globalization;
 
 namespace NexusApp.Models;
 
+// Which Game.log provider emitted this purchase. The two shapes are near identical but their
+// settle responses are not, so a response must never answer the other provider's request.
+public enum ShopProvider { ShopUI, Shopping }
+
 public enum ShopTransactionKind { Buy, Sell }
 
 // One shop kiosk transaction read off a Game.log line. Price is the client's own figure
@@ -18,6 +22,13 @@ public sealed class ShopPurchase
     public string ShopName { get; init; } = "";
     public string ShopId { get; init; } = "";
     public string KioskId { get; init; } = "";
+    public ShopProvider Provider { get; init; }
+
+    // ShoppingProvider states currencyType outright; ShopUIProvider prints no such field and
+    // every one of its purchases has moved the aUEC balance, so UEC is asserted there.
+    // PurchaseLedger.Apply refuses anything else: money in another currency never left the
+    // aUEC wallet, so subtracting it would corrupt the reconciliation.
+    public string Currency { get; init; } = "UEC";
 
     // null = settled; else the result code that refused it. Settled is the DEFAULT, including on
     // expiry: 754 of 755 requests in the corpus receive a Success, so a missing response is far
@@ -34,5 +45,5 @@ public sealed class ShopPurchase
     // Replay dedupe, the CommodityTransaction.Key idiom. Two different items cannot share a
     // kiosk inside one millisecond.
     public string Key => string.Create(CultureInfo.InvariantCulture,
-        $"{TimestampUtc:O}|{Kind}|{Price}|{KioskId}|{ItemGuid}");
+        $"{TimestampUtc:O}|{Provider}|{Kind}|{Price}|{KioskId}|{ItemGuid}");
 }

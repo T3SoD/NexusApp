@@ -32,7 +32,7 @@ public class PurchaseLedgerTests
     private static ShopFlowResult Result(DateTime utc, string result, string kiosk = "K1",
                                          string shop = "S1",
                                          ShopTransactionKind kind = ShopTransactionKind.Buy) =>
-        new(utc, result, shop, kiosk, kind);
+        new(utc, result, shop, kiosk, kind, ShopProvider.ShopUI);
 
     [Fact]
     public void Apply_AddsAndDedupesOnReplay()
