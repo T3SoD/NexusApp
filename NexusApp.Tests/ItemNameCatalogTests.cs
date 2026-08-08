@@ -153,4 +153,17 @@ public class ItemNameCatalogTests
         Assert.Null(ItemNameCatalog.ResolvePurchaseName(null, null));
         Assert.Null(ItemNameCatalog.ResolvePurchaseName("", ""));
     }
+
+    [Fact]
+    public void Resolve_NamesAVehicleBoughtThroughTheShoppingProvider()
+    {
+        var catalog = ItemNameCatalog.LoadEmbedded();
+        // The GUID Game.log printed for a live Dragonfly purchase on 2026-08-08. Vehicles live in
+        // entities/spaceships and entities/groundvehicles, not entities/scitem, so this only
+        // resolves once the extractor walks them too.
+        Assert.Equal("Drake Dragonfly",
+            catalog.Resolve("37659ff0-a803-4a4f-97ff-ad59822061ed", "DRAK_Dragonfly"));
+        Assert.Equal("Greycat STV",
+            catalog.Resolve("d4662193-10ab-4912-8ca4-d64ead0e6f3b", "GRIN_STV"));
+    }
 }
