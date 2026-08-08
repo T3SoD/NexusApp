@@ -717,7 +717,8 @@ public sealed partial class TradePage
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var dim = p.Refused is not null;
+        bool sell = p.Kind == ShopTransactionKind.Sell;
+        bool refused = p.Refused is not null;
 
         grid.Children.Add(new TextBlock
         {
@@ -726,42 +727,80 @@ public sealed partial class TradePage
             VerticalAlignment = VerticalAlignment.Center,
         });
 
-        // 16x16 square: neither the trade arrow nor the untracked diamond.
+        // 16x16 square on the trade arrow's stroke treatment: the SHAPE says this is a shop
+        // purchase rather than a trade or an untracked delta, the COLOUR says which way the money
+        // went, exactly as the arrow does. Dim when the kiosk refused it.
         var glyph = new Path
         {
             Width = 16, Height = 16,
             Data = Geometry.Parse("M4,4 L12,4 L12,12 L4,12 Z"),
-            Stroke = Hud.Br(dim ? "FgDimBrush" : "FgBrush"), StrokeThickness = 1.6,
-            StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 0, 0),
+            Stroke = refused ? Hud.Br("FgDimBrush") : sell ? Hud.Br("OkBrush") : Hud.Br("DangerBrush"),
+            StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0),
         };
         Grid.SetColumn(glyph, 1);
         grid.Children.Add(glyph);
 
-        var qty = p.Quantity > 1 ? $"  x{p.Quantity}" : "";
-        var title = new TextBlock
+        var mainLine = new StackPanel { Orientation = Orientation.Horizontal };
+        mainLine.Children.Add(new TextBlock
         {
-            Text = $"{WalletDisplay.PurchaseTitle(p)}{qty}   {WalletDisplay.ShopDisplayName(p.ShopName)}",
-            FontFamily = Hud.Font("UiFont"), FontSize = 11,
-            Foreground = Hud.Br(dim ? "FgDimBrush" : "FgBrush"),
+            Text = ProfitDisplay.PurchaseRowTitle(sell, p.Quantity, WalletDisplay.PurchaseTitle(p)),
+            FontFamily = Hud.Font("UiFont"), FontSize = 12.5,
+            Foreground = Hud.Br(refused ? "FgDimBrush" : "FgBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0),
-        };
-        Grid.SetColumn(title, 2);
-        grid.Children.Add(title);
+        });
+        if (refused)
+            mainLine.Children.Add(new Border
+            {
+                BorderBrush = Hud.Br("DangerBrush"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 1, 6, 1),
+                Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = p.Refused, FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+                    Foreground = Hud.Br("DangerBrush"),
+                },
+            });
 
-        var sign = p.Kind == ShopTransactionKind.Sell ? "+" : "-";
+        var main = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        main.Children.Add(mainLine);
+        main.Children.Add(new TextBlock
+        {
+            Text = ProfitDisplay.ShopLabel(p.ShopName),
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5,
+            Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            ToolTip = "Bought at a shop kiosk, read from the game log. Shop tokens are kiosk "
+                    + "templates shared across stations, so this names the shop, not the place.",
+        });
+        Grid.SetColumn(main, 2);
+        grid.Children.Add(main);
+
+        // A refused row keeps its amount and goes dim: the badge above says it did not settle.
         var amount = new TextBlock
         {
-            Text = dim ? p.Refused : $"{sign}{p.Price:N0}",
-            FontFamily = Hud.Font("MonoFont"), FontSize = 11,
-            Foreground = Hud.Br(dim ? "FgDimBrush" : "FgBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
+            FontFamily = Hud.Font("MonoFont"), FontSize = 14, TextAlignment = TextAlignment.Right,
+            Foreground = refused ? Hud.Br("FgDimBrush") : sell ? Hud.Br("OkBrush") : Hud.Br("DangerBrush"),
+            Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
         };
+        amount.Inlines.Add(new Run(ProfitDisplay.Signed(sell ? p.Price : -p.Price)));
+        amount.Inlines.Add(new Run(" aUEC")
+        {
+            FontFamily = Hud.Font("UiFont"), FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
+        });
         Grid.SetColumn(amount, 3);
         grid.Children.Add(amount);
 
-        return new Border { Child = grid, Padding = new Thickness(0, 5, 0, 5) };
+        var row = new Border
+        {
+            Padding = new Thickness(10, 9, 10, 9), CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent,
+            Background = Brushes.Transparent, Child = grid,
+        };
+        row.MouseEnter += (_, _) => { row.Background = Hud.Br("Bg3Brush"); row.BorderBrush = Hud.Br("NavBorderBrush"); };
+        row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; row.BorderBrush = Brushes.Transparent; };
+        return row;
     }
 
     // ── PROFIT HISTORY strip (S3b/S5; mock .histSec): the ALL TIME header outlives the chart

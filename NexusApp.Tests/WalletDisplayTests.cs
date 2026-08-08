@@ -233,4 +233,27 @@ public class WalletDisplayTests
         Assert.False(ProfitDisplay.LedgerIsEmpty(1, 0, 0));
         Assert.False(ProfitDisplay.LedgerIsEmpty(0, 1, 0));
     }
+
+    // Same voice as RowTitle ("Bought 128 SCU Agricium"). The count appears only when it is more
+    // than one, because a shop line quotes a LINE TOTAL and the count never divides the amount.
+    [Fact]
+    public void PurchaseRowTitle_OmitsACountOfOne()
+    {
+        Assert.Equal("Bought A03 Rifle Magazine",
+            ProfitDisplay.PurchaseRowTitle(false, 1, "A03 Rifle Magazine"));
+    }
+
+    [Fact]
+    public void PurchaseRowTitle_ShowsACountAboveOne()
+    {
+        Assert.Equal("Bought 2 x 'Chaos' III Missile",
+            ProfitDisplay.PurchaseRowTitle(false, 2, "'Chaos' III Missile"));
+    }
+
+    [Fact]
+    public void PurchaseRowTitle_UsesSoldForASell()
+    {
+        Assert.Equal("Sold A03 Rifle Magazine",
+            ProfitDisplay.PurchaseRowTitle(true, 1, "A03 Rifle Magazine"));
+    }
 }

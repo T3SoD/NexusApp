@@ -134,6 +134,15 @@ internal static class ProfitDisplay
         return string.IsNullOrWhiteSpace(commodity) ? qty : qty + " " + commodity;
     }
 
+    /// <summary>A shop purchase row's main line, in the same voice as RowTitle: the verb, the
+    /// count only when it is more than one, then the item. Shop lines quote a LINE TOTAL, so the
+    /// count is descriptive here and never divides the amount.</summary>
+    internal static string PurchaseRowTitle(bool sell, int quantity, string name)
+    {
+        var verb = sell ? "Sold" : "Bought";
+        return quantity > 1 ? $"{verb} {quantity} x {name}" : $"{verb} {name}";
+    }
+
     /// <summary>The ledger row's WHERE text: the player's stamped location when one exists
     /// (jurisdiction readings say "{name} space", the F14 idiom), else the cleaned shop token.
     /// Shop tokens are kiosk TEMPLATES shared across stations, never claimed as a place.</summary>
