@@ -3,6 +3,26 @@
   "gameBuild": "4.9.188.23497",
   "docks": [
     {
+      "starmap": "StarMapObject.JumpPoint_Nyx_Pyro",
+      "name": "rr_jp_nyxpyro"
+    },
+    {
+      "starmap": "StarMapObject.JumpPoint_Pyro_Nyx",
+      "name": "rr_jp_pyronyx"
+    },
+    {
+      "starmap": "StarMapObject.JumpPoint_Pyro_Stanton",
+      "name": "rr_jp_pyrostanton"
+    },
+    {
+      "starmap": "StarMapObject.JumpPoint_Stanton_Pyro",
+      "name": "rr_jp_stantonpyro"
+    },
+    {
+      "starmap": "StarMapObject.JumpPoint_Stanton_Terra",
+      "name": "rr_jp_stantonterra"
+    },
+    {
       "starmap": "StarMapObject.RR_ARC_LEO",
       "name": "rr_arc_leo"
     },
@@ -19,28 +39,8 @@
       "name": "rr_jp_nyxcastra"
     },
     {
-      "starmap": "StarMapObject.RR_JP_NyxPyro",
-      "name": "rr_jp_nyxpyro"
-    },
-    {
-      "starmap": "StarMapObject.RR_JP_PyroNyx",
-      "name": "rr_jp_pyronyx"
-    },
-    {
-      "starmap": "StarMapObject.RR_JP_PyroStanton",
-      "name": "rr_jp_pyrostanton"
-    },
-    {
       "starmap": "StarMapObject.RR_JP_StantonMagnus",
       "name": "rr_jp_stantonmagnus"
-    },
-    {
-      "starmap": "StarMapObject.RR_JP_StantonPyro",
-      "name": "rr_jp_stantonpyro"
-    },
-    {
-      "starmap": "StarMapObject.RR_JP_StantonTerra",
-      "name": "rr_jp_stantonterra"
     },
     {
       "starmap": "StarMapObject.RR_MIC_LEO",

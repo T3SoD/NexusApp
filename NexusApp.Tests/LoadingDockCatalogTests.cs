@@ -21,6 +21,13 @@ public class LoadingDockCatalogTests
     }
 
     [Fact]
+    public void Contains_JumpPointGateway_UsesStarmapLocationsNamespace()
+    {
+        var c = LoadingDockCatalog.LoadEmbedded();
+        Assert.True(c.Contains("StarMapObject.JumpPoint_Stanton_Pyro"));
+    }
+
+    [Fact]
     public void Load_Malformed_FoldsToEmpty()
     {
         using var s = new MemoryStream(Encoding.UTF8.GetBytes("{"));
