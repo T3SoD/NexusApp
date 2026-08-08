@@ -118,6 +118,13 @@ internal static class ProfitDisplay
 
     internal static int LedgerHiddenCount(int total) => Math.Max(0, total - LedgerRowCap);
 
+    /// <summary>True when the ledger has nothing to show, so the caller renders the empty note
+    /// instead of rows. Counts every row KIND the merge renders. Shop purchases were missed here
+    /// once (2026-08-07): a session with purchases but no trades and no untracked rows returned
+    /// the empty note and never reached the merge, so real purchases were invisible.</summary>
+    internal static bool LedgerIsEmpty(int txCount, int untrackedCount, int purchaseCount) =>
+        txCount == 0 && untrackedCount == 0 && purchaseCount == 0;
+
     /// <summary>The ledger row's main line: verb, quantity, and the commodity's display name
     /// when the GUID table knows it (D10a). An unknown GUID renders nothing rather than a
     /// guess: a new commodity on a newer game build than the table.</summary>

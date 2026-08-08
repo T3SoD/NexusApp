@@ -267,12 +267,15 @@ public sealed partial class TradePage
     private void BuildProfitLedgerSection(IReadOnlyList<CommodityTransaction> txs,
         IReadOnlyList<UntrackedEntry> untracked, int voided, bool entrance, bool live)
     {
+        var purchases = App.Profit.Purchases.Purchases;
+
         var head = new Grid();
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.Children.Add(ProfitSectionTitle("This session"));
         var count = ProfitSectionTitle(
             $"{txs.Count} transaction{(txs.Count == 1 ? "" : "s")}{(voided > 0 ? $", {voided} voided" : "")}"
+            + (purchases.Count > 0 ? $", {purchases.Count} purchase{(purchases.Count == 1 ? "" : "s")}" : "")
             + (untracked.Count > 0 ? $", {untracked.Count} untracked" : ""));
         Grid.SetColumn(count, 1);
         head.Children.Add(count);
@@ -282,7 +285,7 @@ public sealed partial class TradePage
             Margin = new Thickness(0, 18, 0, 8), Padding = new Thickness(0, 14, 0, 0), Child = head,
         });
 
-        if (txs.Count == 0 && untracked.Count == 0)
+        if (ProfitDisplay.LedgerIsEmpty(txs.Count, untracked.Count, purchases.Count))
         {
             _profitBody.Children.Add(new TextBlock
             {
@@ -296,7 +299,6 @@ public sealed partial class TradePage
 
         var rows = new StackPanel();
         int i = 0;
-        var purchases = App.Profit.Purchases.Purchases;
         // Untracked wallet rows interleave by stamp (spec 11.4): one money timeline, one cap.
         foreach (var item in WalletDisplay.MergeRows(txs, untracked, purchases, ProfitDisplay.LedgerRowCap))
         {

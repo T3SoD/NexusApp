@@ -216,4 +216,21 @@ public class WalletDisplayTests
         const int txs = 30, untracked = 5, purchases = 40;
         Assert.Equal(25, ProfitDisplay.LedgerHiddenCount(txs + untracked + purchases));
     }
+
+    // The live failure of 2026-08-07: three shop purchases, no trades, no untracked rows. The
+    // ledger's empty check counted only the first two kinds, so it rendered the empty note and
+    // returned before the merge, and real purchases were invisible.
+    [Fact]
+    public void LedgerIsEmpty_IsFalseWhenOnlyPurchasesExist()
+    {
+        Assert.False(ProfitDisplay.LedgerIsEmpty(0, 0, 3));
+    }
+
+    [Fact]
+    public void LedgerIsEmpty_IsTrueOnlyWhenEveryRowKindIsAbsent()
+    {
+        Assert.True(ProfitDisplay.LedgerIsEmpty(0, 0, 0));
+        Assert.False(ProfitDisplay.LedgerIsEmpty(1, 0, 0));
+        Assert.False(ProfitDisplay.LedgerIsEmpty(0, 1, 0));
+    }
 }
