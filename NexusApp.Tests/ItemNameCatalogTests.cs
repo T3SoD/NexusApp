@@ -166,4 +166,33 @@ public class ItemNameCatalogTests
         Assert.Equal("Greycat STV",
             catalog.Resolve("d4662193-10ab-4912-8ca4-d64ead0e6f3b", "GRIN_STV"));
     }
+
+    [Fact]
+    public void Resolve_NamesAnExoskeletonBoughtThroughTheShoppingProvider()
+    {
+        // The ATLS is an exosuit, so its record lives in actor/actors rather than with the
+        // spaceships or the ground vehicles. The shop provider still sells it like any vehicle,
+        // and its _RecordId_ is the GUID Game.log prints.
+        Assert.Equal("Argo ATLS",
+            ItemNameCatalog.LoadEmbedded().Resolve("09c9fa95-5b5a-4200-9ff8-3b288df9925b",
+                                                   "ARGO_ATLS"));
+    }
+
+    [Fact]
+    public void Resolve_UsesTheRecordsOwnKeyWhenItsCaseDiffersFromTheUsual()
+    {
+        var catalog = ItemNameCatalog.LoadEmbedded();
+        // CIG ships 162 lowercase item_name keys beside 9,356 capitalized ones. The hacking chip
+        // is the clearest case: its token (bltr_consumable_hackingchip_01) matches no key at all,
+        // and only the record's own @item_name_hackingchip_003 key names it.
+        Assert.Equal("Tigersclaw",
+            catalog.Resolve("3b1d33fb-aaca-4056-a28f-74da168e4070",
+                            "bltr_consumable_hackingchip_01"));
+
+        // A case-sensitive key match used to skip a record's own lowercase key and take a later
+        // capitalized one belonging to a DIFFERENT item: this pants record was named after a
+        // jacket. Pinned so the regression cannot return unnoticed.
+        Assert.Equal("Carnifex Armor Legs Brassy",
+            catalog.Resolve("00126e44-fac3-45a6-b2c4-9bc584e1d0ef", null));
+    }
 }
