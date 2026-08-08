@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "gameBuild": "4.9.188.23497",
+  "docks": [
+    {
+      "starmap": "StarMapObject.RR_ARC_LEO",
+      "name": "rr_arc_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_CRU_LEO",
+      "name": "rr_cru_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_HUR_LEO",
+      "name": "rr_hur_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_NyxCastra",
+      "name": "rr_jp_nyxcastra"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_NyxPyro",
+      "name": "rr_jp_nyxpyro"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_PyroNyx",
+      "name": "rr_jp_pyronyx"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_PyroStanton",
+      "name": "rr_jp_pyrostanton"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_StantonMagnus",
+      "name": "rr_jp_stantonmagnus"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_StantonPyro",
+      "name": "rr_jp_stantonpyro"
+    },
+    {
+      "starmap": "StarMapObject.RR_JP_StantonTerra",
+      "name": "rr_jp_stantonterra"
+    },
+    {
+      "starmap": "StarMapObject.RR_MIC_LEO",
+      "name": "rr_mic_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_P1_L2",
+      "name": "rr_p1_l2"
+    },
+    {
+      "starmap": "StarMapObject.RR_P1_L3",
+      "name": "rr_p1_l3"
+    },
+    {
+      "starmap": "StarMapObject.RR_P1_L4",
+      "name": "rr_p1_l4"
+    },
+    {
+      "starmap": "StarMapObject.RR_P1_L5",
+      "name": "rr_p1_l5"
+    },
+    {
+      "starmap": "StarMapObject.RR_P2_L3",
+      "name": "rr_p2_l3"
+    },
+    {
+      "starmap": "StarMapObject.RR_P2_L4",
+      "name": "rr_p2_l4"
+    },
+    {
+      "starmap": "StarMapObject.RR_P2_LEO",
+      "name": "rr_p2_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_P3_L2",
+      "name": "rr_p3_l2"
+    },
+    {
+      "starmap": "StarMapObject.RR_P3_L5",
+      "name": "rr_p3_l5"
+    },
+    {
+      "starmap": "StarMapObject.RR_P3_LEO",
+      "name": "rr_p3_leo"
+    },
+    {
+      "starmap": "StarMapObject.RR_P5_L1",
+      "name": "rr_p5_l1"
+    },
+    {
+      "starmap": "StarMapObject.RR_P5_L2",
+      "name": "rr_p5_l2"
+    },
+    {
+      "starmap": "StarMapObject.RR_P5_L3",
+      "name": "rr_p5_l3"
+    },
+    {
+      "starmap": "StarMapObject.RR_P6_L1",
+      "name": "rr_p6_l1"
+    },
+    {
+      "starmap": "StarMapObject.RR_P6_L2",
+      "name": "rr_p6_l2"
+    },
+    {
+      "starmap": "StarMapObject.RR_P6_L5",
+      "name": "rr_p6_l5"
+    },
+    {
+      "starmap": "StarMapObject.RR_P6_LEO",
+      "name": "rr_p6_leo"
+    }
+  ]
+}

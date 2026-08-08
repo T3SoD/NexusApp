@@ -70,6 +70,8 @@
     <EmbeddedResource Include="Data\item_names.json" />
     <None Remove="Data\autoload_times.json" />
     <EmbeddedResource Include="Data\autoload_times.json" />
+    <None Remove="Data\loading_docks.json" />
+    <EmbeddedResource Include="Data\loading_docks.json" />
     <None Update="README.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
