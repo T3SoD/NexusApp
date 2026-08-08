@@ -49,6 +49,7 @@ public partial class App : Application
     public static WalletOcrService WalletOcr { get; private set; } = null!;
     public static WalletCapture WalletCap { get; private set; } = null!;
     public static WalletTracker Wallet { get; private set; } = null!;
+    public static AutoLoadTracker AutoLoad { get; private set; } = null!;
 
     // Auto-update state machine (checks, downloads, installs). Created right after Settings
     // so the consent gate and throttle read real values; inert in the demo profile.
@@ -423,6 +424,7 @@ public partial class App : Application
         Locations = new LocationTracker(GameLogFeed);
         Profit = new ProfitTracker(GameLogFeed);
         Wallet = new WalletTracker(Profit, GameLogFeed);
+        AutoLoad = new AutoLoadTracker(Profit);
 
         // Geometry + the player-position seam. Created right after Locations because PlayerPlace
         // reads both. Loading the catalog here rather than in a page constructor is the whole point:
