@@ -201,10 +201,40 @@ public class PurchaseLedgerTests
         ledger.Apply(shopUi);
 
         // Carries no ids, as the real line does. It must find no candidate and be dropped.
+        // NOTE: this direction passes even with the provider gate deleted, because the ShopId
+        // comparison ("" against "111") already rejects it. The gate's load-bearing direction is
+        // the reverse one, covered by the test below. Keep both.
         var stray = new ShopFlowResult(t.AddSeconds(1), "Refused", "", "",
             ShopTransactionKind.Buy, ShopProvider.Shopping);
         Assert.False(ledger.ApplyResult(stray));
         Assert.Null(shopUi.Refused);
+    }
+
+    // The direction the provider gate actually protects, and the one that costs real money.
+    // Both providers address the same shop entities, so a shopId collision is plausible, and
+    // kioskId[0] occurs on both. Without the `p.Provider != r.Provider` check in ApplyResult, a
+    // ShopUI refusal would land on the Shopping row and its 342,720 aUEC would reappear as a
+    // phantom residual in the wallet reconciliation.
+    [Fact]
+    public void ApplyResult_DoesNotLetAShopUiRefusalAnswerAShoppingRequestAtTheSameIds()
+    {
+        var ledger = new PurchaseLedger();
+        var t = new DateTime(2026, 8, 8, 12, 6, 2, DateTimeKind.Utc);
+        var ship = new ShopPurchase
+        {
+            TimestampUtc = t, Kind = ShopTransactionKind.Buy, Provider = ShopProvider.Shopping,
+            Price = 342_720, Quantity = 1, ItemGuid = "37659ff0-a803-4a4f-97ff-ad59822061ed",
+            ShopId = "751893855885", KioskId = "0",
+        };
+        ledger.Apply(ship);
+
+        // Same shopId, same kioskId, same direction, inside the window. Only the provider differs.
+        var foreign = new ShopFlowResult(t.AddSeconds(2), "InsufficientFunds", "751893855885", "0",
+            ShopTransactionKind.Buy, ShopProvider.ShopUI);
+
+        Assert.False(ledger.ApplyResult(foreign));
+        Assert.Null(ship.Refused);
+        Assert.Equal(-342_720, ledger.SettledDeltaBetween(t.AddSeconds(-1), t.AddSeconds(10)));
     }
 
     [Fact]

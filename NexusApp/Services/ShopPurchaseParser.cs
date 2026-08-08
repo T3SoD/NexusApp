@@ -23,7 +23,7 @@ public static class ShopPurchaseParser
         @"<(?<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <";
 
     private const string ShopUi = "CEntityComponentShopUIProvider::";
-    private const string Shopping = "CEntityComponentShoppingProvider::";
+    private const string ShoppingProviderClass = "CEntityComponentShoppingProvider::";
 
     private const string Body =
         @"playerId\[[^\]]+\] shopId\[(?<shop>\d+)\] shopName\[(?<name>[^\]]+)\] kioskId\[(?<kiosk>\d+)\] " +
@@ -53,14 +53,14 @@ public static class ShopPurchaseParser
     // so Body is reused verbatim, then currencyType is appended. Body's kiosk group accepts the
     // kioskId[0] this provider uses on 59 of 73 corpus events.
     private static readonly Regex ShoppingBuy = new(
-        Stamp + Shopping + @"SendStandardItemBuyRequest> Sending SShopBuyRequest - " + Body +
-        @" currencyType\[(?<cur>\w+)\]", RegexOptions.Compiled);
+        Stamp + ShoppingProviderClass + @"SendStandardItemBuyRequest> Sending SShopBuyRequest - " + Body +
+        @" currencyType\[(?<cur>[^\]]*)\]", RegexOptions.Compiled);
 
     // A DIFFERENT shape from the ShopUI answer: the label reads "Shop Flow Response", and it
     // carries no shopId, no kioskId, and no type. PurchaseLedger therefore routes it by provider
     // and arrival order alone.
     private static readonly Regex ShoppingFlow = new(
-        Stamp + Shopping + @"RmShopFlowResponse> Shop Flow Response - " +
+        Stamp + ShoppingProviderClass + @"RmShopFlowResponse> Shop Flow Response - " +
         @"playerId\[[^\]]+\] result\[(?<result>\w+)\]", RegexOptions.Compiled);
 
     // Matches CEntityComponentShopUIProvider and CEntityComponentShoppingProvider, and not

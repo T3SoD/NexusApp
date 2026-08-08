@@ -9,9 +9,22 @@ namespace NexusApp.Services;
 public sealed class PurchaseLedger
 {
     // Observed request-to-response pairings run 0.37s to 5.26s across 402 corpus logs, median
-    // 0.71s. 8 seconds clears the measured maximum with margin. Widening cannot reorder anything:
-    // _answered already makes each response answer exactly one row in sequence, and
-    // ShoppingProvider requests never overlap at all.
+    // 0.71s. 8 seconds clears the measured maximum with margin. ShoppingProvider requests never
+    // overlap at all, so this is exact there.
+    //
+    // It is NOT free on the ShopUI leg, where same-kiosk bursts inside 8s do occur. Widening
+    // admits one narrow wrong-money band that 5 seconds excluded: if a request's response is
+    // never logged AND a later request at the same kiosk is genuinely refused inside 8s, the
+    // refusal lands on the older row instead of the right one. It needs a dropped response and a
+    // real refusal together, and the corpus holds about one non-Success in 755, so it is near
+    // nil. Do not narrow the window to dodge it; that reintroduces the clipped 5.26s pairing.
+    //
+    // INVARIANT, currently violated but latent: this used to sit UNDER WalletTracker.RaceGuard
+    // (6s), which guaranteed that any purchase still refusable at reconcile time was inside the
+    // race floor and the reconcile was skipped. At 8s there is a roughly 1.45s band where a row
+    // can flip to refused after a reconcile counted it settled. That is harmless today only
+    // because the reconcile resets the anchor to the captured balance, so no later delta differs.
+    // If RaceGuard changes, re-derive this. Keep the two constants in view of each other.
     public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(8);
 
     private readonly List<ShopPurchase> _purchases = new();

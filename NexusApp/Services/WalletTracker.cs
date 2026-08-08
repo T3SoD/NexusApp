@@ -15,6 +15,11 @@ public sealed class WalletTracker : IDisposable
 {
     // A settlement or void this close to the capture window could be the same money the scan
     // saw: skip the row, re-anchor only, let the next scan reconcile (spec 11.3).
+    //
+    // Related to PurchaseLedger.SettleWindow, which is now LONGER than this (8s against 6s). Read
+    // the invariant note on that constant before changing either. While SettleWindow was the
+    // shorter of the two, a purchase that could still be refused was always inside this floor, so
+    // the reconcile was skipped; that no longer holds for a narrow band.
     public static readonly TimeSpan RaceGuard = TimeSpan.FromSeconds(6);
 
     // Anchor age past which the UI shows AGING (spec section 6 item 2).
