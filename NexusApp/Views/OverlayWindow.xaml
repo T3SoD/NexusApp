@@ -44,10 +44,16 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="34"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition x:Name="HistorySplitterRow" Height="8" MinHeight="8"/>
                 <RowDefinition x:Name="HistoryStripRow" Height="120" MinHeight="50"/>
             </Grid.RowDefinitions>
+
+            <!-- Auto-load / auto-unload strip (task 8): visible from every overlay tab, so it
+                 lives in ContentRoot rather than inside any one tab's content Grid. Collapsed
+                 (zero height, Auto row) while AutoLoadStatusLine has no entries to show. -->
+            <ContentControl x:Name="AutoLoadStripHost" Grid.Row="1"/>
 
             <!-- ── Header: drag zone + opacity + close ── -->
             <Grid Grid.Row="0">
@@ -109,17 +115,17 @@
             <!-- ── Tab strip: Active Pill (mock: nexus-design-lab/overlay-redesign concept 02).
                  Icons are the app's dock glyphs via TabGlyphSpecs; active tab expands into a
                  chamfered amber icon+label pill; counts ride the icon corner as chips. ── -->
-            <views:OverlayTabStrip x:Name="TabStrip" Grid.Row="1" Margin="0,2,0,0"/>
+            <views:OverlayTabStrip x:Name="TabStrip" Grid.Row="2" Margin="0,2,0,0"/>
 
             <!-- Ghost mode (issue #27) section eyebrow: takes the tab strip's row when the rail
                  is the nav, so the open panel still names the section it is showing. Set in code
                  from OverlayTabs.LabelFor; collapsed (and the strip visible) in normal mode. -->
-            <TextBlock x:Name="GhostEyebrow" Grid.Row="1" Visibility="Collapsed" FontSize="8.5"
+            <TextBlock x:Name="GhostEyebrow" Grid.Row="2" Visibility="Collapsed" FontSize="8.5"
                        Foreground="{DynamicResource AccentBrush}" Opacity="0.85"
                        Margin="12,8,0,4" VerticalAlignment="Bottom"/>
 
             <!-- ── Tab content ── -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3">
 
                 <!-- HUB tab (Beta Game.log session): MOBIGLAS glance. Mock order = SCAN STATUS LEDs,
                      hero tiles (READY ORDERS + HAUL, accent chamfer), SERVER / SHARD (chamfer),
@@ -535,7 +541,7 @@
 
             <!-- Drag handle to resize history strip: 8px hit target with a centered 1px hairline
                  (issue #27 review - the old 4px Background-only splitter was hard to grab). -->
-            <GridSplitter x:Name="HistorySplitter" Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            <GridSplitter x:Name="HistorySplitter" Grid.Row="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Cursor="SizeNS" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext">
                 <GridSplitter.Template>
                     <ControlTemplate TargetType="GridSplitter">
@@ -547,7 +553,7 @@
             </GridSplitter>
 
             <!-- History strip (RECENT scans - hidden on the STATS tab; it's scan-only) -->
-            <Border x:Name="HistoryStrip_Container" Grid.Row="4" Background="{DynamicResource NavBgBrush}">
+            <Border x:Name="HistoryStrip_Container" Grid.Row="5" Background="{DynamicResource NavBgBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="12,6,8,4">
                         <TextBlock Text="RECENT" Style="{StaticResource SectionLabel}"

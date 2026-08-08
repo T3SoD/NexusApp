@@ -81,6 +81,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow(MainViewModel vm)
     {
         InitializeComponent();
+        EnsureAutoLoadStrip();   // task 8: visible from every overlay tab, ticks for the window's life
         QuickSettingsBtn.Content = BuildHeaderGearGlyph();
 
         // Header close/quick-settings hover chips (issue #27 review: close-control parity with
@@ -2476,6 +2477,7 @@ public partial class OverlayWindow : Window
         UiScaleService.RailChanged -= OnRailScaleChanged;   // ghost rail scale
         App.OverlayGhostModeChanged -= OnGhostModeChanged;   // ghost mode (issue #27)
         _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
+        _autoLoadStrip?.Stop();      // task 8: whole-window teardown
         base.OnClosed(e);
     }
 
@@ -3508,6 +3510,19 @@ public partial class OverlayWindow : Window
         if (_hubHangarLine is not null) return;
         _hubHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay HUB");
         HubHangarHost.Content = _hubHangarLine;
+    }
+
+    // Auto-load / auto-unload strip (task 8). Unlike the Exec Hangar lines above, this is not
+    // tab-scoped: it is visible from every overlay tab, so it starts once from the constructor
+    // and ticks for the window's whole life instead of Start/Stop-ing on SwitchTab.
+    private AutoLoadStatusLine? _autoLoadStrip;
+
+    private void EnsureAutoLoadStrip()
+    {
+        if (_autoLoadStrip is not null) return;
+        _autoLoadStrip = new AutoLoadStatusLine(compact: true, surfaceName: "overlay");
+        AutoLoadStripHost.Content = _autoLoadStrip;
+        _autoLoadStrip.Start();
     }
 
     // ── TRADE tab ──────────────────────────────────────────────────────────────
