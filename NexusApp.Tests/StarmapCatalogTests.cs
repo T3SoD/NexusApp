@@ -168,4 +168,27 @@ public class StarmapCatalogTests
     [InlineData(0.0, "<0.1 Gm")]                  // zero: floor literal
     public void FormatGm_MatchesSpecBuckets(double meters, string expected)
         => Assert.Equal(expected, StarmapCatalog.FormatGm(meters));
+
+    [Fact]
+    public void StarmapId_KnownTerminal_ReturnsObjectId()
+    {
+        var catalog = StarmapCatalog.LoadEmbedded();
+        Assert.Equal("StarMapObject.RR_ARC_L1",
+            catalog.StarmapId(Terminal("Stanton", location: "ARC-L1 Wide Forest Station")));
+    }
+
+    [Fact]
+    public void StarmapId_UnknownTerminal_Null()
+    {
+        var catalog = StarmapCatalog.LoadEmbedded();
+        Assert.Null(catalog.StarmapId(Terminal("Stanton", location: "No Such Place")));
+        Assert.Null(catalog.StarmapId(null));
+    }
+
+    [Fact]
+    public void StarmapId_EveryEmbeddedPlaceCarriesOne()
+    {
+        var catalog = StarmapCatalog.LoadEmbedded();
+        Assert.Equal(215, catalog.StarmapIdCount);
+    }
 }

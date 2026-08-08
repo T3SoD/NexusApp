@@ -20,12 +20,19 @@ internal sealed class StarmapCatalog
     // agree on case).
     private readonly Dictionary<string, StarmapPosition> _places;
 
-    private StarmapCatalog(Dictionary<string, StarmapPosition> places)
+    // Same keys as _places, one per place that carries a starmap object id. Populated from the
+    // same parse loop as _places, so the two dictionaries can never disagree about which keys exist.
+    private readonly Dictionary<string, string> _starmapIds;
+
+    private StarmapCatalog(Dictionary<string, StarmapPosition> places, Dictionary<string, string> starmapIds)
     {
         _places = places;
+        _starmapIds = starmapIds;
     }
 
     public int PlaceCount => _places.Count;
+
+    internal int StarmapIdCount => _starmapIds.Count;
 
     // NexusApp.Data.<filename> - the same embedded-resource naming SctUexMap.LoadEmbedded and
     // CargoShipCatalog.LoadEmbedded use (folder separators become dots).
@@ -49,21 +56,27 @@ internal sealed class StarmapCatalog
             var raw = JsonSerializer.Deserialize<RawCatalog>(stream, opts) ?? new RawCatalog();
 
             var places = new Dictionary<string, StarmapPosition>(StringComparer.OrdinalIgnoreCase);
+            var starmapIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (raw.Places is not null)
             {
                 foreach (var p in raw.Places)
                 {
                     if (string.IsNullOrEmpty(p.System) || string.IsNullOrEmpty(p.Kind) || string.IsNullOrEmpty(p.UexName))
                         continue;
-                    places[Key(p.System, p.Kind, p.UexName)] = new StarmapPosition(p.X, p.Y, p.Z);
+                    var key = Key(p.System, p.Kind, p.UexName);
+                    places[key] = new StarmapPosition(p.X, p.Y, p.Z);
+                    if (!string.IsNullOrEmpty(p.Starmap))
+                        starmapIds[key] = p.Starmap;
                 }
             }
 
-            return new StarmapCatalog(places);
+            return new StarmapCatalog(places, starmapIds);
         }
         catch (Exception)
         {
-            return new StarmapCatalog(new Dictionary<string, StarmapPosition>(StringComparer.OrdinalIgnoreCase));
+            return new StarmapCatalog(
+                new Dictionary<string, StarmapPosition>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         }
     }
 
@@ -76,20 +89,47 @@ internal sealed class StarmapCatalog
 
     // Fallback order: location (a terminal's own station/city, most precise) beats planetOrMoon
     // (the body it orbits) beats orbit (the wider Lagrange/orbital region). An empty field on the
-    // terminal skips that level outright; a non-empty field that simply has no match in the catalog
-    // also falls through to the next level rather than failing the whole resolution - UEX's own
-    // location strings do not always line up 1:1 with the starmap's naming, so a coarser resolved
-    // position is better than none. Scoped to t.System throughout: this never crosses systems.
+    // terminal skips that level outright. Scoped to t.System throughout: this never crosses
+    // systems. Shared by Resolve and StarmapId so the two lookups can never drift apart - each
+    // caller tries the yielded keys in order and stops at its own dictionary's first hit, so a
+    // non-empty field that has no match in that particular dictionary still falls through to the
+    // next level rather than failing the whole resolution.
+    private static IEnumerable<string> CandidateKeys(MarketTerminal t)
+    {
+        if (!string.IsNullOrEmpty(t.Location))
+            yield return Key(t.System, "location", t.Location);
+        if (!string.IsNullOrEmpty(t.PlanetOrMoon))
+            yield return Key(t.System, "planetOrMoon", t.PlanetOrMoon);
+        if (!string.IsNullOrEmpty(t.Orbit))
+            yield return Key(t.System, "orbit", t.Orbit);
+    }
+
     public StarmapPosition? Resolve(MarketTerminal? t)
     {
         if (t is null || string.IsNullOrEmpty(t.System)) return null;
 
-        if (!string.IsNullOrEmpty(t.Location) && _places.TryGetValue(Key(t.System, "location", t.Location), out var loc))
-            return loc;
-        if (!string.IsNullOrEmpty(t.PlanetOrMoon) && _places.TryGetValue(Key(t.System, "planetOrMoon", t.PlanetOrMoon), out var pom))
-            return pom;
-        if (!string.IsNullOrEmpty(t.Orbit) && _places.TryGetValue(Key(t.System, "orbit", t.Orbit), out var orb))
-            return orb;
+        foreach (var key in CandidateKeys(t))
+            if (_places.TryGetValue(key, out var pos)) return pos;
+
+        return null;
+    }
+
+    private static StarmapCatalog? _instance;
+
+    // Lazily-loaded shared instance for callers (e.g. LoadingDockCatalog joins) that just need
+    // the embedded catalog and do not manage their own lifetime for it.
+    public static StarmapCatalog Instance => _instance ??= LoadEmbedded();
+
+    // Same fallback chain as Resolve (CandidateKeys), against the starmap-id dictionary instead
+    // of the position dictionary. A key present in _places but absent from _starmapIds (a place
+    // with no starmap field) simply falls through to the next candidate, same as an unresolved
+    // position would in Resolve.
+    internal string? StarmapId(MarketTerminal? t)
+    {
+        if (t is null) return null;
+
+        foreach (var key in CandidateKeys(t))
+            if (_starmapIds.TryGetValue(key, out var id)) return id;
 
         return null;
     }
@@ -131,5 +171,6 @@ internal sealed class StarmapCatalog
         public double X { get; set; }
         public double Y { get; set; }
         public double Z { get; set; }
+        public string? Starmap { get; set; }
     }
 }
