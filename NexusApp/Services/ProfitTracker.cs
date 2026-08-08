@@ -65,6 +65,11 @@ public sealed class ProfitTracker : IDisposable
 
     public event Action? Changed;
 
+    // Raised for every parsed, stamped kiosk transaction; AutoLoadTracker listens.
+    public event Action<CommodityTransaction>? TransactionParsed;
+    // Raised when the feed signals a log reset; listeners drop session-scoped state.
+    public event Action? LogWasReset;
+
     // New SC session (Game.log reset). A batch still queued belongs to the outgoing session, so
     // it flushes under the outgoing key first; then only the live ledger rolls - the finished
     // session's summary is already in history, and the new log's replay rebuilds whatever the
@@ -76,6 +81,7 @@ public sealed class ProfitTracker : IDisposable
         Purchases.Reset();
         _sessionKey = null;
         Changed?.Invoke();
+        LogWasReset?.Invoke();
     }
 
     // The tail was (re)pointed. A session boundary exactly like a log reset whenever the tail now
@@ -112,8 +118,8 @@ public sealed class ProfitTracker : IDisposable
 
         if (!CommodityLogParser.LooksCommodityRelevant(raw)) return;
 
-        if (CommodityLogParser.ParseBuy(raw) is { } buy) { Stamp(buy); Apply(buy); return; }
-        if (CommodityLogParser.ParseSell(raw) is { } sell) { Stamp(sell); Apply(sell); return; }
+        if (CommodityLogParser.ParseBuy(raw) is { } buy) { Stamp(buy); Apply(buy); TransactionParsed?.Invoke(buy); return; }
+        if (CommodityLogParser.ParseSell(raw) is { } sell) { Stamp(sell); Apply(sell); TransactionParsed?.Invoke(sell); return; }
         if (CommodityLogParser.ParseTransactionError(raw) is { } err && Ledger.ApplyError(err))
             QueueFlush();
     }
