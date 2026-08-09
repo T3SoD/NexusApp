@@ -14,7 +14,21 @@ internal static class AutoLoadStatusText
     public static string Elapsed(AutoLoadEntry e, DateTime nowUtc)
         => AutoLoadEstimator.FormatDuration((int)(nowUtc - e.StartUtc).TotalSeconds);
 
+    // Countdown display: remaining time against the prediction, held at zero once past it.
+    // Falls back to the count-up elapsed when the table is dark or the mix had no prediction.
+    public static string Clock(AutoLoadEntry e, AutoLoadTimeTable table, DateTime nowUtc)
+        => table.Calibrated && e.PredictedSeconds is { } p
+            ? AutoLoadEstimator.FormatDuration(Math.Max(0, p - (int)(nowUtc - e.StartUtc).TotalSeconds))
+            : Elapsed(e, nowUtc);
+
     public static string? OverflowCount(int total) => total >= 2 ? $"+{total - 1}" : null;
+
+    // Row title: commodity when resolved, else the direction word alone.
+    public static string Title(AutoLoadEntry e)
+        => e.CommodityName is { Length: > 0 } c ? c : StripWord(e);
+
+    // Purchase location, cleaned for display by the house shop-label rules.
+    public static string Location(AutoLoadEntry e) => ProfitDisplay.ShopLabel(e.ShopName);
 
     public static string CargoLine(AutoLoadEntry e)
     {

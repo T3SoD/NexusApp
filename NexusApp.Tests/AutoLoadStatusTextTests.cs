@@ -11,8 +11,9 @@ public class AutoLoadStatusTextTests
     private static readonly AutoLoadTimeTable Dark = AutoLoadTimeTable.Load(new MemoryStream("x"u8.ToArray()));   // calibrated false
     private static readonly AutoLoadTimeTable Lit = AutoLoadTimeTable.LoadEmbedded();   // calibrated true
 
-    private static AutoLoadEntry Entry(TransactionKind kind = TransactionKind.Buy, int? predicted = 1020)
-        => new(T0, kind, "SCShop_Admin", 1440m, new[] { new CargoBoxGroup(24m, 60) }, predicted);
+    private static AutoLoadEntry Entry(TransactionKind kind = TransactionKind.Buy, int? predicted = 1020,
+                                       string? commodityName = null)
+        => new(T0, kind, "SCShop_Admin", commodityName, 1440m, new[] { new CargoBoxGroup(24m, 60) }, predicted);
 
     [Fact]
     public void StripWord_LoadAndUnload()
@@ -59,10 +60,40 @@ public class AutoLoadStatusTextTests
     }
 
     [Fact]
+    public void Clock_CountsDownFromPrediction()
+        => Assert.Equal("9m 19s", AutoLoadStatusText.Clock(Entry(predicted: 612), Lit, T0.AddSeconds(53)));
+
+    [Fact]
+    public void Clock_HoldsAtZeroPastPrediction()
+        => Assert.Equal("0m 00s", AutoLoadStatusText.Clock(Entry(predicted: 612), Lit, T0.AddSeconds(700)));
+
+    [Fact]
+    public void Clock_FallsBackToElapsedWhenDark()
+        => Assert.Equal("0m 53s", AutoLoadStatusText.Clock(Entry(predicted: 612), Dark, T0.AddSeconds(53)));
+
+    [Fact]
     public void CargoLine_JoinsMultipleGroups()
     {
-        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_Admin", 1472m,
+        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_Admin", null, 1472m,
             new[] { new CargoBoxGroup(24m, 60), new CargoBoxGroup(8m, 4) }, 612);
         Assert.Equal("1,472 SCU - 60 x 24 SCU + 4 x 8 SCU", AutoLoadStatusText.CargoLine(e));
+    }
+
+    [Fact]
+    public void Title_UsesCommodityThenFallsBack()
+    {
+        Assert.Equal("Laranite", AutoLoadStatusText.Title(Entry(commodityName: "Laranite")));
+        Assert.Equal("AUTO-LOAD", AutoLoadStatusText.Title(Entry()));
+    }
+
+    // ProfitDisplay.ShopLabel("SCShop_RestStop_Pharmacy-001") strips the SCShop_ prefix and the
+    // trailing -NNN kiosk instance number, then unscores the rest - the same mapping
+    // WalletDisplayTests.ShopDisplayName_StripsThePrefixAndInstanceSuffix already proves for that token.
+    [Fact]
+    public void Location_CleansTheShopToken()
+    {
+        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_RestStop_Pharmacy-001", null, 1440m,
+            new[] { new CargoBoxGroup(24m, 60) }, 1020);
+        Assert.Equal("RestStop Pharmacy", AutoLoadStatusText.Location(e));
     }
 }

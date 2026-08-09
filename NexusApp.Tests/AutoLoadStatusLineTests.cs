@@ -28,6 +28,14 @@ public class AutoLoadStatusLineTests
     }
 
     [Fact]
+    public void UsesTheCountdownFoldOnly()
+    {
+        var src = Src();
+        Assert.Contains("AutoLoadStatusText.Clock(", src);
+        Assert.DoesNotContain("AutoLoadStatusText.Elapsed(", src);
+    }
+
+    [Fact]
     public void Overlay_HostsTheCompactStrip()
     {
         var xaml = SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml");

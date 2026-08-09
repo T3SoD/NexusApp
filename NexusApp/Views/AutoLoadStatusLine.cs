@@ -124,7 +124,7 @@ public sealed class AutoLoadStatusLine : StackPanel
         var nowUtc = DateTime.UtcNow;
         foreach (var (entry, text, isRow) in _elapsedTexts)
         {
-            text.Text = AutoLoadStatusText.Elapsed(entry, nowUtc);
+            text.Text = AutoLoadStatusText.Clock(entry, AutoLoadTimeTable.Instance, nowUtc);
             if (isRow) ApplyElapsedStyle(entry, text, nowUtc);
         }
     }
@@ -204,7 +204,7 @@ public sealed class AutoLoadStatusLine : StackPanel
 
         var value = new TextBlock
         {
-            Text = AutoLoadStatusText.Elapsed(newest, DateTime.UtcNow), FontFamily = Hud.Font("MonoFont"),
+            Text = AutoLoadStatusText.Clock(newest, AutoLoadTimeTable.Instance, DateTime.UtcNow), FontFamily = Hud.Font("MonoFont"),
             FontSize = 11, Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
         };
         _elapsedTexts.Add((newest, value, false));
@@ -245,7 +245,8 @@ public sealed class AutoLoadStatusLine : StackPanel
         return row;
     }
 
-    // ── One entry row: Hud.RowCard chrome, kind/shop/elapsed head, cargo/est sub, LOADED/DISCARD. ──
+    // ── One entry row: Hud.RowCard chrome, kind/title/countdown head, cargo+location/est sub,
+    // LOADED/DISCARD. The ship is never shown - Game.log cannot assert it. ──
     private Border BuildEntryRow(AutoLoadEntry entry)
     {
         var table = AutoLoadTimeTable.Instance;
@@ -273,18 +274,18 @@ public sealed class AutoLoadStatusLine : StackPanel
         Grid.SetColumn(kind, 0);
         head.Children.Add(kind);
 
-        var shop = new TextBlock
+        var title = new TextBlock
         {
-            Text = entry.ShopName, FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
+            Text = AutoLoadStatusText.Title(entry), FontSize = 12.5, Foreground = Hud.Br("FgBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0),
         };
-        Grid.SetColumn(shop, 1);
-        head.Children.Add(shop);
+        Grid.SetColumn(title, 1);
+        head.Children.Add(title);
 
         var elapsedText = new TextBlock
         {
-            Text = AutoLoadStatusText.Elapsed(entry, nowUtc), FontFamily = Hud.Font("MonoFont"), FontSize = 20,
+            Text = AutoLoadStatusText.Clock(entry, table, nowUtc), FontFamily = Hud.Font("MonoFont"), FontSize = 20,
             VerticalAlignment = VerticalAlignment.Center,
         };
         ApplyElapsedStyle(entry, elapsedText, nowUtc);
@@ -299,6 +300,12 @@ public sealed class AutoLoadStatusLine : StackPanel
         {
             Text = AutoLoadStatusText.CargoLine(entry), FontFamily = Hud.Font("MonoFont"), FontSize = 10,
             Foreground = Hud.Br("FgDimBrush"),
+        });
+        sub.Children.Add(new TextBlock
+        {
+            Text = AutoLoadStatusText.Location(entry), FontFamily = Hud.Font("UiFont"), FontSize = 10,
+            Foreground = Hud.Br("FgDimBrush"), TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(10, 0, 0, 0),
         });
         if (AutoLoadStatusText.EstLine(entry, table) is { } est)
             sub.Children.Add(new TextBlock

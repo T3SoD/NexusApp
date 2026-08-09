@@ -35,10 +35,11 @@ public sealed class AutoLoadTracker : IDisposable
     {
         if (!tx.AutoLoading) return;
         if (_utcNow() - tx.TimestampUtc > FreshWindow) return;
-        var entry = new AutoLoadEntry(tx.TimestampUtc, tx.Kind, tx.ShopName, tx.Scu, tx.Boxes,
+        var commodityName = CommodityNameCatalog.Instance.Resolve(tx.ResourceGuid);
+        var entry = new AutoLoadEntry(tx.TimestampUtc, tx.Kind, tx.ShopName, commodityName, tx.Scu, tx.Boxes,
             AutoLoadEstimator.PredictSeconds(_table, tx.Kind, tx.Boxes));
         lock (_entries) _entries.Add(entry);
-        Logger.Info($"[CARGO] auto-{Word(entry)} started: {entry.Scu:0.##} SCU at {entry.ShopName}, predicted {entry.PredictedSeconds?.ToString() ?? "n/a"}s");
+        Logger.Info($"[CARGO] auto-{Word(entry)} started: {entry.Scu:0.##} SCU {commodityName ?? tx.ResourceGuid} at {entry.ShopName}, predicted {entry.PredictedSeconds?.ToString() ?? "n/a"}s");
         EntriesChanged?.Invoke();
     }
 
