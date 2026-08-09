@@ -1417,9 +1417,21 @@ public sealed partial class TradePage
         terminals.TryGetValue(r.BuyRow.TerminalId, out var buyTerm);
         terminals.TryGetValue(r.SellRow.TerminalId, out var sellTerm);
 
+        // Auto-load fold (Task 10): dock membership gates the chip, the calibrated flag gates the
+        // range text. Resolved once here and reused by both the head chip and the detail line.
+        var autoLoad = AutoLoadPlannerParts.For(buyTerm, r.BuyRow.ContainerSizes, r.TripQty,
+            StarmapCatalog.Instance, LoadingDockCatalog.Instance, AutoLoadTimeTable.Instance);
+
         var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         head.Children.Add(new TextBlock { Text = r.BuyRow.CommodityName, FontFamily = Hud.Font("UiFont"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"), Margin = new Thickness(0, 0, 10, 0) });
         head.Children.Add(TierChip(r.Tier));
+        // DOCK chip (Task 10): TierChip geometry in the FreshChip stale palette, shown only when
+        // the buy leg resolves to a Loading Dock amenity site. Never a placeholder for the terminals
+        // that do not resolve - AutoLoadPlannerParts.For already folds that into ShowDockChip.
+        if (autoLoad.ShowDockChip)
+        {
+            head.Children.Add(DockChip());
+        }
         // Added 2026-07-30 (decorating beyond the approved mock): the real gigameter
         // distance between the buy and sell legs, only when both resolve on the starmap in the
         // same system - DistanceMeters already encodes both the resolution and the same-system
@@ -1589,6 +1601,19 @@ public sealed partial class TradePage
         // real fee split adds anything the head does not already say, so that is the only thing
         // rendered here, and it returns by itself the day a fee provider lands (the datamined
         // auto-load ladder is the obvious first one). Net stays out of it: the head is Net.
+        // Auto-load estimate (Task 10): FeePart's own idiom (label/value pair, margin 0,0,20,0),
+        // built inline rather than through FeePart itself because the value here is the formatted
+        // range string, not an aUEC figure. Gated on RangeText alone, not on fees below - the range
+        // only exists once AutoLoadTimeTable.Instance is calibrated, independent of whether a fee
+        // schedule has ever landed.
+        if (autoLoad.RangeText is { } range)
+        {
+            var autoLoadLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 20, 0) };
+            autoLoadLine.Children.Add(new TextBlock { Text = "AUTO-LOAD: ", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush") });
+            autoLoadLine.Children.Add(new TextBlock { Text = range, FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgBrush") });
+            detail.Children.Add(autoLoadLine);
+        }
+
         double fees = r.Gross - r.Net;
         if (fees != 0)
         {
@@ -1650,6 +1675,26 @@ public sealed partial class TradePage
         p.Children.Add(new TextBlock { Text = $"{label}: ", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush") });
         p.Children.Add(new TextBlock { Text = $"{value:n0} aUEC", FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = valueColor });
         return p;
+    }
+
+    // DOCK chip (Task 10): TierChip's geometry (mono 9 bold, radius 3, padding 7,2,7,2), painted
+    // in FreshChip's stale palette (AccentBrush/AccentFaintBrush/AccentStrongBrush) so it reads as
+    // an active callout next to the neutral TierChip before it. Shown only when the buy leg
+    // resolves to a Loading Dock amenity site (AutoLoadPlannerParts.For), never a placeholder.
+    private static Border DockChip()
+    {
+        var text = new TextBlock
+        {
+            Text = "DOCK", FontFamily = Hud.Font("MonoFont"), FontSize = 9,
+            FontWeight = FontWeights.Bold, Foreground = Hud.Br("AccentBrush"),
+        };
+        return new Border
+        {
+            Background = Hud.Br("AccentFaintBrush"), BorderBrush = Hud.Br("AccentStrongBrush"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(7, 2, 7, 2), Margin = new Thickness(8, 0, 0, 0),
+            Child = text, VerticalAlignment = VerticalAlignment.Center,
+        };
     }
 
     /// <summary>What SCT said about one side, kept beside the UEX row so a card can offer both.</summary>
