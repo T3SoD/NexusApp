@@ -1,0 +1,87 @@
+using NexusApp.Views;
+using Xunit;
+
+namespace NexusApp.Tests;
+
+// Phase A of the trade/cargo fusion (spec 2026-08-09 section 4).
+public class ConversionDisplayTests
+{
+    [Fact]
+    public void WalletOnly_IsOneSegment()
+    {
+        var segs = ConversionDisplay.Segments(1_401_444, inCargo: 0, expected: null);
+        var one = Assert.Single(segs);
+        Assert.Equal(ConversionKind.Liquid, one.Kind);
+        Assert.Equal("LIQUID", one.Label);
+        Assert.Equal("1,401,444", one.Value);
+    }
+
+    [Fact]
+    public void CargoAppearsOnlyWhenSomethingIsHeld()
+    {
+        Assert.Single(ConversionDisplay.Segments(1_000, 0, null));
+        Assert.Equal(2, ConversionDisplay.Segments(1_000, 500, null).Count);
+    }
+
+    [Fact]
+    public void ExpectedIsAbsentWhenNull()
+    {
+        var segs = ConversionDisplay.Segments(1_000, 500, expected: null);
+        Assert.DoesNotContain(segs, s => s.Kind == ConversionKind.Expected);
+    }
+
+    [Fact]
+    public void ExpectedRendersSignedWhenPresent()
+    {
+        var segs = ConversionDisplay.Segments(1_000, 500, expected: 144_160);
+        var exp = Assert.Single(segs, s => s.Kind == ConversionKind.Expected);
+        Assert.Equal("EXPECTED", exp.Label);
+        Assert.Equal("+144,160", exp.Value);
+    }
+
+    // No wallet anchor set: the wallet half is unknown, but held cargo is still a fact worth showing.
+    [Fact]
+    public void NoWallet_StillShowsCargo()
+    {
+        var segs = ConversionDisplay.Segments(wallet: null, inCargo: 693_600, expected: null);
+        var one = Assert.Single(segs);
+        Assert.Equal(ConversionKind.Cargo, one.Kind);
+    }
+
+    [Fact]
+    public void NothingKnown_IsEmptySoTheCallerCanFallBack()
+    {
+        Assert.Empty(ConversionDisplay.Segments(wallet: null, inCargo: 0, expected: null));
+    }
+
+    [Fact]
+    public void OrderIsAlwaysLiquidThenCargoThenExpected()
+    {
+        var segs = ConversionDisplay.Segments(1_000, 500, 250);
+        Assert.Equal(new[] { ConversionKind.Liquid, ConversionKind.Cargo, ConversionKind.Expected },
+                     segs.Select(s => s.Kind));
+    }
+
+    // Weights drive the bar's star split; a zero weight would collapse a segment that is rendered.
+    [Fact]
+    public void WeightsAreNeverZeroForARenderedSegment()
+    {
+        foreach (var s in ConversionDisplay.Segments(1, 1, 1)) Assert.True(s.Weight > 0);
+    }
+
+    [Fact]
+    public void CargoNoteCarriesItsUnit()
+    {
+        Assert.Equal("693,600 aUEC in unsold cargo", ConversionDisplay.CargoNote(693_600));
+    }
+
+    // A negative wallet is possible (WalletUiState.Impossible) and must not render as a segment
+    // whose star weight would be negative.
+    [Fact]
+    public void NegativeWallet_IsNotRendered()
+    {
+        var segs = ConversionDisplay.Segments(-500, inCargo: 100, expected: null);
+        var one = Assert.Single(segs);
+        Assert.Equal(ConversionKind.Cargo, one.Kind);
+    }
+}
