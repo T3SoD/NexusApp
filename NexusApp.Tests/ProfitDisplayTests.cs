@@ -217,9 +217,20 @@ public class ProfitDisplayTests
         Assert.Contains("Auto-load fees are paid in game but never logged, so auto-loaded buys "
             + "understate spend by the fee.", ProfitDisplay.CaveatBody);
         Assert.Contains("Commodity kiosk transactions only.", ProfitDisplay.CaveatBody);
-        Assert.Equal(" Unsold cargo reads as spend until it sells.", ProfitDisplay.CaveatUnsoldTail);
-        Assert.Equal("In the red mid-run is normal: unsold cargo reads as spend until it sells.",
-            ProfitDisplay.CaveatNegativeLead);
+    }
+
+    // Reworded 2026-08-09 (trade/cargo fusion phase A). The old copy said unsold cargo "reads as
+    // spend", which the conversion bar above this panel makes untrue: held cargo is now valued on
+    // screen. The caveat must not apologise for a number the app no longer shows in isolation.
+    [Fact]
+    public void Caveat_DoesNotClaimCargoReadsAsSpend()
+    {
+        Assert.Equal(" Cargo you are still carrying is valued above, not lost.",
+            ProfitDisplay.CaveatUnsoldTail);
+        Assert.Equal("Net counts settled kiosk trades only. Cargo you are still carrying is valued "
+            + "above, not lost.", ProfitDisplay.CaveatNegativeLead);
+        Assert.DoesNotContain("reads as spend", ProfitDisplay.CaveatUnsoldTail);
+        Assert.DoesNotContain("reads as spend", ProfitDisplay.CaveatNegativeLead);
     }
 
     // Review fix 2026-08-05: recon proved these never MOVE the number; it never checked what the

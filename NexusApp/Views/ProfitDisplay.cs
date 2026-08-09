@@ -52,9 +52,13 @@ internal static class ProfitDisplay
         "Commodity kiosk transactions only. Ship purchases, rentals, fines, repairs and mission "
         + "payouts never move this number. Auto-load fees are paid in game but never logged, so "
         + "auto-loaded buys understate spend by the fee.";
-    internal const string CaveatUnsoldTail = " Unsold cargo reads as spend until it sells.";
+    // Reworded 2026-08-09 (trade/cargo fusion phase A): both strings promised that unsold cargo
+    // "reads as spend", which stopped being true of what is on screen the moment the conversion bar
+    // shipped above this panel. The bar values held cargo, so the caveat now says where that value
+    // went instead of apologising for a number the app no longer shows in isolation.
+    internal const string CaveatUnsoldTail = " Cargo you are still carrying is valued above, not lost.";
     internal const string CaveatNegativeLead =
-        "In the red mid-run is normal: unsold cargo reads as spend until it sells.";
+        "Net counts settled kiosk trades only. Cargo you are still carrying is valued above, not lost.";
 
     internal static string Format(long v) => v.ToString("N0", CultureInfo.InvariantCulture);
 

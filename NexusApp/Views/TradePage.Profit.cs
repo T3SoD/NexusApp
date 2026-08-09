@@ -444,6 +444,57 @@ public sealed partial class TradePage
 
     private bool _walletEditorOpen;   // survives panel rebuilds; the TextBox itself does not
 
+    // The conversion bar, desktop variant. A per-page copy rather than a shared helper, the house
+    // convention for chrome builders (CascadeIn is hand-duplicated per page on purpose): this one
+    // renders every segment and uses the page's Hud accessors, while the overlay's copy is capped
+    // at two segments by its 320px width.
+    private Border BuildConversionBar(IReadOnlyList<ConversionSegment> segs, double height)
+    {
+        var grid = new Grid { Height = height };
+        for (int i = 0; i < segs.Count; i++)
+        {
+            var s = segs[i];
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(Math.Max(1, s.Weight), GridUnitType.Star),
+                MinWidth = 112,
+            });
+
+            var (fill, keyBrush, valBrush) = s.Kind switch
+            {
+                ConversionKind.Liquid => (ConversionLiquidFill, Hud.Br("CyanBrush"), Hud.Br("FgBrush")),
+                ConversionKind.Cargo => (Hud.Br("AccentFaintBrush"), Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
+                _ => (ConversionGainFill, Hud.Br("OkBrush"), Hud.Br("OkBrush")),
+            };
+
+            var inner = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
+            inner.Children.Add(new TextBlock
+            {
+                Text = s.Label, FontFamily = Hud.Font("UiFont"), FontSize = 9,
+                FontWeight = FontWeights.Bold, Foreground = keyBrush,
+            });
+            var value = new TextBlock
+            {
+                FontFamily = Hud.Font("MonoFont"), FontSize = 15, Foreground = valBrush,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+            value.Inlines.Add(new Run(s.Value));
+            value.Inlines.Add(new Run(" aUEC")
+            {
+                FontFamily = Hud.Font("UiFont"), FontSize = 9.5, Foreground = Hud.Br("FgDimBrush"),
+            });
+            inner.Children.Add(value);
+
+            var cell = new Border { Background = fill, Child = inner, ToolTip = ConversionDisplay.BarTooltip };
+            Grid.SetColumn(cell, i);
+            grid.Children.Add(cell);
+        }
+        return new Border { CornerRadius = new CornerRadius(4), ClipToBounds = true, Child = grid };
+    }
+
+    private static readonly Brush ConversionLiquidFill = new SolidColorBrush(Color.FromArgb(0x1F, 0x7F, 0xE9, 0xE0));
+    private static readonly Brush ConversionGainFill = new SolidColorBrush(Color.FromArgb(0x24, 0x66, 0xE6, 0xA6));
+
     // ── WALLET block (OCR wallet spec sections 5/6/11; ruling 2026-08-06: top of this panel).
     // Estimate, provenance, state chip, inline SET BALANCE editor. All words and arithmetic come
     // from WalletDisplay and WalletTracker; this paints. Colors follow the superseded mock's
@@ -453,6 +504,22 @@ public sealed partial class TradePage
         var wallet = App.Wallet;
         var state = WalletDisplay.State(wallet.HasAnchor, wallet.Estimate, wallet.AnchorUtc,
                                         DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+
+        // Conversion bar first (spec 2026-08-09 section 4): where the money IS, before the wallet
+        // detail explains one third of it. The desktop has room for every segment, unlike the 320px
+        // overlay. EXPECTED stays null until route binding exists, so it is simply absent.
+        var inCargo = CargoValue.TotalCost(App.Profit.Ledger.Transactions);
+        var segs = ConversionDisplay.Segments(wallet.Estimate, inCargo, expected: null);
+        if (segs.Count > 0)
+        {
+            _profitBody.Children.Add(BuildConversionBar(segs, 34));
+            if (inCargo > 0)
+                _profitBody.Children.Add(new TextBlock
+                {
+                    Text = ConversionDisplay.CargoNote(inCargo), FontFamily = Hud.Font("UiFont"),
+                    FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 6, 0, 14),
+                });
+        }
 
         var head = new Grid { Margin = new Thickness(0, 0, 0, 9) };
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

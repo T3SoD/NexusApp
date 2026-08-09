@@ -84,4 +84,37 @@ public class ConversionDisplayTests
         var one = Assert.Single(segs);
         Assert.Equal(ConversionKind.Cargo, one.Kind);
     }
+
+    // ── Source pins: the decisions this phase makes, so a later change cannot quietly undo them ──
+
+    [Fact]
+    public void OverlayMoneyBlock_RendersTheConversionBar()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs");
+        Assert.Contains("BuildConversionBar", src);
+    }
+
+    [Fact]
+    public void TradeProfitPanel_RendersTheConversionBar()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs");
+        Assert.Contains("BuildConversionBar", src);
+    }
+
+    // Every aUEC value carries its unit (house rule 2026-08-09). Both bar builders append it.
+    [Fact]
+    public void BothConversionBars_AppendTheUnit()
+    {
+        Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
+        Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs"));
+    }
+
+    // EXPECTED needs a route's sell price, which does not exist yet. Passing anything but null here
+    // would be inventing a figure.
+    [Fact]
+    public void ExpectedIsNotYetComputedOnEitherSurface()
+    {
+        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
+        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs"));
+    }
 }
