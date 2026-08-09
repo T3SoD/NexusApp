@@ -3701,14 +3701,24 @@ public partial class OverlayWindow : Window
         TradeSessionHost.Content = BuildTradeMoneyBlock();
     }
 
-    // Anchored money block: the WALLET line with the SESSION line under it (order fixed
-    // 2026-08-06, wallet on top) - the desktop header's two money readouts. Stacked lines, not
-    // side-by-side pills: 320 px cannot seat two full-digit values abreast. One border for the
-    // pair, hairline BELOW as the divider against the scrolling cards.
+    // Anchored money block. The WALLET line became the conversion bar (spec 2026-08-09 section 4):
+    // a wallet that drops by 693,600 while SESSION goes red says you lost money on a good buy, when
+    // what actually happened is the money moved into cargo. The bar shows the move.
+    //
+    // 320 px still cannot seat three suffixed values abreast (every aUEC value carries its unit, and
+    // that unit costs about 34 px), so this renders LIQUID and IN CARGO only. EXPECTED needs a
+    // route's sell price and is not computed yet; when it is, it takes its own line rather than
+    // clipping a unit or silently dropping a segment.
+    //
+    // Segments is empty only when nothing at all is known (no wallet anchor, nothing held), and the
+    // old wallet row still renders in that case so the block is never blank.
     private Border BuildTradeMoneyBlock()
     {
         var stack = new StackPanel();
-        stack.Children.Add(BuildTradeWalletRow());
+        var inCargo = CargoValue.TotalCost(App.Profit.Ledger.Transactions);
+        var segs = ConversionDisplay.Segments(App.Wallet?.Estimate, inCargo, expected: null);
+        if (segs.Count == 0) stack.Children.Add(BuildTradeWalletRow());
+        else stack.Children.Add(BuildConversionBar(segs, 26));
         stack.Children.Add(BuildTradeSessionRow());
         // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor.
         return new Border
@@ -3717,6 +3727,58 @@ public partial class OverlayWindow : Window
             Padding = new Thickness(0, 7, 0, 7), Margin = new Thickness(0, 0, 0, 4), Child = stack,
         };
     }
+
+    // The conversion bar. One star column per segment weighted by the segment's own weight, so the
+    // split needs no measure math and resizes with the panel - the same idiom the ROI meter and the
+    // trip bars already use. MinWidth keeps the narrowest segment legible with its unit attached
+    // rather than clipping it.
+    private Border BuildConversionBar(IReadOnlyList<ConversionSegment> segs, double height)
+    {
+        var dim = (Brush)FindResource("FgDimBrush");
+        var grid = new Grid { Height = height };
+        for (int i = 0; i < segs.Count; i++)
+        {
+            var s = segs[i];
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(Math.Max(1, s.Weight), GridUnitType.Star),
+                MinWidth = 84,
+            });
+
+            var (fill, keyBrush, valBrush) = s.Kind switch
+            {
+                ConversionKind.Liquid => (ConversionLiquidFill, (Brush)FindResource("CyanBrush"), (Brush)FindResource("FgBrush")),
+                ConversionKind.Cargo => ((Brush)FindResource("AccentFaintBrush"), (Brush)FindResource("AccentBrush"), (Brush)FindResource("FgBrush")),
+                _ => (ConversionGainFill, (Brush)FindResource("OkBrush"), (Brush)FindResource("OkBrush")),
+            };
+
+            var inner = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 9, 0) };
+            inner.Children.Add(new TextBlock
+            {
+                Text = s.Label, FontSize = 8, FontWeight = FontWeights.Bold, Foreground = keyBrush,
+            });
+            var value = new TextBlock
+            {
+                FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, Foreground = valBrush,
+            };
+            value.Inlines.Add(new System.Windows.Documents.Run(s.Value));
+            value.Inlines.Add(new System.Windows.Documents.Run(" aUEC")
+            {
+                FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 9, Foreground = dim,
+            });
+            inner.Children.Add(value);
+
+            var cell = new Border { Background = fill, Child = inner, ToolTip = ConversionDisplay.BarTooltip };
+            Grid.SetColumn(cell, i);
+            grid.Children.Add(cell);
+        }
+        return new Border { CornerRadius = new CornerRadius(4), ClipToBounds = true, Child = grid };
+    }
+
+    // Segment fills. Faint tints of the palette colors, matching the AccentFaintBrush idiom the
+    // cargo segment borrows outright.
+    private static readonly Brush ConversionLiquidFill = new SolidColorBrush(Color.FromArgb(0x1F, 0x7F, 0xE9, 0xE0));
+    private static readonly Brush ConversionGainFill = new SolidColorBrush(Color.FromArgb(0x24, 0x66, 0xE6, 0xA6));
 
     // SESSION row: the session net on the chip's color rule - green positive, red negative, dim
     // empty or offline. The ledger, derivation and history strip stay on the desktop panel;
