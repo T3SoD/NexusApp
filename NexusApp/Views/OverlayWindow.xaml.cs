@@ -4506,6 +4506,32 @@ public partial class OverlayWindow : Window
             var l = bLabel; var v = bValue;
             budgetRow.Children.Add(OverlayTradePill(l, _plannerBudget == v, () => SetOverlayPlannerBudget(l, v)));
         }
+        // WALLET (2026-08-09): its value changes underneath the static array above, so it cannot
+        // live as one of its entries - built as its own pill instead, read fresh at BOTH render
+        // time (whether it shows at all, and whether it currently highlights) and click time (the
+        // value it actually sets), never a value captured once. Absent entirely when unusable,
+        // same CanUse gate the desktop planner chip uses, so this row grows no dead pill. App.Wallet
+        // is null-checked here (not asserted non-null) to match this file's own Wallet convention -
+        // see BuildTradeWalletRow and the ctor's Changed subscription just above this class.
+        var wallet = App.Wallet;
+        var walletState = wallet == null ? WalletUiState.NotSet
+            : WalletDisplay.State(wallet.HasAnchor, wallet.Estimate, wallet.AnchorUtc,
+                                  DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        if (wallet != null && WalletBudgetChip.CanUse(walletState, wallet.Estimate))
+        {
+            budgetRow.Children.Add(OverlayTradePill("WALLET", _plannerBudget == (double?)wallet.Estimate!.Value,
+                () =>
+                {
+                    var w = App.Wallet;
+                    if (w == null) return;
+                    var s = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+                    // No-op with no visual change when unusable (e.g. the estimate went stale in
+                    // the gap between this render and the click landing) - the same fail-safe the
+                    // desktop chip's own click handler re-checks.
+                    if (!WalletBudgetChip.CanUse(s, w.Estimate)) return;
+                    SetOverlayPlannerBudget("WALLET", w.Estimate);
+                }));
+        }
         Place(Cell("BUDGET", budgetRow), 2, 0, span: 2);
 
         // SCOPE: the pre-R2 pills (labels mirror the main page - OverlayTradeScopes).

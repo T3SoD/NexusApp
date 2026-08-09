@@ -203,6 +203,15 @@ public sealed partial class TradePage
     internal const int BudgetDebounceMs = 250;
     private DispatcherTimer? _budgetDebounceTimer;
 
+    // WALLET budget chip (2026-08-09): its own slot beside the budget box, same idiom as the SELL
+    // tab's APPLY WORK ORDER chip (TradePage.Sell.cs, _prefillSlot/_prefillChipName) - a state-
+    // dependent chip beside a control built once must live in a ContentControl refreshed on
+    // demand, not be recreated as part of the chrome build. _walletChipLabel is the last label
+    // RefreshWalletChip rendered (null = no chip), so an unchanged answer never re-creates the
+    // chip mid-click.
+    private ContentControl _walletChipSlot = null!;
+    private string? _walletChipLabel;
+
     // Built once (called only from the `??=` in the TextChanged handler above), then reused for
     // every later keystroke - a fresh DispatcherTimer per keystroke would be its own small waste
     // on top of the exact problem this exists to avoid. The Tick handler stops the timer before
@@ -242,6 +251,47 @@ public sealed partial class TradePage
     // never per keystroke - a keystroke only restarts the debounce timer, it does not reach
     // either commit point until the timer fires or the box loses focus.
     internal event Action<double?>? SessionBudgetChanged;
+
+    // WALLET budget chip refresh: reads the live wallet estimate through the same WalletDisplay.
+    // State fold every other wallet surface uses (MainWindow's chip, the Trade profit panel), then
+    // WalletBudgetChip's usability rule decides whether the chip shows at all. Only touches the
+    // slot when the label actually changed (guard mirrors RefreshPrefillChip in TradePage.Sell.cs)
+    // - re-creating an unchanged chip is the exact mid-click bug that idiom exists to avoid.
+    private void RefreshWalletChip()
+    {
+        var w = App.Wallet;
+        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        var label = WalletBudgetChip.Label(state, w.Estimate);
+        if (label == _walletChipLabel) return;
+        _walletChipLabel = label;
+        if (label is null) { _walletChipSlot.Content = null; return; }
+
+        var chip = ScopePill(label);
+        chip.MouseLeftButtonUp += (_, _) => UseWalletAsBudget();
+        _walletChipSlot.Content = chip;
+    }
+
+    // The chip's click body: the same immediate-replan shape as the budget box's own LostFocus
+    // handler above (stop the debounce timer, update _budgetText, log [UI], RebuildPlanner, raise
+    // SessionBudgetChanged so the overlay follows) - just triggered by a click instead of a blur,
+    // and writing _budgetBox.Text itself first since a click never types into the box. Re-checks
+    // CanUse against a fresh read rather than trusting the chip is still valid: the chip only
+    // rebuilds on a rebuild or a Wallet.Changed raise, so a click landing in the gap between an
+    // estimate going stale and the next repaint still fails safe as a no-op.
+    private void UseWalletAsBudget()
+    {
+        var w = App.Wallet;
+        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+        var text = WalletBudgetChip.BudgetText(state, w.Estimate);
+        if (text is null) return;
+
+        _budgetBox.Text = text;        // triggers the live-rerank TextChanged handler below
+        _budgetDebounceTimer?.Stop();  // ...and this cancels it: this block applies immediately instead
+        _budgetText = text;
+        Logger.Info("[UI] Trade planner: budget set from wallet");
+        RebuildPlanner();
+        SessionBudgetChanged?.Invoke(CurrentBudget());
+    }
 
     // Built once, on the first RebuildPlanner. Everything here survives every later rebuild: the
     // controls keep their identity, so a click that moved focus off the budget box lands on a live
@@ -341,8 +391,24 @@ public sealed partial class TradePage
             _budgetDebounceTimer.Stop();
             _budgetDebounceTimer.Start();
         };
-        budgetGrp.Children.Add(_budgetBox);
+        var budgetRow = new StackPanel { Orientation = Orientation.Horizontal };
+        budgetRow.Children.Add(_budgetBox);
+        // WALLET budget chip slot: hidden entirely (RefreshWalletChip's null-content branch) when
+        // there is no usable wallet estimate, so this row - and the BUDGET box beside it - never
+        // shifts. See _walletChipSlot's own field comment for why this must be a slot, not chrome.
+        _walletChipSlot = new ContentControl
+        {
+            VerticalAlignment = VerticalAlignment.Center, Focusable = false, Margin = new Thickness(8, 0, 0, 0),
+        };
+        budgetRow.Children.Add(_walletChipSlot);
+        budgetGrp.Children.Add(budgetRow);
         topRow.Children.Add(budgetGrp);
+
+        // Live refresh: a wallet anchor, capture or reconciliation raises Changed off the wallet's
+        // own event, not a UI action, so the chip needs its own subscription rather than waiting
+        // for the next planner rebuild to catch up. Subscribed once - BuildPlannerChrome only ever
+        // runs once (this method's opening comment) - so this can never double-subscribe.
+        App.Wallet.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshWalletChip(); });
 
         _plannerInputs.Children.Add(topRow);
 
@@ -524,6 +590,7 @@ public sealed partial class TradePage
         RefreshPlannerCommodityPicker(snap);
         RefreshDemandFilterPills();
         RefreshRankModePills();
+        RefreshWalletChip();
 
         // Small dim note above the results list, only when the DESTINATION picker is actually
         // constraining sell legs - covers both the empty-state and populated branches below, since
