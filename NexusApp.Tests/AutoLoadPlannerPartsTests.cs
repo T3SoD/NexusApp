@@ -8,9 +8,9 @@ public class AutoLoadPlannerPartsTests
 {
     private static readonly StarmapCatalog Starmap = StarmapCatalog.LoadEmbedded();
     private static readonly LoadingDockCatalog Docks = LoadingDockCatalog.LoadEmbedded();
-    private static readonly AutoLoadTimeTable Dark = AutoLoadTimeTable.LoadEmbedded();     // calibrated false
-    private static readonly AutoLoadTimeTable Lit = AutoLoadTimeTable.Load(new MemoryStream(
-        """{"schema":1,"gameBuild":"t","calibrated":true,"baseLoadingSeconds":120,"baseUnloadingSeconds":120,"boxLoadingSeconds":{"8":8,"16":12,"24":15,"32":18},"boxUnloadingSeconds":{"8":8}}"""u8.ToArray()));
+    private static readonly AutoLoadTimeTable Dark = AutoLoadTimeTable.Load(new MemoryStream(
+        """{"schema":1,"gameBuild":"t","calibrated":false,"baseLoadingSeconds":120,"baseUnloadingSeconds":120,"boxLoadingSeconds":{"8":8,"16":12,"24":15,"32":18},"boxUnloadingSeconds":{"8":8}}"""u8.ToArray()));   // calibrated false
+    private static readonly AutoLoadTimeTable Lit = AutoLoadTimeTable.LoadEmbedded();     // calibrated true
 
     private static MarketTerminal Term(string location)
         => new(1, "T", "trading", false, "Stanton", location);
@@ -40,7 +40,7 @@ public class AutoLoadPlannerPartsTests
     {
         var p = AutoLoadPlannerParts.For(DockTerm, "8,16,24,32", 256, Starmap, Docks, Lit);
         Assert.True(p.ShowDockChip);
-        Assert.Equal("4m 24s - 6m 16s", p.RangeText);
+        Assert.Equal("2m 38s - 3m 46s", p.RangeText);
     }
 
     [Fact]

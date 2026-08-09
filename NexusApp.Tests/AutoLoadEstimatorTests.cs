@@ -8,14 +8,14 @@ public class AutoLoadEstimatorTests
 {
     private static readonly AutoLoadTimeTable Table = AutoLoadTimeTable.LoadEmbedded();
 
-    [Fact] // the real 2026-08-03 run: 1,440 SCU as 60 x 24 SCU -> 120 + 60 x 15 = 1020s
-    public void PredictSeconds_RealRun_Is1020()
-        => Assert.Equal(1020, AutoLoadEstimator.PredictSeconds(Table, TransactionKind.Buy,
+    [Fact] // the real 2026-08-03 run, recalibrated: 1,440 SCU as 60 x 24 SCU -> 72 + 60 x 9.0 = 612s
+    public void PredictSeconds_RealRun_Is612()
+        => Assert.Equal(612, AutoLoadEstimator.PredictSeconds(Table, TransactionKind.Buy,
             new[] { new CargoBoxGroup(24m, 60) }));
 
-    [Fact]
+    [Fact] // 72 + 2 x 10.8 + 4 x 4.8 = 112.8, rounds to 113
     public void PredictSeconds_MultipleGroups_Sum()
-        => Assert.Equal(120 + 2 * 18 + 4 * 8, AutoLoadEstimator.PredictSeconds(Table, TransactionKind.Buy,
+        => Assert.Equal(113, AutoLoadEstimator.PredictSeconds(Table, TransactionKind.Buy,
             new[] { new CargoBoxGroup(32m, 2), new CargoBoxGroup(8m, 4) }));
 
     [Fact]
@@ -29,17 +29,17 @@ public class AutoLoadEstimatorTests
             AutoLoadTimeTable.Load(new MemoryStream("x"u8.ToArray())),
             TransactionKind.Buy, new[] { new CargoBoxGroup(24m, 60) }));
 
-    [Fact] // 256 SCU over "8,16,24,32": 32 -> 8x18+120=264 (min); 8 -> 32x8+120=376 (max)
+    [Fact] // 256 SCU over "8,16,24,32": 32 -> 8x10.8+72=158.4->158 (min); 8 -> 32x4.8+72=225.6->226 (max)
     public void RangeSeconds_OfferedSizes_MinMax()
-        => Assert.Equal((264, 376), AutoLoadEstimator.RangeSeconds(Table, 256, "8,16,24,32"));
+        => Assert.Equal((158, 226), AutoLoadEstimator.RangeSeconds(Table, 256, "8,16,24,32"));
 
-    [Fact] // ceil boxing: 100 SCU at 24 -> 5 boxes
+    [Fact] // ceil boxing: 100 SCU at 24 -> 5 boxes, 72 + 5x9.0 = 117
     public void RangeSeconds_CeilsPartialBoxes()
-        => Assert.Equal((120 + 5 * 15, 120 + 5 * 15), AutoLoadEstimator.RangeSeconds(Table, 100, "24"));
+        => Assert.Equal((117, 117), AutoLoadEstimator.RangeSeconds(Table, 100, "24"));
 
-    [Fact] // no terminal data -> full 1-32 table: min 32s crates 8x18+120=264, max 1 SCU 256x2+120=632
+    [Fact] // no terminal data -> full 1-32 table: min 32s crates 8x10.8+72=158, max 1 SCU 256x1.2+72=379.2->379
     public void RangeSeconds_EmptySizes_FallsBackToFullTable()
-        => Assert.Equal((264, 632), AutoLoadEstimator.RangeSeconds(Table, 256, ""));
+        => Assert.Equal((158, 379), AutoLoadEstimator.RangeSeconds(Table, 256, ""));
 
     [Fact]
     public void RangeSeconds_ZeroScu_Null()
@@ -54,5 +54,5 @@ public class AutoLoadEstimatorTests
 
     [Fact]
     public void FormatRange_Renders()
-        => Assert.Equal("4m 24s - 6m 16s", AutoLoadEstimator.FormatRange(Table, 256, "8,16,24,32"));
+        => Assert.Equal("2m 38s - 3m 46s", AutoLoadEstimator.FormatRange(Table, 256, "8,16,24,32"));
 }

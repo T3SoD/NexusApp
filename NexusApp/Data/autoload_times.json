@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "gameBuild": "4.9.188.23497",
-  "calibrated": false,
-  "baseLoadingSeconds": 120.0,
-  "baseUnloadingSeconds": 120.0,
-  "boxLoadingSeconds": { "0.125": 0, "0.25": 0, "0.5": 0, "1": 2, "2": 3, "4": 5, "8": 8, "16": 12, "24": 15, "32": 18 },
-  "boxUnloadingSeconds": { "0.125": 0, "0.25": 0, "0.5": 0, "1": 2, "2": 3, "4": 5, "8": 8, "16": 12, "24": 15, "32": 18 }
+  "calibrated": true,
+  "baseLoadingSeconds": 72.0,
+  "baseUnloadingSeconds": 72.0,
+  "boxLoadingSeconds": { "0.125": 0, "0.25": 0, "0.5": 0, "1": 1.2, "2": 1.8, "4": 3.0, "8": 4.8, "16": 7.2, "24": 9.0, "32": 10.8 },
+  "boxUnloadingSeconds": { "0.125": 0, "0.25": 0, "0.5": 0, "1": 1.2, "2": 1.8, "4": 3.0, "8": 4.8, "16": 7.2, "24": 9.0, "32": 10.8 }
 }

@@ -8,15 +8,15 @@ namespace NexusApp.Tests;
 public class AutoLoadTimeTableTests
 {
     [Fact]
-    public void LoadEmbedded_ShipsUncalibratedWithDataCoreValues()
+    public void LoadEmbedded_ShipsCalibratedWithLiveKioskValues()
     {
         var t = AutoLoadTimeTable.LoadEmbedded();
-        Assert.False(t.Calibrated);
-        Assert.Equal(120.0, t.BaseSeconds(TransactionKind.Buy));
-        Assert.Equal(120.0, t.BaseSeconds(TransactionKind.Sell));
-        Assert.Equal(15.0, t.SecondsPerBox(TransactionKind.Buy, 24m));
+        Assert.True(t.Calibrated);
+        Assert.Equal(72.0, t.BaseSeconds(TransactionKind.Buy));
+        Assert.Equal(72.0, t.BaseSeconds(TransactionKind.Sell));
+        Assert.Equal(9.0, t.SecondsPerBox(TransactionKind.Buy, 24m));
         Assert.Equal(0.0, t.SecondsPerBox(TransactionKind.Buy, 0.5m));
-        Assert.Equal(18.0, t.SecondsPerBox(TransactionKind.Sell, 32m));
+        Assert.Equal(10.8, t.SecondsPerBox(TransactionKind.Sell, 32m));
         Assert.Equal(new[] { 1, 2, 4, 8, 16, 24, 32 }, t.IntSizes);
     }
 

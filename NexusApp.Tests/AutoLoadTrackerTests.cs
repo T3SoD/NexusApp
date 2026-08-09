@@ -34,7 +34,7 @@ public class AutoLoadTrackerTests : IDisposable
         _tracker.Apply(Tx(auto: true));
         var e = Assert.Single(_tracker.Entries);
         Assert.Equal(TransactionKind.Buy, e.Kind);
-        Assert.Equal(1020, e.PredictedSeconds);
+        Assert.Equal(612, e.PredictedSeconds);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class AutoLoadTrackerTests : IDisposable
         Assert.Empty(_tracker.Entries);
         var s = Assert.Single(_store.ReadAll());
         Assert.Equal(27 * 60 + 5, s.ElapsedSeconds);
-        Assert.Equal(1020, s.PredictedSeconds);
+        Assert.Equal(612, s.PredictedSeconds);
         Assert.False(s.Abandoned);
         Assert.Equal(60, s.Boxes["24"]);
     }
