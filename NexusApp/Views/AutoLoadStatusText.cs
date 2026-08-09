@@ -27,8 +27,9 @@ internal static class AutoLoadStatusText
     public static string Title(AutoLoadEntry e)
         => e.CommodityName is { Length: > 0 } c ? c : StripWord(e);
 
-    // Purchase location, cleaned for display by the house shop-label rules.
-    public static string Location(AutoLoadEntry e) => ProfitDisplay.ShopLabel(e.ShopName);
+    // Purchase location: the player's stamped place when one exists, else the cleaned shop
+    // token. Matches the profit ledger's own WhereText location rules (ProfitDisplay.WhereText).
+    public static string Location(AutoLoadEntry e) => ProfitDisplay.WhereText(e.PlaceLabel, e.PlaceIsArea, e.ShopName);
 
     public static string CargoLine(AutoLoadEntry e)
     {

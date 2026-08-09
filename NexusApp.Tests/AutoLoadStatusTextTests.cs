@@ -12,8 +12,10 @@ public class AutoLoadStatusTextTests
     private static readonly AutoLoadTimeTable Lit = AutoLoadTimeTable.LoadEmbedded();   // calibrated true
 
     private static AutoLoadEntry Entry(TransactionKind kind = TransactionKind.Buy, int? predicted = 1020,
-                                       string? commodityName = null)
-        => new(T0, kind, "SCShop_Admin", commodityName, 1440m, new[] { new CargoBoxGroup(24m, 60) }, predicted);
+                                       string? commodityName = null, string? placeLabel = null,
+                                       bool placeIsArea = false)
+        => new(T0, kind, "SCShop_Admin", commodityName, placeLabel, placeIsArea, 1440m,
+            new[] { new CargoBoxGroup(24m, 60) }, predicted);
 
     [Fact]
     public void StripWord_LoadAndUnload()
@@ -74,7 +76,7 @@ public class AutoLoadStatusTextTests
     [Fact]
     public void CargoLine_JoinsMultipleGroups()
     {
-        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_Admin", null, 1472m,
+        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_Admin", null, null, false, 1472m,
             new[] { new CargoBoxGroup(24m, 60), new CargoBoxGroup(8m, 4) }, 612);
         Assert.Equal("1,472 SCU - 60 x 24 SCU + 4 x 8 SCU", AutoLoadStatusText.CargoLine(e));
     }
@@ -86,14 +88,20 @@ public class AutoLoadStatusTextTests
         Assert.Equal("AUTO-LOAD", AutoLoadStatusText.Title(Entry()));
     }
 
-    // ProfitDisplay.ShopLabel("SCShop_RestStop_Pharmacy-001") strips the SCShop_ prefix and the
-    // trailing -NNN kiosk instance number, then unscores the rest - the same mapping
-    // WalletDisplayTests.ShopDisplayName_StripsThePrefixAndInstanceSuffix already proves for that token.
+    // ProfitDisplay.WhereText prefers the player's stamped place over the shop token
+    // (string.IsNullOrWhiteSpace(placeLabel) ? ShopLabel(shopName) : ...). A non-area place
+    // renders as-is; a null place falls back to ProfitDisplay.ShopLabel("SCShop_RestStop_Pharmacy-001")
+    // ("RestStop Pharmacy" - the same mapping WalletDisplayTests.ShopDisplayName_StripsThePrefixAndInstanceSuffix
+    // already proves for that token).
     [Fact]
-    public void Location_CleansTheShopToken()
+    public void Location_UsesStampedPlaceThenFallsBackToShop()
     {
-        var e = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_RestStop_Pharmacy-001", null, 1440m,
-            new[] { new CargoBoxGroup(24m, 60) }, 1020);
-        Assert.Equal("RestStop Pharmacy", AutoLoadStatusText.Location(e));
+        var withPlace = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_RestStop_Pharmacy-001", null,
+            "Stanton Gateway", false, 1440m, new[] { new CargoBoxGroup(24m, 60) }, 1020);
+        Assert.Equal("Stanton Gateway", AutoLoadStatusText.Location(withPlace));
+
+        var noPlace = new AutoLoadEntry(T0, TransactionKind.Buy, "SCShop_RestStop_Pharmacy-001", null,
+            null, false, 1440m, new[] { new CargoBoxGroup(24m, 60) }, 1020);
+        Assert.Equal("RestStop Pharmacy", AutoLoadStatusText.Location(noPlace));
     }
 }
