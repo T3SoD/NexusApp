@@ -133,6 +133,18 @@ public sealed partial class TradePage
     private string? _commoditySelectedName;         // the active pick ("ANY" = unconstrained); null only before the first seed
     private bool _commoditySeeded;                  // seeds once from TradeCommodityFilter, same idiom as the DESTINATION picker above
 
+    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
+    // an existing user's inputs do not vanish under them the first time this ships. _plannerFilterShelf
+    // is the shelf's outer container (what actually anchors into PlannerHost's row 0, replacing
+    // _plannerInputs there - _plannerInputs becomes the shelf's body instead); _plannerFiltersSummary
+    // is the collapsed-only summary line, refreshed on every RebuildPlanner.
+    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
+    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
+    // actually hidden. Session-only; no AppSettings key.
+    private bool _plannerFiltersExpanded;
+    private FrameworkElement _plannerFilterShelf = null!;
+    private TextBlock _plannerFiltersSummary = null!;
+
     // Overlay sync (overlay planner spec, 2026-08-02): forget the session pick and re-seed from
     // the persisted TradeCommodityFilter on the next refresh. Internal seam for
     // TradePage.ResyncSharedTradeSettings.
@@ -550,15 +562,22 @@ public sealed partial class TradePage
 
         _plannerResults = new StackPanel();
 
-        // Anchored inputs (task 10): PlannerHost is a Grid (TradePage.cs) - Auto row for
-        // _plannerInputs (never scrolls) + Star row for a ScrollViewer around _plannerResults only,
-        // so ship/budget/route/demand/rank stay on screen while just the results list scrolls. The
-        // only pane built this way; Sell/Prices keep the single whole-pane ScrollViewer
-        // (TradePage.cs's WrapPane), since only the planner flow was asked to anchor its inputs.
+        // FILTERS shelf (task B2): wraps _plannerInputs as its body, replacing it as row 0's direct
+        // child below - _plannerInputs itself is untouched, so every control stays exactly where it
+        // was and the shelf collapses/expands around it.
+        var shelf = BuildFilterShelf(_plannerInputs, "planner", () => _plannerFiltersExpanded, v => _plannerFiltersExpanded = v);
+        _plannerFilterShelf = shelf.Container;
+        _plannerFiltersSummary = shelf.Summary;
+
+        // Anchored inputs (task 10): PlannerHost is a Grid (TradePage.cs) - Auto row for the
+        // FILTERS shelf + Star row for a ScrollViewer around _plannerResults only, so ship/budget/
+        // route/demand/rank stay reachable (expanded, or collapsed to their one-line summary) while
+        // just the results list scrolls. Sell and Prices got the identical split in task B2, so all
+        // three flows share this shape now.
         PlannerHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         PlannerHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(_plannerInputs, 0);
-        PlannerHost.Children.Add(_plannerInputs);
+        Grid.SetRow(_plannerFilterShelf, 0);
+        PlannerHost.Children.Add(_plannerFilterShelf);
         var resultsScroll = new ScrollViewer
         {
             Content = _plannerResults,
@@ -580,7 +599,7 @@ public sealed partial class TradePage
     private void RebuildPlanner()
     {
         BuildPlannerChrome();
-        if (!EnsureMarketConsent(_plannerResults, _plannerInputs)) return;
+        if (!EnsureMarketConsent(_plannerResults, _plannerFilterShelf)) return;
         _plannerResults.Children.Clear();
         _pinChips.Clear();   // the chips belonged to the rows just dropped
 
@@ -591,6 +610,10 @@ public sealed partial class TradePage
         RefreshDemandFilterPills();
         RefreshRankModePills();
         RefreshWalletChip();
+        // FILTERS shelf summary (task B2): after the four Refresh* calls above, so a
+        // snapshot-driven correction (an unresolved start, a commodity the hourly refresh dropped)
+        // is reflected immediately rather than one rebuild late.
+        RefreshPlannerFilterSummary();
 
         // Small dim note above the results list, only when the DESTINATION picker is actually
         // constraining sell legs - covers both the empty-state and populated branches below, since
@@ -1161,6 +1184,21 @@ public sealed partial class TradePage
     // the buy and sell terminal sets already use for "unrestricted".
     private string? CommodityFilterName() =>
         _commoditySelectedName is null || _commoditySelectedName == AnyCommodity ? null : _commoditySelectedName;
+
+    // FILTERS shelf summary (task B2): the same four settings the overlay's own collapsed summary
+    // names (OverlayWindow.xaml.cs, BuildPlannerFilters) - ship display name, start kind, scope,
+    // commodity-or-ANY - reusing the fields/settings this file already trusts rather than
+    // re-deriving any of them (CurrentShip(), the raw persisted TradeStartManual kind exactly as
+    // the overlay's own OverlayStartKindLabel reads it, TradeScope, CommodityFilterName's own
+    // null-means-ANY contract).
+    private void RefreshPlannerFilterSummary()
+    {
+        var text = $"{CurrentShip().DisplayName}, " +
+            $"{(App.Settings.Current.TradeStartManual is { Length: > 0 } kind ? kind : AnyStart)}, " +
+            $"{App.Settings.Current.TradeScope}, {CommodityFilterName() ?? AnyCommodity}";
+        _plannerFiltersSummary.Text = text;
+        _plannerFiltersSummary.ToolTip = text;
+    }
 
     // Small dim note (task 6, brief's "results header" fallback: no persistent header line exists
     // in the planner results area to append onto, so this is a standalone TextBlock shown above the

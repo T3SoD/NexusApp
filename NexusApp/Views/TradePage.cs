@@ -24,8 +24,10 @@ public sealed partial class TradePage : UserControl
     private readonly Border[] _tabButtons = new Border[3];
     private readonly TextBlock[] _tabLabels = new TextBlock[3];
     // Task 10: PlannerHost (index 0) owns its own internal Auto/Star scroll split for anchored
-    // inputs, so this is FrameworkElement, not ScrollViewer - Sell/Prices (indices 1-2) are still
-    // built by WrapPane and stay ScrollViewers underneath, just held through the wider type.
+    // inputs, so this is FrameworkElement, not ScrollViewer. Task B2 (spec 2026-08-09-trade-cargo-
+    // fusion section 2.2, collapsible filters) gave Sell/Prices the identical Auto/Star split so
+    // their own collapsed FILTERS shelf stays reachable instead of scrolling away with the results -
+    // all three panes are Grids built the same shape now.
     private readonly FrameworkElement[] _panes = new FrameworkElement[3];
     private readonly TranslateTransform _underlineT = new();
     private readonly SolidColorBrush _underlineBrush;
@@ -43,12 +45,13 @@ public sealed partial class TradePage : UserControl
     private static readonly string[] TabLabels = { "Planner", "Sell load", "Market" };
 
     // ── Flow content hosts (empty here; Tasks 12-14 populate them via Rebuild*) ──
-    // PlannerHost is a Grid, not a StackPanel (task 10): TradePage.Planner.cs's BuildPlannerChrome
-    // gives it an Auto row (inputs) + Star row (a ScrollViewer around results only), so the
-    // planner's inputs stay anchored on screen while its results scroll. Sell/Prices are unchanged.
+    // All three are Grids (task B2 gave Sell/Prices the same Auto/Star split PlannerHost has had
+    // since task 10): row 0 holds the FILTERS shelf (its header plus the flow's own input body),
+    // row 1 a ScrollViewer around the results only - so the shelf stays on screen, collapsed or
+    // expanded, while just the results scroll. See each flow's own Build*Chrome for the row wiring.
     internal readonly Grid PlannerHost = new();
-    internal readonly StackPanel SellHost = new();
-    internal readonly StackPanel PricesHost = new();
+    internal readonly Grid SellHost = new();
+    internal readonly Grid PricesHost = new();
 
     // ── Context row state (mock .ctxrow, index.html:1113-1131) ──
     // ORIGIN chip (task 10): display-only. Shows the live session location (with the LIVE
@@ -120,13 +123,12 @@ public sealed partial class TradePage : UserControl
         root.Children.Add(contextBlock);
 
         var paneHost = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-        // Planner (task 10, anchored inputs): PlannerHost owns its own internal Auto/Star split
-        // (built in TradePage.Planner.cs's BuildPlannerChrome) so its inputs stay pinned while only
-        // the results scroll - it is NOT wrapped in WrapPane like the other two flows, which still
-        // scroll whole-pane exactly as before.
+        // Anchored inputs, all three flows (task 10 for Planner, task B2 for Sell/Prices): each
+        // Build*Chrome wires its own Grid's Auto/Star split, so the FILTERS shelf stays pinned while
+        // only the results below it scroll. None of the three needs a whole-pane WrapPane anymore.
         _panes[0] = PlannerHost;
-        _panes[1] = WrapPane(SellHost);
-        _panes[2] = WrapPane(PricesHost);
+        _panes[1] = SellHost;
+        _panes[2] = PricesHost;
         foreach (var pane in _panes) { pane.Visibility = Visibility.Collapsed; paneHost.Children.Add(pane); }
         Grid.SetRow(paneHost, 3);
         root.Children.Add(paneHost);
@@ -203,13 +205,6 @@ public sealed partial class TradePage : UserControl
 
     private readonly System.Windows.Threading.DispatcherTimer _ageTimer = new();
 
-    private static ScrollViewer WrapPane(UIElement content) => new()
-    {
-        Content = content,
-        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-    };
-
     /// <summary>Called by MainWindow.InitTradePage() on every visit, so a snapshot refresh or an
     /// origin change that happened while the user was on another page is caught immediately.</summary>
     public void Refresh()
@@ -264,6 +259,129 @@ public sealed partial class TradePage : UserControl
             Margin = new Thickness(0, 8, 0, 0),
         });
         return false;
+    }
+
+    // ── FILTERS shelf, shared by all three flows (task B2, spec 2026-08-09-trade-cargo-fusion
+    // section 2.2) ────────────────────────────────────────────────────────────────────────────
+    // Not a new idiom: mirrors the overlay's BuildPlannerFilters/BuildPlannerFilterStack header
+    // (OverlayWindow.xaml.cs:4407-4473) - a chevron Path (M5,3 L11,8 L5,13, 10x10, StrokeThickness
+    // 1.6, dim), the word FILTERS bold dim, and a collapsed-only one-line summary with
+    // CharacterEllipsis plus a full-text ToolTip - sized up for the desktop (the FILTERS cap sits at
+    // FieldLabel's own 9, TradePage.Planner.cs, not the overlay's 8; the summary sits at 10.5, the
+    // size this page's own caption lines already use). One copy here rather than three: Planner,
+    // Sell and Prices all want the identical chrome and toggle mechanics, so each flow supplies only
+    // its own body (the input controls, built once, never restyled or reordered here), its own
+    // session-only expanded-state field (no AppSettings key - persistence is unchanged) and the
+    // flow name the log line and both tooltips name.
+    //
+    // Body visibility uses Visibility, never Height (WPF has no cheap height-to-auto): collapse is
+    // an instant flip and expand is a QuickRevealMs fade + 12px rise on Motion.Settle, snapped under
+    // Motion.Reduced - the exact house idiom ToggleProfitPanel already uses (TradePage.Profit.cs).
+    // The chevron rotates 0<->90 on Motion.ChipFadeMs/Settle, also snapped under Reduced.
+    private (FrameworkElement Container, TextBlock Summary) BuildFilterShelf(
+        FrameworkElement body, string flowName, Func<bool> getExpanded, Action<bool> setExpanded)
+    {
+        var chevronT = new RotateTransform(getExpanded() ? 90 : 0);
+        var chevron = new Path
+        {
+            Width = 10, Height = 10, Data = Geometry.Parse("M5,3 L11,8 L5,13"),   // overlay's exact glyph
+            Stroke = Hud.Br("FgDimBrush"), StrokeThickness = 1.6, StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+            Stretch = Stretch.Uniform, RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = chevronT, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0), IsHitTestVisible = false,
+        };
+        var label = new TextBlock
+        {
+            // FieldLabel's exact eyebrow shape (FontSize 9, bold, dim) - "FILTERS" is that same kind
+            // of eyebrow, just inline in this header row instead of stacked above a control.
+            Text = "FILTERS", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        // Collapsed-only summary: FgBrush (not the overlay's dim) so the settings in force read as
+        // live values, not as another dim label - the desktop has the width to afford it. Trimmed,
+        // never wrapped, with the untrimmed text riding the ToolTip so collapsing never hides what
+        // is in force.
+        var summary = new TextBlock
+        {
+            FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(chevron);
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
+        Grid.SetColumn(summary, 2);
+        row.Children.Add(summary);
+
+        var header = new Border
+        {
+            // Transparent, not null (overlay's own note): a null background is not hit-testable and
+            // the whole row must take the click, not just the glyph and text.
+            Background = Brushes.Transparent, Cursor = Cursors.Hand,
+            Padding = new Thickness(2, 4, 2, 6), Child = row,   // overlay's own header padding
+        };
+
+        void ApplyExpandedState(bool expanded)
+        {
+            body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            summary.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
+            header.ToolTip = expanded ? $"Hide the {flowName} filters." : $"Show the {flowName} filters.";
+        }
+        // Default EXPANDED (task B2 requirement): an existing user's filters must not vanish under
+        // them the first time this ships. getExpanded()'s backing field defaults to true for exactly
+        // that reason; this call only paints whatever state the caller already holds.
+        ApplyExpandedState(getExpanded());
+
+        header.MouseLeftButtonUp += (_, _) =>
+        {
+            bool expanded = !getExpanded();
+            setExpanded(expanded);
+            // One line per click, never per repaint - a rebuild that refreshes the summary text
+            // (each flow's own Rebuild*) never touches this handler.
+            Logger.Info($"[UI] trade filters {(expanded ? "expanded" : "collapsed")} ({flowName})");
+            ApplyExpandedState(expanded);
+
+            // Chevron 0<->90 on ChipFadeMs/Settle, snapping under Reduced - exact house idiom
+            // (TradePage.Profit.cs, ToggleProfitPanel).
+            if (Motion.Reduced)
+            {
+                chevronT.BeginAnimation(RotateTransform.AngleProperty, null);
+                chevronT.Angle = expanded ? 90 : 0;
+            }
+            else
+            {
+                chevronT.BeginAnimation(RotateTransform.AngleProperty,
+                    new DoubleAnimation(expanded ? 90 : 0, TimeSpan.FromMilliseconds(Motion.ChipFadeMs)) { EasingFunction = Motion.Settle });
+            }
+
+            if (!expanded) return;   // collapse is an instant Visibility flip, no animation (ToggleProfitPanel's own rule)
+
+            // Frozen expand idiom: QuickRevealMs fade + 12px rise on Settle (ToggleProfitPanel).
+            if (Motion.Reduced)
+            {
+                body.BeginAnimation(UIElement.OpacityProperty, null);
+                body.Opacity = 1;
+                body.RenderTransform = null;
+                return;
+            }
+            var shift = new TranslateTransform(0, 12);
+            body.RenderTransform = shift;
+            body.Opacity = 0;
+            var dur = TimeSpan.FromMilliseconds(Motion.QuickRevealMs);
+            body.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = Motion.Settle });
+            shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
+        };
+
+        var container = new StackPanel();
+        container.Children.Add(header);
+        container.Children.Add(body);
+        return (container, summary);
     }
 
     // ── CascadeIn: hand-duplicated per page by house convention (confirmed: NOT a shared Hud

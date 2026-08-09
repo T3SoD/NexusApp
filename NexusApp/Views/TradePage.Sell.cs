@@ -27,6 +27,18 @@ public sealed partial class TradePage
     private StackPanel _sellInputs = null!;
     private StackPanel _sellResults = null!;
 
+    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
+    // an existing user's inputs do not vanish under them the first time this ships. _sellFilterShelf
+    // is the shelf's outer container (what anchors into SellHost's row 0 - _sellInputs becomes the
+    // shelf's body instead of going straight into SellHost); _sellFiltersSummary is the
+    // collapsed-only summary line, refreshed on every RebuildSell.
+    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
+    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
+    // actually hidden. Session-only; no AppSettings key.
+    private bool _sellFiltersExpanded;
+    private FrameworkElement _sellFilterShelf = null!;
+    private TextBlock _sellFiltersSummary = null!;
+
     // Keyed by buyer TERMINAL ("t" + UEX terminal id for ranked rows, the SCT location string for
     // SCT-only rows), not by row index: sell rows re-rank whenever the quantity or a new SCT
     // snapshot changes the effective values, so an index would point at whatever row later took
@@ -135,8 +147,26 @@ public sealed partial class TradePage
         });
 
         _sellResults = new StackPanel();
-        SellHost.Children.Add(_sellInputs);
-        SellHost.Children.Add(_sellResults);
+
+        // FILTERS shelf (task B2): same anchored Auto/Star split the planner has had since task 10
+        // (TradePage.Planner.cs, BuildPlannerChrome) - SellHost is a Grid now (TradePage.cs), so a
+        // collapsed shelf stays reachable instead of scrolling away with the results.
+        var shelf = BuildFilterShelf(_sellInputs, "sell", () => _sellFiltersExpanded, v => _sellFiltersExpanded = v);
+        _sellFilterShelf = shelf.Container;
+        _sellFiltersSummary = shelf.Summary;
+
+        SellHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        SellHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(_sellFilterShelf, 0);
+        SellHost.Children.Add(_sellFilterShelf);
+        var resultsScroll = new ScrollViewer
+        {
+            Content = _sellResults,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetRow(resultsScroll, 1);
+        SellHost.Children.Add(resultsScroll);
     }
 
     // The chip's presence and label are data-dependent (latest completed work order, resolved
@@ -185,10 +215,22 @@ public sealed partial class TradePage
         _commodityPicker.ClosePopup();
     }
 
+    // FILTERS shelf summary (task B2): "{commodity}, {qty} SCU", or just "{commodity}" with no
+    // quantity entered - the same two fields (SellCommodity, SellQty) the ranking below already
+    // reads, so the summary can never disagree with what the results were ranked on. SellQty reads
+    // the quantity box live per keystroke (item C's live re-rank), and so does this summary.
+    private void RefreshSellFilterSummary()
+    {
+        int qty = SellQty;
+        var text = qty > 0 ? $"{SellCommodity}, {qty:n0} SCU" : SellCommodity;
+        _sellFiltersSummary.Text = text;
+        _sellFiltersSummary.ToolTip = text;
+    }
+
     private void RebuildSell()
     {
         BuildSellChrome();
-        if (!EnsureMarketConsent(_sellResults, _sellInputs)) return;
+        if (!EnsureMarketConsent(_sellResults, _sellFilterShelf)) return;
         _sellResults.Children.Clear();
         _sellPinChips.Clear();   // the chips belonged to the rows just dropped (same rule as the planner's)
 
@@ -200,6 +242,7 @@ public sealed partial class TradePage
         // keystroke re-rank) cannot steal the query or a pending row click.
         _commodityPicker.SetItems(commodities.Select(c => c.CommodityName).ToList());
         RefreshPrefillChip(snap, commodities);
+        RefreshSellFilterSummary();   // covers the early-return branch right below too
 
         if (snap is null || commodities.Count == 0) { _sellResults.Children.Add(EmptyOrStaleNote(snap?.TradePrices.FetchedUtc)); return; }
 
@@ -216,6 +259,10 @@ public sealed partial class TradePage
                 SetCommodity(picked.CommodityName);
         }
         int qty = SellQty;
+        // Refreshed again post-correction: the call above already covered the snap/commodities-empty
+        // return, but a snapshot-dropped commodity is only corrected in the block just above, so the
+        // summary would otherwise keep naming the stale commodity for this whole rebuild pass.
+        RefreshSellFilterSummary();
         if (qty <= 0) { _sellResults.Children.Add(new TextBlock { Text = "Enter a quantity to rank buyers.", FontFamily = Hud.Font("UiFont"), FontSize = 12.5, Foreground = Hud.Br("FgDimBrush") }); return; }
 
         // Terminal lookup, built once per rebuild: TerminalId -> MarketTerminal. Reused below both

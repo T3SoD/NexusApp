@@ -117,4 +117,35 @@ public class ConversionDisplayTests
         Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
         Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs"));
     }
+
+    // ── Filter shelves (spec section 2.2) ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData(@"Views\TradePage.Planner.cs")]
+    [InlineData(@"Views\TradePage.Sell.cs")]
+    [InlineData(@"Views\TradePage.Prices.cs")]
+    public void EveryTradeFlow_WrapsItsInputsInAFilterShelf(string file)
+    {
+        Assert.Contains("BuildFilterShelf", SourceFiles.ReadAppSource(file));
+    }
+
+    // Collapsing must never hide what is in force: each flow refreshes a summary line naming its
+    // own settings. Without this the shelf is a trap rather than a space win.
+    [Theory]
+    [InlineData(@"Views\TradePage.Planner.cs", "RefreshPlannerFilterSummary")]
+    [InlineData(@"Views\TradePage.Sell.cs", "RefreshSellFilterSummary")]
+    [InlineData(@"Views\TradePage.Prices.cs", "RefreshPricesFilterSummary")]
+    public void EveryTradeFlow_KeepsItsCollapsedSummaryCurrent(string file, string refresher)
+    {
+        var src = SourceFiles.ReadAppSource(file);
+        // defined once, and called from the flow's rebuild path
+        Assert.True(src.Split(refresher).Length - 1 >= 2, $"{refresher} must be defined and called");
+    }
+
+    // Session-only by design. A persisted key would need a migration and gains nothing.
+    [Fact]
+    public void FilterShelfState_IsNotPersisted()
+    {
+        Assert.DoesNotContain("FiltersExpanded", SourceFiles.ReadAppSource(@"Models\AppSettings.cs"));
+    }
 }

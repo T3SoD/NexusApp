@@ -43,6 +43,18 @@ public sealed partial class TradePage
     private StackPanel _pricesResults = null!;
     private List<string>? _pricesCommodityNames;   // the list currently pushed into the picker
 
+    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
+    // an existing user's inputs do not vanish under them the first time this ships.
+    // _pricesFilterShelf is the shelf's outer container (what anchors into PricesHost's row 0 -
+    // _pricesInputs becomes the shelf's body instead of going straight into PricesHost);
+    // _pricesFiltersSummary is the collapsed-only summary line, refreshed on every RebuildPrices.
+    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
+    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
+    // actually hidden. Session-only; no AppSettings key.
+    private bool _pricesFiltersExpanded;
+    private FrameworkElement _pricesFilterShelf = null!;
+    private TextBlock _pricesFiltersSummary = null!;
+
     private void BuildPricesChrome()
     {
         if (_pricesInputs is not null) return;
@@ -105,8 +117,26 @@ public sealed partial class TradePage
         _pricesInputs.Children.Add(toggles);
 
         _pricesResults = new StackPanel();
-        PricesHost.Children.Add(_pricesInputs);
-        PricesHost.Children.Add(_pricesResults);
+
+        // FILTERS shelf (task B2): same anchored Auto/Star split the planner has had since task 10
+        // (TradePage.Planner.cs, BuildPlannerChrome) - PricesHost is a Grid now (TradePage.cs), so a
+        // collapsed shelf stays reachable instead of scrolling away with the results.
+        var shelf = BuildFilterShelf(_pricesInputs, "prices", () => _pricesFiltersExpanded, v => _pricesFiltersExpanded = v);
+        _pricesFilterShelf = shelf.Container;
+        _pricesFiltersSummary = shelf.Summary;
+
+        PricesHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        PricesHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(_pricesFilterShelf, 0);
+        PricesHost.Children.Add(_pricesFilterShelf);
+        var resultsScroll = new ScrollViewer
+        {
+            Content = _pricesResults,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetRow(resultsScroll, 1);
+        PricesHost.Children.Add(resultsScroll);
     }
 
     // Re-validate on every rebuild (Task 14 rule, and the Sell flow now does the same): an hourly
@@ -150,16 +180,32 @@ public sealed partial class TradePage
             _pricesCommodityPicker.Text = _pricesSelectedCommodity ?? "";
     }
 
+    // FILTERS shelf summary (task B2): "{commodity}, {visible column names}". Commodity falls back
+    // to ALL for the terminal-browse mode (_pricesSelectedCommodity null, ShowPricesForTerminal),
+    // matching the fallback RebuildPrices' own log line already uses. Column names in their fixed
+    // STOCK/STATUS/AGE/+WEEK AVG order, only the ones currently toggled on.
+    private void RefreshPricesFilterSummary()
+    {
+        var commodity = _pricesSelectedCommodity ?? "ALL";
+        var cols = string.Join(", ", PriceColLabels.Where((_, i) => _priceCols[i]));
+        var text = cols.Length == 0 ? commodity : $"{commodity}, {cols}";
+        _pricesFiltersSummary.Text = text;
+        _pricesFiltersSummary.ToolTip = text;
+    }
+
     private void RebuildPrices()
     {
         BuildPricesChrome();
-        if (!EnsureMarketConsent(_pricesResults, _pricesInputs)) return;
+        if (!EnsureMarketConsent(_pricesResults, _pricesFilterShelf)) return;
         _pricesResults.Children.Clear();
 
         var snap = App.Market.Snapshot;
         var commodities = CommodityNames(snap);
 
         RefreshPricesCommodityBox(commodities);
+        // FILTERS shelf summary (task B2): after the correction above, so a commodity the hourly
+        // refresh dropped is named correctly rather than one rebuild late.
+        RefreshPricesFilterSummary();
 
         // Task 8: a null selection is only a real empty state when it is NOT the terminal-browse
         // "every commodity at this one terminal" mode RefreshPricesCommodityBox above deliberately
