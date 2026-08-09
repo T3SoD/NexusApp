@@ -153,14 +153,16 @@ public class LocationAliasesTests
                         LocationAliases.UexLocationForToken("RR_JP_NyxPyro"));
     }
 
-    // Magnus gateway tokens stay out: no player can stand at those gates, so the tokens can never
-    // fire. RR_JP_TerraStanton (the TERRA-side leg) is also absent - the Stanton-side gateway
-    // existing does not establish that a player can stand on the Terra side, and it has never been
-    // captured. This pins those so a future artifact edit cannot quietly reintroduce coverage for
-    // places nobody has been.
+    // Tokens for gates nobody has stood at stay out, so a future artifact edit cannot quietly
+    // reintroduce coverage for places nobody has been. RR_JP_MagnusStanton is the Magnus-side leg
+    // and has never fired. RR_JP_TerraStanton is the TERRA-side leg: the Stanton-side gateway
+    // existing does not establish that a player can stand on the Terra side.
+    // RR_JP_StantonMagnus WAS on this list and was REMOVED on 2026-08-09: despite its spelling it
+    // is the Stanton-side Nyx gateway, it fired in a live capture, and excluding it made the
+    // planner origin print the raw token. Reason from what a token's catalog entry is named, not
+    // from how the token itself is spelled.
     [Theory]
     [InlineData("RR_JP_TerraStanton")]
-    [InlineData("RR_JP_StantonMagnus")]
     [InlineData("RR_JP_MagnusStanton")]
     public void UnreachableGatewayTokens_AreAbsentFromBothTables(string token)
     {
@@ -182,7 +184,7 @@ public class LocationAliasesTests
     [Theory]
     [InlineData("microTech")]         // real jurisdiction text, never a gateway token
     [InlineData("Stanton4_NewBabbage")] // has a display alias, but no UEX gateway mapping
-    [InlineData("RR_JP_StantonMagnus")] // gateway naming shape, but not live - deliberately excluded
+    [InlineData("RR_JP_StantonMagnus")] // live and aliased since 2026-08-09, but UEX has no Location for it
     [InlineData("Nowhere_RR_JP_FakeToken")]
     public void UexLocationForToken_UnmappedToken_ReturnsNull(string token)
         => Assert.Null(LocationAliases.UexLocationForToken(token));
@@ -231,6 +233,26 @@ public class LocationAliasesTests
         using var ms = new MemoryStream();
         s!.CopyTo(ms);
         return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    // The token's own spelling says Magnus, but it is the Stanton-side NYX gateway: its catalog
+    // entry is named for the Stanton-to-Nyx station. A 2026-08-01 ruling excluded it as
+    // unreachable, reasoning from the spelling; a live capture on 2026-08-09 disproved that and
+    // the planner origin had been printing the raw token as "Stanton Magnus" in the meantime.
+    [Fact]
+    public void Normalize_StantonSideNyxGatewayToken_IsNotTheRawToken()
+    {
+        Assert.Equal("Nyx Gateway Station", LocationAliases.Normalize("RR_JP_StantonMagnus"));
+        Assert.Equal("Stanton Gateway Station", LocationAliases.Normalize("RR_JP_NyxCastra"));
+    }
+
+    // Neither token has a UEX Location, so a live-origin plan from either still cannot resolve
+    // terminals. Pinned so the display fix is never mistaken for a trade-join fix.
+    [Fact]
+    public void UexLocation_StantonSideNyxGateway_IsStillUnmapped()
+    {
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_StantonMagnus"));
+        Assert.Null(LocationAliases.UexLocationForToken("RR_JP_NyxCastra"));
     }
 
     [Fact]
