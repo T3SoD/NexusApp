@@ -220,6 +220,7 @@ public sealed class AutoLoadStatusLine : StackPanel
         strip.MouseLeftButtonUp += (_, _) =>
         {
             _expanded = !_expanded;
+            Logger.Info($"[UI] auto-load strip {(_expanded ? "expanded" : "collapsed")} ({_surfaceName})");
             Rebuild();
         };
         return strip;

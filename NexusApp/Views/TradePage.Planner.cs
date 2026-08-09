@@ -1611,6 +1611,13 @@ public sealed partial class TradePage
             var autoLoadLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 20, 0) };
             autoLoadLine.Children.Add(new TextBlock { Text = "AUTO-LOAD: ", FontFamily = Hud.Font("UiFont"), FontSize = 11.5, Foreground = Hud.Br("FgDimBrush") });
             autoLoadLine.Children.Add(new TextBlock { Text = range, FontFamily = Hud.Font("MonoFont"), FontSize = 11.5, Foreground = Hud.Br("FgBrush") });
+            autoLoadLine.Children.Add(new TextBlock
+            {
+                Text = "range spans this terminal's crate sizes",
+                FontFamily = Hud.Font("UiFont"), FontSize = 10,
+                Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Bottom,
+            });
             detail.Children.Add(autoLoadLine);
         }
 
