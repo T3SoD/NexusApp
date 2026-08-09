@@ -35,4 +35,13 @@ public class AutoLoadStatusLineTests
         var cs = SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs");
         Assert.Contains("new AutoLoadStatusLine(compact: true", cs);
     }
+
+    [Fact]
+    public void TradePage_HostsTheStandardPanel_AboveProfit()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.cs");
+        var line = src.IndexOf("new AutoLoadStatusLine(compact: false");
+        Assert.True(line > 0, "Trade page must host the standard AutoLoadStatusLine");
+        Assert.True(line < src.IndexOf("BuildProfitPanel()"), "auto-load panel mounts above the profit panel");
+    }
 }

@@ -65,6 +65,7 @@ public sealed partial class TradePage : UserControl
     private Border _uexPill = null!;
     private TextBlock _uexAgeValue = null!;
     private Ellipse _uexPillDot = null!;
+    private AutoLoadStatusLine? _autoLoadPanel;
 
     // Datamined starmap positions (2026-07-30), shared by the Planner and Sell flows'
     // distance tags - loaded once per page instance, same idiom as _shipCatalog below.
@@ -106,6 +107,9 @@ public sealed partial class TradePage : UserControl
         // the stack carries the old bottom margin, so the collapsed layout is unchanged.
         var contextBlock = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
         contextBlock.Children.Add(BuildContextRow());
+        _autoLoadPanel = new AutoLoadStatusLine(compact: false, surfaceName: "trade");
+        _autoLoadPanel.Start();
+        contextBlock.Children.Add(_autoLoadPanel);
         contextBlock.Children.Add(BuildProfitPanel());
         Grid.SetRow(contextBlock, 2);
         root.Children.Add(contextBlock);
