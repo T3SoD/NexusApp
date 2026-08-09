@@ -34,7 +34,13 @@ public sealed partial class TradePage : UserControl
     private DropShadowEffect _underlineGlow = null!;
     private int _activeIndex = -1;
 
-    private static readonly string[] TabLabels = { "Planner", "Sell", "Prices" };   // mock:1046-1050
+    // Renamed 2026-08-09 (spec 2026-08-09-trade-cargo-fusion, decision 8). "Sell" and "Prices" are
+    // both nouns about price, so nothing told a reader which to open, and they were nearly merged
+    // on that impression. They answer different questions: SELL LOAD is a decision ("I am holding
+    // this, where does it go" - takes a quantity, ranks from your live location, caps by demand),
+    // MARKET is a reference ("what does the market read" - no quantity, no origin, sortable
+    // columns, and the Starmap's click-through target). The persisted ids are unchanged.
+    private static readonly string[] TabLabels = { "Planner", "Sell load", "Market" };
 
     // ── Flow content hosts (empty here; Tasks 12-14 populate them via Rebuild*) ──
     // PlannerHost is a Grid, not a StackPanel (task 10): TradePage.Planner.cs's BuildPlannerChrome
