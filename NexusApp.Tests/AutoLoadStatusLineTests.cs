@@ -59,12 +59,21 @@ public class AutoLoadStatusLineTests
         Assert.Contains("new AutoLoadStatusLine(compact: true", cs);
     }
 
+    // Moved 2026-08-09 (spec 2026-08-09-trade-cargo-fusion, the verb split): a countdown belongs
+    // with the cargo it is loading, not with the catalogue you shop from. Contract cargo auto-loads
+    // through the same kiosk and had no countdown at all while this lived on Trade.
     [Fact]
-    public void TradePage_HostsTheStandardPanel_AboveProfit()
+    public void CargoHauling_HostsTheStandardPanel()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\HaulingPage.cs");
+        Assert.Contains("new AutoLoadStatusLine(compact: false", src);
+        Assert.Contains("surfaceName: \"hauling\"", src);
+    }
+
+    [Fact]
+    public void TradePage_NoLongerHostsIt()
     {
         var src = SourceFiles.ReadAppSource(@"Views\TradePage.cs");
-        var line = src.IndexOf("new AutoLoadStatusLine(compact: false");
-        Assert.True(line > 0, "Trade page must host the standard AutoLoadStatusLine");
-        Assert.True(line < src.IndexOf("BuildProfitPanel()"), "auto-load panel mounts above the profit panel");
+        Assert.DoesNotContain("new AutoLoadStatusLine", src);
     }
 }

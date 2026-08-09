@@ -21,6 +21,7 @@ public sealed class HaulingPage : UserControl
 {
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
+    private AutoLoadStatusLine? _autoLoadPanel;   // moved off Trade 2026-08-09; app-lifetime, started once
 
     // Row-insert highlight identity: haul id + leg/objective key, tracked across rebuilds so the
     // one-shot flash only ever plays once per row, on the Refresh() where it first appears.
@@ -79,6 +80,7 @@ public sealed class HaulingPage : UserControl
     {
         var root = new Grid { Margin = new Thickness(20, 16, 20, 16) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // header
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // auto-load
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // content
 
         // Header action slot: Clear all. The Auto-scan / Show-contract-box toggles now live only in
@@ -98,15 +100,25 @@ public sealed class HaulingPage : UserControl
         actions.Children.Add(_clearBtn);
 
         var header = Hud.Header("LOGISTICS", "Cargo Hauling",
-            "Tracking active contracts from Game.log and the contract OCR box.", actions);
+            "Work you have taken on: contracts, loading and payout.", actions);
         Grid.SetRow(header, 0); root.Children.Add(header);
+
+        // Auto-load countdown, moved here from Trade (spec 2026-08-09, the verb split). Lifetime is
+        // caller-owned and this page is an app-lifetime singleton like TradePage, so Start() once
+        // here and never Stop(): App.AutoLoad is a shared, lock-guarded singleton and each status
+        // line subscribes its own handler idempotently, so a second live instance is a fan-out
+        // rather than a double-subscribe.
+        _autoLoadPanel = new AutoLoadStatusLine(compact: false, surfaceName: "hauling");
+        _autoLoadPanel.Start();
+        _autoLoadPanel.Margin = new Thickness(0, 0, 0, 12);
+        Grid.SetRow(_autoLoadPanel, 1); root.Children.Add(_autoLoadPanel);
 
         var scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = _body,
         };
-        Grid.SetRow(scroller, 1); root.Children.Add(scroller);
+        Grid.SetRow(scroller, 2); root.Children.Add(scroller);
 
         Content = root;
     }
