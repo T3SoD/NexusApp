@@ -8,6 +8,7 @@ namespace NexusApp.Tests;
 public class AutoLoadTrackerTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"al_trk_{Guid.NewGuid():N}.json");
+    private readonly string _activePath = Path.Combine(Path.GetTempPath(), $"al_active_{Guid.NewGuid():N}.json");
     private DateTime _now = new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
     private readonly AutoLoadSampleStore _store;
     private readonly AutoLoadTracker _tracker;
@@ -16,9 +17,21 @@ public class AutoLoadTrackerTests : IDisposable
     {
         _store = new AutoLoadSampleStore(_path);
         _tracker = new AutoLoadTracker(new ProfitTracker(historyPath: Path.Combine(Path.GetTempPath(),
-            $"al_hist_{Guid.NewGuid():N}.json")), _store, () => _now);
+            $"al_hist_{Guid.NewGuid():N}.json")), _store, () => _now, activePath: _activePath);
     }
-    public void Dispose() { _tracker.Dispose(); try { File.Delete(_path); } catch { } }
+    public void Dispose()
+    {
+        _tracker.Dispose();
+        try { File.Delete(_path); } catch { }
+        try { File.Delete(_activePath); } catch { }
+    }
+
+    // A second tracker "restarting" against the same _store/_activePath as _tracker, its own
+    // fresh ProfitTracker/history file (mirrors the primary tracker's own construction idiom)
+    // since only the shared _store and _activePath matter for the restore contract under test.
+    private AutoLoadTracker NewTrackerOnSamePaths()
+        => new(new ProfitTracker(historyPath: Path.Combine(Path.GetTempPath(),
+            $"al_hist_{Guid.NewGuid():N}.json")), _store, () => _now, activePath: _activePath);
 
     private CommodityTransaction Tx(bool auto, TransactionKind kind = TransactionKind.Buy, int ageSeconds = 5)
         => new()
@@ -121,8 +134,9 @@ public class AutoLoadTrackerTests : IDisposable
     public void ProfitTrackerIngest_RealBuyLine_OpensEntryViaEventPath()
     {
         var histPath = Path.Combine(Path.GetTempPath(), $"al_hist2_{Guid.NewGuid():N}.json");
+        var activePath2 = Path.Combine(Path.GetTempPath(), $"al_active2_{Guid.NewGuid():N}.json");
         using var profit = new ProfitTracker(historyPath: histPath);
-        using var tracker2 = new AutoLoadTracker(profit, _store);
+        using var tracker2 = new AutoLoadTracker(profit, _store, activePath: activePath2);
 
         var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
         var raw = CommodityLogFixtures.BuyLine.Replace("2026-07-04T13:35:36.565Z", stamp);
@@ -137,5 +151,57 @@ public class AutoLoadTrackerTests : IDisposable
         Assert.Equal(4, box.UnitAmount);
 
         try { File.Delete(histPath); } catch { }
+        try { File.Delete(activePath2); } catch { }
+    }
+
+    // Owner-reversed trade-off: active timer entries must survive an app restart. "Restart" here
+    // is a second AutoLoadTracker built on the same _store/_activePath - exactly what App.xaml.cs
+    // does across a real relaunch, just without the process boundary.
+    [Fact]
+    public void Restart_RestoresActiveEntries()
+    {
+        _tracker.Apply(Tx(auto: true));
+        var original = Assert.Single(_tracker.Entries);
+
+        using var trackerB = NewTrackerOnSamePaths();
+
+        var restored = Assert.Single(trackerB.Entries);
+        Assert.Equal(original.StartUtc, restored.StartUtc);
+        Assert.Equal(original.PredictedSeconds, restored.PredictedSeconds);
+    }
+
+    [Fact]
+    public void Restart_AbandonsExpiredPersistedEntries()
+    {
+        _tracker.Apply(Tx(auto: true));
+        _now = _now.AddHours(3);   // advance past AbandonAfter before the "restart" reads the file
+
+        using var trackerB = NewTrackerOnSamePaths();
+
+        Assert.Empty(trackerB.Entries);
+        Assert.True(Assert.Single(_store.ReadAll()).Abandoned);
+    }
+
+    [Fact]
+    public void Apply_DuplicateOfRestoredEntry_Ignored()
+    {
+        var tx = Tx(auto: true);
+        _tracker.Apply(tx);
+
+        using var trackerB = NewTrackerOnSamePaths();
+        Assert.Single(trackerB.Entries);
+
+        trackerB.Apply(tx);   // same StartUtc/Kind/ShopName as the entry restored into trackerB
+        Assert.Single(trackerB.Entries);
+    }
+
+    [Fact]
+    public void Reset_ClearsThePersistedFile()
+    {
+        _tracker.Apply(Tx(auto: true));
+        _tracker.Reset();
+
+        using var trackerB = NewTrackerOnSamePaths();
+        Assert.Empty(trackerB.Entries);
     }
 }
