@@ -35,6 +35,21 @@ public class AutoLoadStatusLineTests
         Assert.DoesNotContain("AutoLoadStatusText.Elapsed(", src);
     }
 
+    // The progress bar lives in BuildEntryRow (gated by !_compact at runtime, since that builder
+    // is shared with the compact strip's expanded rows) and must never appear in BuildStrip, the
+    // compact strip's own builder.
+    [Fact]
+    public void ProgressBar_InTheRowBuilder_NeverInTheStrip()
+    {
+        var src = Src();
+        Assert.Contains("AutoLoadStatusText.Progress(", src);
+        var stripStart = src.IndexOf("private Border BuildStrip");
+        var stripEnd = src.IndexOf("private static StackPanel BuildEyebrow");
+        Assert.True(stripStart > 0 && stripEnd > stripStart, "BuildStrip method markers not found");
+        var stripBody = src[stripStart..stripEnd];
+        Assert.DoesNotContain("AutoLoadStatusText.Progress(", stripBody);
+    }
+
     [Fact]
     public void Overlay_HostsTheCompactStrip()
     {

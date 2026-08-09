@@ -45,6 +45,11 @@ public sealed class AutoLoadStatusLine : StackPanel
     // over-estimate WarnBrush + glow; the strip's own 11px readout never carries that state.
     private readonly List<(AutoLoadEntry Entry, TextBlock Text, bool IsRow)> _elapsedTexts = new();
 
+    // Standard-row progress bars, keyed by their two ColumnDefinitions so a tick can resize the
+    // star split in place (same no-Rebuild discipline as _elapsedTexts) instead of replacing the
+    // Grid. Compact rows never add to this list - the bar is a standard-variant-only surface.
+    private readonly List<(AutoLoadEntry Entry, ColumnDefinition FillCol, ColumnDefinition RestCol)> _progressBars = new();
+
     public AutoLoadStatusLine(bool compact, string surfaceName)
     {
         _compact = compact;
@@ -122,10 +127,19 @@ public sealed class AutoLoadStatusLine : StackPanel
     private void RepaintElapsed()
     {
         var nowUtc = DateTime.UtcNow;
+        var table = AutoLoadTimeTable.Instance;
         foreach (var (entry, text, isRow) in _elapsedTexts)
         {
-            text.Text = AutoLoadStatusText.Clock(entry, AutoLoadTimeTable.Instance, nowUtc);
+            text.Text = AutoLoadStatusText.Clock(entry, table, nowUtc);
             if (isRow) ApplyElapsedStyle(entry, text, nowUtc);
+        }
+        foreach (var (entry, fillCol, restCol) in _progressBars)
+        {
+            if (AutoLoadStatusText.Progress(entry, table, nowUtc) is { } frac)
+            {
+                fillCol.Width = new GridLength(frac, GridUnitType.Star);
+                restCol.Width = new GridLength(1 - frac, GridUnitType.Star);
+            }
         }
     }
 
@@ -142,6 +156,7 @@ public sealed class AutoLoadStatusLine : StackPanel
     {
         Children.Clear();
         _elapsedTexts.Clear();
+        _progressBars.Clear();
 
         var entries = App.AutoLoad.Entries;
         if (entries.Count == 0)
@@ -246,7 +261,8 @@ public sealed class AutoLoadStatusLine : StackPanel
     }
 
     // ── One entry row: Hud.RowCard chrome, kind/title/countdown head, cargo+location/est sub,
-    // LOADED/DISCARD. The ship is never shown - Game.log cannot assert it. ──
+    // standard-only progress bar, LOADED/DISCARD. The ship is never shown - Game.log cannot
+    // assert it. Shared by the compact strip's expanded rows too, gated per-piece by _compact. ──
     private Border BuildEntryRow(AutoLoadEntry entry)
     {
         var table = AutoLoadTimeTable.Instance;
@@ -314,6 +330,26 @@ public sealed class AutoLoadStatusLine : StackPanel
                 Margin = new Thickness(10, 0, 0, 0),
             });
         content.Children.Add(sub);
+
+        // Standard variant only - compact rows (the overlay strip's expanded entries, which share
+        // this same builder) never gain a bar. Star/star split carries the fraction (the roiMeter
+        // idiom, TradePage.Planner.cs:1381-1388), so a tick just resizes the two columns in place
+        // via _progressBars rather than rebuilding the Grid.
+        if (!_compact && AutoLoadStatusText.Progress(entry, table, nowUtc) is { } frac)
+        {
+            var fillCol = new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) };
+            var restCol = new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) };
+            var meter = new Grid { Height = 5, Margin = new Thickness(0, 6, 0, 0) };
+            meter.ColumnDefinitions.Add(fillCol);
+            meter.ColumnDefinitions.Add(restCol);
+            var track = new Border { Background = Hud.Br("Bg3Brush"), CornerRadius = new CornerRadius(3) };
+            Grid.SetColumnSpan(track, 2);
+            meter.Children.Add(track);
+            var fillBrush = entry.Kind == TransactionKind.Sell ? Hud.Br("CyanBrush") : Hud.Br("AccentBrush");
+            meter.Children.Add(new Border { Background = fillBrush, CornerRadius = new CornerRadius(3) });   // column 0
+            content.Children.Add(meter);
+            _progressBars.Add((entry, fillCol, restCol));
+        }
 
         if (!pendingAbandon)
         {

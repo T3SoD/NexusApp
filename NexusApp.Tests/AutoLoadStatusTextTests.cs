@@ -104,4 +104,13 @@ public class AutoLoadStatusTextTests
             null, false, 1440m, new[] { new CargoBoxGroup(24m, 60) }, 1020);
         Assert.Equal("RestStop Pharmacy", AutoLoadStatusText.Location(noPlace));
     }
+
+    [Fact]
+    public void Progress_QuartersThenClampsThenNull()
+    {
+        var e = Entry(predicted: 612);
+        Assert.Equal(0.25, AutoLoadStatusText.Progress(e, Lit, T0.AddSeconds(153)));   // 153 / 612 exactly
+        Assert.Equal(1.0, AutoLoadStatusText.Progress(e, Lit, T0.AddSeconds(700)));    // past prediction, clamped
+        Assert.Null(AutoLoadStatusText.Progress(e, Dark, T0.AddSeconds(153)));         // uncalibrated hides the bar
+    }
 }

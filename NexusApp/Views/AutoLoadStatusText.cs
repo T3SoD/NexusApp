@@ -46,4 +46,11 @@ internal static class AutoLoadStatusText
     public static bool IsOver(AutoLoadEntry e, AutoLoadTimeTable table, DateTime nowUtc)
         => table.Calibrated && e.PredictedSeconds is { } p
             && (nowUtc - e.StartUtc).TotalSeconds > p;
+
+    // Load progress against the prediction, clamped full once past it. Null without a usable
+    // prediction, which also hides the bar.
+    public static double? Progress(AutoLoadEntry e, AutoLoadTimeTable table, DateTime nowUtc)
+        => table.Calibrated && e.PredictedSeconds is { } p && p > 0
+            ? Math.Clamp((nowUtc - e.StartUtc).TotalSeconds / p, 0.0, 1.0)
+            : null;
 }
