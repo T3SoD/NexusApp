@@ -24,7 +24,9 @@ namespace NexusApp.Views;
 ///
 /// Lifecycle is caller-owned: <see cref="Start"/> subscribes to
 /// <see cref="AutoLoadTracker.EntriesChanged"/> and paints immediately; <see cref="Stop"/>
-/// unsubscribes and halts the ticker. The 1-second ticker itself runs ONLY while entries exist
+/// unsubscribes and halts the ticker. Start is idempotent - it unsubscribes before it
+/// subscribes, so calling it more than once can never double-subscribe OnEntries, and a single
+/// Stop always fully detaches. The 1-second ticker itself runs ONLY while entries exist
 /// (started/stopped from <see cref="OnEntries"/>, never stacked - same guard as
 /// ExecHangarStatusLine) and calls <see cref="AutoLoadTracker.ExpireStale"/> once per tick with no
 /// logging; the tracker itself logs the abandon.
@@ -34,6 +36,7 @@ public sealed class AutoLoadStatusLine : StackPanel
     private readonly bool _compact;
     private readonly string _surfaceName;
     private bool _expanded;   // compact only: strip click toggles the entry rows open/closed
+    private bool _stopped;    // guards a BeginInvoke continuation queued before Stop() lands
 
     private DispatcherTimer? _ticker;
 
@@ -49,10 +52,13 @@ public sealed class AutoLoadStatusLine : StackPanel
         Rebuild();   // paint the initial state; Start() drives it live from here
     }
 
-    /// <summary>Subscribe to tracker changes, repaint immediately, log once. Safe to call once
-    /// per surface entry (mirrors ExecHangarStatusLine.Start).</summary>
+    /// <summary>Subscribe to tracker changes, repaint immediately, log once. Safe to call
+    /// repeatedly - it unsubscribes before it subscribes, so a second Start can never
+    /// double-subscribe OnEntries (mirrors ExecHangarStatusLine.Start).</summary>
     public void Start()
     {
+        _stopped = false;
+        App.AutoLoad.EntriesChanged -= OnEntries;   // defensive resubscribe: never double-fire
         App.AutoLoad.EntriesChanged += OnEntries;
         Rebuild();
         SyncTicker();
@@ -62,17 +68,23 @@ public sealed class AutoLoadStatusLine : StackPanel
     /// <summary>Unsubscribe and halt the ticker. Safe to call repeatedly / when never started.</summary>
     public void Stop()
     {
+        _stopped = true;
         App.AutoLoad.EntriesChanged -= OnEntries;
         StopTicker();
     }
 
-    // AutoLoadTracker fires EntriesChanged from wherever the transaction line was applied (the
-    // Game.log tail poll thread, or synchronously from our own LOADED/DISCARD click) - marshal
-    // before touching the visual tree, the app-wide idiom for every App.*.Changed subscription.
+    // GameLogFeed already raises its events on the UI dispatcher (GameLogFeed.cs:126-127), so this
+    // BeginInvoke is not thread marshaling. It exists so a LOADED/DISCARD click (which calls
+    // App.AutoLoad.Complete/Discard synchronously, inside our own event handler) can mutate the
+    // tracker without this handler clearing the visual tree out from under the click that is
+    // still bubbling - the rebuild is deferred to the next dispatcher cycle instead of reentering
+    // mid-route. _stopped guards a continuation already queued when Stop() lands (e.g. window
+    // close mid-flight) from repainting or resurrecting the ticker on a dead control.
     private void OnEntries()
     {
         Dispatcher.BeginInvoke(new Action(() =>
         {
+            if (_stopped) return;
             Rebuild();
             SyncTicker();
         }));
@@ -134,6 +146,7 @@ public sealed class AutoLoadStatusLine : StackPanel
         var entries = App.AutoLoad.Entries;
         if (entries.Count == 0)
         {
+            _expanded = false;   // the next auto-load always opens collapsed, never pre-expanded
             Visibility = Visibility.Collapsed;
             return;
         }
