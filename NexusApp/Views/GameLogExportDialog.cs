@@ -45,9 +45,10 @@ public sealed class GameLogExportDialog : Window
 
         stack.Children.Add(new TextBlock
         {
-            Text = "Save a slice of Star Citizen's Game.log to attach to a bug report. "
-                 + "Times are your own local clock; Game.log itself records UTC and the export "
-                 + "header states the converted range.",
+            Text = "Save a slice of Star Citizen's Game.log to attach to a bug report. Past sessions "
+                 + "are included: the game keeps only the current one in Game.log and files the rest "
+                 + "under logbackups, and both are searched. Times are your own local clock; Game.log "
+                 + "itself records UTC and the export header states the converted range.",
             Foreground = fgDim, FontSize = 12, TextWrapping = TextWrapping.Wrap,
         });
 
@@ -132,20 +133,37 @@ public sealed class GameLogExportDialog : Window
         var scrub = _scrub.IsChecked == true;
         try
         {
-            // Shared read: the game holds Game.log open for writing, so a plain File.ReadAllLines
-            // hits a sharing violation while a session is live - which is exactly when a user is
-            // trying to report a bug.
-            var lines = ReadShared(_logPath);
+            var fromUtc = fromLocal?.ToUniversalTime();
+            var toUtc = toLocal?.ToUniversalTime();
+
+            // EVERY session in range, not just the live one. Star Citizen keeps only the current
+            // session in Game.log and moves finished ones into logbackups, so reading the single
+            // active file returned one evening no matter how wide a range was asked for.
+            var paths = GameLogSources.Discover(_logPath, fromUtc);
+            if (paths.Count == 0)
+            {
+                _status.Text = "No Game.log sessions found for that range.";
+                return;
+            }
+
+            var sources = new List<GameLogSource>(paths.Count);
+            foreach (var path in paths)
+            {
+                try { sources.Add(GameLogSources.Read(path)); }
+                catch (Exception ex) { Logger.Info($"[UI] Game.log source skipped ({ex.Message})"); }
+            }
+
             var handle = scrub ? App.Settings?.Current?.DetectedRsiHandle : null;
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-            var result = GameLogExport.Build(lines, fromLocal?.ToUniversalTime(), toLocal?.ToUniversalTime(),
+            var result = GameLogExport.Build(sources, fromUtc, toUtc,
                 scrub, handle, home, AppInfo.Version, DateTime.UtcNow);
 
             if (result.LinesKept == 0)
             {
-                _status.Text = $"Nothing in that range. The file has {result.LinesTotal} lines; "
-                             + "widen the dates, or check that this is the session you meant.";
+                _status.Text = $"Nothing in that range across {result.FilesScanned} session "
+                             + $"file{(result.FilesScanned == 1 ? "" : "s")} ({result.LinesTotal} lines). "
+                             + "Widen the dates, or check that this is the session you meant.";
                 return;
             }
 
@@ -158,9 +176,11 @@ public sealed class GameLogExportDialog : Window
             if (dlg.ShowDialog() != true) return;
 
             File.WriteAllText(dlg.FileName, result.Text);
-            _status.Text = $"Saved {result.LinesKept} of {result.LinesTotal} lines to {dlg.FileName}. "
+            _status.Text = $"Saved {result.LinesKept} lines from {result.FilesWithContent} of "
+                         + $"{result.FilesScanned} session files to {dlg.FileName}. "
                          + "Attach it to your issue at github.com/T3SoD/NexusApp/issues.";
-            Logger.Info($"[UI] Game.log exported: {result.LinesKept}/{result.LinesTotal} lines, "
+            Logger.Info($"[UI] Game.log exported: {result.LinesKept}/{result.LinesTotal} lines from "
+                      + $"{result.FilesWithContent}/{result.FilesScanned} session files, "
                       + $"personal details {(scrub ? "removed" : "kept")}");
         }
         catch (Exception ex)
@@ -168,15 +188,6 @@ public sealed class GameLogExportDialog : Window
             _status.Text = $"Export failed: {ex.Message}";
             Logger.Info($"[UI] Game.log export failed: {ex.Message}");
         }
-    }
-
-    private static IEnumerable<string> ReadShared(string path)
-    {
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var sr = new StreamReader(fs);
-        var lines = new List<string>();
-        while (sr.ReadLine() is { } line) lines.Add(line);
-        return lines;
     }
 
     // The issue asks for "export to downloads". There is no SpecialFolder for it, so this is the

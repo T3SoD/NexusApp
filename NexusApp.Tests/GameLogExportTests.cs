@@ -224,10 +224,12 @@ public class GameLogExportTests
     }
 
     // The game holds Game.log open for writing; a plain read throws exactly when a user is live and
-    // trying to report a bug.
+    // trying to report a bug. The read itself moved into GameLogSources when the export learned to
+    // span sessions, and is now proven behaviourally against a genuinely locked file by
+    // GameLogSourcesTests.Read_OpensAFileTheGameIsStillWritingTo - a stronger check than this pin.
     [Fact]
-    public void Dialog_ReadsTheLogWithSharedAccess()
-        => Assert.Contains("FileShare.ReadWrite", SourceFiles.ReadAppSource(@"Views\GameLogExportDialog.cs"));
+    public void TheSharedRead_LivesWithTheSourceDiscovery()
+        => Assert.Contains("FileShare.ReadWrite", SourceFiles.ReadAppSource(@"Services\GameLogSources.cs"));
 
     [Fact]
     public void Settings_OffersTheExportFromTheDiagnosticsPane()

@@ -4,7 +4,8 @@ using System.Text.RegularExpressions;
 
 namespace NexusApp.Services;
 
-public sealed record GameLogExportResult(string Text, int LinesKept, int LinesTotal, bool Scrubbed);
+public sealed record GameLogExportResult(string Text, int LinesKept, int LinesTotal, bool Scrubbed,
+                                         int FilesScanned = 1, int FilesWithContent = 1);
 
 /// <summary>
 /// Builds the Game.log slice a user attaches to a bug report (issue #48). Pure formatting and
@@ -86,23 +87,58 @@ public static class GameLogExport
     public static GameLogExportResult Build(
         IEnumerable<string> lines, DateTime? fromUtc, DateTime? toUtc, bool scrub,
         string? handle, string? home, string appVersion, DateTime nowUtc)
+        => Build(new[] { new GameLogSource("Game.log", lines.ToList()) },
+                 fromUtc, toUtc, scrub, handle, home, appVersion, nowUtc);
+
+    /// <summary>
+    /// The same filter across MANY session files (issue #48 follow-up). Star Citizen keeps only the
+    /// current session in Game.log and moves finished ones into logbackups, so a range wider than
+    /// one evening spans several files. Each source is filtered independently, and one that
+    /// contributes nothing is named in the header rather than silently omitted, so a user who
+    /// exports four days and gets one session can see that the other files were read and had
+    /// nothing in range, instead of guessing.
+    ///
+    /// <para>Sources must arrive oldest first (GameLogSources.Discover orders them), so the export
+    /// reads forwards in time.</para>
+    /// </summary>
+    public static GameLogExportResult Build(
+        IReadOnlyList<GameLogSource> sources, DateTime? fromUtc, DateTime? toUtc, bool scrub,
+        string? handle, string? home, string appVersion, DateTime nowUtc)
     {
-        var kept = new List<string>();
+        var body = new StringBuilder();
         var total = 0;
-        DateTime? current = null;
+        var keptCount = 0;
+        var withContent = 0;
+        var empties = new List<string>();
 
-        foreach (var line in lines)
+        foreach (var source in sources)
         {
-            total++;
-            var stamp = StampOf(line);
-            if (stamp is not null) current = stamp;
+            var kept = new List<string>();
+            DateTime? current = null;   // per file: a session's stamps never carry into the next
 
-            bool inRange = current is { } c
-                ? (fromUtc is null || c >= fromUtc) && (toUtc is null || c <= toUtc)
-                : fromUtc is null;   // nothing to place it by: keep it only when nothing is excluded below
-            if (!inRange) continue;
+            foreach (var line in source.Lines)
+            {
+                total++;
+                var stamp = StampOf(line);
+                if (stamp is not null) current = stamp;
 
-            kept.Add(scrub ? Scrub(line, handle, home) : line);
+                bool inRange = current is { } c
+                    ? (fromUtc is null || c >= fromUtc) && (toUtc is null || c <= toUtc)
+                    : fromUtc is null;   // nothing to place it by: keep it only when nothing is excluded
+                if (!inRange) continue;
+
+                kept.Add(scrub ? Scrub(line, handle, home) : line);
+            }
+
+            if (kept.Count == 0) { empties.Add(source.Name); continue; }
+
+            withContent++;
+            keptCount += kept.Count;
+            // Session boundaries are marked so the reader can tell one launch from the next; the
+            // file NAME only, never its path, which runs through the Windows user folder.
+            body.AppendLine($"--- {source.Name} ({kept.Count} lines) ---");
+            foreach (var line in kept) body.AppendLine(line);
+            body.AppendLine();
         }
 
         var sb = new StringBuilder();
@@ -112,10 +148,12 @@ public static class GameLogExport
         sb.AppendLine(scrub
             ? "Personal details: REMOVED (handle, account and player ids, IP addresses, Windows user folder)"
             : "Personal details: KEPT - this file identifies you. Share it only with the developer.");
-        sb.AppendLine($"Lines: {kept.Count} of {total}");
+        sb.AppendLine($"Session files: {withContent} of {sources.Count} had lines in range");
+        if (empties.Count > 0) sb.AppendLine($"Nothing in range from: {string.Join(", ", empties)}");
+        sb.AppendLine($"Lines: {keptCount} of {total}");
         sb.AppendLine();
-        foreach (var line in kept) sb.AppendLine(line);
-        return new GameLogExportResult(sb.ToString(), kept.Count, total, scrub);
+        sb.Append(body);
+        return new GameLogExportResult(sb.ToString(), keptCount, total, scrub, sources.Count, withContent);
     }
 
     private static string Describe(DateTime? utc) =>
