@@ -1144,7 +1144,66 @@ public sealed class SettingsPage : UserControl
                 },
                 last: true)));
 
+        panel.Children.Add(SectionPanel("Window", false,
+            SettingRow("Close button",
+                "What the X button does. Exit closes Nexus. Minimize sends it to the taskbar. " +
+                "Tray hides it into the notification area beside the clock, where clicking its icon " +
+                "brings it back and right-clicking offers Exit. Nexus keeps reading Game.log either " +
+                "way, so your session, hauls and overlay carry on.",
+                BuildCloseActionPills(), last: true)));
+
         return Pane(panel);
+    }
+
+    // Three-way choice for issue #46, in the house pill idiom (1px border, radius 3, amber when
+    // active) rather than a ToggleSwitch, which only has two states. Deliberately not a dropdown:
+    // all three options fit on one row and a picker would hide two of them behind a click.
+    private Border BuildCloseActionPills()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var pills = new Dictionary<CloseBehaviour, Border>();
+
+        void Select(CloseBehaviour chosen)
+        {
+            foreach (var (behaviour, pill) in pills)
+            {
+                bool on = behaviour == chosen;
+                pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
+                pill.Background = on ? Hud.Br("AccentFaintBrush") : Brushes.Transparent;
+                ((TextBlock)pill.Child).Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
+            }
+        }
+
+        foreach (var behaviour in new[] { CloseBehaviour.Exit, CloseBehaviour.Minimize, CloseBehaviour.Tray })
+        {
+            var pill = new Border
+            {
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(6, 0, 0, 0),
+                Cursor = Cursors.Hand,
+                Child = new TextBlock
+                {
+                    Text = CloseAction.Label(behaviour), FontFamily = Hud.Font("UiFont"),
+                    FontSize = 9.5, FontWeight = FontWeights.Bold,
+                },
+            };
+            var captured = behaviour;
+            pill.MouseLeftButtonUp += (_, _) =>
+            {
+                App.Settings.Current.CloseButtonAction = CloseAction.ToStored(captured);
+                App.Settings.Save();
+                Select(captured);
+                Logger.Info($"[UI] close button action: {CloseAction.Label(captured)}");
+                // Turning the tray option off gives the icon back now, rather than leaving a dead
+                // one in the notification area until the next restart.
+                (Window.GetWindow(this) as MainWindow)?.OnCloseBehaviourChanged(captured);
+            };
+            pills[behaviour] = pill;
+            row.Children.Add(pill);
+        }
+
+        Select(CloseAction.Parse(App.Settings.Current.CloseButtonAction));
+        return new Border { Child = row, HorizontalAlignment = HorizontalAlignment.Right };
     }
 
     // DATA: the destructive clear-saved-data action (red-framed section).

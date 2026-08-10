@@ -187,6 +187,7 @@ public partial class MainWindow : Window
         UiScaleService.Changed += ApplyUiScale;
         SetActivePage("command");
         Closing += (s, e) => { SaveWindowPosition(); _vm.StopScanner(); _listTicker?.Stop(); _scanChipTimer?.Stop(); _eggTimer?.Stop(); _scanIndicator?.Close(); _contractIndicator?.Close(); };
+        SourceInitialized += HookCloseButton;
 
         // The Codex hologram pauses when the app loses focus and resumes when it regains it -
         // an unfocused window has no business burning CPU on an ambient render loop.
@@ -217,6 +218,106 @@ public partial class MainWindow : Window
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
         Loaded += (s, e) => App.MaybeStartUpdateCheck();
+    }
+
+    // ── Close-button behaviour (issue #46) ────────────────────────────────────────────
+    // Intercepted at WM_CLOSE rather than in Closing/OnClosing, and that is the whole trick.
+    // WM_CLOSE arrives ONLY from the user: the X button, the system menu, Alt+F4. WPF's own
+    // Window.Close() and Application.Current.Shutdown() raise Closing DIRECTLY without ever
+    // posting WM_CLOSE, so every programmatic exit already in the app (the update installer, the
+    // portable self-swap, the demo-profile restart, the theme restart) passes straight through
+    // untouched. Cancelling in Closing would have caught all of those too and quietly broken
+    // updating, and it would also have run the Closing handler above - stopping the scanner and
+    // the tickers - every time the user merely hid the window.
+
+    private const int WM_CLOSE = 0x0010;
+    private TrayIcon? _tray;
+
+    private void HookCloseButton(object? sender, EventArgs e)
+    {
+        var source = (System.Windows.Interop.HwndSource?)PresentationSource.FromVisual(this);
+        source?.AddHook(CloseButtonHook);
+    }
+
+    private IntPtr CloseButtonHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != WM_CLOSE) return IntPtr.Zero;
+        switch (CloseAction.Parse(App.Settings?.Current?.CloseButtonAction))
+        {
+            case CloseBehaviour.Minimize:
+                WindowState = WindowState.Minimized;
+                handled = true;
+                Logger.Info("[WIN] close button: minimized instead of exiting");
+                break;
+            case CloseBehaviour.Tray:
+                HideToTray();
+                handled = true;
+                break;
+            default:
+                break;   // Exit: fall through to the default handler and really close
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Hides the window and parks the app in the notification area. Hide() alone removes
+    /// the taskbar button, so no ShowInTaskbar juggling is needed. The overlay is deliberately left
+    /// alone: hiding the desktop window is exactly what a player does mid-session, and killing
+    /// their in-game HUD at that moment would be the opposite of what they asked for.</summary>
+    private void HideToTray()
+    {
+        EnsureTray();
+        Hide();
+        Logger.Info("[WIN] close button: hidden to tray");
+
+        // Once ever. An app that vanishes with no explanation reads as a crash, and the user goes
+        // looking in Task Manager rather than the notification area.
+        if (App.Settings?.Current is { TrayHintShown: false } s)
+        {
+            _tray?.ShowHint("Nexus is still running",
+                "Nexus is in the notification area. Click its icon to open it, or right-click for Exit.");
+            s.TrayHintShown = true;
+            App.Settings.Save();
+        }
+    }
+
+    private void EnsureTray()
+    {
+        if (_tray != null) return;
+        _tray = new TrayIcon("Nexus");
+        _tray.OpenRequested += RestoreFromTray;
+        // A real exit: Shutdown() never posts WM_CLOSE, so this cannot be re-intercepted above.
+        _tray.ExitRequested += () =>
+        {
+            Logger.Info("[WIN] tray menu: exit");
+            _tray?.Dispose();
+            _tray = null;
+            Application.Current.Shutdown();
+        };
+        _tray.Show();
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        // Same foreground-lock workaround App.RestoreMainWindow uses: Activate() alone can be
+        // ignored by Windows when another process holds focus.
+        Topmost = true;
+        Topmost = false;
+        Activate();
+        Logger.Info("[WIN] restored from tray");
+    }
+
+    /// <summary>Called when the user changes the setting, so turning the tray option OFF gives the
+    /// icon back immediately instead of leaving a dead one in the notification area until restart.</summary>
+    internal void OnCloseBehaviourChanged(CloseBehaviour behaviour)
+    {
+        if (behaviour != CloseBehaviour.Tray && _tray != null)
+        {
+            _tray.Dispose();
+            _tray = null;
+        }
     }
 
     // Applies the persisted App scale (issue #20): scales all window content via a

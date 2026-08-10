@@ -77,6 +77,16 @@ public class AppSettings
     // Top-bar clock format: true = 24-hour (HH:mm:ss), false = 12-hour with AM/PM. Default 24-hour.
     public bool Clock24Hour { get; set; } = true;
 
+    // What the window's X button does (issue #46). "exit" (default, the behaviour every existing
+    // install already has), "minimize", or "tray". Stored as a string rather than an enum so an
+    // unknown value from a hand-edited settings.json degrades to exit instead of throwing;
+    // CloseAction.Parse owns that fallback.
+    public string CloseButtonAction { get; set; } = "exit";
+
+    // One-shot: the tray balloon that explains where the window went is shown on the FIRST hide
+    // only. Without this the app looks like it closed and the user hunts for it in Task Manager.
+    public bool TrayHintShown { get; set; }
+
     // Compatibility: render Nexus on the CPU (RenderMode.SoftwareOnly) instead of the GPU, for
     // machines whose game/driver crashes keep killing WPF's render thread (0x88980406). Applied
     // once at startup - toggling takes effect on the next launch. Default off.
