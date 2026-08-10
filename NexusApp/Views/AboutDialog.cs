@@ -13,6 +13,20 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.0  -  Aug 10, 2026",
+        [
+            "Trade and Cargo Hauling are now two halves of one job. Trade is where you find work: the planner, SELL LOAD and MARKET. Cargo Hauling is where you do it, holding your accepted routes alongside your contracts, the auto-load countdown, and the money",
+            "Pinning a route became ACCEPTING one. An accepted route is work you have taken on, and it corrects itself: accept 750 SCU of scrap, buy only 680, and the route rewrites its own quantity and profit from what the game actually recorded. Selling the cargo closes it out, or you can delete it yourself",
+            "Money reads as a conversion instead of a loss. A LIQUID / IN CARGO / EXPECTED bar shows that the money you spent is sitting in your hold, not gone, so buying well no longer makes the session look like it lost money",
+            "Cargo Hauling gained a merged STOPS list, where every place shows everything that happens there at once - collect, deliver and sell - plus THIS RUN PAYS and a COMMITTED figure for the SCU your accepted work needs against the ship you fly",
+            "Auto-load timers. Buying or selling with auto-load opens a countdown showing the commodity, the amount, where you bought it, and how long is left. Timings were calibrated against real kiosk readings, and entries survive restarting Nexus",
+            "Non-commodity kiosk spending now reaches the ledger, so buying a ship, armour or components shows up as a named purchase rather than an unexplained drop in your wallet",
+            "Trade filters became a row of chips, one per setting, each opening just that control. A chip shows its value and lights amber only when it is actually narrowing your results, so a setting doing nothing can no longer look like one that is",
+            "USE WALLET is now a switch. Leave it on and your planner budget follows your wallet as it moves, instead of needing to be pushed across by hand",
+            "Route planning uses the box sizes each kiosk actually stocks, read from the game as you open the counter, rather than one list per commodity that assumed every terminal was the same",
+            "The X button can minimize or hide Nexus to the notification area instead of closing it, set on the Interface tab",
+            "New Export Game.log on the Diagnostics tab, for attaching to a bug report. Pick a date range, and past sessions are included, with your handle, account ids and IP addresses removed unless you say otherwise",
+        ]),
         ("App  6.13.4  -  Aug 6, 2026",
         [
             "New aUEC wallet - open your mobiGlas in game and Nexus reads your balance, then keeps a running estimate between reads using the kiosk trades it already tracks. Set the scan region in Settings, the same way you set the RS and contract regions, with an optional on-screen box so you can see what is being read",
