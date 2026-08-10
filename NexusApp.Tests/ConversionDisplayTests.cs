@@ -122,28 +122,56 @@ public class ConversionDisplayTests
         Assert.Contains("AcceptedRouteMoney.ExpectedMargin", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
     }
 
-    // ── Filter shelves (spec section 2.2) ──────────────────────────────────────────
+    // ── Filter chip bar (concept A, approved 2026-08-10) ───────────────────────────
+    // The collapsible shelf is GONE from all three flows. Its collapsed line was a comma-joined
+    // string, so it could not say which value belonged to which setting, nor which settings were
+    // actually constraining the results - the whole job of a summary that stands in for hidden
+    // controls. A chip names its setting, carries its value, and there is nothing to collapse.
 
     [Theory]
     [InlineData(@"Views\TradePage.Planner.cs")]
     [InlineData(@"Views\TradePage.Sell.cs")]
     [InlineData(@"Views\TradePage.Prices.cs")]
-    public void EveryTradeFlow_WrapsItsInputsInAFilterShelf(string file)
+    public void EveryTradeFlow_UsesTheChipBar(string file)
     {
-        Assert.Contains("BuildFilterShelf", SourceFiles.ReadAppSource(file));
+        var src = SourceFiles.ReadAppSource(file);
+        Assert.Contains("new FilterChipBar", src);
+        Assert.DoesNotContain("BuildFilterShelf", src);
     }
 
-    // Collapsing must never hide what is in force: each flow refreshes a summary line naming its
-    // own settings. Without this the shelf is a trap rather than a space win.
+    // Every chip re-reads its value on each rebuild, so a snapshot-driven correction (an unresolved
+    // start, a commodity the hourly refresh dropped) reaches the bar immediately, not a rebuild late.
     [Theory]
     [InlineData(@"Views\TradePage.Planner.cs", "RefreshPlannerFilterSummary")]
     [InlineData(@"Views\TradePage.Sell.cs", "RefreshSellFilterSummary")]
     [InlineData(@"Views\TradePage.Prices.cs", "RefreshPricesFilterSummary")]
-    public void EveryTradeFlow_KeepsItsCollapsedSummaryCurrent(string file, string refresher)
+    public void EveryTradeFlow_KeepsItsChipValuesCurrent(string file, string refresher)
     {
         var src = SourceFiles.ReadAppSource(file);
         // defined once, and called from the flow's rebuild path
         Assert.True(src.Split(refresher).Length - 1 >= 2, $"{refresher} must be defined and called");
+    }
+
+    // A chip goes amber only when its setting is narrowing the results, so "ANY" and "C2 Hercules"
+    // can never look alike. That distinction is the defect the whole concept exists to fix.
+    [Fact]
+    public void TheChipBar_DistinguishesASetFilterFromADefault()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\FilterChipBar.cs");
+        Assert.Contains("IsSet", src);
+        Assert.Contains("AccentBrush", src);
+        Assert.Contains("FgDimBrush", src);
+    }
+
+    // Three popovers contain a CommodityPickerBox, which has an OPEN defect where its dropdown
+    // closes inside the click that opened it. A self-closing popup wrapped around a self-closing
+    // popup makes that worse, so dismissal is owned explicitly here instead of by WPF.
+    [Fact]
+    public void ChipPopovers_OwnTheirOwnDismissal()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\FilterChipBar.cs");
+        Assert.Contains("StaysOpen = true", src);
+        Assert.Contains("PreviewMouseDown", src);
     }
 
     // Session-only by design. A persisted key would need a migration and gains nothing.

@@ -43,17 +43,9 @@ public sealed partial class TradePage
     private StackPanel _pricesResults = null!;
     private List<string>? _pricesCommodityNames;   // the list currently pushed into the picker
 
-    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
-    // an existing user's inputs do not vanish under them the first time this ships.
-    // _pricesFilterShelf is the shelf's outer container (what anchors into PricesHost's row 0 -
-    // _pricesInputs becomes the shelf's body instead of going straight into PricesHost);
-    // _pricesFiltersSummary is the collapsed-only summary line, refreshed on every RebuildPrices.
-    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
-    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
-    // actually hidden. Session-only; no AppSettings key.
-    private bool _pricesFiltersExpanded;
-    private FrameworkElement _pricesFilterShelf = null!;
-    private TextBlock _pricesFiltersSummary = null!;
+    // FILTER CHIP BAR (concept A, approved 2026-08-10). Replaced the collapsible FILTERS shelf:
+    // one chip per setting, each opening a popover holding that setting's own control.
+    private FilterChipBar _pricesChips = null!;
 
     private void BuildPricesChrome()
     {
@@ -114,21 +106,34 @@ public sealed partial class TradePage
             };
             toggles.Children.Add(chip);
         }
-        _pricesInputs.Children.Add(toggles);
-
         _pricesResults = new StackPanel();
 
-        // FILTERS shelf (task B2): same anchored Auto/Star split the planner has had since task 10
-        // (TradePage.Planner.cs, BuildPlannerChrome) - PricesHost is a Grid now (TradePage.cs), so a
-        // collapsed shelf stays reachable instead of scrolling away with the results.
-        var shelf = BuildFilterShelf(_pricesInputs, "prices", () => _pricesFiltersExpanded, v => _pricesFiltersExpanded = v);
-        _pricesFilterShelf = shelf.Container;
-        _pricesFiltersSummary = shelf.Summary;
+        // FILTER CHIP BAR (concept A, approved 2026-08-10). Market has the fewest settings of the
+        // three flows: one commodity, plus the column toggles. The toggles stay OUT of a popover and
+        // ride beside the chip, because they are view options with no single value a chip could
+        // name, and because hiding four one-click toggles behind a fifth click makes them worse.
+        DetachFromParent(pickerGrp);
+        DetachFromParent(toggles);
+        pickerGrp.Margin = new Thickness(0);
+        pickerGrp.Width = double.NaN;
+        pickerGrp.HorizontalAlignment = HorizontalAlignment.Stretch;
+        toggles.Margin = new Thickness(4, 0, 0, 6);
+
+        _pricesChips = new FilterChipBar(new List<FilterChipDef>
+        {
+            new() { Key = "COMMODITY", Content = pickerGrp, PopoverWidth = 250,
+                    Value = () => string.IsNullOrWhiteSpace(_pricesSelectedCommodity) ? "ALL" : _pricesSelectedCommodity!,
+                    IsSet = () => !string.IsNullOrWhiteSpace(_pricesSelectedCommodity) },
+        }, "prices");
+
+        var chipRow = new StackPanel { Orientation = Orientation.Horizontal };
+        chipRow.Children.Add(_pricesChips);
+        chipRow.Children.Add(toggles);
 
         PricesHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         PricesHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(_pricesFilterShelf, 0);
-        PricesHost.Children.Add(_pricesFilterShelf);
+        Grid.SetRow(chipRow, 0);
+        PricesHost.Children.Add(chipRow);
         var resultsScroll = new ScrollViewer
         {
             Content = _pricesResults,
@@ -184,19 +189,12 @@ public sealed partial class TradePage
     // to ALL for the terminal-browse mode (_pricesSelectedCommodity null, ShowPricesForTerminal),
     // matching the fallback RebuildPrices' own log line already uses. Column names in their fixed
     // STOCK/STATUS/AGE/+WEEK AVG order, only the ones currently toggled on.
-    private void RefreshPricesFilterSummary()
-    {
-        var commodity = _pricesSelectedCommodity ?? "ALL";
-        var cols = string.Join(", ", PriceColLabels.Where((_, i) => _priceCols[i]));
-        var text = cols.Length == 0 ? commodity : $"{commodity}, {cols}";
-        _pricesFiltersSummary.Text = text;
-        _pricesFiltersSummary.ToolTip = text;
-    }
+    private void RefreshPricesFilterSummary() => _pricesChips?.Refresh();
 
     private void RebuildPrices()
     {
         BuildPricesChrome();
-        if (!EnsureMarketConsent(_pricesResults, _pricesFilterShelf)) return;
+        if (!EnsureMarketConsent(_pricesResults, _pricesChips)) return;
         _pricesResults.Children.Clear();
 
         var snap = App.Market.Snapshot;

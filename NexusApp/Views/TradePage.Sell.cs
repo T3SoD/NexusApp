@@ -27,17 +27,9 @@ public sealed partial class TradePage
     private StackPanel _sellInputs = null!;
     private StackPanel _sellResults = null!;
 
-    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
-    // an existing user's inputs do not vanish under them the first time this ships. _sellFilterShelf
-    // is the shelf's outer container (what anchors into SellHost's row 0 - _sellInputs becomes the
-    // shelf's body instead of going straight into SellHost); _sellFiltersSummary is the
-    // collapsed-only summary line, refreshed on every RebuildSell.
-    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
-    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
-    // actually hidden. Session-only; no AppSettings key.
-    private bool _sellFiltersExpanded;
-    private FrameworkElement _sellFilterShelf = null!;
-    private TextBlock _sellFiltersSummary = null!;
+    // FILTER CHIP BAR (concept A, approved 2026-08-10). Replaced the collapsible FILTERS shelf:
+    // one chip per setting, each opening a popover holding that setting's own control.
+    private FilterChipBar _sellChips = null!;
 
     // Keyed by buyer TERMINAL ("t" + UEX terminal id for ranked rows, the SCT location string for
     // SCT-only rows), not by row index: sell rows re-rank whenever the quantity or a new SCT
@@ -139,26 +131,47 @@ public sealed partial class TradePage
         _prefillSlot = new ContentControl { VerticalAlignment = VerticalAlignment.Bottom, Focusable = false };
         inputRow.Children.Add(_prefillSlot);
 
-        _sellInputs.Children.Add(inputRow);
-        _sellInputs.Children.Add(new TextBlock
+        _sellResults = new StackPanel();
+
+        // FILTER CHIP BAR (concept A, approved 2026-08-10), the same treatment the planner gets.
+        // Sell has three controls rather than seven, so the bar is short - which is exactly why this
+        // concept scales to all three flows where a fixed rail or a pinned/overflow split does not.
+        // APPLY WORK ORDER keeps its own slot on the bar rather than becoming a chip: it is an
+        // action that appears and disappears with a pending work order, not a setting with a value.
+        DetachFromParent(pickerGrp);
+        DetachFromParent(qtyGrp);
+        DetachFromParent(_prefillSlot);
+        pickerGrp.Margin = new Thickness(0); pickerGrp.Width = double.NaN;
+        qtyGrp.Margin = new Thickness(0);
+
+        _sellChips = new FilterChipBar(new List<FilterChipDef>
+        {
+            new() { Key = "COMMODITY", Content = pickerGrp, PopoverWidth = 250,
+                    Value = () => string.IsNullOrWhiteSpace(SellCommodity) ? "NONE" : SellCommodity,
+                    IsSet = () => !string.IsNullOrWhiteSpace(SellCommodity) },
+            new() { Key = "QUANTITY", Content = qtyGrp, PopoverWidth = 200,
+                    Value = () => SellQty > 0 ? $"{SellQty:N0} SCU" : "NONE",
+                    IsSet = () => SellQty > 0 },
+        }, "sell");
+
+        var chipRow = new StackPanel { Orientation = Orientation.Horizontal };
+        chipRow.Children.Add(_sellChips);
+        _prefillSlot.VerticalAlignment = VerticalAlignment.Center;
+        _prefillSlot.Margin = new Thickness(4, 0, 0, 6);
+        chipRow.Children.Add(_prefillSlot);
+
+        var chipHost = new StackPanel();
+        chipHost.Children.Add(chipRow);
+        chipHost.Children.Add(new TextBlock
         {
             Text = "Ranked by effective value for your load. Bars show trip coverage.",   // architect resolution caption, verbatim
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
         });
 
-        _sellResults = new StackPanel();
-
-        // FILTERS shelf (task B2): same anchored Auto/Star split the planner has had since task 10
-        // (TradePage.Planner.cs, BuildPlannerChrome) - SellHost is a Grid now (TradePage.cs), so a
-        // collapsed shelf stays reachable instead of scrolling away with the results.
-        var shelf = BuildFilterShelf(_sellInputs, "sell", () => _sellFiltersExpanded, v => _sellFiltersExpanded = v);
-        _sellFilterShelf = shelf.Container;
-        _sellFiltersSummary = shelf.Summary;
-
         SellHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         SellHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(_sellFilterShelf, 0);
-        SellHost.Children.Add(_sellFilterShelf);
+        Grid.SetRow(chipHost, 0);
+        SellHost.Children.Add(chipHost);
         var resultsScroll = new ScrollViewer
         {
             Content = _sellResults,
@@ -219,18 +232,12 @@ public sealed partial class TradePage
     // quantity entered - the same two fields (SellCommodity, SellQty) the ranking below already
     // reads, so the summary can never disagree with what the results were ranked on. SellQty reads
     // the quantity box live per keystroke (item C's live re-rank), and so does this summary.
-    private void RefreshSellFilterSummary()
-    {
-        int qty = SellQty;
-        var text = qty > 0 ? $"{SellCommodity}, {qty:n0} SCU" : SellCommodity;
-        _sellFiltersSummary.Text = text;
-        _sellFiltersSummary.ToolTip = text;
-    }
+    private void RefreshSellFilterSummary() => _sellChips?.Refresh();
 
     private void RebuildSell()
     {
         BuildSellChrome();
-        if (!EnsureMarketConsent(_sellResults, _sellFilterShelf)) return;
+        if (!EnsureMarketConsent(_sellResults, _sellChips)) return;
         _sellResults.Children.Clear();
         _sellPinChips.Clear();   // the chips belonged to the rows just dropped (same rule as the planner's)
 

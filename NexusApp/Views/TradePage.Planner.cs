@@ -133,17 +133,10 @@ public sealed partial class TradePage
     private string? _commoditySelectedName;         // the active pick ("ANY" = unconstrained); null only before the first seed
     private bool _commoditySeeded;                  // seeds once from TradeCommodityFilter, same idiom as the DESTINATION picker above
 
-    // FILTERS shelf (task B2, TradePage.cs's BuildFilterShelf): session-only, defaults EXPANDED so
-    // an existing user's inputs do not vanish under them the first time this ships. _plannerFilterShelf
-    // is the shelf's outer container (what actually anchors into PlannerHost's row 0, replacing
-    // _plannerInputs there - _plannerInputs becomes the shelf's body instead); _plannerFiltersSummary
-    // is the collapsed-only summary line, refreshed on every RebuildPlanner.
-    // Collapsed by default (spec 2026-08-09 section 2.2): reclaiming the vertical space is the
-    // whole point, and the shelf's collapsed line states every setting in force, so nothing is
-    // actually hidden. Session-only; no AppSettings key.
-    private bool _plannerFiltersExpanded;
-    private FrameworkElement _plannerFilterShelf = null!;
-    private TextBlock _plannerFiltersSummary = null!;
+    // FILTER CHIP BAR (concept A, approved 2026-08-10). Replaced the collapsible FILTERS shelf:
+    // one chip per setting, each opening a popover holding that setting's own control. Refreshed on
+    // every RebuildPlanner so a snapshot-driven correction reaches the chips immediately.
+    private FilterChipBar _plannerChips = null!;
 
     // Overlay sync (overlay planner spec, 2026-08-02): forget the session pick and re-seed from
     // the persisted TradeCommodityFilter on the next refresh. Internal seam for
@@ -555,30 +548,65 @@ public sealed partial class TradePage
 
         _plannerInputs.Children.Add(bottomRow);
 
-        _plannerInputs.Children.Add(new TextBlock
+        _plannerResults = new StackPanel();
+
+        // FILTER CHIP BAR (concept A, approved 2026-08-10). The seven groups built above are moved
+        // OUT of their rows and into one chip each: same controls, same handlers, same identity,
+        // just reparented into a popover. The rows themselves (topRow/routeSection/bottomRow) are
+        // built and then abandoned deliberately rather than deleted - they carry the field layout
+        // and margins this page has always used, and a chip's popover reuses the group verbatim.
+        //
+        // The chip bar replaced the collapsible shelf, which could not say which of its four
+        // comma-joined values belonged to which setting, nor which were actually narrowing the
+        // results. A chip names its setting, carries its value, and goes amber only when set.
+        DetachFromParent(shipGrp); DetachFromParent(budgetGrp); DetachFromParent(startGrp);
+        DetachFromParent(destGrp); DetachFromParent(commodityGrp);
+        DetachFromParent(demandFilterGrp); DetachFromParent(rankModeGrp);
+        foreach (var grp in new[] { shipGrp, budgetGrp, startGrp, destGrp, commodityGrp, demandFilterGrp, rankModeGrp })
+        {
+            grp.Margin = new Thickness(0);   // the row gutters are gone; the popover owns its padding
+            grp.Width = double.NaN;
+        }
+
+        _plannerChips = new FilterChipBar(new List<FilterChipDef>
+        {
+            new() { Key = "SHIP", Content = shipGrp, PopoverWidth = 250,
+                    Value = () => CurrentShip().DisplayName, IsSet = () => true },
+            new() { Key = "BUDGET", Content = budgetGrp, PopoverWidth = 250,
+                    Value = () => CurrentBudget() is { } b ? $"{b:N0} aUEC" : "NONE",
+                    IsSet = () => CurrentBudget() is not null },
+            new() { Key = "START", Content = startGrp, PopoverWidth = 270,
+                    Value = () => App.Settings.Current.TradeStartManual is { Length: > 0 } k ? k : AnyStart,
+                    IsSet = () => App.Settings.Current.TradeStartManual is { Length: > 0 } s && s != AnyStart },
+            new() { Key = "DEST", Content = destGrp, PopoverWidth = 250,
+                    Value = () => _destSelectedName ?? AnyDestination,
+                    IsSet = () => _destSelectedName is { } d && d != AnyDestination },
+            new() { Key = "COMMODITY", Content = commodityGrp, PopoverWidth = 250,
+                    Value = () => CommodityFilterName() ?? AnyCommodity,
+                    IsSet = () => CommodityFilterName() is not null },
+            new() { Key = "DEMAND", Content = demandFilterGrp, PopoverWidth = 290,
+                    Value = () => DemandFilterPillText(TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter)),
+                    IsSet = () => TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter) != StockFilter.Any },
+            new() { Key = "RANK BY", Content = rankModeGrp, PopoverWidth = 300,
+                    Value = () => App.Settings.Current.TradeRankMode,
+                    IsSet = () => !string.Equals(App.Settings.Current.TradeRankMode, "PROFIT", StringComparison.OrdinalIgnoreCase) },
+        }, "planner");
+
+        var chipHost = new StackPanel();
+        chipHost.Children.Add(_plannerChips);
+        chipHost.Children.Add(new TextBlock
         {
             Text = "Ranked by what a trip really pays with your ship and budget, not raw margin. Bars show trip coverage.",   // mock:857, verbatim
             FontFamily = Hud.Font("UiFont"), FontSize = 10.5, Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 14),
         });
 
-        _plannerResults = new StackPanel();
-
-        // FILTERS shelf (task B2): wraps _plannerInputs as its body, replacing it as row 0's direct
-        // child below - _plannerInputs itself is untouched, so every control stays exactly where it
-        // was and the shelf collapses/expands around it.
-        var shelf = BuildFilterShelf(_plannerInputs, "planner", () => _plannerFiltersExpanded, v => _plannerFiltersExpanded = v);
-        _plannerFilterShelf = shelf.Container;
-        _plannerFiltersSummary = shelf.Summary;
-
-        // Anchored inputs (task 10): PlannerHost is a Grid (TradePage.cs) - Auto row for the
-        // FILTERS shelf + Star row for a ScrollViewer around _plannerResults only, so ship/budget/
-        // route/demand/rank stay reachable (expanded, or collapsed to their one-line summary) while
-        // just the results list scrolls. Sell and Prices got the identical split in task B2, so all
-        // three flows share this shape now.
+        // Anchored inputs (task 10): PlannerHost is a Grid (TradePage.cs) - Auto row for the chip
+        // bar + Star row for a ScrollViewer around _plannerResults only, so the filters stay
+        // reachable while just the results list scrolls.
         PlannerHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         PlannerHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(_plannerFilterShelf, 0);
-        PlannerHost.Children.Add(_plannerFilterShelf);
+        Grid.SetRow(chipHost, 0);
+        PlannerHost.Children.Add(chipHost);
         var resultsScroll = new ScrollViewer
         {
             Content = _plannerResults,
@@ -600,7 +628,7 @@ public sealed partial class TradePage
     private void RebuildPlanner()
     {
         BuildPlannerChrome();
-        if (!EnsureMarketConsent(_plannerResults, _plannerFilterShelf)) return;
+        if (!EnsureMarketConsent(_plannerResults, _plannerChips)) return;
         _plannerResults.Children.Clear();
         _pinChips.Clear();   // the chips belonged to the rows just dropped
 
@@ -1192,13 +1220,14 @@ public sealed partial class TradePage
     // re-deriving any of them (CurrentShip(), the raw persisted TradeStartManual kind exactly as
     // the overlay's own OverlayStartKindLabel reads it, TradeScope, CommodityFilterName's own
     // null-means-ANY contract).
-    private void RefreshPlannerFilterSummary()
+    private void RefreshPlannerFilterSummary() => _plannerChips?.Refresh();
+
+    /// <summary>Removes an element from whatever panel currently holds it, so it can be reparented
+    /// into a chip popover. WPF throws if a visual child is added while it still has a parent, and
+    /// the field groups are built inside the layout rows they used to live in.</summary>
+    private static void DetachFromParent(FrameworkElement child)
     {
-        var text = $"{CurrentShip().DisplayName}, " +
-            $"{(App.Settings.Current.TradeStartManual is { Length: > 0 } kind ? kind : AnyStart)}, " +
-            $"{App.Settings.Current.TradeScope}, {CommodityFilterName() ?? AnyCommodity}";
-        _plannerFiltersSummary.Text = text;
-        _plannerFiltersSummary.ToolTip = text;
+        if (child.Parent is Panel p) p.Children.Remove(child);
     }
 
     // Small dim note (task 6, brief's "results header" fallback: no persistent header line exists
