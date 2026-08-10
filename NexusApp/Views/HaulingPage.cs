@@ -15,10 +15,12 @@ namespace NexusApp.Views;
 
 /// <summary>
 /// The Cargo Hauling page (code-built, like NetworkPage), rebuilt onto the shared MOBIGLAS
-/// Hud primitives. Reads App.Hauls and renders four sections: accepted trade routes (Task C,
-/// spec 2026-08-09), a two-up grid of active-haul cards (per-leg load/drop rows), a load/drop
-/// consolidation TABLE, and a finished-hauls panel with outcome chips. Rebuilds itself whenever
-/// the tracker raises Changed.
+/// Hud primitives. Reads App.Hauls and App.Settings.Current.PinnedRoutes, and renders the section
+/// order the trade/cargo fusion spec lays out (2026-08-09, section 3): the money bar and the
+/// auto-load countdown (both built once in Build), accepted trade routes, active-haul cards, the
+/// merged STOPS board, THIS RUN PAYS beside COMMITTED, and finished hauls. Rebuilds itself
+/// whenever the haul tracker raises Changed, and MainWindow repaints it when a matched
+/// transaction moves a route.
 /// </summary>
 public sealed class HaulingPage : UserControl
 {
@@ -51,6 +53,13 @@ public sealed class HaulingPage : UserControl
     private FontFamily Head => _head ??= (FontFamily)Application.Current.FindResource("HeadFont");
     private FontFamily Mono => _mono ??= (FontFamily)Application.Current.FindResource("MonoFont");
     private FontFamily Disp => _disp ??= (FontFamily)Application.Current.FindResource("DisplayFont");
+
+    // The TRADE ship list (~90 flyable hulls with cargo space), the same catalog and the same
+    // selection the route planner uses, so COMMITTED measures against the hull the user actually
+    // picked. Lazy: only the COMMITTED panel needs it, and a page opened on an empty state never
+    // pays the embedded-JSON parse.
+    private TradeShipCatalog? _ships;
+    private TradeShipCatalog Ships => _ships ??= TradeShipCatalog.LoadEmbedded();
 
     public HaulingPage()
     {
@@ -87,7 +96,13 @@ public sealed class HaulingPage : UserControl
         // contract are independent actions and a page with only one of the two is not truly empty.
         RenderAcceptedRoutes();
 
-        if (App.Hauls.AllHauls.Count == 0)
+        // The page's single empty state now needs BOTH halves to be empty (spec sections 3.5-3.7).
+        // It used to turn on contracts alone, which meant a hauler with accepted routes and no
+        // contract saw their routes and then "No active hauls" - and never saw the stop board, the
+        // payout or the commitment, all three of which are about the routes as much as the
+        // contracts.
+        var routes = App.Settings.Current.PinnedRoutes;
+        if (App.Hauls.AllHauls.Count == 0 && routes.Count == 0)
         {
             _body.Children.Add(Placeholder("No active hauls. Accept a hauling contract in-game."));
             _hasSeededOnce = true;
@@ -95,7 +110,9 @@ public sealed class HaulingPage : UserControl
         }
 
         RenderActive(allowHighlight);
-        RenderBottom();
+        RenderStops();
+        RenderRunTotals();
+        RenderFinished();
         _hasSeededOnce = true;
     }
 
@@ -599,37 +616,25 @@ public sealed class HaulingPage : UserControl
 
     // -- bottom row: consolidation table (left) + finished hauls (right) -----------
 
-    private void RenderBottom()
+    private void RenderFinished()
     {
-        var consolidation = BuildConsolidationPanel();
         var finished = App.Hauls.FinishedHauls;
+        if (finished.Count == 0) return;
 
-        if (finished.Count == 0)
-        {
-            consolidation.Margin = new Thickness(0, 16, 0, 0);
-            _body.Children.Add(consolidation);
-            return;
-        }
-
-        var row = new Grid { Margin = new Thickness(0, 16, 0, 0) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        consolidation.Margin = new Thickness(0, 0, 8, 0);
-        Grid.SetColumn(consolidation, 0); row.Children.Add(consolidation);
-
-        var finishedPanel = BuildFinishedPanel();
-        finishedPanel.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(finishedPanel, 1); row.Children.Add(finishedPanel);
-
-        _body.Children.Add(row);
+        var panel = BuildFinishedPanel();
+        panel.Margin = new Thickness(0, 16, 0, 0);
+        _body.Children.Add(panel);
     }
 
-    // -- consolidation -------------------------------------------------------------
+    // -- stops (spec 2026-08-09 section 3.5) ---------------------------------------
+    // ONE merged list. This replaced a contracts-only table that grouped COLLECT and DELIVER into
+    // two separate blocks and knew nothing about accepted routes, so a hauler standing at a place
+    // that was both a contract pickup and a route's sell terminal had to cross-reference three
+    // lists to find that out. StopBoard owns the merge; this method only renders it.
 
-    private Grid BuildConsolidationPanel()
+    private void RenderStops()
     {
-        var con = App.Hauls.BuildConsolidation();
+        var stops = StopBoard.Merge(App.Hauls.BuildConsolidation(), App.Settings.Current.PinnedRoutes);
 
         // App review 2026-08-01: these stops used to render in dictionary insertion order, which is
         // the order contracts happened to be accepted in - meaningless to a hauler planning a run.
@@ -637,17 +642,19 @@ public sealed class HaulingPage : UserControl
         // used neither. Now ordered nearest-first when a session places the player; unchanged when
         // it does not, because sorting by distance from nowhere would be theatre.
         var here = App.Player.Current;
-        var pickups = ConsolidationOrder.ByDistanceFrom(con.Pickups, App.Map, here);
-        var dropoffs = ConsolidationOrder.ByDistanceFrom(con.Dropoffs, App.Map, here);
+        var ordered = ConsolidationOrder.ByDistanceFrom(stops, s => s.Location, App.Map, here);
 
         var bodyStack = new StackPanel();
-        bodyStack.Children.Add(PanelHeaderBar("Collect / deliver consolidation",
-            here is null ? "grouped by location" : "grouped by location, nearest first"));
+        bodyStack.Children.Add(PanelHeaderBar($"Stops · {ordered.Count}",
+            here is null ? "everything that happens at each place" : "everything that happens at each place, nearest first"));
 
-        if (con.Pickups.Count == 0 && con.Dropoffs.Count == 0)
+        if (ordered.Count == 0)
         {
-            bodyStack.Children.Add(new Border { Padding = new Thickness(14, 10, 14, 14), Child = MutedLine("Nothing to consolidate yet.") });
-            return Hud.Panel(bodyStack, padding: new Thickness(0));
+            bodyStack.Children.Add(new Border { Padding = new Thickness(14, 10, 14, 14), Child = MutedLine("Nothing to collect, deliver or sell yet.") });
+            var empty = Hud.Panel(bodyStack, padding: new Thickness(0));
+            empty.Margin = new Thickness(0, 16, 0, 0);
+            _body.Children.Add(empty);
+            return;
         }
 
         var table = new Grid { Margin = new Thickness(14, 10, 14, 12) };
@@ -666,34 +673,25 @@ public sealed class HaulingPage : UserControl
         // stop with four commodities does not repeat it four times. Null (unplaceable stop, or no
         // session) renders exactly as before.
         var rowIdx = 1;
-        foreach (var s in pickups)
+        foreach (var s in ordered)
         {
-            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
+            var dist = ConsolidationOrder.DistanceTo(s.Location, App.Map, here);
             bool first = true;
-            foreach (var item in s.Items)
+            foreach (var e in s.Entries)
             {
-                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
-                                             true, item.Commodity, item.Scu);
-                first = false;
-            }
-        }
-        foreach (var s in dropoffs)
-        {
-            var dist = ConsolidationOrder.DistanceTo(s, App.Map, here);
-            bool first = true;
-            foreach (var item in s.Items)
-            {
-                rowIdx = AddConsolidationRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
-                                             false, item.Commodity, item.Scu);
+                rowIdx = AddStopRow(table, rowIdx, first && dist != null ? $"{s.Location}  ({dist})" : s.Location,
+                                    e.Action, e.Commodity, e.Scu);
                 first = false;
             }
         }
 
         bodyStack.Children.Add(table);
-        return Hud.Panel(bodyStack, padding: new Thickness(0));
+        var panel = Hud.Panel(bodyStack, padding: new Thickness(0));
+        panel.Margin = new Thickness(0, 16, 0, 0);
+        _body.Children.Add(panel);
     }
 
-    private int AddConsolidationRow(Grid table, int row, string location, bool load, string commodity, int scu)
+    private int AddStopRow(Grid table, int row, string location, StopAction action, string commodity, int scu)
     {
         table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -705,8 +703,14 @@ public sealed class HaulingPage : UserControl
         };
         AddCell(table, row, 0, loc);
 
-        // Colored action pill: Load = cyan, Drop = amber (per the mock's load/drop chips).
-        var chip = Hud.Chip(load ? Cyan : _amber, load ? "Collect" : "Deliver");
+        // Colored action pill: Collect = cyan, Deliver = amber (the mock's load/drop chips), and
+        // Sell = green, inheriting the money green the route cards already use for a payout.
+        var chip = action switch
+        {
+            StopAction.Collect => Hud.Chip(Cyan, "Collect"),
+            StopAction.Deliver => Hud.Chip(_amber, "Deliver"),
+            _ => Hud.Chip(_green, "Sell"),
+        };
         chip.Margin = new Thickness(0, 5, 12, 5);
         chip.VerticalAlignment = VerticalAlignment.Center;
         AddCell(table, row, 1, chip);
@@ -742,6 +746,154 @@ public sealed class HaulingPage : UserControl
         TextAlignment = right ? TextAlignment.Right : TextAlignment.Left,
         HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left,
     };
+
+    // -- this run pays + committed (spec 2026-08-09 sections 3.6 and 3.7) ----------
+
+    private void RenderRunTotals()
+    {
+        var row = new Grid { Margin = new Thickness(0, 16, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var pays = BuildRunPaysPanel();
+        pays.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(pays, 0); row.Children.Add(pays);
+
+        var committed = BuildCommittedPanel(out var load);
+        committed.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(committed, 1); row.Children.Add(committed);
+
+        _body.Children.Add(row);
+
+        // One [CARGO] line per actual change, never per repaint. Refresh() runs on every haul
+        // event, every page entry and every matched transaction, so an unconditional log here
+        // would bury the log monitor in identical lines.
+        var sig = $"routes={load.RouteScu} contracts={load.ContractScu} SCU, runs={load.Runs?.ToString() ?? "-"}";
+        if (sig != _lastTotalsLog)
+        {
+            _lastTotalsLog = sig;
+            Logger.Info($"[CARGO] committed {sig}");
+        }
+    }
+
+    private string? _lastTotalsLog;
+
+    /// <summary>THIS RUN PAYS. The two halves are shown apart and never summed: a contract reward
+    /// is a promise the game already made, while a route margin is recomputed from live prices and
+    /// can rot before the kiosk. RunTotals.Pays owns the arithmetic and the two "could not count"
+    /// counters below it.</summary>
+    private Grid BuildRunPaysPanel()
+    {
+        var pays = RunTotals.Pays(App.Hauls.ActiveHauls.Select(h => h.Reward),
+                                  App.Settings.Current.PinnedRoutes);
+
+        var stack = new StackPanel();
+        stack.Children.Add(PanelHeaderBar("This run pays", "counted apart, not summed"));
+
+        var body = new StackPanel { Margin = new Thickness(14, 10, 14, 12) };
+        body.Children.Add(TotalRow("CONTRACT REWARDS", pays.ContractRewards, _amber));
+        body.Children.Add(TotalRow("ROUTE MARGIN", pays.RouteMargin, _green));
+
+        // Name what could not be counted. A silent omission reads as a smaller payout rather than
+        // an unread one, which is the failure mode this whole spec is written against.
+        if (pays.ContractsWithUnknownReward > 0)
+            body.Children.Add(MutedLine(pays.ContractsWithUnknownReward == 1
+                ? "1 contract has no reward read yet."
+                : $"{pays.ContractsWithUnknownReward} contracts have no reward read yet."));
+        if (pays.UnpricedRoutes > 0)
+            body.Children.Add(MutedLine(pays.UnpricedRoutes == 1
+                ? "1 sell-only route has no buy leg, so its margin is unknown."
+                : $"{pays.UnpricedRoutes} sell-only routes have no buy leg, so their margin is unknown."));
+
+        stack.Children.Add(body);
+        return Hud.Panel(stack, padding: new Thickness(0));
+    }
+
+    /// <summary>COMMITTED: the SCU your accepted work commits you to, against the ship selected in
+    /// the planner. This is deliberately NOT "what is in your hold", which the app cannot know -
+    /// there is no ship detection and no running cargo total (AutoLoadStatusLine.cs says as much
+    /// about the ship). What you signed up for against the hull you told the planner you fly is
+    /// the honest version of that question.</summary>
+    private Grid BuildCommittedPanel(out CommittedLoad load)
+    {
+        // Pickups only: every contract leg appears twice in the consolidation, once to collect and
+        // once to deliver, so counting both sides would double every contract's load.
+        var contractScu = App.Hauls.BuildConsolidation().Pickups.Sum(p => p.TotalScu);
+        var ship = Ships.ById(App.Settings.Current.TradeShipId);
+        load = RunTotals.Committed(App.Settings.Current.PinnedRoutes, contractScu, ship?.TotalScu);
+
+        var stack = new StackPanel();
+        stack.Children.Add(PanelHeaderBar("Committed",
+            ship is null ? "no ship selected" : $"against {ship.DisplayName}"));
+
+        var body = new StackPanel { Margin = new Thickness(14, 10, 14, 12) };
+        body.Children.Add(new TextBlock
+        {
+            Text = $"{load.TotalScu:N0} SCU", FontFamily = Disp, FontSize = 22,
+            Foreground = Br("FgBrush"), Margin = new Thickness(0, 0, 0, 8),
+        });
+        body.Children.Add(SplitLine("ROUTES", load.RouteScu));
+        body.Children.Add(SplitLine("CONTRACTS", load.ContractScu));
+
+        if (ship is null)
+            body.Children.Add(MutedLine("Pick a ship in the planner to see whether this fits in one run."));
+        else if (load.ExceedsOneRun)
+            body.Children.Add(new TextBlock
+            {
+                Text = $"Needs {load.Runs} runs. {ship.DisplayName} carries {ship.TotalScu:N0} SCU.",
+                FontFamily = Mono, FontSize = 11.5, Foreground = new SolidColorBrush(_amber),
+                Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap,
+            });
+        else
+            body.Children.Add(MutedLine($"{ship.DisplayName} carries {ship.TotalScu:N0} SCU."));
+
+        stack.Children.Add(body);
+        return Hud.Panel(stack, padding: new Thickness(0));
+    }
+
+    // Label left, money right, the unit carried by MoneyLine (house rule: every displayed aUEC
+    // value carries its suffix).
+    private UIElement TotalRow(string label, double value, Color color)
+    {
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var lab = new TextBlock
+        {
+            Text = label, FontFamily = Mono, FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        Grid.SetColumn(lab, 0); g.Children.Add(lab);
+
+        var money = MoneyLine(value, color, new Thickness(0));
+        Grid.SetColumn(money, 1); g.Children.Add(money);
+        return g;
+    }
+
+    // SCU is not aUEC and carries its own unit, so the suffix rule does not apply here.
+    private UIElement SplitLine(string label, int scu)
+    {
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 3) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var lab = new TextBlock
+        {
+            Text = label, FontFamily = Mono, FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(lab, 0); g.Children.Add(lab);
+
+        var val = new TextBlock
+        {
+            Text = $"{scu:N0} SCU", FontFamily = Mono, FontSize = 12, Foreground = Br("FgBrush"),
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        Grid.SetColumn(val, 1); g.Children.Add(val);
+        return g;
+    }
 
     // -- finished hauls ------------------------------------------------------------
 

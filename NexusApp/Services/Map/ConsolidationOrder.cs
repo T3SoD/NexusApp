@@ -24,16 +24,24 @@ internal static class ConsolidationOrder
 {
     public static List<ConsolidationStop> ByDistanceFrom(
         IEnumerable<ConsolidationStop> stops, MapCatalog map, MapObject? from)
+        => ByDistanceFrom(stops, s => s.Location, map, from);
+
+    /// <summary>The same ordering for any stop-like row, given a way to read its location. The
+    /// merged stop board (StopBoard, spec section 3.5) carries contract legs and route sales in
+    /// one list and is not a ConsolidationStop; it must sort by the identical rule rather than
+    /// grow a second, subtly different one.</summary>
+    public static List<T> ByDistanceFrom<T>(
+        IEnumerable<T> stops, Func<T, string> location, MapCatalog map, MapObject? from)
     {
         var list = stops.ToList();
         if (from is null || list.Count < 2) return list;
 
         // Index by position so unresolvable stops can hold their original relative order rather
         // than being shuffled by an unstable comparison.
-        var scored = new List<(ConsolidationStop Stop, int Index, double? Meters)>(list.Count);
+        var scored = new List<(T Stop, int Index, double? Meters)>(list.Count);
         for (int i = 0; i < list.Count; i++)
         {
-            var target = map.ResolvePlayerLocation(list[i].Location, rawToken: null);
+            var target = map.ResolvePlayerLocation(location(list[i]), rawToken: null);
             scored.Add((list[i], i, map.DistanceMeters(from, target)));
         }
 
@@ -52,9 +60,12 @@ internal static class ConsolidationOrder
     /// <summary>The formatted distance to one stop, or null when it does not resolve. Callers append
     /// it and render nothing on null, the same silence rule the price surfaces follow.</summary>
     public static string? DistanceTo(ConsolidationStop stop, MapCatalog map, MapObject? from)
+        => DistanceTo(stop.Location, map, from);
+
+    public static string? DistanceTo(string location, MapCatalog map, MapObject? from)
     {
         if (from is null) return null;
-        var target = map.ResolvePlayerLocation(stop.Location, rawToken: null);
+        var target = map.ResolvePlayerLocation(location, rawToken: null);
         return map.DistanceMeters(from, target) is { } m ? MapCatalog.FormatGm(m) : null;
     }
 }

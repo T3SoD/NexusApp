@@ -316,6 +316,24 @@ public class TradePinnedRouteTests
         Assert.Equal(250, refreshed[0].PerScuMargin);   // 350 sell - 100 buy
     }
 
+    // A shard change or a PU exit CLEARS every haul (HaulTracker.Ingest, the EndSession and
+    // <Join PU> branches) and must never touch accepted routes. The spec calls this "the
+    // regression this spec most needs pinned": a contract is a game-side object that really does
+    // die with the shard, while an accepted route is a player-side plan in settings.json that has
+    // to survive shard changes, restarts and the game closing.
+    //
+    // Pinned structurally rather than behaviourally: the clear path lives entirely inside
+    // HaulTracker and reaches only its own three collections, so a tracker that cannot name the
+    // route list cannot clear it. A behavioural test would need a live Game.log feed to say less.
+    [Fact]
+    public void HaulTracker_CannotReachAcceptedRoutes_SoAShardChangeCannotClearThem()
+    {
+        var src = SourceFiles.ReadAppSource(@"Services\HaulTracker.cs");
+        Assert.Contains("cleared hauls", src);        // the clear path is still here to be guarded
+        Assert.DoesNotContain("PinnedRoutes", src);
+        Assert.DoesNotContain("AcceptedRoute", src);
+    }
+
     // ---- SameHaulAs (the persisted form's own comparison) -------------------------------------
 
     [Fact]
