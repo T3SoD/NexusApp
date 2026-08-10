@@ -1,10 +1,12 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using NexusApp.Services;
 
 namespace NexusApp.Views;
@@ -22,6 +24,10 @@ internal sealed class FilterChipDef
     /// <summary>The existing field group, moved into this chip's popover. Never rebuilt: the
     /// controls keep their identity, their handlers and their focus behaviour.</summary>
     public FrameworkElement Content { get; init; } = null!;
+    /// <summary>A FLOOR, never a cap. Set as MinWidth so a popover always grows to whatever its
+    /// control actually needs: a fixed Width clipped the BUDGET row's USE WALLET chip and the
+    /// START row's LIVE pill clean off, because both are a control plus a second element beside it
+    /// and no single guessed number fits every group.</summary>
     public double PopoverWidth { get; init; } = 264;
 }
 
@@ -62,15 +68,58 @@ internal sealed class FilterChipBar : UserControl
         // outside both the open popover and its chip.
         Loaded += (_, _) =>
         {
-            if (Window.GetWindow(this) is { } w)
-                w.PreviewMouseDown += OnWindowPreviewMouseDown;
+            if (Window.GetWindow(this) is not { } w) return;
+            w.PreviewMouseDown += OnWindowPreviewMouseDown;
+            // A Popup is its own top-level window and does NOT follow its owner's activation, so an
+            // open popover floated above Star Citizen (or anything else) after the user clicked
+            // away from Nexus. Reported for every chip on every flow.
+            w.Deactivated += OnWindowDeactivated;
+            w.StateChanged += OnWindowStateChanged;
+            w.LocationChanged += OnWindowMoved;
         };
         Unloaded += (_, _) =>
         {
-            if (Window.GetWindow(this) is { } w)
-                w.PreviewMouseDown -= OnWindowPreviewMouseDown;
+            if (Window.GetWindow(this) is not { } w) return;
+            w.PreviewMouseDown -= OnWindowPreviewMouseDown;
+            w.Deactivated -= OnWindowDeactivated;
+            w.StateChanged -= OnWindowStateChanged;
+            w.LocationChanged -= OnWindowMoved;
         };
     }
+
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        if (_open is null) return;
+        // Deactivated ALSO fires when one of our own popups takes the foreground - a chip popover
+        // holding a CommodityPickerBox opens a second popup for its dropdown, and that is a
+        // separate top-level window. Closing unconditionally here would slam the popover shut the
+        // instant the user clicked the control inside it, which is worse than the bug being fixed.
+        //
+        // So: re-check once focus has settled (Background priority, after the activation messages
+        // are done) and close only when the foreground window belongs to ANOTHER process.
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_open is null) return;
+            GetWindowThreadProcessId(GetForegroundWindow(), out var pid);
+            if (pid == (uint)Environment.ProcessId) return;   // still us: a nested dropdown, not a real focus loss
+            CloseOpen();
+            Logger.Info($"[UI] trade filter closed: Nexus lost focus ({_flowName})");
+        }));
+    }
+
+    // Minimizing leaves a Popup floating on the desktop for the same reason: it is not a child of
+    // the window that was minimized.
+    private void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (sender is Window { WindowState: WindowState.Minimized }) CloseOpen();
+    }
+
+    // A Popup is positioned once, in screen coordinates, so dragging the window leaves it stranded
+    // where the chip used to be.
+    private void OnWindowMoved(object? sender, EventArgs e) => CloseOpen();
 
     private Border BuildChip(FilterChipDef def)
     {
@@ -114,7 +163,7 @@ internal sealed class FilterChipBar : UserControl
         {
             Background = Hud.Br("Bg2NavBrush"), BorderBrush = Hud.Br("AccentStrongBrush"),
             BorderThickness = new Thickness(1), Padding = new Thickness(12, 10, 12, 12),
-            Width = def.PopoverWidth, Child = def.Content,
+            MinWidth = def.PopoverWidth, Child = def.Content,
         };
         var pop = new Popup
         {

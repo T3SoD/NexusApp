@@ -174,6 +174,42 @@ public class ConversionDisplayTests
         Assert.Contains("PreviewMouseDown", src);
     }
 
+    // Reported 2026-08-10: a fixed Width clipped the BUDGET row's USE WALLET chip and the START
+    // row's LIVE pill straight off. Both groups are a control PLUS a second element beside it, and
+    // no single guessed number fits every group, so the width is a floor and the popover grows.
+    [Fact]
+    public void ChipPopovers_GrowToTheirContentRatherThanClippingIt()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\FilterChipBar.cs");
+        Assert.Contains("MinWidth = def.PopoverWidth", src);
+        // Leading space, so this cannot match the MinWidth form it is guarding against.
+        Assert.DoesNotContain(" Width = def.PopoverWidth", src);
+    }
+
+    // Reported 2026-08-10, on every chip and every flow: a Popup is its own top-level window and
+    // does not follow its owner's activation, so an open popover floated above whatever the user
+    // switched to. Minimizing and dragging strand it the same way, for the same reason.
+    [Fact]
+    public void ChipPopovers_CloseWhenTheAppIsNoLongerInFront()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\FilterChipBar.cs");
+        Assert.Contains("Deactivated += OnWindowDeactivated", src);
+        Assert.Contains("StateChanged += OnWindowStateChanged", src);
+        Assert.Contains("LocationChanged += OnWindowMoved", src);
+    }
+
+    // ...but NOT when the foreground window is still ours. A chip popover holding a picker opens a
+    // second popup for its dropdown, and that is a separate top-level window that deactivates the
+    // main one. Closing on that would slam the popover shut the instant the user clicked the
+    // control inside it, which is worse than the bug being fixed.
+    [Fact]
+    public void ChipPopovers_StayOpenForTheirOwnNestedDropdown()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\FilterChipBar.cs");
+        Assert.Contains("GetForegroundWindow", src);
+        Assert.Contains("Environment.ProcessId", src);
+    }
+
     // Session-only by design. A persisted key would need a migration and gains nothing.
     [Fact]
     public void FilterShelfState_IsNotPersisted()
