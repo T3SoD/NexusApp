@@ -46,9 +46,9 @@ public class TradePinnedRouteTests
         new(Row(buyTerminalId, commodityId, buy: 100), Row(sellTerminalId, commodityId, sell: sellPrice),
             TripQty: tripQty, Gross: net, Net: net, Tier: ProximityTier.SameSystem, TripParts: new[] { "test" });
 
-    private static IReadOnlyList<PinnedRoute> Pin(params TradeRoute[] routes)
+    private static IReadOnlyList<AcceptedRoute> Pin(params TradeRoute[] routes)
     {
-        IReadOnlyList<PinnedRoute> pins = Array.Empty<PinnedRoute>();
+        IReadOnlyList<AcceptedRoute> pins = Array.Empty<AcceptedRoute>();
         foreach (var r in routes) pins = RoutePlanner.TogglePin(pins, r, T0);
         return pins;
     }
@@ -120,17 +120,25 @@ public class TradePinnedRouteTests
     [Fact]
     public void TogglePin_AtTheCap_DropsTheOldest_AndKeepsTheNewPin()
     {
-        IReadOnlyList<PinnedRoute> pins = Array.Empty<PinnedRoute>();
-        for (int i = 0; i < RoutePlanner.MaxPins; i++)
+        IReadOnlyList<AcceptedRoute> pins = Array.Empty<AcceptedRoute>();
+        for (int i = 0; i < RoutePlanner.MaxAccepted; i++)
             pins = RoutePlanner.TogglePin(pins, Route(i + 1, 100, 47), T0);
         var oldest = pins[0];
 
         pins = RoutePlanner.TogglePin(pins, Route(999, 100, 47), T0);
 
-        Assert.Equal(RoutePlanner.MaxPins, pins.Count);
+        Assert.Equal(RoutePlanner.MaxAccepted, pins.Count);
         Assert.DoesNotContain(pins, p => p.SameHaulAs(oldest));
         Assert.Equal(999, pins[^1].BuyTerminalId);   // the click always pins; it never silently refuses
     }
+
+    // Task C (spec 2026-08-09 section 1.3): raised from 5 once pins became accepted work tracked
+    // against contracts and money, not just a session marker. A literal assertion rather than only
+    // the self-referential loop bound above, so a regression back to 5 fails a test that names the
+    // actual number.
+    [Fact]
+    public void MaxAccepted_Is10()
+        => Assert.Equal(10, RoutePlanner.MaxAccepted);
 
     [Fact]
     public void TogglePin_NeverMutatesTheListItWasGiven()

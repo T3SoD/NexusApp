@@ -26,7 +26,7 @@ public class AppSettingsTradeFieldsTests
 
     // Pinned routes became PERSISTED on 2026-08-01, matching how refinery orders persist. The whole
     // point is that they survive a restart, and that is a serialization question - nothing else in
-    // the suite would notice if PinnedRoute stopped round-tripping. Serialized with the same options
+    // the suite would notice if AcceptedRoute stopped round-tripping. Serialized with the same options
     // SettingsService uses.
     [Fact]
     public void PinnedRoutes_RoundTripThroughSettingsJson()
@@ -34,7 +34,7 @@ public class AppSettingsTradeFieldsTests
         var pinnedAt = new DateTime(2026, 8, 1, 9, 30, 0, DateTimeKind.Utc);
         var settings = new AppSettings
         {
-            PinnedRoutes = new List<PinnedRoute>
+            PinnedRoutes = new List<AcceptedRoute>
             {
                 new()
                 {
@@ -69,7 +69,7 @@ public class AppSettingsTradeFieldsTests
         // drops index 0 at the cap. A serializer that reordered would silently evict the wrong pin.
         var settings = new AppSettings
         {
-            PinnedRoutes = new List<PinnedRoute>
+            PinnedRoutes = new List<AcceptedRoute>
             {
                 new() { BuyTerminalId = 1, CommodityId = 1 },
                 new() { BuyTerminalId = 2, CommodityId = 2 },

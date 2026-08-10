@@ -1028,7 +1028,7 @@ public sealed partial class TradePage : UserControl
     // PERSISTED since 2026-08-01, matching how refinery orders persist. Backed by
     // AppSettings.PinnedRoutes, which is the live list itself rather than a copy written back -
     // a single source of truth, so a pin cannot exist in memory and not on disk.
-    internal IReadOnlyList<PinnedRoute> PinnedRoutes => App.Settings.Current.PinnedRoutes;
+    internal IReadOnlyList<AcceptedRoute> PinnedRoutes => App.Settings.Current.PinnedRoutes;
     internal event Action? PinnedRouteChanged;
 
     /// <summary>A planner route leg's terminal name was clicked (app review G7b). MainWindow
@@ -1100,14 +1100,17 @@ public sealed partial class TradePage : UserControl
     /// Raises PinnedRouteChanged and saves only on an actual change.</summary>
     internal void PinRoute(TradeRoute? r)
     {
-        if (r is null) { SetPins(new List<PinnedRoute>()); return; }
+        if (r is null) { SetPins(new List<AcceptedRoute>()); return; }
         SetPins(RoutePlanner.TogglePin(PinnedRoutes, r, DateTime.UtcNow));
     }
 
     /// <summary>Removes one pin, the overlay's per-card close. Unlike PinRoute this never adds:
-    /// a close on a card whose haul is already gone is a no-op, not a re-pin.</summary>
-    internal void UnpinRoute(PinnedRoute pin)
-        => SetPins(PinnedRoutes.Where(p => !p.SameHaulAs(pin)).ToList());
+    /// a close on a card whose haul is already gone is a no-op, not a re-pin. The filter itself is
+    /// RoutePlanner.RemovePin, shared with Cargo Hauling's Delete route button so the "same haul"
+    /// rule lives in one place - what differs here is the persistence: SetPins is the single write
+    /// path that also raises PinnedRouteChanged, keeping the overlay and map in sync.</summary>
+    internal void UnpinRoute(AcceptedRoute pin)
+        => SetPins(RoutePlanner.RemovePin(PinnedRoutes, pin));
 
     /// <summary>Refreshes the display facts of any pin the fresh ranking contains, and leaves the
     /// rest alone. This USED to drop pins missing from the ranking; see RoutePlanner.RefreshPins for
@@ -1124,7 +1127,7 @@ public sealed partial class TradePage : UserControl
     // "No-op" compares the display facts too, not just the haul identity: a refresh that moved a
     // trip quantity or a margin IS a change the overlay has to show, even though the same routes are
     // pinned in the same order.
-    private void SetPins(IReadOnlyList<PinnedRoute> next)
+    private void SetPins(IReadOnlyList<AcceptedRoute> next)
     {
         var current = App.Settings.Current.PinnedRoutes;
         if (next.Count == current.Count && next.Zip(current).All(p => Unchanged(p.First, p.Second))) return;
@@ -1136,7 +1139,7 @@ public sealed partial class TradePage : UserControl
         PinnedRouteChanged?.Invoke();
     }
 
-    private static bool Unchanged(PinnedRoute a, PinnedRoute b) =>
+    private static bool Unchanged(AcceptedRoute a, AcceptedRoute b) =>
         a.SameHaulAs(b) && a.TripQty == b.TripQty && a.PerScuMargin.Equals(b.PerScuMargin)
         && a.CommodityName == b.CommodityName
         && a.BuyTerminalName == b.BuyTerminalName && a.SellTerminalName == b.SellTerminalName;

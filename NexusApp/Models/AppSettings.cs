@@ -25,8 +25,15 @@ public class AppSettings
     // Trade routes pinned in the planner, persisted 2026-08-01 to match refinery orders. They
     // shipped session-only that morning; a run outlives a session, so that was wrong. Order is pin
     // order, oldest first, and it is load-bearing - the overlay lists cards in it and the cap drops
-    // the oldest. See Models/PinnedRoute.cs for what is stored and what deliberately is not.
-    public List<PinnedRoute> PinnedRoutes { get; set; } = [];
+    // the oldest. See Models/AcceptedRoute.cs for what is stored and what deliberately is not.
+    //
+    // The stored TYPE was renamed PinnedRoute -> AcceptedRoute on 2026-08-09 (trade/cargo fusion
+    // spec, section 1), but THIS PROPERTY NAME DOES NOT CHANGE: "PinnedRoutes" is the literal JSON
+    // key System.Text.Json writes and reads in every user's settings.json. Renaming it would not
+    // rename anything on disk - it would silently drop every existing pin the next time an upgraded
+    // app reads an old settings.json, because the old key would simply go unread. Type names are
+    // not part of the JSON contract; property names are.
+    public List<AcceptedRoute> PinnedRoutes { get; set; } = [];
     public bool FirstRunComplete { get; set; }
 
     // BETA Session Tracking - remember whether the watch / auto-collect were on, so they

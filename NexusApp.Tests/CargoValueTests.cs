@@ -124,7 +124,7 @@ public class CargoValueTests
     public void CargoValue_NeedsNoRouteOrTerminalContext()
     {
         var src = SourceFiles.ReadAppSource(@"Services\CargoValue.cs");
-        Assert.DoesNotContain("PinnedRoute", src);
+        Assert.DoesNotContain("AcceptedRoute", src);   // renamed from PinnedRoute 2026-08-09
         Assert.DoesNotContain("TerminalId", src);
         Assert.DoesNotContain("MarketSnapshot", src);
     }

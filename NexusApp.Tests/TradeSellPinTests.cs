@@ -47,7 +47,7 @@ public class TradeSellPinTests
     [Fact]
     public void ToggleSellPin_SecondClickUnpins()
     {
-        var once = RoutePlanner.ToggleSellPin(Array.Empty<PinnedRoute>(), Row(7, 3), 50, T0);
+        var once = RoutePlanner.ToggleSellPin(Array.Empty<AcceptedRoute>(), Row(7, 3), 50, T0);
         var twice = RoutePlanner.ToggleSellPin(once, Row(7, 3), 50, T0);
         Assert.Single(once);
         Assert.Empty(twice);
@@ -56,13 +56,13 @@ public class TradeSellPinTests
     [Fact]
     public void ToggleSellPin_SharesTheCapWithPlannerPins_OldestDrops()
     {
-        IReadOnlyList<PinnedRoute> pins = Array.Empty<PinnedRoute>();
-        for (int i = 1; i <= RoutePlanner.MaxPins; i++)
+        IReadOnlyList<AcceptedRoute> pins = Array.Empty<AcceptedRoute>();
+        for (int i = 1; i <= RoutePlanner.MaxAccepted; i++)
             pins = RoutePlanner.TogglePin(pins, Route(i, i + 100, i), T0);
 
         pins = RoutePlanner.ToggleSellPin(pins, Row(7, 3), 50, T0);
 
-        Assert.Equal(RoutePlanner.MaxPins, pins.Count);
+        Assert.Equal(RoutePlanner.MaxAccepted, pins.Count);
         Assert.Null(pins[^1].BuyTerminalId);            // the sell pin landed
         Assert.Equal(2, pins[0].BuyTerminalId);         // planner pin 1 (the oldest) was evicted
     }
@@ -73,7 +73,7 @@ public class TradeSellPinTests
         // A planner route that sells commodity 3 at terminal 7, and a sell pin for the same pair:
         // different pins (one carries a buy leg the other says nothing about), so neither click
         // toggles the other off.
-        var pins = RoutePlanner.TogglePin(Array.Empty<PinnedRoute>(), Route(1, 7, 3), T0);
+        var pins = RoutePlanner.TogglePin(Array.Empty<AcceptedRoute>(), Route(1, 7, 3), T0);
         pins = RoutePlanner.ToggleSellPin(pins, Row(7, 3), 50, T0);
         Assert.Equal(2, pins.Count);
     }
@@ -124,7 +124,7 @@ public class TradeSellPinTests
     public void SellPin_JsonRoundTrip_KeepsTheNullBuyLeg()
     {
         var pin = RoutePlanner.ToSellPin(Row(7, 3, sell: 421), 96, T0);
-        var back = JsonSerializer.Deserialize<PinnedRoute>(JsonSerializer.Serialize(pin))!;
+        var back = JsonSerializer.Deserialize<AcceptedRoute>(JsonSerializer.Serialize(pin))!;
         Assert.Null(back.BuyTerminalId);
         Assert.True(back.SameHaulAs(pin));
     }
@@ -138,8 +138,31 @@ public class TradeSellPinTests
             "\"CommodityName\":\"Titanium\",\"BuyTerminalName\":\"A\",\"SellTerminalName\":\"B\"," +
             "\"TripQty\":50,\"PerScuMargin\":12.5," +
             "\"UpdatedUtc\":\"2026-08-01T12:00:00Z\",\"PinnedUtc\":\"2026-08-01T12:00:00Z\"}";
-        var pin = JsonSerializer.Deserialize<PinnedRoute>(legacy)!;
+        var pin = JsonSerializer.Deserialize<AcceptedRoute>(legacy)!;
         Assert.Equal(1, pin.BuyTerminalId);
         Assert.Equal(7, pin.SellTerminalId);
+    }
+
+    // ---- Task C: lifecycle fields default correctly on old JSON ---------------------------------
+
+    [Fact]
+    public void LegacyJson_WithNoStageField_DeserializesToAccepted_WithNoActualsYet()
+    {
+        // Every route persisted before the trade/cargo fusion spec (2026-08-09) predates Stage,
+        // ActualQty, ActualBuyPer, LoadedUtc and SoldUtc entirely - this is the exact same legacy
+        // shape as the test above, once more before the rename. It must land on Accepted with
+        // nothing matched, not throw and not default to some other stage that would claim a buy or
+        // sell that never happened.
+        const string legacy = "{\"BuyTerminalId\":1,\"SellTerminalId\":7,\"CommodityId\":3," +
+            "\"CommodityName\":\"Titanium\",\"BuyTerminalName\":\"A\",\"SellTerminalName\":\"B\"," +
+            "\"TripQty\":50,\"PerScuMargin\":12.5," +
+            "\"UpdatedUtc\":\"2026-08-01T12:00:00Z\",\"PinnedUtc\":\"2026-08-01T12:00:00Z\"}";
+        var route = JsonSerializer.Deserialize<AcceptedRoute>(legacy)!;
+
+        Assert.Equal(AcceptedStage.Accepted, route.Stage);
+        Assert.Null(route.ActualQty);
+        Assert.Null(route.ActualBuyPer);
+        Assert.Null(route.LoadedUtc);
+        Assert.Null(route.SoldUtc);
     }
 }

@@ -3632,12 +3632,14 @@ public partial class OverlayWindow : Window
 
     // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
     // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
-    private IReadOnlyList<PinnedRoute> _pinnedRoutes = Array.Empty<PinnedRoute>();
+    // Type renamed PinnedRoute -> AcceptedRoute 2026-08-09 (trade/cargo fusion spec, section 1);
+    // this window's own behavior is untouched by that change (a separate task covers the overlay).
+    private IReadOnlyList<AcceptedRoute> _pinnedRoutes = Array.Empty<AcceptedRoute>();
 
     /// <summary>Raised when a card's close control is clicked. MainWindow routes it back into
     /// TradePage, which owns the pin list - this window never edits it directly, so the planner
     /// chip, the Starmap leg and these cards can never disagree about what is pinned.</summary>
-    public event Action<PinnedRoute>? UnpinRouteRequested;
+    public event Action<AcceptedRoute>? UnpinRouteRequested;
 
     /// <summary>Raised after this window persists a SHARED trade setting (scope, commodity, ship,
     /// start, dest, demand, rank - every FILTERS commit except the session-local budget), so
@@ -3654,7 +3656,7 @@ public partial class OverlayWindow : Window
     /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
     /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
     /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
-    public void SetPinnedRoutes(IReadOnlyList<PinnedRoute> routes)
+    public void SetPinnedRoutes(IReadOnlyList<AcceptedRoute> routes)
     {
         _pinnedRoutes = routes;
         TabStrip.SetBadge("trade", routes.Count);
@@ -4021,7 +4023,7 @@ public partial class OverlayWindow : Window
     // One Manifest Strip card. Every required value is on it: start, end, distance,
     // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
     private Border BuildTradeCard(
-        PinnedRoute route,
+        AcceptedRoute route,
         IReadOnlyDictionary<int, MarketTerminal>? terminals,
         MapObject? here,
         System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,

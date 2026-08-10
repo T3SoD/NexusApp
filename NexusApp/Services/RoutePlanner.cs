@@ -308,15 +308,21 @@ public static class RoutePlanner
         && a.SellRow.TerminalId == b.SellRow.TerminalId
         && a.BuyRow.CommodityId == b.BuyRow.CommodityId;
 
-    /// <summary>How many routes may be pinned at once (set 2026-08-01, when pinning went
-    /// from one route to several). Chosen against the overlay: five Manifest Strip cards fit the
-    /// 320x480 panel without scrolling, and nobody flies more than five runs in a session.</summary>
-    internal const int MaxPins = 5;
+    /// <summary>How many routes may be accepted at once (set 2026-08-01 at 5, when pinning went
+    /// from one route to several, chosen against the overlay: five Manifest Strip cards fit the
+    /// 320x480 panel without scrolling, and nobody flies more than five runs in a session).
+    /// Raised to 10 on 2026-08-09 (trade/cargo fusion spec, section 1.3): a pin was a session
+    /// marker with no cost to keeping several around, but an accepted route is a promise the app
+    /// tracks against contracts and money - a different, heavier commitment - so the old five felt
+    /// cramped the moment routes stopped being disposable. Still an implementation choice, not a
+    /// derived number: the list has to stay readable on the overlay, so it is capped rather than
+    /// left open, and the spec flags 10 for revisiting once that list is checked at this size.</summary>
+    internal const int MaxAccepted = 10;
 
     /// <summary>True when a persisted pin and a live route name the same haul. A sell-only pin
     /// (null buy terminal) can never match a planner route - the int? comparison is false for
     /// null - which is load-bearing: RefreshPins leaves sell pins untouched for free.</summary>
-    internal static bool SameHaul(PinnedRoute pin, TradeRoute r) =>
+    internal static bool SameHaul(AcceptedRoute pin, TradeRoute r) =>
         pin.BuyTerminalId == r.BuyRow.TerminalId
         && pin.SellTerminalId == r.SellRow.TerminalId
         && pin.CommodityId == r.BuyRow.CommodityId;
@@ -325,14 +331,14 @@ public static class RoutePlanner
     /// and shares the buyer's terminal and commodity. A planner pin that happens to sell the same
     /// commodity at the same terminal is a DIFFERENT pin - it carries a buy leg this row says
     /// nothing about - so the two coexist rather than toggling each other.</summary>
-    internal static bool SameSellHaul(PinnedRoute pin, int sellTerminalId, int commodityId) =>
+    internal static bool SameSellHaul(AcceptedRoute pin, int sellTerminalId, int commodityId) =>
         pin.BuyTerminalId is null
         && pin.SellTerminalId == sellTerminalId
         && pin.CommodityId == commodityId;
 
     /// <summary>Captures a live route as a persistable pin. Display facts only - see
-    /// PinnedRoute for why no price is among them.</summary>
-    internal static PinnedRoute ToPin(TradeRoute r, DateTime nowUtc) => new()
+    /// AcceptedRoute for why no price is among them.</summary>
+    internal static AcceptedRoute ToPin(TradeRoute r, DateTime nowUtc) => new()
     {
         BuyTerminalId = r.BuyRow.TerminalId,
         SellTerminalId = r.SellRow.TerminalId,
@@ -351,8 +357,8 @@ public static class RoutePlanner
     /// and once the list is at <paramref name="cap"/> the OLDEST pin is dropped to make room.
     /// Dropping the oldest rather than refusing the new pin keeps the chip's promise: a click on
     /// PIN always pins. Returns a new list; never mutates the one passed in.</summary>
-    internal static IReadOnlyList<PinnedRoute> TogglePin(
-        IReadOnlyList<PinnedRoute> pinned, TradeRoute route, DateTime nowUtc, int cap = MaxPins)
+    internal static IReadOnlyList<AcceptedRoute> TogglePin(
+        IReadOnlyList<AcceptedRoute> pinned, TradeRoute route, DateTime nowUtc, int cap = MaxAccepted)
     {
         var kept = pinned.Where(p => !SameHaul(p, route)).ToList();
         if (kept.Count != pinned.Count) return kept;   // it was pinned: this click unpinned it
@@ -362,11 +368,23 @@ public static class RoutePlanner
         return kept;
     }
 
+    /// <summary>Removes the one accepted route whose identity triple matches <paramref name="pin"/>,
+    /// or returns the list unchanged when none does (Task C, Cargo Hauling's Delete route button,
+    /// spec 2026-08-09 section 1). The shared removal rule behind two callers with different
+    /// persistence needs: TradePage.UnpinRoute (a live page instance that also raises
+    /// PinnedRouteChanged, so the overlay and map stay in sync) and Cargo Hauling's own delete,
+    /// which has no TradePage instance to call through and writes App.Settings.Current.PinnedRoutes
+    /// directly - "reuse the same path" means this filter, not two copies of SameHaulAs drifting
+    /// apart, even though each caller owns its own log line and change notification.</summary>
+    internal static IReadOnlyList<AcceptedRoute> RemovePin(
+        IReadOnlyList<AcceptedRoute> pinned, AcceptedRoute pin) =>
+        pinned.Where(p => !p.SameHaulAs(pin)).ToList();
+
     /// <summary>Captures a Sell-tab buyer as a sell-only pin (2026-08-01, when the Sell tab's
     /// results gained a pin-to-overlay button). No buy leg: the identity is (null,
     /// terminal, commodity), PerScuMargin holds the SELL PRICE, and TripQty is the quantity the
     /// user had typed - their own cargo, not a computed trip.</summary>
-    internal static PinnedRoute ToSellPin(TradePriceRow row, int qty, DateTime nowUtc) => new()
+    internal static AcceptedRoute ToSellPin(TradePriceRow row, int qty, DateTime nowUtc) => new()
     {
         BuyTerminalId = null,
         SellTerminalId = row.TerminalId,
@@ -383,8 +401,8 @@ public static class RoutePlanner
     /// <summary>TogglePin's sell-only twin: same toggle-off rule, same append, same shared cap -
     /// planner pins and sell pins live in ONE list because the overlay panel they feed is one
     /// surface with one five-card budget.</summary>
-    internal static IReadOnlyList<PinnedRoute> ToggleSellPin(
-        IReadOnlyList<PinnedRoute> pinned, TradePriceRow row, int qty, DateTime nowUtc, int cap = MaxPins)
+    internal static IReadOnlyList<AcceptedRoute> ToggleSellPin(
+        IReadOnlyList<AcceptedRoute> pinned, TradePriceRow row, int qty, DateTime nowUtc, int cap = MaxAccepted)
     {
         var kept = pinned.Where(p => !SameSellHaul(p, row.TerminalId, row.CommodityId)).ToList();
         if (kept.Count != pinned.Count) return kept;   // it was pinned: this click unpinned it
@@ -399,10 +417,10 @@ public static class RoutePlanner
     /// pin - planner pins, and sell pins for other commodities - is left untouched. TripQty is
     /// deliberately NOT refreshed: it was the user's own cargo entry at pin time, and the box's
     /// current value belongs to whatever they are ranking now, not to the pin.</summary>
-    internal static IReadOnlyList<PinnedRoute> RefreshSellPins(
-        IReadOnlyList<PinnedRoute> pinned, IReadOnlyList<TradePriceRow> rows, DateTime nowUtc)
+    internal static IReadOnlyList<AcceptedRoute> RefreshSellPins(
+        IReadOnlyList<AcceptedRoute> pinned, IReadOnlyList<TradePriceRow> rows, DateTime nowUtc)
     {
-        var result = new List<PinnedRoute>(pinned.Count);
+        var result = new List<AcceptedRoute>(pinned.Count);
         foreach (var pin in pinned)
         {
             var live = pin.BuyTerminalId is null
@@ -410,7 +428,7 @@ public static class RoutePlanner
                 : null;
             if (live is null) { result.Add(pin); continue; }
 
-            result.Add(new PinnedRoute
+            result.Add(new AcceptedRoute
             {
                 BuyTerminalId = null,
                 SellTerminalId = pin.SellTerminalId,
@@ -440,16 +458,16 @@ public static class RoutePlanner
     ///
     /// <para>Returns a new list in the original pin order; never mutates the inputs.</para>
     /// </summary>
-    internal static IReadOnlyList<PinnedRoute> RefreshPins(
-        IReadOnlyList<PinnedRoute> pinned, IReadOnlyList<TradeRoute> fresh, DateTime nowUtc)
+    internal static IReadOnlyList<AcceptedRoute> RefreshPins(
+        IReadOnlyList<AcceptedRoute> pinned, IReadOnlyList<TradeRoute> fresh, DateTime nowUtc)
     {
-        var result = new List<PinnedRoute>(pinned.Count);
+        var result = new List<AcceptedRoute>(pinned.Count);
         foreach (var pin in pinned)
         {
             var live = fresh.FirstOrDefault(r => SameHaul(pin, r));
             if (live is null) { result.Add(pin); continue; }
 
-            result.Add(new PinnedRoute
+            result.Add(new AcceptedRoute
             {
                 BuyTerminalId = pin.BuyTerminalId,
                 SellTerminalId = pin.SellTerminalId,

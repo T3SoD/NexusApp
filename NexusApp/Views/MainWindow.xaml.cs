@@ -1607,7 +1607,7 @@ public partial class MainWindow : Window
     }
 
     private void PushPinnedRoutesToOverlay()
-        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<PinnedRoute>());
+        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<AcceptedRoute>());
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {

@@ -1223,14 +1223,17 @@ public sealed partial class TradePage
     // own active color (TabColor, TradePage.cs:412) rather than the amber AccentBrush every other
     // toggle chip on this page uses - a pin is a session marker, not a filter, and reusing the tab
     // strip's own "this is the one you're on" color keeps that distinction visible at a glance.
+    // EXTENDED 2026-08-09 (trade/cargo fusion spec, section 1 and 2.1): pinning became accepting -
+    // the route is now work taken on, tracked against contracts on Cargo Hauling, not just a
+    // session marker for the overlay. Geometry and the gold active state carry over UNCHANGED: the
+    // reasoning ("this is the one you're on", not a filter) holds even harder for work you accepted
+    // than it did for a bookmark, so nothing about how the chip looks needed to change, only what
+    // it says.
     private static Border PinChip(bool active, bool sellOnly = false)
     {
         var text = new TextBlock
         {
-            // "PIN TO OVERLAY", not "PIN" (2026-08-01): a bare PIN said nothing about where
-            // the route goes, and the overlay is now the surface it goes to - the Starmap leg is a
-            // second effect, and the tooltip below is where that belongs.
-            Text = "PIN TO OVERLAY", FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+            FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
         };
         var chip = new Border
         {
@@ -1243,6 +1246,10 @@ public sealed partial class TradePage
             // pin's actual payoff is on other surfaces entirely, which no Trade surface mentioned.
             // Reworded again the same day, once several routes could be pinned at once: the chip
             // now names its main destination and the tooltip carries the rest, including the cap.
+            // Reworded again 2026-08-09: "PIN TO OVERLAY" -> ACCEPT ROUTE / ACCEPTED (ACCEPT LOAD
+            // on the Sell tab's sell-only chip). A pin was a bookmark with no end state; an
+            // accepted route is work taken on, and the label has to say that, not just name where
+            // the card shows up. ApplyPinChipVisual owns the actual text, below.
         };
         ApplyPinChipVisual(chip, active, sellOnly);
         return chip;
@@ -1253,21 +1260,21 @@ public sealed partial class TradePage
     // which re-ranks ~2,600 price rows and rebuilds up to 25 route rows WITH their
     // staggered entrance cascade - to change the colour of one chip. That replayed entrance is the
     // flash, the rank plus 25 rebuilds is the lag, and it also collapsed whatever row the user had
-    // expanded. Nothing about the ranking changes when a route is pinned.
+    // expanded. Nothing about the ranking changes when a route is accepted.
     //
-    // sellOnly words the tooltip honestly per surface: a sell pin draws NO Starmap leg (a leg
-    // needs two ends), so its tooltip must not promise one - the untrue-claim rule.
+    // sellOnly words the tooltip honestly per surface: a sell-only accept has no buy leg to show on
+    // the Starmap - it is a route already at the LOADED stage, cargo held, buy leg unknown - so its
+    // wording says "load" rather than "route" while the accepted state reads identically either way.
     private static void ApplyPinChipVisual(Border chip, bool active, bool sellOnly = false)
     {
-        ((TextBlock)chip.Child).Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
+        var text = (TextBlock)chip.Child;
+        text.Text = active ? "ACCEPTED" : (sellOnly ? "ACCEPT LOAD" : "ACCEPT ROUTE");
+        text.Foreground = active ? Hud.Br("GoldBrush") : Hud.Br("FgDimBrush");
         chip.BorderBrush = active ? Hud.Br("GoldBrush") : Hud.Br("BorderBrush");
-        chip.ToolTip = (active, sellOnly) switch
-        {
-            (true, false) => "Stop showing this route in the overlay and on the Starmap.",
-            (false, false) => $"Show this route in the overlay's TRADE tab and on the Starmap. Up to {RoutePlanner.MaxPins} at once.",
-            (true, true) => "Stop showing this sell stop in the overlay.",
-            (false, true) => $"Show this sell stop in the overlay's TRADE tab. Up to {RoutePlanner.MaxPins} pins at once.",
-        };
+        chip.ToolTip = active
+            ? "Stop tracking this route."
+            : $"Take this {(sellOnly ? "load" : "route")} on. It shows in Cargo Hauling with your "
+              + $"contracts. Up to {RoutePlanner.MaxAccepted} at once.";
     }
 
     // Every pin chip currently on screen, so a pin can repaint all of them in place. ALL of them,

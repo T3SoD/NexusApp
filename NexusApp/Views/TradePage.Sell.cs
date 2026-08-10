@@ -395,6 +395,9 @@ public sealed partial class TradePage
         // rules as the planner's: the click never rebuilds, e.Handled keeps it off the row's own
         // expand toggle, and RefreshPinChips repaints EVERY chip since a cap eviction can dim a
         // chip on either tab. UEX rows only - an SCT-only listing has no terminal id to pin.
+        // Reads ACCEPT LOAD / ACCEPTED since 2026-08-09 (trade/cargo fusion spec): a sell-only pin
+        // is an accepted route already carrying its cargo, so accepting it here is no different
+        // from accepting a full route in the planner - see ApplyPinChipVisual for the wording.
         var pinChip = PinChip(IsSellPinned(b.Row.TerminalId, b.Row.CommodityId), sellOnly: true);
         _sellPinChips.Add((b.Row.TerminalId, b.Row.CommodityId, pinChip));
         var pinnedRow = b.Row;
