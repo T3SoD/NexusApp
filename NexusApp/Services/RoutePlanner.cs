@@ -440,6 +440,14 @@ public static class RoutePlanner
                 PerScuMargin = live.Sell,
                 UpdatedUtc = nowUtc,
                 PinnedUtc = pin.PinnedUtc,
+                // Lifecycle fields carried over (2026-08-09, task D): a refresh rebuilds a NEW
+                // AcceptedRoute for display facts only, and used to leave these five at their type
+                // defaults - Stage silently reverting a LOADED route to ACCEPTED, and the realised
+                // ActualQty/ActualBuyPer/LoadedUtc vanishing, the next time this pin's haul still
+                // ranked in a fresh ranking (routinely, on the hourly market tick). AcceptedRouteTracker
+                // is the only writer of these fields; a display refresh must never touch them.
+                Stage = pin.Stage, ActualQty = pin.ActualQty, ActualBuyPer = pin.ActualBuyPer,
+                LoadedUtc = pin.LoadedUtc, SoldUtc = pin.SoldUtc,
             });
         }
         return result;
@@ -481,6 +489,11 @@ public static class RoutePlanner
                 PerScuMargin = live.SellRow.Sell - live.BuyRow.Buy,
                 UpdatedUtc = nowUtc,
                 PinnedUtc = pin.PinnedUtc,   // never moves: it answers "how long have I meant to run this"
+                // Lifecycle fields carried over (2026-08-09, task D) - see RefreshSellPins' matching
+                // comment; the same silent-revert bug applies here, and a route the player is
+                // actually running is exactly the one likely to keep ranking on every rebuild.
+                Stage = pin.Stage, ActualQty = pin.ActualQty, ActualBuyPer = pin.ActualBuyPer,
+                LoadedUtc = pin.LoadedUtc, SoldUtc = pin.SoldUtc,
             });
         }
         return result;

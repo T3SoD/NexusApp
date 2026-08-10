@@ -3872,9 +3872,10 @@ public partial class OverlayWindow : Window
     // what actually happened is the money moved into cargo. The bar shows the move.
     //
     // 320 px still cannot seat three suffixed values abreast (every aUEC value carries its unit, and
-    // that unit costs about 34 px), so this renders LIQUID and IN CARGO only. EXPECTED needs a
-    // route's sell price and is not computed yet; when it is, it takes its own line rather than
-    // clipping a unit or silently dropping a segment.
+    // that unit costs about 34 px), so the BAR itself renders LIQUID and IN CARGO only. EXPECTED
+    // (task D4: AcceptedRouteMoney.ExpectedMargin, shared with MoneyPanel's own desktop bar so the
+    // two surfaces can never derive it differently) takes its own line beneath instead - per spec
+    // 4.4, never clipping a unit and never silently dropping the segment.
     //
     // Segments is empty only when nothing at all is known (no wallet anchor, nothing held), and the
     // old wallet row still renders in that case so the block is never blank.
@@ -3882,9 +3883,14 @@ public partial class OverlayWindow : Window
     {
         var stack = new StackPanel();
         var inCargo = CargoValue.TotalCost(App.Profit.Ledger.Transactions);
-        var segs = ConversionDisplay.Segments(App.Wallet?.Estimate, inCargo, expected: null);
-        if (segs.Count == 0) stack.Children.Add(BuildTradeWalletRow());
-        else stack.Children.Add(BuildConversionBar(segs, 26));
+        var expected = AcceptedRouteMoney.ExpectedMargin(App.Settings.Current.PinnedRoutes);
+        var segs = ConversionDisplay.Segments(App.Wallet?.Estimate, inCargo, expected);
+        var barSegs = segs.Where(s => s.Kind != ConversionKind.Expected).ToList();
+        var expectedSeg = segs.FirstOrDefault(s => s.Kind == ConversionKind.Expected);
+        if (barSegs.Count == 0) stack.Children.Add(BuildTradeWalletRow());
+        else stack.Children.Add(BuildConversionBar(barSegs, 26));
+        if (expectedSeg is not null)
+            stack.Children.Add(BuildConversionBar(new[] { expectedSeg }, 22));
         stack.Children.Add(BuildTradeSessionRow());
         // The overlay card's line idiom (mock .ovlLine), flipped for the top anchor.
         return new Border

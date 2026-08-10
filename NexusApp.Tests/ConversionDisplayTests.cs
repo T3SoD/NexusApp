@@ -112,13 +112,14 @@ public class ConversionDisplayTests
         Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
     }
 
-    // EXPECTED needs a route's sell price, which does not exist yet. Passing anything but null here
-    // would be inventing a figure.
+    // EXPECTED is now computed from Loaded accepted routes (task D4). Both call sites share one
+    // helper, AcceptedRouteMoney.ExpectedMargin, so the desktop and overlay bars can never derive
+    // this figure differently.
     [Fact]
-    public void ExpectedIsNotYetComputedOnEitherSurface()
+    public void ExpectedIsComputedFromLoadedRoutesOnBothSurfaces()
     {
-        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
-        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
+        Assert.Contains("AcceptedRouteMoney.ExpectedMargin", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
+        Assert.Contains("AcceptedRouteMoney.ExpectedMargin", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
     }
 
     // ── Filter shelves (spec section 2.2) ──────────────────────────────────────────

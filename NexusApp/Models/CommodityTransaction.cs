@@ -32,6 +32,16 @@ public sealed class CommodityTransaction
     public string? PlaceLabel { get; set; }
     public bool PlaceIsArea { get; set; }              // jurisdiction reading: render "{label} space", dim
 
+    // The UEX Location string for the same settlement (trade/cargo fusion spec 2026-08-09 section
+    // 1.5, task D1), stamped alongside PlaceLabel from the same location-tracker read
+    // (LocationTracker.LastKnownUexLocation). PlaceLabel is a DISPLAY string and is documented to
+    // fail on real captured locations (some in-game names simply do not appear anywhere in UEX's
+    // own Location/Name vocabulary - see TradeOriginResolver.TerminalIdsForLocation); this is the
+    // precise UEX Location value TerminalIdsForLocation's own uexLocation hint expects, so a route
+    // matcher stands a materially better chance of resolving the terminal a transaction happened
+    // at. Null exactly when PlaceLabel is: no location signal yet, or the token had no UEX alias.
+    public string? PlaceUexLocation { get; set; }
+
     // Replay-dedupe identity: two settlements cannot share timestamp, kind, amount, kiosk and
     // resource inside one millisecond.
     public string Key => string.Create(CultureInfo.InvariantCulture,

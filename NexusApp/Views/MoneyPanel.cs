@@ -569,9 +569,13 @@ public sealed class MoneyPanel : UserControl
 
         // Conversion bar first (spec 2026-08-09 section 4): where the money IS, before the wallet
         // detail explains one third of it. The desktop has room for every segment, unlike the 320px
-        // overlay. EXPECTED stays null until route binding exists, so it is simply absent.
+        // overlay. EXPECTED (task D4) is absent whenever no route is Loaded yet - never a guess.
         var inCargo = CargoValue.TotalCost(App.Profit.Ledger.Transactions);
-        var segs = ConversionDisplay.Segments(wallet.Estimate, inCargo, expected: null);
+        // EXPECTED (task D4): the sum of what every LOADED accepted route should return once its
+        // cargo sells. Shared with the overlay's own money block through AcceptedRouteMoney so the
+        // two surfaces can never derive this figure differently.
+        var segs = ConversionDisplay.Segments(wallet.Estimate, inCargo,
+            expected: AcceptedRouteMoney.ExpectedMargin(App.Settings.Current.PinnedRoutes));
         if (segs.Count > 0)
         {
             _profitBody.Children.Add(BuildConversionBar(segs, 34));

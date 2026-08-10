@@ -51,6 +51,11 @@ public partial class App : Application
     public static WalletTracker Wallet { get; private set; } = null!;
     public static AutoLoadTracker AutoLoad { get; private set; } = null!;
 
+    // Accepted-route matching (trade/cargo fusion spec 2026-08-09, task D3): binds a matched buy or
+    // sell to an accepted route (AppSettings.PinnedRoutes) and corrects its quantity/cost, or its
+    // Stage, from what the log actually shows. See RouteMatcher for the heuristic itself.
+    public static AcceptedRouteTracker AcceptedRoutes { get; private set; } = null!;
+
     // Auto-update state machine (checks, downloads, installs). Created right after Settings
     // so the consent gate and throttle read real values; inert in the demo profile.
     public static UpdateService Update { get; private set; } = null!;
@@ -425,6 +430,17 @@ public partial class App : Application
         Profit = new ProfitTracker(GameLogFeed);
         Wallet = new WalletTracker(Profit, GameLogFeed);
         AutoLoad = new AutoLoadTracker(Profit);
+        // Delegates only - RouteMatcher/AcceptedRouteTracker stay WPF-free and never touch App.*
+        // themselves (task D3). The commodity-id lookup reads the market snapshot's own commodity
+        // list, a different UEX endpoint/vocabulary than the trade rows AcceptedRoute.CommodityName
+        // was captured from, which is exactly why the matcher resolves both sides to a NAME and
+        // compares those rather than trusting the stored display string to still agree.
+        AcceptedRoutes = new AcceptedRouteTracker(Profit,
+            () => Settings.Current.PinnedRoutes, Settings.Save,
+            loc => NexusApp.Views.TradeOriginResolver.TerminalIdsForLocation(
+                loc, Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>()),
+            CommodityNameCatalog.Instance.Resolve,
+            id => Market.Snapshot?.Commodities.Rows.FirstOrDefault(c => c.Id == id)?.Name);
 
         // Geometry + the player-position seam. Created right after Locations because PlayerPlace
         // reads both. Loading the catalog here rather than in a page constructor is the whole point:
@@ -583,6 +599,7 @@ public partial class App : Application
         Shards?.Dispose();
         Locations?.Dispose();
         Wallet?.Dispose();   // before Profit: it reads the ledger and hangs off Profit.Changed
+        AcceptedRoutes?.Dispose();   // before Profit: it hangs off Profit.TransactionParsed
         Profit?.Dispose();
         GameLog?.Dispose();
         GameLogFeed?.Dispose();   // last of the Game.log chain: its consumers detach above

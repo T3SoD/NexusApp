@@ -21,7 +21,11 @@ public sealed class ProfitTracker : IDisposable
     private readonly Func<GameChannel> _channel;
 
     private readonly Action<Action>? _flushScheduler;   // test seam; null = dispatcher when present
-    private readonly Func<(string? Label, bool IsArea)> _place;   // last known location at settlement time
+    // Last known location at settlement time. UexLocation (added 2026-08-09, task D1) is the
+    // PRECISE UEX Location string when the tracker resolved one - see
+    // CommodityTransaction.PlaceUexLocation for why it is stamped alongside the display label
+    // rather than instead of it.
+    private readonly Func<(string? Label, bool IsArea, string? UexLocation)> _place;
 
     private string? _sessionKey;                // latched from the log's own first-line stamp
     private GameChannel _sessionChannel;
@@ -31,7 +35,7 @@ public sealed class ProfitTracker : IDisposable
 
     public ProfitTracker(GameLogFeed? feed = null, string? historyPath = null,
                          Func<GameChannel>? channel = null, Action<Action>? flushScheduler = null,
-                         Func<(string? Label, bool IsArea)>? place = null)
+                         Func<(string? Label, bool IsArea, string? UexLocation)>? place = null)
     {
         _feed = feed ?? new GameLogFeed();
         _ownsFeed = feed is null;
@@ -41,7 +45,7 @@ public sealed class ProfitTracker : IDisposable
         // The location tracker consumes the same fan-out and is subscribed ahead of this consumer
         // (App constructs Locations before Profit), so at every line, replayed or live, its state
         // is current through that line and the stamp is replay-stable.
-        _place = place ?? (() => (App.Player?.Label, App.Player?.LabelIsJurisdiction ?? false));
+        _place = place ?? (() => (App.Player?.Label, App.Player?.LabelIsJurisdiction ?? false, App.Player?.UexLocation));
         _feedPath = string.IsNullOrEmpty(_feed.Path) ? null : _feed.Path;
         History = ProfitHistoryStore.Load(_historyPath, out var reason) ?? new ProfitHistoryState();
         if (reason is not null) Logger.Info($"[LEDGER] starting fresh profit history: {reason}");
@@ -138,9 +142,10 @@ public sealed class ProfitTracker : IDisposable
     // shopNames are shared templates, not places); the location tracker's state at this line can.
     private void Stamp(CommodityTransaction tx)
     {
-        var (label, area) = _place();
+        var (label, area, uexLocation) = _place();
         tx.PlaceLabel = label;
         tx.PlaceIsArea = area;
+        tx.PlaceUexLocation = uexLocation;
     }
 
     private void Apply(CommodityTransaction tx)
