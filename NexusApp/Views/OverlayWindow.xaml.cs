@@ -199,6 +199,10 @@ public partial class OverlayWindow : Window
         // the HAULING tab is the one on screen (mirrors how OnGameLogMarked guards the STATS tab).
         App.Hauls.Changed += OnHaulsChanged;
 
+        // A kiosk auto-load opening or closing changes what the CARGO badge can count, and starts
+        // or stops its ticker. The overlay lives for the app's lifetime, so this never unsubscribes.
+        App.AutoLoad.EntriesChanged += () => Dispatcher.BeginInvoke(UpdateHaulingTabBadge);
+
         // Server / Shard section (top of the STATS tab): refresh when the shard history changes,
         // but only while the STATS tab is on screen (same guard pattern as OnHaulsChanged).
         App.Shards.Changed += OnShardsChanged;
@@ -2271,6 +2275,12 @@ public partial class OverlayWindow : Window
         GuidesTabContent.Visibility   = tab == "guides"   ? Visibility.Visible : Visibility.Collapsed;
         TradeTabContent.Visibility    = tab == "trade"    ? Visibility.Visible : Visibility.Collapsed;
 
+        // Opening CARGO is what clears its finished-auto-load badge (2026-08-10): the watermark
+        // moves to now, so everything already counted falls behind it. Done before the badge
+        // refresh below so the tab the user just opened reads zero immediately.
+        if (tab == "hauling") _cargoBadgeSince = DateTime.UtcNow;
+        UpdateHaulingTabBadge();
+
         // A tab switch is a real content change under the header gear's normal-mode flyout too
         // (issue #27 review): close it rather than let it float over content it no longer relates to.
         if (_normalFlyoutOpen) CloseNormalFlyout(animate: false);
@@ -2499,11 +2509,42 @@ public partial class OverlayWindow : Window
         if (IsTabPresented("stats")) RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
     }
 
-    // Shows the active-haul count as a chip on the overlay HAULING tab icon.
+    // The CARGO tab's badge counts FINISHED AUTO-LOADS the player has not looked at yet
+    // (2026-08-10), replacing the active-haul count that used to sit here. A haul count is
+    // standing state you can read any time by opening the tab; a finished load is a moment you
+    // want to be told about, which is what a badge is for.
+    //
+    // Cleared by opening the tab: SwitchTab bumps the watermark below, so the count goes to zero
+    // without touching or forgetting a single entry (AutoLoadBadge owns that rule).
+    private DateTime _cargoBadgeSince = DateTime.UtcNow;
+    private System.Windows.Threading.DispatcherTimer? _cargoBadgeTimer;
+
     private void UpdateHaulingTabBadge()
     {
-        TabStrip.SetBadge("hauling", App.Hauls.ActiveHauls.Count);
-        GhostRail.SetBadge("hauling", App.Hauls.ActiveHauls.Count);   // ghost mode carries the same counts (issue #27)
+        var count = AutoLoadBadge.CompletedSince(App.AutoLoad.Entries, _cargoBadgeSince, DateTime.UtcNow);
+        TabStrip.SetBadge("hauling", count);
+        GhostRail.SetBadge("hauling", count);   // ghost mode carries the same counts (issue #27)
+        SyncCargoBadgeTimer();
+    }
+
+    // A load finishes by the clock running out, not by anything arriving in the log, so the badge
+    // needs a tick to notice. It runs ONLY while something is still loading, and stops itself the
+    // moment nothing is - no timer alive for the window's whole life for an event that happens a
+    // few times an hour.
+    private void SyncCargoBadgeTimer()
+    {
+        bool pending = AutoLoadBadge.AnyPending(App.AutoLoad.Entries, DateTime.UtcNow);
+        if (pending && _cargoBadgeTimer is null)
+        {
+            _cargoBadgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _cargoBadgeTimer.Tick += (_, _) => UpdateHaulingTabBadge();
+            _cargoBadgeTimer.Start();
+        }
+        else if (!pending && _cargoBadgeTimer is not null)
+        {
+            _cargoBadgeTimer.Stop();
+            _cargoBadgeTimer = null;
+        }
     }
 
     // E1/F1: work orders ready to collect - shared by the REFINERY tab badge and the HUB's READY
@@ -2903,11 +2944,19 @@ public partial class OverlayWindow : Window
         var destRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // BOTH legs, not just the destination (2026-08-10). A route you accepted an hour ago is
+        // useless if you cannot see where to buy without opening the desktop app, and the desktop
+        // card has always named both - so this now reads the same way on both surfaces. Trimmed
+        // rather than wrapped at 320px, with the untrimmed pair on the tooltip; a sell-only route
+        // has no buy leg to name and keeps its own wording.
+        var legs = route.BuyTerminalId is null
+            ? $"SELL AT {route.SellTerminalName}"
+            : $"{route.BuyTerminalName} -> {route.SellTerminalName}";
         destRow.Children.Add(new TextBlock
         {
-            Text = $"to {route.SellTerminalName}", FontSize = 10.5, Foreground = fg,
+            Text = legs, FontSize = 10.5, Foreground = fg,
             TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = route.SellTerminalName, Margin = new Thickness(0, 0, 6, 0),
+            ToolTip = legs, Margin = new Thickness(0, 0, 6, 0),
         });
         var qtyPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (route.ActualQty is int actual && actual != route.TripQty)
@@ -3833,8 +3882,9 @@ public partial class OverlayWindow : Window
     public void SetPinnedRoutes(IReadOnlyList<AcceptedRoute> routes)
     {
         _pinnedRoutes = routes;
-        TabStrip.SetBadge("trade", routes.Count);
-        GhostRail.SetBadge("trade", routes.Count);   // ghost mode carries the same counts (issue #27)
+        // No TRADE badge (2026-08-10). Accepted routes are standing state, not news: the count sat
+        // on the tab permanently and never asked for anything, so it was decoration. The CARGO
+        // badge now carries something that IS news - a load that just finished.
         if (IsTabPresented("trade")) RebuildTradePanel();
         if (IsTabPresented("hauling")) RebuildHaulingPanel();
     }
@@ -4750,63 +4800,56 @@ public partial class OverlayWindow : Window
         };
     }
 
-    // The mock's PinGlyph star, verbatim: a 16-viewbox path drawn at 11px (the scale transform
-    // is that viewbox mapping - Stretch would refit the path's bounds and fatten it). Built ONCE
-    // and shared frozen across every card's Path: Geometry.Parse returns a FROZEN StreamGeometry,
-    // so the transform must go on an unfrozen Clone (setting it on the parse result throws
-    // InvalidOperationException - live find, 2026-08-02, the "Overlay Error" dialog
-    // on the first candidate-B launch), and re-freezing makes the shared instance thread-safe.
-    private static readonly Geometry PlannerPinStarGeometry = MakePlannerPinStarGeometry();
-
-    private static Geometry MakePlannerPinStarGeometry()
-    {
-        var g = Geometry.Parse(
-            "M8 1.5 L10 6 L14.5 6.6 L11.2 9.8 L12 14.3 L8 12.1 L4 14.3 L4.8 9.8 L1.5 6.6 L6 6 Z").Clone();
-        g.Transform = new ScaleTransform(11.0 / 16.0, 11.0 / 16.0);
-        g.Freeze();
-        return g;
-    }
-
-    // The card's pin, restyled from the R2 PIN/PINNED chip to the mock's star glyph: gold fill
-    // + stroke when the haul is pinned, hollow dim outline when not, stroke 1.2. Everything
-    // behavioral is the chip's, unchanged: TradePage.PinRoute is a TOGGLE, so the star derives
-    // its state from _pinnedRoutes (RoutePlanner.SameHaul, the one triple rule) and the tooltip
-    // says which way the next click goes - gold is the pin identity color everywhere
-    // (TradePage.ApplyPinChipVisual), and hover previews it. No local state to keep fresh: the
-    // SetPinnedRoutes push-back after every toggle rebuilds this whole panel, so the star
-    // always repaints from the current truth. The 18x18 transparent host is the close
-    // control's own hit-target rule - an 11px glyph is a couple of hairlines to aim at while
-    // flying - centered so 3.5px of the mock's 7px head gap rides inside the target.
+    // The card's accept control. Was a gold star glyph; it is now the SAME WORDS the desktop uses
+    // (2026-08-10). The spec left the choice open - "either give the star the accepted semantics
+    // unchanged, or use a short ACCEPT chip as the mock does; pick one at implementation time" -
+    // and a star is the wrong sign for this: a star reads as a favourite, while accepting a route
+    // is taking on work, and having the two surfaces say different things for one action made the
+    // overlay look like a different feature.
+    //
+    // Everything behavioral is unchanged: TradePage.PinRoute is a TOGGLE, so the chip derives its
+    // state from _pinnedRoutes (RoutePlanner.SameHaul, the one triple rule) and the tooltip says
+    // which way the next click goes. Gold is the accepted identity colour everywhere
+    // (TradePage.ApplyPinChipVisual). No local state to keep fresh: the SetPinnedRoutes push-back
+    // after every toggle rebuilds this whole panel, so it always repaints from the current truth.
     private Border BuildPlannerPinStar(TradeRoute route, System.Windows.Media.Brush dim)
     {
-        var pinned = _pinnedRoutes.Any(p => RoutePlanner.SameHaul(p, route));
+        var accepted = _pinnedRoutes.Any(p => RoutePlanner.SameHaul(p, route));
         var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
-        var restingStroke = pinned ? gold : dim;
-        var star = new System.Windows.Shapes.Path
+
+        var label = new TextBlock
         {
-            Data = PlannerPinStarGeometry, Width = 11, Height = 11, Stretch = Stretch.None,
-            StrokeThickness = 1.2, Stroke = restingStroke, Fill = pinned ? gold : null,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false,   // the transparent host takes the click, glyph is pure visual
+            // "ACCEPT ROUTE" would not survive 320px beside a commodity name, so the overlay says
+            // ACCEPT and the desktop says ACCEPT ROUTE. Same verb, same gold, same toggle.
+            Text = accepted ? "ACCEPTED" : "ACCEPT",
+            FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 8, FontWeight = FontWeights.Bold,
+            Foreground = accepted ? gold : dim, VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,   // the host takes the click
         };
         var hit = new Border
         {
             Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand,
-            Width = 18, Height = 18, Child = star, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(3.5, 0, -3.5, 0),
+            BorderBrush = accepted ? gold : dim, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1),
+            Child = label, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 0, 0, 0),
             // The main chip's own toggle vocabulary (ApplyPinChipVisual), worded for this surface.
             // Named CARGO, not PINNED, since the PLANNER | PINNED mode switch was deleted
             // (trade/cargo fusion spec, 2026-08-09 section 5) - the list now shows on the CARGO tab.
-            ToolTip = pinned
-                ? "Stop showing this route on the CARGO tab and on the Starmap."
-                : "Pin this route: it shows on the CARGO tab and on the Starmap.",
+            ToolTip = accepted
+                ? "Stop tracking this route. It leaves the CARGO tab and the Starmap."
+                : "Take this route on. It shows on the CARGO tab and on the Starmap.",
         };
-        hit.MouseEnter += (_, _) => star.Stroke = gold;
-        hit.MouseLeave += (_, _) => star.Stroke = restingStroke;
+        hit.MouseEnter += (_, _) => { label.Foreground = gold; hit.BorderBrush = gold; };
+        hit.MouseLeave += (_, _) =>
+        {
+            label.Foreground = accepted ? gold : dim;
+            hit.BorderBrush = accepted ? gold : dim;
+        };
         hit.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;
-            Logger.Info($"[UI] overlay trade: {(pinned ? "unpin" : "pin")} requested {route.BuyRow.CommodityName} {route.BuyRow.TerminalName} -> {route.SellRow.TerminalName}");
+            Logger.Info($"[UI] overlay trade: route {(accepted ? "released" : "accepted")} {route.BuyRow.CommodityName} {route.BuyRow.TerminalName} -> {route.SellRow.TerminalName}");
             PinRouteRequested?.Invoke(route);
         };
         return hit;
