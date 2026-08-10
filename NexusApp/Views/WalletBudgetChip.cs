@@ -16,6 +16,18 @@ internal static class WalletBudgetChip
     public static string? Label(WalletUiState state, long? estimate) =>
         CanUse(state, estimate) ? $"USE WALLET: {ProfitDisplay.Format(estimate!.Value)}" : null;
 
+    // The TOGGLE's label (2026-08-10). USE WALLET stopped being a one-shot push and became a switch
+    // that keeps the budget tracking the wallet, so unlike Label above this never returns null: a
+    // toggle the user has turned ON must stay on screen and keep saying so even while the estimate
+    // is briefly unusable, or the control appears to have thrown their choice away.
+    public static string ToggleLabel(WalletUiState state, long? estimate) =>
+        CanUse(state, estimate) ? $"USE WALLET: {ProfitDisplay.Format(estimate!.Value)}" : "USE WALLET";
+
+    // Hidden only when it is BOTH off and unusable, which is the pre-toggle rule unchanged. On and
+    // unusable still shows, per ToggleLabel's reasoning.
+    public static bool ShouldShow(WalletUiState state, long? estimate, bool toggleOn) =>
+        toggleOn || CanUse(state, estimate);
+
     // The digits the budget box receives, or null. Must round-trip through CurrentBudget(): that
     // parser strips everything but digits before parsing, so the comma-grouped ProfitDisplay
     // format is safe to hand it directly.

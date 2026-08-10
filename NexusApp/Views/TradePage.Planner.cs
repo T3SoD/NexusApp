@@ -267,36 +267,87 @@ public sealed partial class TradePage
     {
         var w = App.Wallet;
         var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
-        var label = WalletBudgetChip.Label(state, w.Estimate);
-        if (label == _walletChipLabel) return;
-        _walletChipLabel = label;
-        if (label is null) { _walletChipSlot.Content = null; return; }
 
-        var chip = ScopePill(label);
-        chip.MouseLeftButtonUp += (_, _) => UseWalletAsBudget();
-        _walletChipSlot.Content = chip;
+        if (!WalletBudgetChip.ShouldShow(state, w.Estimate, _walletBudgetOn))
+        {
+            _walletChipLabel = null;
+            _walletChipSlot.Content = null;
+            return;
+        }
+
+        var label = WalletBudgetChip.ToggleLabel(state, w.Estimate);
+        if (label != _walletChipLabel)
+        {
+            _walletChipLabel = label;
+            var chip = ScopePill(label);
+            chip.MouseLeftButtonUp += (_, _) => ToggleWalletBudget();
+            _walletChipSlot.Content = chip;
+        }
+        // Outside the label guard: the ON/OFF tint has to repaint on a toggle even when the figure
+        // beside it did not change.
+        if (_walletChipSlot.Content is Border pill) SetPillOn(pill, _walletBudgetOn);
+
+        // While the toggle is on the budget FOLLOWS the wallet, so every refresh - a rebuild, or a
+        // Wallet.Changed raise - is also a chance to push a new figure in.
+        if (_walletBudgetOn) PushWalletIntoBudget(state, w.Estimate);
     }
 
-    // The chip's click body: the same immediate-replan shape as the budget box's own LostFocus
-    // handler above (stop the debounce timer, update _budgetText, log [UI], RebuildPlanner, raise
-    // SessionBudgetChanged so the overlay follows) - just triggered by a click instead of a blur,
-    // and writing _budgetBox.Text itself first since a click never types into the box. Re-checks
-    // CanUse against a fresh read rather than trusting the chip is still valid: the chip only
-    // rebuilds on a rebuild or a Wallet.Changed raise, so a click landing in the gap between an
-    // estimate going stale and the next repaint still fails safe as a no-op.
-    private void UseWalletAsBudget()
-    {
-        var w = App.Wallet;
-        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
-        var text = WalletBudgetChip.BudgetText(state, w.Estimate);
-        if (text is null) return;
+    /// <summary>USE WALLET is a TOGGLE (2026-08-10), not the one-shot push it was: while it is on,
+    /// the budget tracks the wallet as the wallet moves. Session-only, like the budget it drives
+    /// (_budgetText is a page field, not an AppSettings key).</summary>
+    private bool _walletBudgetOn;
+    private bool _inWalletPush;   // see PushWalletIntoBudget
 
-        _budgetBox.Text = text;        // triggers the live-rerank TextChanged handler below
-        _budgetDebounceTimer?.Stop();  // ...and this cancels it: this block applies immediately instead
-        _budgetText = text;
-        Logger.Info("[UI] Trade planner: budget set from wallet");
-        RebuildPlanner();
-        SessionBudgetChanged?.Invoke(CurrentBudget());
+    private void ToggleWalletBudget()
+    {
+        _walletBudgetOn = !_walletBudgetOn;
+        Logger.Info($"[UI] Trade planner: budget follows wallet {(_walletBudgetOn ? "on" : "off")}");
+        ApplyWalletBudgetLock();
+        RefreshWalletChip();   // repaints the pill, and pushes the current figure when switching on
+    }
+
+    // While the budget is driven by the wallet, typing into the box would be a lie - the next
+    // wallet change would overwrite it. Read-only and dimmed says so without hiding the figure.
+    // Turning the toggle off leaves the last value in place rather than clearing it: the user
+    // almost always wants to adjust that number, not retype it from nothing.
+    private void ApplyWalletBudgetLock()
+    {
+        _budgetBox.IsReadOnly = _walletBudgetOn;
+        _budgetBox.Foreground = _walletBudgetOn ? Hud.Br("FgDimBrush") : Hud.Br("FgBrush");
+        _budgetBox.ToolTip = _walletBudgetOn
+            ? "Budget follows your wallet. Turn USE WALLET off to type your own."
+            : null;
+    }
+
+    /// <summary>Pushes the live wallet estimate into the budget box, in the same immediate-replan
+    /// shape the box's own LostFocus commit uses (stop the debounce, update _budgetText,
+    /// RebuildPlanner, raise SessionBudgetChanged so the overlay follows).
+    ///
+    /// <para>Two guards, both load-bearing. The unchanged-text check keeps a wallet raise that did
+    /// not move the number from costing a rebuild, and it is what stops the steady-state loop:
+    /// RebuildPlanner calls RefreshWalletChip, which calls back into here. _inWalletPush covers the
+    /// transient case that guard cannot - the first push, where the text really is changing.</para>
+    ///
+    /// <para>An unusable estimate (no anchor yet, or a negative one) leaves the last figure alone
+    /// rather than blanking the budget: the toggle stays on and simply resumes when the wallet
+    /// comes back.</para></summary>
+    private void PushWalletIntoBudget(WalletUiState state, long? estimate)
+    {
+        if (_inWalletPush) return;
+        var text = WalletBudgetChip.BudgetText(state, estimate);
+        if (text is null) return;
+        if (string.Equals(_budgetBox.Text, text, StringComparison.Ordinal)) return;
+
+        _inWalletPush = true;
+        try
+        {
+            _budgetBox.Text = text;        // triggers the live-rerank TextChanged handler
+            _budgetDebounceTimer?.Stop();  // ...and this cancels it: this applies immediately instead
+            _budgetText = text;
+            RebuildPlanner();
+            SessionBudgetChanged?.Invoke(CurrentBudget());
+        }
+        finally { _inWalletPush = false; }
     }
 
     // Built once, on the first RebuildPlanner. Everything here survives every later rebuild: the

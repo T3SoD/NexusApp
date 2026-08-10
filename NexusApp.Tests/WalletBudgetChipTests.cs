@@ -97,6 +97,30 @@ public class WalletBudgetChipTests
         Assert.Contains("\"WALLET\"", src);
     }
 
+    // ── ToggleLabel / ShouldShow (USE WALLET became a toggle, 2026-08-10) ──────
+    // It stopped being a one-shot push and became a switch that keeps the budget tracking the
+    // wallet, which changes what the control must do while the estimate is briefly unusable.
+
+    [Fact]
+    public void ToggleLabel_CarriesTheFigureWhenUsable()
+        => Assert.Equal("USE WALLET: 1,284,102", WalletBudgetChip.ToggleLabel(WalletUiState.Current, 1_284_102));
+
+    // Never null, unlike Label: a toggle the user turned ON has to stay on screen and keep saying
+    // so, or the control looks like it threw their choice away the moment the wallet went stale.
+    [Theory]
+    [InlineData(WalletUiState.NotSet)]
+    [InlineData(WalletUiState.Impossible)]
+    public void ToggleLabel_StillNamesItselfWhenUnusable(WalletUiState state)
+        => Assert.Equal("USE WALLET", WalletBudgetChip.ToggleLabel(state, null));
+
+    [Fact]
+    public void ShouldShow_HiddenOnlyWhenBothOffAndUnusable()
+    {
+        Assert.False(WalletBudgetChip.ShouldShow(WalletUiState.NotSet, null, toggleOn: false));
+        Assert.True(WalletBudgetChip.ShouldShow(WalletUiState.NotSet, null, toggleOn: true));
+        Assert.True(WalletBudgetChip.ShouldShow(WalletUiState.Current, 1_284_102, toggleOn: false));
+    }
+
     // ── Planner wiring pin ─────────────────────────────────────────────────
 
     [Fact]
@@ -105,5 +129,33 @@ public class WalletBudgetChipTests
         var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
         Assert.Contains("WalletBudgetChip", src);
         Assert.Contains("App.Wallet.Changed", src);
+    }
+
+    // The toggle drives the budget, so every wallet raise is a chance to push a new figure in.
+    [Fact]
+    public void Planner_PushesTheWalletIntoTheBudgetWhileTheToggleIsOn()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
+        Assert.Contains("if (_walletBudgetOn) PushWalletIntoBudget", src);
+    }
+
+    // Two guards, both load-bearing. RebuildPlanner calls RefreshWalletChip, which calls back into
+    // PushWalletIntoBudget: the unchanged-text check breaks that loop in the steady state, and
+    // _inWalletPush covers the first push, where the text really is changing.
+    [Fact]
+    public void Planner_CannotLoopBetweenTheRebuildAndTheWalletPush()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
+        Assert.Contains("if (_inWalletPush) return;", src);
+        Assert.Contains("if (string.Equals(_budgetBox.Text, text, StringComparison.Ordinal)) return;", src);
+    }
+
+    // Typing into a box the wallet is about to overwrite would be a lie, so the box locks while the
+    // toggle is on.
+    [Fact]
+    public void Planner_LocksTheBudgetBoxWhileTheWalletDrivesIt()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
+        Assert.Contains("_budgetBox.IsReadOnly = _walletBudgetOn", src);
     }
 }
