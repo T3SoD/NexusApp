@@ -383,7 +383,14 @@ public static class RoutePlanner
     /// <summary>Captures a Sell-tab buyer as a sell-only pin (2026-08-01, when the Sell tab's
     /// results gained a pin-to-overlay button). No buy leg: the identity is (null,
     /// terminal, commodity), PerScuMargin holds the SELL PRICE, and TripQty is the quantity the
-    /// user had typed - their own cargo, not a computed trip.</summary>
+    /// user had typed - their own cargo, not a computed trip.
+    ///
+    /// <para>Stage starts at Loaded, not Accepted (code review fix, 2026-08-09): a sell-only pin's
+    /// cargo is already held, there is no buy leg to match, so waiting at Accepted meant the route
+    /// could never be promoted (RouteMatcher.CommodityAndPlaceMatch fails a BUY on a null
+    /// BuyTerminalId by design) and the SELL gate requires Loaded - the route accumulated forever
+    /// and only an explicit delete ever removed it. ActualQty is set to the pinned quantity for the
+    /// same reason: the cargo is already in the hold, not something still waiting to be bought.</para></summary>
     internal static AcceptedRoute ToSellPin(TradePriceRow row, int qty, DateTime nowUtc) => new()
     {
         BuyTerminalId = null,
@@ -396,6 +403,9 @@ public static class RoutePlanner
         PerScuMargin = row.Sell,
         UpdatedUtc = nowUtc,
         PinnedUtc = nowUtc,
+        Stage = AcceptedStage.Loaded,
+        ActualQty = qty,
+        LoadedUtc = nowUtc,
     };
 
     /// <summary>TogglePin's sell-only twin: same toggle-off rule, same append, same shared cap -

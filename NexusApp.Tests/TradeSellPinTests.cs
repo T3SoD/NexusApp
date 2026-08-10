@@ -42,6 +42,19 @@ public class TradeSellPinTests
         Assert.Equal(T0, pin.PinnedUtc);
     }
 
+    // Code review fix, 2026-08-09: a sell-only pin's cargo is already held, so it must start at
+    // Loaded, not Accepted - Accepted meant it could never be promoted (no buy leg to match) and
+    // never satisfied the sell gate either, so it accumulated forever and only an explicit delete
+    // ever removed it.
+    [Fact]
+    public void ToSellPin_StartsLoaded_WithActualQtySetToThePinnedQuantity()
+    {
+        var pin = RoutePlanner.ToSellPin(Row(7, 3, sell: 421), qty: 96, T0);
+        Assert.Equal(AcceptedStage.Loaded, pin.Stage);
+        Assert.Equal(96, pin.ActualQty);
+        Assert.Equal(T0, pin.LoadedUtc);
+    }
+
     // ---- ToggleSellPin -------------------------------------------------------------------------
 
     [Fact]

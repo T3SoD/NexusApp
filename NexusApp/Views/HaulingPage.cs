@@ -349,6 +349,10 @@ public sealed class HaulingPage : UserControl
         var confirm = new TwoTapConfirm(TimeSpan.FromSeconds(3), () =>
         {
             var buyLabel = r.BuyTerminalId is null ? "SELL-ONLY" : r.BuyTerminalName;
+            // Forget clears AcceptedRouteTracker's own running accumulator for this haul (code
+            // review fix, 2026-08-09) - without it a route deleted then re-accepted for the
+            // identical haul binds the stale total instead of starting fresh.
+            App.AcceptedRoutes?.Forget(r);
             App.Settings.Current.PinnedRoutes = RoutePlanner.RemovePin(App.Settings.Current.PinnedRoutes, r).ToList();
             App.Settings.Save();
             Logger.Info($"[CARGO] route deleted {r.CommodityName} {buyLabel}->{r.SellTerminalName}");

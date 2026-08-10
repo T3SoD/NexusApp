@@ -43,11 +43,11 @@ public class AcceptedRouteTrackerTests : IDisposable
     private AcceptedRouteTracker NewTracker(
         Func<string, string?>? commodityNameForGuid = null,
         Func<int, string?>? commodityNameForId = null,
-        Func<string, IReadOnlySet<int>>? terminalsForLocation = null,
+        Func<string?, string?, IReadOnlySet<int>>? terminalsForLocation = null,
         Func<DateTime>? utcNow = null) => new(_profit,
             () => _routes,
             () => _saveCount++,
-            terminalsForLocation ?? (_ => new HashSet<int> { 7, 9 }),
+            terminalsForLocation ?? ((_, _) => new HashSet<int> { 7, 9 }),
             commodityNameForGuid ?? (g => g == "guid-scrap" ? "Scrap" : null),
             commodityNameForId ?? (id => id == 1 ? "Scrap" : null),
             utcNow ?? (() => T0));
@@ -166,5 +166,121 @@ public class AcceptedRouteTrackerTests : IDisposable
         Assert.Equal(AcceptedStage.Loaded, laranite.Stage);
         Assert.Equal(100, laranite.ActualQty);
         Assert.Equal(2000m, laranite.ActualBuyPer);
+    }
+
+    // Code review fix, 2026-08-09 (item 1, CRITICAL): a restart does NOT replay Game.log through
+    // this tracker in any way that could rebuild _accumulators (the class comment's old claim that
+    // it did was false), so the constructor must seed the table from each persisted Loaded route's
+    // own ActualQty/ActualBuyPer instead.
+    [Fact]
+    public void Construction_SeedsAccumulatorFromPersistedLoadedRoute_SoASecondBuyAfterARestartIsNotDropped()
+    {
+        // Simulates a restart: a route already Loaded from a buy in the PREVIOUS process, persisted
+        // with its running totals, and a brand new tracker built over it - a fresh _accumulators
+        // table with nothing replayed into it.
+        var route = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1, stage: AcceptedStage.Loaded);
+        route.ActualQty = 200;
+        route.ActualBuyPer = 1000m;   // 200,000 aUEC / 200 SCU
+        _routes = new List<AcceptedRoute> { route };
+        using var tracker = NewTracker();
+
+        // RouteMatcher.BestMatch's rule 1 refuses to rebind a Loaded route to a fresh BUY, so this
+        // can ONLY land if the seeded accumulator lets the continuation path find it.
+        tracker.Apply(Tx(TransactionKind.Buy, 200_000, 200m));
+
+        Assert.Equal(400, route.ActualQty);        // the 200 already held plus the 200 just bought
+        Assert.Equal(1000m, route.ActualBuyPer);   // same price both times, weighted average unchanged
+    }
+
+    // Code review fix, 2026-08-09 (item 2a): a log reset must clear the accumulator table before
+    // the replay lands, exactly as AutoLoadTracker.Reset does for its own active entries -
+    // otherwise a redelivered buy sums onto whatever the table already held and double-counts.
+    [Fact]
+    public void LogReset_ClearsAccumulator_SoAReplayOfTheSameBuyDoesNotDoubleCount()
+    {
+        var route = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1);
+        _routes = new List<AcceptedRoute> { route };
+        using var tracker = NewTracker();
+
+        var buy = Tx(TransactionKind.Buy, 200_000, 200m);
+        tracker.Apply(buy);
+        Assert.Equal(200, route.ActualQty);
+
+        _profit.Reset();     // SettingsPage.ApplyGameLogPath's fromBeginning re-Start, or a channel auto-follow flip
+        tracker.Apply(buy);  // the replay redelivers the SAME physical buy line
+
+        Assert.Equal(200, route.ActualQty);   // not 400 - a redelivered buy must never double-count
+    }
+
+    // Code review fix, 2026-08-09 (item 2b): deleting a route must forget its accumulator, or a
+    // freshly re-accepted route for the identical haul (same buy/sell/commodity triple, so the
+    // same RouteKey) binds the stale total and its own first fill never sets Stage to Loaded.
+    [Fact]
+    public void Forget_ClearsAccumulator_SoADeletedAndReacceptedRouteLoadsFresh()
+    {
+        var deleted = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1);
+        _routes = new List<AcceptedRoute> { deleted };
+        using var tracker = NewTracker();
+
+        tracker.Apply(Tx(TransactionKind.Buy, 200_000, 200m));
+        Assert.Equal(AcceptedStage.Loaded, deleted.Stage);
+
+        // Delete: TradePage.UnpinRoute and Cargo Hauling's Delete route button both call Forget
+        // alongside RoutePlanner.RemovePin.
+        tracker.Forget(deleted);
+        var reaccepted = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1);   // identical identity triple
+        _routes = new List<AcceptedRoute> { reaccepted };
+
+        tracker.Apply(Tx(TransactionKind.Buy, 150_000, 150m));
+
+        Assert.Equal(AcceptedStage.Loaded, reaccepted.Stage);   // without Forget this stays Accepted forever
+        Assert.Equal(150, reaccepted.ActualQty);                // a fresh total, not summed onto the deleted route's 200
+    }
+
+    // Code review fix, 2026-08-09 (item 3, IMPORTANT): continuation must not win unconditionally
+    // over a freshly accepted route sharing the same buy terminal and commodity - recency (the
+    // same rule RouteMatcher.BestMatch's own rule 4 uses) decides between them.
+    [Fact]
+    public void TwoRoutesSameTerminalAndCommodity_SecondCanStillLoad_AfterTheFirstAlreadyDid()
+    {
+        var first = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1);   // Everus -> ArcCorp Scrap
+        _routes = new List<AcceptedRoute> { first };
+        using var tracker = NewTracker();
+
+        // Only `first` exists yet, so it loads via a fresh BestMatch bind.
+        tracker.Apply(Tx(TransactionKind.Buy, 200_000, 200m));
+        Assert.Equal(AcceptedStage.Loaded, first.Stage);
+
+        // A second route is accepted afterwards for the SAME buy terminal and commodity (Everus
+        // Scrap) but a different sell leg - Everus -> Olisar Scrap.
+        var second = Route(buyTerminalId: 7, sellTerminalId: 11, commodityId: 1);
+        second.PinnedUtc = T0.AddMinutes(5);
+        _routes.Add(second);
+
+        // A further Scrap buy at Everus: continuation-first must not blindly re-absorb this onto
+        // `first`'s already-open accumulator just because it still matches commodity+place -
+        // `second` is the more recently accepted qualifying route and must win it.
+        tracker.Apply(Tx(TransactionKind.Buy, 150_000, 150m));
+
+        Assert.Equal(AcceptedStage.Loaded, second.Stage);   // "the second can never load" - now it can
+        Assert.Equal(150, second.ActualQty);
+        Assert.Equal(200, first.ActualQty);                 // first's own total is untouched, not stolen either
+    }
+
+    // Code review fix, 2026-08-09 (item 5): RoutePlanner.ToSellPin now creates a sell-only route
+    // already Loaded (the cargo is already held, there is no buy leg to match), so its own
+    // matching sell must be able to close it exactly like a planner route's.
+    [Fact]
+    public void SellOnlyRoute_MatchingSellClosesIt()
+    {
+        var route = Route(buyTerminalId: null, sellTerminalId: 9, commodityId: 1, stage: AcceptedStage.Loaded);
+        route.ActualQty = 96;
+        _routes = new List<AcceptedRoute> { route };
+        using var tracker = NewTracker();
+
+        tracker.Apply(Tx(TransactionKind.Sell, 200_000, 96m));
+
+        Assert.Empty(_routes);
+        Assert.Equal(AcceptedStage.Sold, route.Stage);
     }
 }

@@ -1,5 +1,6 @@
 using NexusApp.Models;
 using NexusApp.Services;
+using NexusApp.Views;
 using Xunit;
 
 namespace NexusApp.Tests;
@@ -26,12 +27,12 @@ public class RouteMatcherTests
         PlaceLabel = placeLabel, PlaceUexLocation = placeUexLocation,
     };
 
-    // A single terminal id, whatever the location string was - a stand-in for a real
+    // A single terminal id, whatever the location arguments were - a stand-in for a real
     // TradeOriginResolver.TerminalIdsForLocation call that always resolves to terminal 7.
-    private static Func<string, IReadOnlySet<int>> AlwaysResolvesTo(params int[] ids)
-        => _ => new HashSet<int>(ids);
+    private static Func<string?, string?, IReadOnlySet<int>> AlwaysResolvesTo(params int[] ids)
+        => (_, _) => new HashSet<int>(ids);
 
-    private static Func<string, IReadOnlySet<int>> NeverResolves => _ => new HashSet<int>();
+    private static Func<string?, string?, IReadOnlySet<int>> NeverResolves => (_, _) => new HashSet<int>();
 
     private static string? ScrapName(string guid) => guid == "guid-scrap" ? "Scrap" : null;
     private static string? NameForId(int id) => id == 1 ? "Scrap" : id == 2 ? "Laranite" : null;
@@ -131,18 +132,63 @@ public class RouteMatcherTests
         Assert.Null(idx);
     }
 
-    // PlaceUexLocation (task D1) feeds the SAME lookup as PlaceLabel, whichever is present - the
-    // matcher does not need to know which one carried the winning value.
+    // Code review fix, 2026-08-09 (task D1 was wired wrong): PlaceLabel and PlaceUexLocation must
+    // reach terminalsForLocation as TWO separate arguments, not collapsed into one string with
+    // `??` - the old bug meant TradeOriginResolver.TerminalIdsForLocation's own uexLocation-first
+    // pass never actually ran, and a stamped UEX location that failed to resolve was never retried
+    // against the label.
     [Fact]
-    public void PlaceUexLocation_FeedsTheSameLocationLookup()
+    public void PlaceLabelAndPlaceUexLocation_BothReachTheDelegateAsSeparateArguments()
     {
         var routes = new[] { Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1) };
-        var tx = Tx(TransactionKind.Buy, placeLabel: "some display label that resolves nowhere",
-            placeUexLocation: "Real UEX Location");
-        string? seen = null;
-        IReadOnlySet<int> Capture(string loc) { seen = loc; return new HashSet<int> { 7 }; }
+        var tx = Tx(TransactionKind.Buy, placeLabel: "Display Label", placeUexLocation: "Real UEX Location");
+        string? seenLabel = null, seenUex = null;
+        IReadOnlySet<int> Capture(string? label, string? uex) { seenLabel = label; seenUex = uex; return new HashSet<int> { 7 }; }
         var idx = RouteMatcher.BestMatch(routes, tx, Capture, ScrapName, NameForId);
         Assert.Equal(0, idx);
-        Assert.Equal("Real UEX Location", seen);
+        Assert.Equal("Display Label", seenLabel);
+        Assert.Equal("Real UEX Location", seenUex);
+    }
+
+    // End-to-end against the REAL TradeOriginResolver.TerminalIdsForLocation, wired exactly as
+    // App.xaml.cs wires it: "Pyro Gateway Station" (the in-game display label) appears nowhere in
+    // UEX's own Location/Name vocabulary, so only the uex-first pass on PlaceUexLocation can ever
+    // resolve this transaction's terminal - this is the exact D1 "bought nothing" defect the old
+    // single-string collapse produced, since the app's old delegate never gave
+    // TerminalIdsForLocation a distinct uexLocation argument to try first.
+    [Fact]
+    public void PlaceUexLocation_ResolvesViaTheRealUexFirstPass_WhenTheDisplayLabelMatchesNothing()
+    {
+        var terminals = new List<MarketTerminal>
+        {
+            new(101, "Admin - Pyro Gateway (Stanton)", "commodity", false, "Stanton", "Pyro Gateway (Stanton)"),
+        };
+        var routes = new[] { Route(buyTerminalId: 101, sellTerminalId: 9, commodityId: 1) };
+        var tx = Tx(TransactionKind.Buy, placeLabel: "Pyro Gateway Station", placeUexLocation: "Pyro Gateway (Stanton)");
+
+        var idx = RouteMatcher.BestMatch(routes, tx,
+            (label, uex) => TradeOriginResolver.TerminalIdsForLocation(label, terminals, uex),
+            ScrapName, NameForId);
+
+        Assert.Equal(0, idx);
+    }
+
+    // Same real resolver, the OTHER half of the fix: a stamped UEX location that resolves to
+    // nothing must still fall back to the label instead of black-holing the whole lookup.
+    [Fact]
+    public void PlaceUexLocation_FallsBackToTheLabel_WhenTheUexLocationResolvesToNothing()
+    {
+        var terminals = new List<MarketTerminal>
+        {
+            new(7, "Everus Harbor", "trading", true, "Stanton", "Hurston"),
+        };
+        var routes = new[] { Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1) };
+        var tx = Tx(TransactionKind.Buy, placeLabel: "Everus Harbor", placeUexLocation: "Some UEX Location That Does Not Exist");
+
+        var idx = RouteMatcher.BestMatch(routes, tx,
+            (label, uex) => TradeOriginResolver.TerminalIdsForLocation(label, terminals, uex),
+            ScrapName, NameForId);
+
+        Assert.Equal(0, idx);
     }
 }

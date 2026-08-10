@@ -29,7 +29,7 @@ internal static class RouteMatcher
     /// sell-only route (null BuyTerminalId) can therefore never match a BUY; (4) the most recently
     /// accepted route wins when more than one still qualifies.</para></summary>
     internal static int? BestMatch(IReadOnlyList<AcceptedRoute> routes, CommodityTransaction tx,
-        Func<string, IReadOnlySet<int>> terminalsForLocation,
+        Func<string?, string?, IReadOnlySet<int>> terminalsForLocation,
         Func<string, string?> commodityNameForGuid,
         Func<int, string?> commodityNameForId)
     {
@@ -40,11 +40,16 @@ internal static class RouteMatcher
         if (string.IsNullOrWhiteSpace(txCommodity)) return null;
 
         // The tx's stamped location, resolved once. PlaceUexLocation (task D1) is the precise UEX
-        // Location string when the tracker resolved one; PlaceLabel is the display fallback -
-        // TradeOriginResolver.TerminalIdsForLocation's own uexLocation-first pass is what actually
-        // benefits from PlaceUexLocation reaching it, so either field feeding the SAME single
-        // string argument here is correct.
-        var terminals = terminalsForLocation(tx.PlaceUexLocation ?? tx.PlaceLabel ?? "");
+        // Location string when the tracker resolved one; PlaceLabel is the display fallback.
+        // BOTH are passed through as SEPARATE arguments (code review fix, 2026-08-09) - collapsing
+        // them into one string with `??` was the old bug: it meant
+        // TradeOriginResolver.TerminalIdsForLocation's own uexLocation-first pass never actually
+        // ran (the caller never had a distinct uexLocation argument to pass it), and a stamped UEX
+        // location that failed to resolve was never retried against the label, since the label had
+        // already been discarded by the `??`. Passing both lets that method's own two-pass
+        // contract do its job: try uexLocation first, fall through to locationLabel whenever
+        // uexLocation is absent or resolves to nothing.
+        var terminals = terminalsForLocation(tx.PlaceLabel, tx.PlaceUexLocation);
 
         bool isBuy = tx.Kind == TransactionKind.Buy;
         int? bestIndex = null;

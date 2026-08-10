@@ -76,4 +76,25 @@ public class AcceptedRouteMoneyTests
         };
         Assert.Equal(90 * 50, AcceptedRouteMoney.ExpectedMargin(routes));
     }
+
+    // Code review fix, 2026-08-09: a sell-only route (null BuyTerminalId) is now created Loaded
+    // (RoutePlanner.ToSellPin) so it would otherwise start contributing here - but PerScuMargin
+    // holds the raw SELL PRICE for a sell-only route, not a margin (see that field's own doc
+    // comment), so summing it in would inflate EXPECTED by gross revenue instead of profit.
+    [Fact]
+    public void SellOnlyLoadedRoute_ContributesNothing_PerScuMarginIsAPriceNotAMargin()
+    {
+        var sellOnly = Route(AcceptedStage.Loaded, tripQty: 96, actualQty: 96, perScuMargin: 421);
+        sellOnly.BuyTerminalId = null;
+        Assert.Null(AcceptedRouteMoney.ExpectedMargin(new[] { sellOnly }));
+    }
+
+    [Fact]
+    public void SellOnlyLoadedRoute_MixedWithAPlannerRoute_OnlyThePlannerRouteCounts()
+    {
+        var sellOnly = Route(AcceptedStage.Loaded, tripQty: 96, actualQty: 96, perScuMargin: 421);
+        sellOnly.BuyTerminalId = null;
+        var planner = Route(AcceptedStage.Loaded, tripQty: 100, actualQty: 90, perScuMargin: 50);
+        Assert.Equal(90 * 50, AcceptedRouteMoney.ExpectedMargin(new[] { sellOnly, planner }));
+    }
 }

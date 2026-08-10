@@ -1108,9 +1108,14 @@ public sealed partial class TradePage : UserControl
     /// a close on a card whose haul is already gone is a no-op, not a re-pin. The filter itself is
     /// RoutePlanner.RemovePin, shared with Cargo Hauling's Delete route button so the "same haul"
     /// rule lives in one place - what differs here is the persistence: SetPins is the single write
-    /// path that also raises PinnedRouteChanged, keeping the overlay and map in sync.</summary>
+    /// path that also raises PinnedRouteChanged, keeping the overlay and map in sync. Forget clears
+    /// AcceptedRouteTracker's own running accumulator for this haul (code review fix, 2026-08-09) -
+    /// without it a route deleted then re-accepted for the identical haul binds the stale total.</summary>
     internal void UnpinRoute(AcceptedRoute pin)
-        => SetPins(RoutePlanner.RemovePin(PinnedRoutes, pin));
+    {
+        App.AcceptedRoutes?.Forget(pin);
+        SetPins(RoutePlanner.RemovePin(PinnedRoutes, pin));
+    }
 
     /// <summary>Refreshes the display facts of any pin the fresh ranking contains, and leaves the
     /// rest alone. This USED to drop pins missing from the ranking; see RoutePlanner.RefreshPins for

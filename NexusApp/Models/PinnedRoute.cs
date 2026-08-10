@@ -5,7 +5,7 @@ namespace NexusApp.Models;
 // (Accepted -> Loaded -> Sold). The type, with its full history comment, now lives in
 // Models/AcceptedRoute.cs. Nothing in the codebase references PinnedRoute any longer.
 //
-// This file was left in place, empty, rather than deleted or renamed. The house rule on file
-// deletion (and on a move that deletes the source, which a rename is) requires an explicit
-// per-instance approval that was not obtained while making this change - so the physical file
-// stays until Zach reviews and approves its removal.
+// The persisted JSON key is still AppSettings.PinnedRoutes, deliberately: it is the property name
+// in every existing settings.json, and renaming it would drop every saved route on upgrade.
+//
+// This placeholder is scheduled for removal.

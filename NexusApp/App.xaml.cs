@@ -437,8 +437,8 @@ public partial class App : Application
         // compares those rather than trusting the stored display string to still agree.
         AcceptedRoutes = new AcceptedRouteTracker(Profit,
             () => Settings.Current.PinnedRoutes, Settings.Save,
-            loc => NexusApp.Views.TradeOriginResolver.TerminalIdsForLocation(
-                loc, Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>()),
+            (label, uexLocation) => NexusApp.Views.TradeOriginResolver.TerminalIdsForLocation(
+                label, Market.Snapshot?.Terminals.Rows ?? new List<MarketTerminal>(), uexLocation),
             CommodityNameCatalog.Instance.Resolve,
             id => Market.Snapshot?.Commodities.Rows.FirstOrDefault(c => c.Id == id)?.Name);
 
