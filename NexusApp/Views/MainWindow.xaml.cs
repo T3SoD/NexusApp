@@ -213,6 +213,7 @@ public partial class MainWindow : Window
         _vm.WorkOrders.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() => _mapPage?.RefreshLiveLayers());
 
         WireNavBadgeUpdates();
+        WireAcceptedRouteUpdates();
 
         Loaded += (s, e) => MaybeShowFirstRunWizard();
         Loaded += (s, e) => App.MaybeStartUpdateCheck();
@@ -955,19 +956,47 @@ public partial class MainWindow : Window
         PushPinnedRouteToMap();   // catches a route pinned on TradePage before the map page ever existed
     }
 
-    // Reads TradePage's session pin and mirrors it onto the map's planner-route overlay. Either
-    // page can initialize first, so this is safe to call (and is called) before both exist: each
-    // side is null-guarded, and InitMapPage re-runs it on every visit to pick up a pre-existing
-    // pin the TradePage.PinnedRouteChanged subscription above missed while the map page was gone.
+    // Mirrors the accepted routes onto the map's planner-route overlay. Either page can initialize
+    // first, so this is safe to call (and is called) before both exist: the map side is
+    // null-guarded, and InitMapPage re-runs it on every visit to pick up a route the
+    // PinnedRouteChanged subscription above missed while the map page was gone.
     private void PushPinnedRouteToMap()
     {
-        var routes = _tradePage?.PinnedRoutes;
+        var routes = AcceptedRoutesNow;
         // Sell-only pins (null buy terminal) draw no map leg - a leg needs two ends, and the
         // player's end is wherever they currently are, which the map's own marker already shows.
-        var legs = routes?.Where(r => r.BuyTerminalId is not null)
+        var legs = routes.Where(r => r.BuyTerminalId is not null)
             .Select(r => (r.BuyTerminalId!.Value, r.SellTerminalId)).ToList();
-        if (legs is null || legs.Count == 0) _mapPage?.ClearPlannerRoute();
+        if (legs.Count == 0) _mapPage?.ClearPlannerRoute();
         else _mapPage?.SetPlannerRoutes(legs);
+    }
+
+    /// <summary>The accepted routes, read from settings rather than through TradePage (code review
+    /// fix, 2026-08-09). TradePage.PinnedRoutes IS AppSettings.PinnedRoutes, but TradePage is a
+    /// lazy singleton: going through it meant that until the user happened to open the desktop
+    /// Trade page at least once, both push helpers below saw a null page, treated it as "no routes"
+    /// and pushed an EMPTY list - so a restart with routes already accepted showed the overlay
+    /// CARGO tab and the map's route legs blank, while Cargo Hauling (which always read settings
+    /// directly) showed them. Settings is the single source of truth for all three.</summary>
+    private static IReadOnlyList<AcceptedRoute> AcceptedRoutesNow => App.Settings.Current.PinnedRoutes;
+
+    // Accepted-route corrections arriving from the live Game.log feed (code review fix,
+    // 2026-08-09). AcceptedRouteTracker is the only writer of a route's lifecycle fields and it
+    // runs on the feed thread, so each on-screen reader has to be told: the overlay CARGO tab is
+    // what the player is looking at while standing at the kiosk, the map drops the leg of a route
+    // the sell just closed, Trade's ACCEPT ROUTE chip un-golds for that same closed route, and
+    // Cargo Hauling repaints when it is the active page (it rebuilds from settings on every page
+    // entry anyway, so an inactive page needs nothing here).
+    private void WireAcceptedRouteUpdates()
+    {
+        if (App.AcceptedRoutes == null) return;
+        App.AcceptedRoutes.RoutesChanged += () => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            PushPinnedRoutesToOverlay();
+            PushPinnedRouteToMap();
+            if (_activePage == "hauling") _haulingPage?.Refresh();
+            if (_activePage == "trade") _tradePage?.RefreshPinChips();
+        }));
     }
 
     private CargoPlannerPage? _plannerPage;
@@ -1607,7 +1636,7 @@ public partial class MainWindow : Window
     }
 
     private void PushPinnedRoutesToOverlay()
-        => _overlay?.SetPinnedRoutes(_tradePage?.PinnedRoutes ?? Array.Empty<AcceptedRoute>());
+        => _overlay?.SetPinnedRoutes(AcceptedRoutesNow);
 
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {

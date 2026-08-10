@@ -495,7 +495,15 @@ public static class RoutePlanner
                 CommodityName = live.BuyRow.CommodityName,
                 BuyTerminalName = live.BuyRow.TerminalName,
                 SellTerminalName = live.SellRow.TerminalName,
-                TripQty = live.TripQty,
+                // TripQty is the quantity this route was ACCEPTED at, and it is the struck-through
+                // figure Cargo Hauling and the overlay render beside a corrected one once a buy
+                // lands ("750 SCU  680 SCU"). A fresh ranking computes TripQty for the ship,
+                // budget and stock selected RIGHT NOW, so refreshing it on a route already being
+                // run rewrote the plan the player is being measured against: change ship mid-haul
+                // and the struck-through "plan" silently became a number nobody ever planned (code
+                // review finding, 2026-08-09). It keeps refreshing while the route is still
+                // Accepted, where tracking the current ship is exactly what the card should do.
+                TripQty = pin.Stage == AcceptedStage.Accepted ? live.TripQty : pin.TripQty,
                 PerScuMargin = live.SellRow.Sell - live.BuyRow.Buy,
                 UpdatedUtc = nowUtc,
                 PinnedUtc = pin.PinnedUtc,   // never moves: it answers "how long have I meant to run this"

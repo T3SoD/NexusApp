@@ -71,6 +71,18 @@ public sealed class AcceptedRouteTracker : IDisposable
         SeedAccumulatorsFromPersistedRoutes();
     }
 
+    /// <summary>Raised after this tracker changed a route: a matched buy corrected one and moved it
+    /// to Loaded, or a matched sell closed one and removed it from the active list. Fires on the
+    /// Game.log feed's own thread, exactly like the ProfitTracker.TransactionParsed that drives it,
+    /// so every subscriber marshals to the UI thread itself (AutoLoadStatusLine.OnEntries is the
+    /// house idiom, and MainWindow.WireAcceptedRouteUpdates follows it).
+    ///
+    /// <para>Without this the correction was persisted and invisible (code review finding,
+    /// 2026-08-09): _save() wrote the new quantity to settings.json, but the overlay CARGO tab -
+    /// the surface actually in front of the player at the kiosk - kept painting the pre-match
+    /// figures until something unrelated happened to repaint it.</para></summary>
+    public event Action? RoutesChanged;
+
     /// <summary>Public (like AutoLoadTracker.Apply) so a test can drive one transaction at a time
     /// without a live feed. A matcher fault must never break transaction parsing - the same
     /// discipline AutoLoadSampleStore's own write path follows: wrap, log under [CARGO], move on.</summary>
@@ -153,6 +165,7 @@ public sealed class AcceptedRouteTracker : IDisposable
         }
         _save();
         Logger.Info($"[CARGO] route loaded {route.CommodityName} {route.ActualQty} SCU at {route.ActualBuyPer:0.##} aUEC/SCU");
+        RoutesChanged?.Invoke();
     }
 
     private void ApplySell(CommodityTransaction tx)
@@ -168,6 +181,7 @@ public sealed class AcceptedRouteTracker : IDisposable
         routes.Remove(route);   // sold cargo is finished work (spec 1.2): it leaves the active list
         _save();
         Logger.Info($"[CARGO] route sold {route.CommodityName}");
+        RoutesChanged?.Invoke();
     }
 
     // Restart continuity (code review fix, 2026-08-09): see the class comment's RESTART section.

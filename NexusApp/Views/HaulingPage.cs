@@ -210,8 +210,15 @@ public sealed class HaulingPage : UserControl
 
         // Projected margin: the ranked per-SCU margin against what is actually being carried once
         // known, the plan otherwise - PerScuMargin x (ActualQty ?? TripQty).
+        //
+        // A SELL-ONLY route has no buy leg, so AcceptedRoute.PerScuMargin holds the raw sell PRICE
+        // there rather than a margin, and the identical product is gross revenue, not profit.
+        // Rendering it unlabelled in the margin slot read as profit the route cannot claim (code
+        // review finding, 2026-08-09); it is captioned instead, for the same reason
+        // AcceptedRouteMoney.ExpectedMargin excludes these routes from EXPECTED outright.
         var qty = r.ActualQty ?? r.TripQty;
-        inner.Children.Add(MoneyLine(r.PerScuMargin * qty, _green, new Thickness(0, 6, 0, 8)));
+        inner.Children.Add(MoneyLine(r.PerScuMargin * qty, _green, new Thickness(0, 6, 0, 8),
+            caption: r.BuyTerminalId is null ? "sale value" : null));
 
         // Route line: FROM -> TO, or SELL AT for a sell-only accepted route (no buy leg to name).
         var routeText = r.BuyTerminalId is null
@@ -233,7 +240,7 @@ public sealed class HaulingPage : UserControl
 
     // Value in MonoFont, unit as a smaller dim run beside it (house rule: every displayed aUEC
     // value carries the aUEC suffix - the Unit() idiom, TradePage.Planner.cs BuildFinancialRail).
-    private UIElement MoneyLine(double value, Color color, Thickness margin)
+    private UIElement MoneyLine(double value, Color color, Thickness margin, string? caption = null)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = margin };
         row.Children.Add(new TextBlock
@@ -247,13 +254,24 @@ public sealed class HaulingPage : UserControl
             Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(4, 0, 0, 1),
         });
+        // Optional trailing caption naming what this figure IS when it is not the usual projected
+        // margin, in the same dim treatment as the unit so it reads as an annotation on the number
+        // rather than a second value.
+        if (!string.IsNullOrEmpty(caption))
+            row.Children.Add(new TextBlock
+            {
+                Text = caption, FontFamily = Hud.Font("UiFont"), FontSize = 10,
+                Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(6, 0, 0, 1),
+            });
         return row;
     }
 
     // Quantity: when a matched buy corrected the figure, the original plan strikes through and the
     // real amount reads in amber beside it (Task C, spec 2026-08-09 section 1.4, "the route
-    // corrects itself"). Nothing has matched yet for most routes today (Phase D, matching, is a
-    // separate task) so the plain-quantity branch is what renders in practice.
+    // corrects itself"). AcceptedRouteTracker writes ActualQty when a logged buy matches the
+    // route, summing partial fills as they arrive; the plain-quantity branch renders until then,
+    // and for a route whose fill happened to land exactly on the accepted quantity.
     private UIElement QuantityRow(AcceptedRoute r)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };

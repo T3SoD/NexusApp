@@ -2897,8 +2897,9 @@ public partial class OverlayWindow : Window
 
         // Destination + quantity: the accepted plan strikes through and the matched-buy actual
         // reads in amber beside it once a buy corrects the figure (spec 1.4, "the route corrects
-        // itself"); Phase D's matching has not landed yet, so the plain-quantity branch is what
-        // renders in practice today.
+        // itself"). AcceptedRouteTracker owns that correction and MainWindow pushes the changed
+        // list straight back here, so this repaints at the kiosk rather than on the next page
+        // visit; the plain-quantity branch renders until a buy matches.
         var destRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

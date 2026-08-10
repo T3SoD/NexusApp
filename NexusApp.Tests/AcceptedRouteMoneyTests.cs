@@ -97,4 +97,16 @@ public class AcceptedRouteMoneyTests
         var planner = Route(AcceptedStage.Loaded, tripQty: 100, actualQty: 90, perScuMargin: 50);
         Assert.Equal(90 * 50, AcceptedRouteMoney.ExpectedMargin(new[] { sellOnly, planner }));
     }
+
+    // Source pin, same rule one surface further out (code review finding, 2026-08-09). The
+    // accepted-route card multiplies PerScuMargin by the quantity too, so on a sell-only route it
+    // renders gross revenue - excluded from EXPECTED above for exactly that reason, but shown on
+    // the card, where an unlabelled figure in the margin slot read as profit the route cannot
+    // claim. It is captioned instead of hidden: the number is real, its NAME was wrong.
+    [Fact]
+    public void AcceptedRouteCard_CaptionsASellOnlyRoutesFigureAsRevenue()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\HaulingPage.cs");
+        Assert.Contains("caption: r.BuyTerminalId is null ? \"sale value\" : null", src);
+    }
 }

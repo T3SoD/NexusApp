@@ -283,4 +283,88 @@ public class AcceptedRouteTrackerTests : IDisposable
         Assert.Empty(_routes);
         Assert.Equal(AcceptedStage.Sold, route.Stage);
     }
+
+    // ---- RoutesChanged (code review finding, 2026-08-09) --------------------------------------
+    // The correction was being persisted and left invisible: _save() wrote the new quantity, but
+    // nothing told the overlay CARGO tab - the surface actually in front of the player at the
+    // kiosk - to repaint, so it kept showing the accepted figures until an unrelated event
+    // rebuilt it.
+
+    [Fact]
+    public void MatchedBuy_RaisesRoutesChanged()
+    {
+        _routes = new List<AcceptedRoute> { Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1) };
+        using var tracker = NewTracker();
+        var changed = 0;
+        tracker.RoutesChanged += () => changed++;
+
+        tracker.Apply(Tx(TransactionKind.Buy, 693_600, 680m));
+
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public void EveryPartialFill_RaisesRoutesChanged_NotJustTheFirst()
+    {
+        _routes = new List<AcceptedRoute> { Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1) };
+        using var tracker = NewTracker();
+        var changed = 0;
+        tracker.RoutesChanged += () => changed++;
+
+        tracker.Apply(Tx(TransactionKind.Buy, 200_000, 200m));
+        tracker.Apply(Tx(TransactionKind.Buy, 200_000, 200m));
+
+        Assert.Equal(2, changed);   // the running total moves on each one, so each one is a repaint
+    }
+
+    [Fact]
+    public void MatchedSell_RaisesRoutesChanged()
+    {
+        var route = Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1, stage: AcceptedStage.Loaded);
+        route.ActualQty = 680;
+        _routes = new List<AcceptedRoute> { route };
+        using var tracker = NewTracker();
+        var changed = 0;
+        tracker.RoutesChanged += () => changed++;
+
+        tracker.Apply(Tx(TransactionKind.Sell, 837_760, 680m));
+
+        Assert.Equal(1, changed);
+    }
+
+    // Silence is the point: a transaction that matches nothing changed no route, and waking every
+    // surface on every unrelated kiosk purchase would repaint the overlay constantly for nothing.
+    [Fact]
+    public void UnmatchedTransaction_RaisesNothing()
+    {
+        _routes = new List<AcceptedRoute> { Route(buyTerminalId: 7, sellTerminalId: 9, commodityId: 1) };
+        using var tracker = NewTracker(commodityNameForGuid: _ => "Laranite");   // not this route's commodity
+        var changed = 0;
+        tracker.RoutesChanged += () => changed++;
+
+        tracker.Apply(Tx(TransactionKind.Buy, 693_600, 680m));
+
+        Assert.Equal(0, changed);
+    }
+
+    // Source pin: MainWindow is the one subscriber, and it must marshal to the UI thread - this
+    // event fires on the Game.log feed's thread, like the TransactionParsed that drives it.
+    [Fact]
+    public void MainWindow_SubscribesRoutesChanged_AndMarshalsToTheUiThread()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\MainWindow.xaml.cs");
+        Assert.Contains("RoutesChanged +=", src);
+        Assert.Contains("Dispatcher.BeginInvoke", src);
+    }
+
+    // Source pin: both push helpers read the routes from SETTINGS, never through the lazy
+    // TradePage - going through the page pushed an EMPTY list to the overlay and the map until the
+    // user happened to open Trade once (code review finding, 2026-08-09).
+    [Fact]
+    public void PushHelpers_ReadTheRoutesFromSettings_NotThroughTradePage()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\MainWindow.xaml.cs");
+        Assert.DoesNotContain("_tradePage?.PinnedRoutes", src);
+        Assert.Contains("AcceptedRoutesNow", src);
+    }
 }

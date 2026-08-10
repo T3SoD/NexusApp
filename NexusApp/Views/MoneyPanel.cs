@@ -137,7 +137,7 @@ public sealed class MoneyPanel : UserControl
     {
         _profitExpanded = !_profitExpanded;
         InteractionLog.Click("Session profit", _profitChip);
-        Logger.Info($"[UI] trade: profit panel {(_profitExpanded ? "expanded" : "collapsed")}");
+        Logger.Info($"[UI] cargo money panel {(_profitExpanded ? "expanded" : "collapsed")}");
 
         // Chevron rotates 0 -> 90 on ChipFadeMs (mock), snapping under Reduced.
         if (Motion.Reduced)

@@ -245,6 +245,77 @@ public class TradePinnedRouteTests
         Assert.Equal(50, pins[0].TripQty);
     }
 
+    // ---- lifecycle across a refresh (trade/cargo fusion, task D) ------------------------------
+    // A refresh rebuilds a NEW AcceptedRoute for DISPLAY facts. AcceptedRouteTracker is the only
+    // writer of the lifecycle fields, and the market tick that drives RefreshPins runs hourly, so
+    // anything this rebuild forgets is reverted silently on a route the player is mid-way through.
+
+    private static IReadOnlyList<AcceptedRoute> LoadedPin(int tripQty, int actualQty)
+    {
+        var pin = RoutePlanner.ToPin(Route(1, 2, 47, tripQty: tripQty), T0);
+        pin.Stage = AcceptedStage.Loaded;
+        pin.ActualQty = actualQty;
+        pin.ActualBuyPer = 1020m;
+        pin.LoadedUtc = T0.AddMinutes(30);
+        return new[] { pin };
+    }
+
+    [Fact]
+    public void RefreshPins_CarriesEveryLifecycleFieldThrough()
+    {
+        var pins = LoadedPin(tripQty: 750, actualQty: 680);
+
+        var refreshed = RoutePlanner.RefreshPins(pins, new List<TradeRoute> { Route(1, 2, 47) }, T0.AddHours(1));
+
+        Assert.Equal(AcceptedStage.Loaded, refreshed[0].Stage);
+        Assert.Equal(680, refreshed[0].ActualQty);
+        Assert.Equal(1020m, refreshed[0].ActualBuyPer);
+        Assert.Equal(T0.AddMinutes(30), refreshed[0].LoadedUtc);
+        Assert.Null(refreshed[0].SoldUtc);
+    }
+
+    // Code review finding, 2026-08-09. TripQty is the quantity the route was ACCEPTED at and the
+    // struck-through figure the corrected amount reads against. A fresh ranking computes it for the
+    // ship and budget selected right now, so refreshing it on a route already being run rewrote the
+    // plan itself: swap to a bigger hull mid-haul and the "750 SCU" the player accepted silently
+    // became 1,200, making a full load look like a shortfall.
+    [Fact]
+    public void RefreshPins_OnceLoaded_FreezesTheAcceptedQuantity()
+    {
+        var pins = LoadedPin(tripQty: 750, actualQty: 680);
+
+        var refreshed = RoutePlanner.RefreshPins(
+            pins, new List<TradeRoute> { Route(1, 2, 47, tripQty: 1200) }, T0.AddHours(1));
+
+        Assert.Equal(750, refreshed[0].TripQty);
+    }
+
+    // Still Accepted means nothing has been bought yet, so tracking the current ship is exactly
+    // what the card should do - the freeze above must not reach back this far.
+    [Fact]
+    public void RefreshPins_WhileStillAccepted_KeepsTrackingTheCurrentShip()
+    {
+        var pins = Pin(Route(1, 2, 47, tripQty: 50));
+
+        var refreshed = RoutePlanner.RefreshPins(
+            pins, new List<TradeRoute> { Route(1, 2, 47, tripQty: 1200) }, T0.AddHours(1));
+
+        Assert.Equal(1200, refreshed[0].TripQty);
+    }
+
+    // The price half keeps refreshing either way: EXPECTED prices held cargo at what the sell leg
+    // pays NOW, which is the number a hauler at the kiosk is deciding against.
+    [Fact]
+    public void RefreshPins_OnceLoaded_StillRefreshesTheMargin()
+    {
+        var pins = LoadedPin(tripQty: 750, actualQty: 680);
+
+        var refreshed = RoutePlanner.RefreshPins(
+            pins, new List<TradeRoute> { Route(1, 2, 47, sellPrice: 350) }, T0.AddHours(1));
+
+        Assert.Equal(250, refreshed[0].PerScuMargin);   // 350 sell - 100 buy
+    }
+
     // ---- SameHaulAs (the persisted form's own comparison) -------------------------------------
 
     [Fact]
