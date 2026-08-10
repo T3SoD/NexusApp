@@ -136,7 +136,7 @@ public class WalletBudgetChipTests
     public void Planner_PushesTheWalletIntoTheBudgetWhileTheToggleIsOn()
     {
         var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
-        Assert.Contains("if (_walletBudgetOn) PushWalletIntoBudget", src);
+        Assert.Contains("if (WalletBudgetOn) PushWalletIntoBudget", src);
     }
 
     // Two guards, both load-bearing. RebuildPlanner calls RefreshWalletChip, which calls back into
@@ -156,6 +156,42 @@ public class WalletBudgetChipTests
     public void Planner_LocksTheBudgetBoxWhileTheWalletDrivesIt()
     {
         var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
-        Assert.Contains("_budgetBox.IsReadOnly = _walletBudgetOn", src);
+        Assert.Contains("_budgetBox.IsReadOnly = WalletBudgetOn", src);
     }
+
+    // ── Persistence (2026-08-10) ───────────────────────────────────────────
+
+    // Off for every existing install, so an upgrade changes nothing until the user asks it to.
+    [Fact]
+    public void TheToggleDefaultsOff()
+        => Assert.False(new NexusApp.Models.AppSettings().TradeBudgetFromWallet);
+
+    // Read straight through AppSettings rather than cached in a field: one source of truth, and no
+    // seeding step at construction that a later refactor could drop.
+    [Fact]
+    public void TheToggleIsBackedBySettings_NotAPageField()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
+        Assert.Contains("get => App.Settings.Current.TradeBudgetFromWallet;", src);
+        Assert.Contains("App.Settings.Current.TradeBudgetFromWallet = value;", src);
+        Assert.DoesNotContain("private bool _walletBudgetOn", src);
+    }
+
+    // A session can OPEN with the budget already driven by the wallet, so the read-only lock has to
+    // be applied while the chrome is built. Without it the box starts editable and only locks on
+    // the next toggle, which reads as the setting not having survived the restart.
+    [Fact]
+    public void ThePersistedToggle_LocksTheBoxOnStartup()
+    {
+        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Planner.cs");
+        var build = src.IndexOf("budgetGrp.Children.Add(budgetRow);", StringComparison.Ordinal);
+        Assert.True(build > 0, "the budget row must still be assembled in the chrome build");
+        Assert.Contains("ApplyWalletBudgetLock();", src[build..(build + 400)]);
+    }
+
+    // The budget VALUE stays session-only: planning against your wallet is a lasting preference,
+    // while the figure itself only means anything for the session that measured it.
+    [Fact]
+    public void TheBudgetValueItselfIsStillNotPersisted()
+        => Assert.DoesNotContain("TradeBudgetText", SourceFiles.ReadAppSource(@"Models\AppSettings.cs"));
 }

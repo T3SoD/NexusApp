@@ -174,6 +174,14 @@ public class AppSettings
     // selection yet.
     public string TradeShipId { get; set; } = "";
 
+    // USE WALLET on the planner's BUDGET filter: while on, the budget tracks the live wallet
+    // estimate instead of a typed figure (2026-08-10). Persisted, unlike the budget VALUE it
+    // drives, which stays a session field: a hauler who plans against their wallet wants that to
+    // still be true tomorrow, while the figure itself is only meaningful for the session that
+    // measured it. A restart therefore reopens with the toggle on and an empty budget, which
+    // refills the moment the wallet reports an estimate.
+    public bool TradeBudgetFromWallet { get; set; }
+
     // Manual origin override (a terminal identity string) for when no live Game.log session is
     // running, or the player wants to plan from somewhere other than where they stand. "" = none
     // set; the planner falls back to whatever the live-location facility reports, if anything.

@@ -268,7 +268,7 @@ public sealed partial class TradePage
         var w = App.Wallet;
         var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc, DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
 
-        if (!WalletBudgetChip.ShouldShow(state, w.Estimate, _walletBudgetOn))
+        if (!WalletBudgetChip.ShouldShow(state, w.Estimate, WalletBudgetOn))
         {
             _walletChipLabel = null;
             _walletChipSlot.Content = null;
@@ -285,23 +285,36 @@ public sealed partial class TradePage
         }
         // Outside the label guard: the ON/OFF tint has to repaint on a toggle even when the figure
         // beside it did not change.
-        if (_walletChipSlot.Content is Border pill) SetPillOn(pill, _walletBudgetOn);
+        if (_walletChipSlot.Content is Border pill) SetPillOn(pill, WalletBudgetOn);
 
         // While the toggle is on the budget FOLLOWS the wallet, so every refresh - a rebuild, or a
         // Wallet.Changed raise - is also a chance to push a new figure in.
-        if (_walletBudgetOn) PushWalletIntoBudget(state, w.Estimate);
+        if (WalletBudgetOn) PushWalletIntoBudget(state, w.Estimate);
     }
 
     /// <summary>USE WALLET is a TOGGLE (2026-08-10), not the one-shot push it was: while it is on,
-    /// the budget tracks the wallet as the wallet moves. Session-only, like the budget it drives
-    /// (_budgetText is a page field, not an AppSettings key).</summary>
-    private bool _walletBudgetOn;
+    /// the budget tracks the wallet as the wallet moves.
+    ///
+    /// <para>PERSISTED, and read straight through AppSettings rather than cached in a field, so
+    /// there is one source of truth and no seeding step to forget. The budget VALUE stays a session
+    /// field on purpose: planning against your wallet is a lasting preference, while the figure
+    /// itself only means anything for the session that measured it. A restart therefore reopens
+    /// with the toggle on and an empty budget, refilled the moment the wallet reports.</para></summary>
+    private bool WalletBudgetOn
+    {
+        get => App.Settings.Current.TradeBudgetFromWallet;
+        set
+        {
+            App.Settings.Current.TradeBudgetFromWallet = value;
+            App.Settings.Save();
+        }
+    }
     private bool _inWalletPush;   // see PushWalletIntoBudget
 
     private void ToggleWalletBudget()
     {
-        _walletBudgetOn = !_walletBudgetOn;
-        Logger.Info($"[UI] Trade planner: budget follows wallet {(_walletBudgetOn ? "on" : "off")}");
+        WalletBudgetOn = !WalletBudgetOn;
+        Logger.Info($"[UI] Trade planner: budget follows wallet {(WalletBudgetOn ? "on" : "off")}");
         ApplyWalletBudgetLock();
         RefreshWalletChip();   // repaints the pill, and pushes the current figure when switching on
     }
@@ -312,9 +325,9 @@ public sealed partial class TradePage
     // almost always wants to adjust that number, not retype it from nothing.
     private void ApplyWalletBudgetLock()
     {
-        _budgetBox.IsReadOnly = _walletBudgetOn;
-        _budgetBox.Foreground = _walletBudgetOn ? Hud.Br("FgDimBrush") : Hud.Br("FgBrush");
-        _budgetBox.ToolTip = _walletBudgetOn
+        _budgetBox.IsReadOnly = WalletBudgetOn;
+        _budgetBox.Foreground = WalletBudgetOn ? Hud.Br("FgDimBrush") : Hud.Br("FgBrush");
+        _budgetBox.ToolTip = WalletBudgetOn
             ? "Budget follows your wallet. Turn USE WALLET off to type your own."
             : null;
     }
@@ -459,6 +472,10 @@ public sealed partial class TradePage
         };
         budgetRow.Children.Add(_walletChipSlot);
         budgetGrp.Children.Add(budgetRow);
+        // The toggle persists, so a session can OPEN with the budget already driven by the wallet.
+        // Without this the box would start editable and only lock on the next toggle, which reads
+        // as the setting not having survived the restart.
+        ApplyWalletBudgetLock();
         topRow.Children.Add(budgetGrp);
 
         // Live refresh: a wallet anchor, capture or reconciliation raises Changed off the wallet's
