@@ -740,7 +740,11 @@ public sealed partial class TradePage
             App.Locations.LastKnownLocation, snap.Terminals.Rows, App.Locations.LastKnownUexLocation);
         bool originUnknown = originIds is { Count: 0 };
         var destIds = DestTerminalIds(snap.Terminals.Rows);
-        var routes = RoutePlanner.Rank(BuildSourcePairs(snap.TradePrices.Rows), terminals, ship.TotalScu, ship.MaxContainerScu,
+        // Kiosk-observed box sizes win over UEX's per-commodity list (2026-08-10): the kiosks
+        // disagree with it terminal by terminal, and a trip snapped to a box size a counter does
+        // not stock is a quantity nobody can buy. Only terminals actually visited are affected.
+        var pricedRows = KioskBoxOverride.Apply(snap.TradePrices.Rows, terminals, App.KioskBoxes.SizesFor);
+        var routes = RoutePlanner.Rank(BuildSourcePairs(pricedRows), terminals, ship.TotalScu, ship.MaxContainerScu,
             CurrentBudget(), originIds, App.Settings.Current.TradeScope, take: 25,
             TradePlanArgs.ParseDemandFilter(App.Settings.Current.TradeStockFilter), destIds,
             TradePlanArgs.ParseRankMode(App.Settings.Current.TradeRankMode),

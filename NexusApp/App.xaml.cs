@@ -55,6 +55,9 @@ public partial class App : Application
     // sell to an accepted route (AppSettings.PinnedRoutes) and corrects its quantity/cost, or its
     // Stage, from what the log actually shows. See RouteMatcher for the heuristic itself.
     public static AcceptedRouteTracker AcceptedRoutes { get; private set; } = null!;
+    /// <summary>Box sizes learned from commodity kiosks, preferred over UEX's per-commodity list.</summary>
+    public static KioskBoxSizeStore KioskBoxes { get; private set; } = null!;
+    private static KioskBoxTracker? _kioskBoxTracker;
 
     // Auto-update state machine (checks, downloads, installs). Created right after Settings
     // so the consent gate and throttle read real values; inert in the demo profile.
@@ -430,6 +433,13 @@ public partial class App : Application
         Profit = new ProfitTracker(GameLogFeed);
         Wallet = new WalletTracker(Profit, GameLogFeed);
         AutoLoad = new AutoLoadTracker(Profit);
+        // Kiosk box sizes (2026-08-10): the planner snaps trips to what a terminal can actually
+        // sell, and UEX ships one container_sizes list per commodity that does not vary by
+        // terminal. The kiosk states its own answer every time it opens, so learn it and remember
+        // it. Reads the player's place at ingest time, since the log line carries none.
+        KioskBoxes = new KioskBoxSizeStore();
+        _kioskBoxTracker = new KioskBoxTracker(GameLogFeed, KioskBoxes,
+            () => (Locations.LastKnownLocation, Locations.LastKnownUexLocation));
         // Delegates only - RouteMatcher/AcceptedRouteTracker stay WPF-free and never touch App.*
         // themselves (task D3). The commodity-id lookup reads the market snapshot's own commodity
         // list, a different UEX endpoint/vocabulary than the trade rows AcceptedRoute.CommodityName
