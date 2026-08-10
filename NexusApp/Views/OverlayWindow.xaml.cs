@@ -229,7 +229,7 @@ public partial class OverlayWindow : Window
         _onMarketChanged = () => Dispatcher.BeginInvoke(() =>
         {
             RefreshMarketSellLines();
-            if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
+            if (IsTabPresented("trade")) RebuildTradePanel();
         });
         App.Market.Changed += _onMarketChanged;
 
@@ -1612,7 +1612,7 @@ public partial class OverlayWindow : Window
         HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
 
         _hubHaulScanLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Auto-scan Contracts", "Auto-scan contracts: toggle on the HAULING tab"));
+        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Auto-scan Contracts", "Auto-scan contracts: toggle on the CARGO tab"));
 
         SyncScanControls();
         SyncHaulingControls();
@@ -2712,15 +2712,17 @@ public partial class OverlayWindow : Window
         return row;
     }
 
-    // ── HAULING tab (Cargo Hauling glance) ──────────────────────────────────────
+    // ── HAULING tab (Cargo Hauling glance, tab label "CARGO") ────────────────────
     // Compact mirror of the main-window HaulingPage: a count header, one block per active
     // haul (Company - Topology + its incomplete legs), then a where-to-drop consolidation
     // summary. Built in code from App.Hauls with the same TextBlock/FindResource idiom the
     // STATS tab uses; no live SCU progress exists (legs are binary done / not-done).
-    // The HAULING tab leads with the action plan a hauler actually needs at a glance: stack TOTALS
-    // (count / SCU / aUEC + delivered-drops progress), then CONSOLIDATED STOPS grouped COLLECT/DELIVER
-    // by location (the cross-contract rollup the in-game MobiGlas does not give you), and finally the
-    // per-contract CONTRACTS cards (identity + payout) in a collapsible section so the plan stays glanceable.
+    // The HAULING tab leads with ACCEPTED ROUTES (Task C, trade/cargo fusion spec, 2026-08-09
+    // section 5: folded in from the deleted PLANNER/PINNED overlay mode), then the action plan a
+    // hauler actually needs at a glance: stack TOTALS (count / SCU / aUEC + delivered-drops
+    // progress), then CONSOLIDATED STOPS grouped COLLECT/DELIVER by location (the cross-contract
+    // rollup the in-game MobiGlas does not give you), and finally the per-contract CONTRACTS cards
+    // (identity + payout) in a collapsible section so the plan stays glanceable.
     private void RebuildHaulingPanel()
     {
         RefreshHaulScanStatus();   // catch the status line up on tab entry / haul change (fixed strip, not cleared)
@@ -2729,9 +2731,30 @@ public partial class OverlayWindow : Window
         var accent = (Brush)FindResource("AccentBrush");
         var cyan   = (Brush)FindResource("CyanBrush");
         var dim    = (Brush)FindResource("FgDimBrush");
+        var fg     = (Brush)FindResource("FgBrush");
+        var gold   = (Brush)FindResource("GoldBrush");
+        var ok     = (Brush)FindResource("OkBrush");
+        var warn   = (Brush)FindResource("WarnBrush");
         var border = (Brush)FindResource("NavBorderBrush");
         var cardBg = (Brush)FindResource("Bg2NavBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
+
+        // ── ACCEPTED ROUTES: folded in from the deleted PLANNER/PINNED mode switch, above hauls'
+        // own totals - accepting a route and accepting a contract are independent actions, so this
+        // never waits on active.Count and is omitted outright (no header, no empty-state line) when
+        // there is nothing accepted, rather than competing with the hauls empty state below for the
+        // same empty screen (spec section 5, "keep the empty states honest").
+        if (_pinnedRoutes.Count > 0)
+        {
+            HaulingList.Children.Add(new TextBlock
+            {
+                Text = $"ACCEPTED ROUTES ({_pinnedRoutes.Count})", FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = dim, Margin = new Thickness(2, 2, 0, 3),
+            });
+            foreach (var route in _pinnedRoutes)
+                HaulingList.Children.Add(BuildTradeCard(route, fg, dim, gold, ok, warn, mono));
+            HaulingList.Children.Add(new Border { Height = 1, Background = border, Margin = new Thickness(0, 4, 0, 8) });
+        }
 
         var active = App.Hauls.ActiveHauls;
 
@@ -2834,6 +2857,149 @@ public partial class OverlayWindow : Window
         };
         HaulingList.Children.Add(contractsHeader);
         HaulingList.Children.Add(cards);
+    }
+
+    // One ACCEPTED ROUTES card (Task C, trade/cargo fusion spec, 2026-08-09 section 5). Moved here
+    // from the deleted PINNED mode's Manifest Strip card (BuildTradeCard) and redesigned for this
+    // tab's tighter vertical budget - the FROM/band/distance visualization the old card carried is
+    // gone; TOTALS, STOPS and CONTRACTS all compete for the same ~380px body, so this card answers
+    // only what the CARGO tab needs: commodity, projected margin, destination + quantity, stage.
+    // The close glyph and its UnpinRouteRequested wiring are unchanged from the old card, so the
+    // per-card removal still goes through MainWindow -> TradePage.UnpinRoute, the one write path.
+    private Border BuildTradeCard(AcceptedRoute route,
+        Brush fg, Brush dim, Brush gold, Brush ok, Brush warn, FontFamily mono)
+    {
+        var rows = new StackPanel();
+
+        // Commodity, gold bold (the existing card idiom's size band, 11.5-12.5px).
+        rows.Children.Add(new TextBlock
+        {
+            Text = route.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
+            TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = route.CommodityName,
+            Margin = new Thickness(0, 0, 18, 3),
+        });
+
+        // Projected margin: PerScuMargin x what is actually being carried once known, the plan
+        // otherwise - the same fold HaulingPage.AcceptedRouteCard uses on the desktop. Every
+        // displayed aUEC value carries its unit (house rule): value in MonoFont, unit as a smaller
+        // dim UiFont run beside it.
+        var qty = route.ActualQty ?? route.TripQty;
+        var marginLine = new TextBlock { Margin = new Thickness(0, 0, 0, 3) };
+        marginLine.Inlines.Add(new System.Windows.Documents.Run((route.PerScuMargin * qty).ToString("N0"))
+        {
+            FontFamily = mono, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = ok,
+        });
+        marginLine.Inlines.Add(new System.Windows.Documents.Run(" aUEC")
+        {
+            FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 9, Foreground = dim,
+        });
+        rows.Children.Add(marginLine);
+
+        // Destination + quantity: the accepted plan strikes through and the matched-buy actual
+        // reads in amber beside it once a buy corrects the figure (spec 1.4, "the route corrects
+        // itself"); Phase D's matching has not landed yet, so the plain-quantity branch is what
+        // renders in practice today.
+        var destRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        destRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        destRow.Children.Add(new TextBlock
+        {
+            Text = $"to {route.SellTerminalName}", FontSize = 10.5, Foreground = fg,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = route.SellTerminalName, Margin = new Thickness(0, 0, 6, 0),
+        });
+        var qtyPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        if (route.ActualQty is int actual && actual != route.TripQty)
+        {
+            qtyPanel.Children.Add(new TextBlock
+            {
+                Text = $"{route.TripQty:N0} SCU", FontFamily = mono, FontSize = 10, Foreground = dim,
+                TextDecorations = TextDecorations.Strikethrough, VerticalAlignment = VerticalAlignment.Center,
+            });
+            qtyPanel.Children.Add(new TextBlock
+            {
+                Text = $"  {actual:N0} SCU", FontFamily = mono, FontSize = 10, FontWeight = FontWeights.Bold,
+                Foreground = warn, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0),
+            });
+        }
+        else
+        {
+            qtyPanel.Children.Add(new TextBlock
+            {
+                Text = $"{route.TripQty:N0} SCU", FontFamily = mono, FontSize = 10, Foreground = dim,
+            });
+        }
+        Grid.SetColumn(qtyPanel, 1);
+        destRow.Children.Add(qtyPanel);
+        rows.Children.Add(destRow);
+
+        // Compact stage pips: ACCEPTED / LOADED / SOLD, current amber, done green, future dim.
+        rows.Children.Add(BuildAcceptedStagePips(route.Stage, dim, ok, warn));
+
+        // The close sits over the card's top-right corner rather than inside the head row, so the
+        // commodity name gets the full width when there is nothing to close over (unchanged from
+        // the old Manifest Strip card).
+        var body = new Grid();
+        body.Children.Add(rows);
+        var glyph = new TextBlock
+        {
+            Text = "×", FontSize = 14, Foreground = dim,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        var close = new Border
+        {
+            Background = Brushes.Transparent, Cursor = Cursors.Hand,
+            Width = 18, Height = 18, Child = glyph, ToolTip = "Unpin this route",
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, -4, -16, 0),
+        };
+        close.MouseEnter += (_, _) => glyph.Foreground = (Brush)FindResource("DangerBrush");
+        close.MouseLeave += (_, _) => glyph.Foreground = dim;
+        close.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] overlay cargo: unpin {route.CommodityName}");
+            UnpinRouteRequested?.Invoke(route);
+        };
+        body.Children.Add(close);
+
+        return new Border
+        {
+            Background = (Brush)FindResource("Bg2Brush"),
+            BorderBrush = (Brush)FindResource("NavBorderBrush"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
+            Margin = new Thickness(0, 0, 0, 6), Child = body,
+        };
+    }
+
+    // Compact stage pips for the card above: a small filled/hollow dot per stage with a label,
+    // done stages green, the current stage amber, future stages dim - the overlay's smaller mirror
+    // of HaulingPage.StagePipsRow, sized to fit three labels across a 320px-wide card.
+    private static StackPanel BuildAcceptedStagePips(AcceptedStage stage, Brush dim, Brush ok, Brush warn)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+
+        void Pip(AcceptedStage pip, string label, bool last)
+        {
+            var tint = pip < stage ? ok : pip == stage ? warn : dim;
+            row.Children.Add(new Border
+            {
+                Width = 6, Height = 6, CornerRadius = new CornerRadius(3),
+                Background = pip <= stage ? tint : Brushes.Transparent,
+                BorderBrush = tint, BorderThickness = new Thickness(1.2),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = label, FontSize = 7.5, FontWeight = FontWeights.Bold, Foreground = tint,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, last ? 0 : 8, 0),
+            });
+        }
+
+        Pip(AcceptedStage.Accepted, "ACCEPTED", last: false);
+        Pip(AcceptedStage.Loaded, "LOADED", last: false);
+        Pip(AcceptedStage.Sold, "SOLD", last: true);
+        return row;
     }
 
     // Indented mono detail line used for the per-contract cargo / route rows.
@@ -3556,10 +3722,15 @@ public partial class OverlayWindow : Window
     // leg), and rank 1 wears an amber left rail so "which is best" is a glance, not a read.
     // Every input, commit path and log line survives the reskin; PINNED keeps its Manifest
     // Strip cards (BuildTradeCard), now under the fused row.
+    //
+    // Trade/cargo fusion spec, 2026-08-09 section 5: the PLANNER | PINNED mode switch is deleted.
+    // This tab always shows the planner now - the kiosk workflow is read the ranking, accept, buy -
+    // and accepted routes (formerly the PINNED list) moved to the CARGO tab (RebuildHaulingPanel),
+    // above hauls' own totals. BuildTradeTopRow keeps its live-location dot and label; only the
+    // segmented control came out of that row. BuildTradeCard, the Manifest Strip card the paragraph
+    // above describes, moved with the list it used to draw and was redesigned for the CARGO tab's
+    // tighter vertical budget - see the comment on it there.
 
-    // PLANNER | PINNED mode (overlay planner spec, 2026-08-02). Session-remembered, defaults to
-    // PLANNER: the new view is the reason the tab is opened in game; pins keep the badge.
-    private string _tradeMode = "PLANNER";
     private double? _plannerBudget;             // pushed in by MainWindow OR set by the BUDGET pills; null = unconstrained
     // Same TRADE ship list the desktop planner uses (~90 flyable hulls with cargo), not the
     // 15-hull grid catalog: the two planners share persisted settings, so they must offer the
@@ -3597,8 +3768,8 @@ public partial class OverlayWindow : Window
     // ("{DisplayName} - {TotalScu} SCU") and must never persist it - TradeShipId stores the id.
     private Dictionary<string, string>? _overlayShipDisplayToId;
     // FILTERS expanded/collapsed (R2): session-remembered, default collapsed - a field, not
-    // AppSettings, the same session-only rule as _tradeMode above. Only the header click flips
-    // it, so it survives every rebuild, ghost collapse/expand included.
+    // AppSettings, session-only by the same reasoning _plannerBudget above uses. Only the header
+    // click flips it, so it survives every rebuild, ghost collapse/expand included.
     private bool _plannerFiltersExpanded;
     // Scope pill labels, mirroring the main page's Scopes literal (TradePage.cs:60) so the two
     // surfaces can never offer different vocabularies for the same persisted TradeScope.
@@ -3631,9 +3802,10 @@ public partial class OverlayWindow : Window
     private static readonly string[] OverlayStartPinned = { "ANY", "LIVE" };
 
     // The routes TradePage currently has pinned, pushed in by MainWindow on the same event that
-    // already keeps the Starmap's route overlay in sync. Empty = nothing pinned.
-    // Type renamed PinnedRoute -> AcceptedRoute 2026-08-09 (trade/cargo fusion spec, section 1);
-    // this window's own behavior is untouched by that change (a separate task covers the overlay).
+    // already keeps the Starmap's route overlay in sync. Empty = nothing pinned. Field name kept as
+    // _pinnedRoutes even though the type is AcceptedRoute (trade/cargo fusion spec, section 1) and
+    // the list now renders on the CARGO tab's ACCEPTED ROUTES section (section 5) rather than the
+    // deleted PINNED mode - renaming the field bought nothing a comment does not already say.
     private IReadOnlyList<AcceptedRoute> _pinnedRoutes = Array.Empty<AcceptedRoute>();
 
     /// <summary>Raised when a card's close control is clicked. MainWindow routes it back into
@@ -3654,14 +3826,16 @@ public partial class OverlayWindow : Window
     public event Action<TradeRoute>? PinRouteRequested;
 
     /// <summary>MainWindow forwards TradePage's pinned routes here, mirroring PushPinnedRouteToMap.
-    /// Cheap and idempotent: it repaints the list only when this tab is the one being presented,
-    /// but always updates the tab strip's count badge, which is visible from every tab.</summary>
+    /// Cheap and idempotent: it repaints whichever of TRADE / CARGO is the one being presented (the
+    /// list now renders on both - the planner's star chip on TRADE, ACCEPTED ROUTES on CARGO), but
+    /// always updates the tab strip's count badge, which is visible from every tab.</summary>
     public void SetPinnedRoutes(IReadOnlyList<AcceptedRoute> routes)
     {
         _pinnedRoutes = routes;
         TabStrip.SetBadge("trade", routes.Count);
         GhostRail.SetBadge("trade", routes.Count);   // ghost mode carries the same counts (issue #27)
         if (IsTabPresented("trade")) RebuildTradePanel();
+        if (IsTabPresented("hauling")) RebuildHaulingPanel();
     }
 
     /// <summary>MainWindow pushes TradePage's session budget here (overlay planner spec):
@@ -3670,34 +3844,24 @@ public partial class OverlayWindow : Window
     {
         if (_plannerBudget == budget) return;
         _plannerBudget = budget;
-        if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
+        if (IsTabPresented("trade")) RebuildTradePanel();
     }
 
     /// <summary>MainWindow relays TradePage's shared-setting changes here so a desktop scope or
     /// commodity change re-ranks a presented overlay planner.</summary>
     public void OnSharedTradeSettingsChanged()
     {
-        if (IsTabPresented("trade") && _tradeMode == "PLANNER") RebuildTradePanel();
+        if (IsTabPresented("trade")) RebuildTradePanel();
     }
-
-    // Band metrics, from the mock's CSS (.D .band and friends). The band runs the full width of the
-    // card and both terminal names get their own full-width line - a first pass at candidate D put
-    // the names side by side flanking the band, and every terminal name over about 14 characters
-    // was destroyed by the truncation, which is most of them.
-    private const double TradeBandHeight = 18;
-    private const double TradeBandCapSize = 9;
-    private const double TradeBandShipSize = 11;
-    // A right-pointing dart, drawn in the same 24-unit box the dock glyphs use and scaled down by
-    // Stretch.Uniform. Points at the destination rather than up: on a horizontal band, direction of
-    // travel is the whole reason the marker is a ship and not another dot.
-    private const string TradeShipGeometry = "M2 3 L14 9 L2 15 L5 9 Z";
 
     private void RebuildTradePanel()
     {
         TradePanelItems.Children.Clear();
         BuildTradeTopRow();
-        if (_tradeMode == "PLANNER") BuildPlannerSection();
-        else BuildPinnedSection();
+        // The PLANNER | PINNED mode switch is gone (trade/cargo fusion spec, 2026-08-09 section 5):
+        // this tab always shows the planner now - read the ranking, accept, buy. Accepted routes
+        // moved to the CARGO tab.
+        BuildPlannerSection();
         // Anchored above the scroll (added 2026-08-05), not appended to the items: the money
         // readout stays put while the route cards scroll under it.
         TradeSessionHost.Content = BuildTradeMoneyBlock();
@@ -3885,30 +4049,25 @@ public partial class OverlayWindow : Window
         return row;
     }
 
-    // The fused top row, above BOTH modes (mock nexus-design-lab/overlay-trade-v2, candidate B,
-    // TopRow): live-location dot + name left, the PLANNER | PINNED segmented control right - one
-    // row where the mode buttons, the CURRENT LOCATION header and the rule used to stack (the
-    // mock's finding 1: chrome tax before content). The location semantics are the old header's,
-    // unchanged: F14's cyan breathing dot (cyan is the app's reserved live-location identity,
-    // and Hud.PulseDot already honors Motion.Reduced), a dim non-breathing "Unknown" when there
-    // is no fix - silence would read as broken on a tab this small - and the tooltip carrying
-    // the untrimmed name. The segments keep the old mode-button row's exact commit path: no-op
-    // on the mode already in force (no log, no rebuild - the same guard every trade-setting
-    // setter keeps), the mode log, one rebuild. The mock's spring thumb translates to a plain
-    // state swap on rebuild, per the redesign brief.
+    // The top row (mock nexus-design-lab/overlay-trade-v2, candidate B, TopRow): live-location dot
+    // + name. The location semantics are the old header's, unchanged: F14's cyan breathing dot
+    // (cyan is the app's reserved live-location identity, and Hud.PulseDot already honors
+    // Motion.Reduced), a dim non-breathing "Unknown" when there is no fix - silence would read as
+    // broken on a tab this small - and the tooltip carrying the untrimmed name.
+    //
+    // The PLANNER | PINNED segmented control that used to sit right of this row is deleted
+    // (trade/cargo fusion spec, 2026-08-09 section 5): the tab has one mode now, so there is
+    // nothing left to switch. The row keeps a Grid rather than reverting to a StackPanel so the
+    // name still trims against the available width instead of just hugging the dot.
     private void BuildTradeTopRow()
     {
         var dim = (Brush)FindResource("FgDimBrush");
         var cyan = (Brush)FindResource("CyanBrush");
-        var accent = (Brush)FindResource("AccentBrush");
         var place = App.Player.Label;
 
-        // A Grid, not a StackPanel: the name takes the leftover width and trims, rather than
-        // pushing the mode control off the right edge.
         var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };   // mock TopRow margin 0 0 8
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var placeDot = new System.Windows.Shapes.Ellipse
         {
@@ -3924,275 +4083,12 @@ public partial class OverlayWindow : Window
             Text = place ?? "Unknown", FontSize = 10.5,   // mock: cyan 10.5, ellipsized flex
             Foreground = place is null ? dim : cyan,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-            ToolTip = place, Margin = new Thickness(0, 0, 7, 0),
+            ToolTip = place,
         };
         Grid.SetColumn(placeValue, 1);
         row.Children.Add(placeValue);
 
-        // The segmented control (mock: hairline frame radius 4 padding 2, gap 2; active segment
-        // amber-faint fill + amber-strong 1px border radius 3; text 8 bold, amber when active,
-        // dim idle). BOTH segments carry a 1px border - the idle one transparent - so a mode
-        // flip never shifts the row by the border's width (the mock's active chrome is an
-        // absolutely positioned overlay, which never costs layout).
-        var seg = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var mode in new[] { "PLANNER", "PINNED" })
-        {
-            var m = mode;
-            var on = _tradeMode == m;
-            var segText = new TextBlock
-            {
-                Text = m, FontSize = 8, FontWeight = FontWeights.Bold,
-                Foreground = on ? accent : dim,
-            };
-            var segCell = new Border
-            {
-                Padding = new Thickness(8, 2, 8, 2),   // mock segment padding 2px 8px
-                CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1),
-                BorderBrush = on ? Hud.Br("AccentStrongBrush") : System.Windows.Media.Brushes.Transparent,
-                Background = on ? Hud.Br("AccentFaintBrush") : System.Windows.Media.Brushes.Transparent,
-                Cursor = Cursors.Hand, Child = segText,
-                Margin = new Thickness(m == "PLANNER" ? 0 : 2, 0, 0, 0),   // mock gap 2
-            };
-            segCell.MouseLeftButtonUp += (_, e) =>
-            {
-                e.Handled = true;
-                if (_tradeMode == m) return;
-                _tradeMode = m;
-                Logger.Info($"[UI] overlay trade: mode {_tradeMode}");
-                RebuildTradePanel();
-            };
-            seg.Children.Add(segCell);
-        }
-        var segFrame = new Border
-        {
-            BorderBrush = (Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(2), Child = seg, VerticalAlignment = VerticalAlignment.Center,
-        };
-        Grid.SetColumn(segFrame, 2);
-        row.Children.Add(segFrame);
         TradePanelItems.Children.Add(row);
-    }
-
-    // PINNED mode: the pre-planner body of RebuildTradePanel, moved here verbatim (overlay
-    // planner spec, 2026-08-02) - the mode dispatch above is the only reason for the split.
-    private void BuildPinnedSection()
-    {
-        var fg = (System.Windows.Media.Brush)FindResource("FgBrush");
-        var dim = (System.Windows.Media.Brush)FindResource("FgDimBrush");
-        var gold = (System.Windows.Media.Brush)FindResource("GoldBrush");
-        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
-        var ok = (System.Windows.Media.Brush)FindResource("OkBrush");
-        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
-
-        // FontFamily is NEVER assigned null: WPF rejects it outright with "'' is not a valid value
-        // for property 'FontFamily'", which crashed the app the first time this tab was opened.
-        // Leaving the property unset inherits from the panel, which is what the non-mono lines want.
-        TextBlock Line(string text, System.Windows.Media.Brush brush, double size, bool mn = false)
-        {
-            var tb = new TextBlock
-            {
-                Text = text, Foreground = brush, FontSize = size, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 3),
-            };
-            if (mn) tb.FontFamily = mono;
-            return tb;
-        }
-
-        // WHERE YOU ARE now renders above BOTH modes - the fused top row (BuildTradeTopRow,
-        // mock nexus-design-lab/overlay-trade-v2 candidate B) carries it for this mode too.
-
-        if (_pinnedRoutes.Count == 0)
-        {
-            TradePanelItems.Children.Add(Line(
-                "No routes pinned. Pin one in Trade > Planner and it shows here and on the Starmap.",
-                dim, 11.5));
-            return;
-        }
-
-        // Terminals, resolved once for the whole rebuild: a TradeRoute carries price rows, not
-        // terminals, and both the leg distance and the progress rail need the real MarketTerminal
-        // to reach the geometry catalog.
-        var terminals = App.Market.Snapshot?.Terminals.Rows.ToDictionary(t => t.Id);
-        var here = App.Player.Current;
-
-        foreach (var route in _pinnedRoutes)
-            TradePanelItems.Children.Add(BuildTradeCard(route, terminals, here, fg, dim, gold, accent, mono));
-    }
-
-    // One Manifest Strip card. Every required value is on it: start, end, distance,
-    // commodity, SCU - plus the per-SCU margin the shipped version already carried, and a close.
-    private Border BuildTradeCard(
-        AcceptedRoute route,
-        IReadOnlyDictionary<int, MarketTerminal>? terminals,
-        MapObject? here,
-        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim,
-        System.Windows.Media.Brush gold, System.Windows.Media.Brush accent,
-        System.Windows.Media.FontFamily mono)
-    {
-        // A null buy terminal marks a SELL-ONLY pin (the Sell tab's own PIN TO OVERLAY): the
-        // player already holds the cargo, so the card has no FROM, no band and no fixed leg
-        // length - it shows SELL AT plus a live from-here distance instead.
-        bool sellOnly = route.BuyTerminalId is null;
-        MarketTerminal? buyTerminal = null, sellTerminal = null;
-        if (route.BuyTerminalId is { } buyId) terminals?.TryGetValue(buyId, out buyTerminal);
-        terminals?.TryGetValue(route.SellTerminalId, out sellTerminal);
-
-        var rows = new StackPanel();
-
-        // Line 1: commodity, then what the run is worth - SCU and per-SCU margin together, since
-        // both answer the same question and neither earns a line of its own on a card this size.
-        // Per-unit rather than the trip total: the total depends on a ship and a budget the player
-        // may have changed since pinning, while the margin is a property of the route itself.
-        // The right margin is the close control's landing strip.
-        var head = new Grid { Margin = new Thickness(0, 0, 16, 7) };
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var commodity = new TextBlock
-        {
-            Text = route.CommodityName, FontSize = 12.5, FontWeight = FontWeights.Bold, Foreground = gold,
-            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = route.CommodityName,
-        };
-        head.Children.Add(commodity);
-        var scu = new TextBlock
-        {
-            Text = $"{route.TripQty} SCU", FontFamily = mono, FontSize = 11, FontWeight = FontWeights.Bold,
-            Foreground = accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-        };
-        Grid.SetColumn(scu, 1);
-        head.Children.Add(scu);
-        var margin = new TextBlock
-        {
-            Text = $"{route.PerScuMargin:N0}/SCU", FontFamily = mono, FontSize = 9.5, Foreground = dim,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 1, 0, 0),
-            // The age is on the card because these numbers are a SNAPSHOT, not a live quote: a
-            // pinned route the current ranking does not contain keeps the figures it had when it
-            // was last ranked, and a margin quoted as though it were current would be the one lie
-            // this panel could tell. Sell-only pins hold a sell PRICE here, not a margin - there
-            // is no buy side to subtract - and the tooltip says which it is.
-            ToolTip = sellOnly
-                ? $"Sell price per SCU when this pin was last refreshed "
-                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)})."
-                : $"Margin per SCU when this route was last ranked "
-                    + $"({MarketNotice.FormatAge(DateTime.UtcNow - route.UpdatedUtc)}).",
-        };
-        Grid.SetColumn(margin, 2);
-        head.Children.Add(margin);
-        rows.Children.Add(head);
-
-        if (sellOnly)
-        {
-            // Sell-only card: the destination on its own line, and a LIVE from-here distance -
-            // the run starts wherever the player is, so unlike a route leg this number tracks
-            // the same App.Locations updates that repaint this panel. Null (unknown position,
-            // unplaceable terminal, or a jump point between) renders the honest "distance n/a".
-            rows.Children.Add(TradeEndLine("SELL AT", route.SellTerminalName, fg, dim, sellTerminal?.System));
-            var fromHere = App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal));
-            rows.Children.Add(new TextBlock
-            {
-                Text = fromHere is { } fh ? $"{MapCatalog.FormatGm(fh)} from here" : "distance n/a",
-                FontFamily = mono, FontSize = 9.5, Foreground = dim, Margin = new Thickness(0, 2, 0, 0),
-            });
-        }
-        else
-        {
-            // Line 2: where the run starts, on its own full-width line.
-            rows.Children.Add(TradeEndLine("FROM", route.BuyTerminalName, fg, dim, buyTerminal?.System));
-
-            // Line 3: the band. End caps for the two stops, a fill and a ship marker for how far
-            // along the player is. With no usable position reading the band stays a bare rail with
-            // unlit caps rather than implying a position (absent-not-placeholder).
-            var frac = RouteProgress.Fraction(
-                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(buyTerminal)),
-                App.Map.DistanceMeters(here, App.Map.ResolveTerminal(sellTerminal)));
-            rows.Children.Add(BuildTradeBand(frac, dim, accent, gold));
-
-            // Line 4: how far the run is, and where it ends. Distance sits left, under the band's
-            // start cap; the destination is right-aligned under its own end cap, so the line reads
-            // as the band's own footnote rather than as a second list of facts.
-            var foot = new Grid { Margin = new Thickness(0, 2, 0, 0) };
-            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var legMeters = App.Map.DistanceMeters(buyTerminal, sellTerminal);
-            var distance = new TextBlock
-            {
-                // Null covers both an unplaceable terminal and a run that crosses a jump point,
-                // where a straight line is not the distance flown and a number would be a lie.
-                Text = legMeters is { } m ? MapCatalog.FormatGm(m) : "distance n/a",
-                FontFamily = mono, FontSize = 9.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
-            };
-            foot.Children.Add(distance);
-            // Destination with its inline system suffix (SystemSuffixedName): the destination only
-            // appears on this footnote line in the full-route card.
-            var to = SystemSuffixedName(route.SellTerminalName, sellTerminal?.System, dim, dim, 11);
-            to.Margin = new Thickness(8, 0, 0, 0);
-            to.TextAlignment = TextAlignment.Right;
-            Grid.SetColumn(to, 1);
-            foot.Children.Add(to);
-            rows.Children.Add(foot);
-        }
-
-        // The close sits over the card's top-right corner rather than inside the head row, so the
-        // commodity name gets the full width when there is nothing to close over.
-        var body = new Grid();
-        body.Children.Add(rows);
-        var glyph = new TextBlock
-        {
-            Text = "×", FontSize = 14, Foreground = dim,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-        };
-        // The hit target is the BORDER, with a transparent background: a bare TextBlock only
-        // hit-tests its own glyph outline, which at this size is a couple of hairlines to aim at
-        // while flying. 18x18 gives it a real target without widening the card.
-        var close = new Border
-        {
-            Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand,
-            Width = 18, Height = 18, Child = glyph, ToolTip = "Unpin this route",
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, -4, -16, 0),
-        };
-        close.MouseEnter += (_, _) => glyph.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
-        close.MouseLeave += (_, _) => glyph.Foreground = dim;
-        close.MouseLeftButtonUp += (_, e) =>
-        {
-            e.Handled = true;
-            Logger.Info($"[UI] overlay trade: unpin {route.CommodityName}");
-            UnpinRouteRequested?.Invoke(route);
-        };
-        body.Children.Add(close);
-
-        // EVERY card looks the same. An earlier pass tinted and outlined the card in amber while
-        // the player stood at one of its stops; that behavior was rejected twice (2026-08-01), and
-        // rightly so: the band already lights that end's cap, which is candidate D's own way of
-        // saying it. A second signal for the same fact turned an accent into a background colour.
-        return new Border
-        {
-            Background = (System.Windows.Media.Brush)FindResource("Bg2Brush"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1), Padding = new Thickness(9, 7, 20, 8),
-            Margin = new Thickness(0, 0, 0, 7), Child = body,
-        };
-    }
-
-    // One full-width run line: an eyebrow key ("FROM") and the terminal name beside it, the name
-    // taking every pixel left over so it trims only when it genuinely has to.
-    private static FrameworkElement TradeEndLine(string key, string name,
-        System.Windows.Media.Brush fg, System.Windows.Media.Brush dim, string? system = null)
-    {
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.Children.Add(new TextBlock
-        {
-            Text = key, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = dim,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
-        });
-        var value = SystemSuffixedName(name, system, fg, dim, 11);
-        Grid.SetColumn(value, 1);
-        grid.Children.Add(value);
-        return grid;
     }
 
     // Terminal name with the system riding DIRECTLY after it, hyphen-separated (live-pass
@@ -4220,71 +4116,6 @@ public partial class OverlayWindow : Window
         return value;
     }
 
-    // The flight band (mock candidate D): a rail spanning the card, an end cap per stop, and - when
-    // the player's position is known - a fill and a ship marker riding it. Built from two star
-    // columns sized by the fraction rather than a width animation, and the fill STRETCHES into its
-    // column: the planner's own trip bar shipped invisible for a week because a Border with no
-    // child and a Left alignment arranges at its DesiredSize (zero), not the available width.
-    private FrameworkElement BuildTradeBand(double? frac,
-        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent, System.Windows.Media.Brush gold)
-    {
-        // Two nested grids on purpose. The OUTER one carries the caps at its own two edges; the
-        // INNER one is inset by half a cap at each end and is where the fraction split happens, so
-        // the fill runs exactly cap-centre to cap-centre and the ship marker lands on the boundary
-        // at every fraction, including both extremes. Splitting the outer grid instead would
-        // overshoot the right cap by half its width at frac = 1.
-        var host = new Grid { Height = TradeBandHeight, Margin = new Thickness(0, 0, 0, 1) };
-
-        var inner = new Grid { Margin = new Thickness(TradeBandCapSize / 2, 0, TradeBandCapSize / 2, 0) };
-        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac ?? 0, GridUnitType.Star) });
-        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - (frac ?? 0), GridUnitType.Star) });
-
-        var rail = new Border
-        {
-            Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
-            Background = (System.Windows.Media.Brush)FindResource("CyanDimBrush"), IsHitTestVisible = false,
-        };
-        Grid.SetColumnSpan(rail, 2);
-        inner.Children.Add(rail);
-
-        if (frac is not null)
-        {
-            inner.Children.Add(new Border
-            {
-                Height = 2, CornerRadius = new CornerRadius(1), VerticalAlignment = VerticalAlignment.Center,
-                IsHitTestVisible = false,
-                Background = new System.Windows.Media.LinearGradientBrush(
-                    ((System.Windows.Media.SolidColorBrush)accent).Color,
-                    ((System.Windows.Media.SolidColorBrush)gold).Color,
-                    new Point(0, 0.5), new Point(1, 0.5)),
-            });
-            inner.Children.Add(new System.Windows.Shapes.Path
-            {
-                Data = System.Windows.Media.Geometry.Parse(TradeShipGeometry),
-                Fill = gold, Stretch = System.Windows.Media.Stretch.Uniform,
-                Width = TradeBandShipSize, Height = TradeBandShipSize, IsHitTestVisible = false,
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, -TradeBandShipSize / 2, 0),
-            });
-        }
-
-        host.Children.Add(inner);
-        host.Children.Add(TradeBandCap(HorizontalAlignment.Left, lit: frac is 0, dim, accent));
-        host.Children.Add(TradeBandCap(HorizontalAlignment.Right, lit: frac is 1, dim, accent));
-        return host;
-    }
-
-    // One end cap, aligned to its own edge of the band. Lit means the player is standing there.
-    private System.Windows.Shapes.Ellipse TradeBandCap(HorizontalAlignment side, bool lit,
-        System.Windows.Media.Brush dim, System.Windows.Media.Brush accent) => new()
-    {
-        Width = TradeBandCapSize, Height = TradeBandCapSize, StrokeThickness = 1.5,
-        Stroke = lit ? accent : dim,
-        Fill = lit ? accent : (System.Windows.Media.Brush)FindResource("BgBrush"),
-        HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Center,
-        IsHitTestVisible = false,
-    };
-
     // ── PLANNER mode (overlay planner spec, 2026-08-02; revision R2: mini planner) ─────────────
     // The top 5 routes ranked with the exact persisted settings the main planner uses
     // (TradePlanArgs is the shared interpretation seam, so the two surfaces cannot drift). R2
@@ -4304,7 +4135,7 @@ public partial class OverlayWindow : Window
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var mono = (System.Windows.Media.FontFamily)FindResource("MonoFont");
 
-        // Same dim-note idiom as the PINNED empty state (Line, BuildPinnedSection).
+        // The tab's dim-note idiom for an empty/blocked state.
         TextBlock Note(string text) => new()
         {
             Text = text, Foreground = dim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap,
@@ -4956,11 +4787,12 @@ public partial class OverlayWindow : Window
             Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand,
             Width = 18, Height = 18, Child = star, VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(3.5, 0, -3.5, 0),
-            // The main chip's own toggle vocabulary (ApplyPinChipVisual), worded for this
-            // surface: PINNED is the mode strip one click away, not another window.
+            // The main chip's own toggle vocabulary (ApplyPinChipVisual), worded for this surface.
+            // Named CARGO, not PINNED, since the PLANNER | PINNED mode switch was deleted
+            // (trade/cargo fusion spec, 2026-08-09 section 5) - the list now shows on the CARGO tab.
             ToolTip = pinned
-                ? "Stop showing this route in PINNED here and on the Starmap."
-                : "Pin this route: it shows in PINNED here and on the Starmap.",
+                ? "Stop showing this route on the CARGO tab and on the Starmap."
+                : "Pin this route: it shows on the CARGO tab and on the Starmap.",
         };
         hit.MouseEnter += (_, _) => star.Stroke = gold;
         hit.MouseLeave += (_, _) => star.Stroke = restingStroke;

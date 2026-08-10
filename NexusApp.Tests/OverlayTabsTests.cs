@@ -25,4 +25,14 @@ public class OverlayTabsLabelTests
     {
         Assert.Equal("[WIN] Overlay tab: scan -> guides", OverlayTabs.SwitchLogLine("scan", "guides"));
     }
+
+    // Trade/cargo fusion spec, 2026-08-09 section 5: the HAULING tab's label became CARGO, but its
+    // id must not change - it is persisted in AppSettings as the restored tab, and changing it would
+    // reset every user's tab on upgrade.
+    [Fact]
+    public void HaulingId_IsUnchanged_ButLabelIsCargo()
+    {
+        Assert.Contains("hauling", OverlayTabs.Ids);
+        Assert.Equal("CARGO", OverlayTabs.LabelFor("hauling"));
+    }
 }

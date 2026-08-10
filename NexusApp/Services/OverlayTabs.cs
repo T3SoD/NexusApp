@@ -7,6 +7,10 @@ public static class OverlayTabs
     // "trade" shipped 2026-08-01 (app review: the overlay carried no trade information at all, on
     // the one surface that is actually on screen while you fly a route). It had been reserved here
     // with a label and a glyph since the tab strip was built, so turning it on is this one entry.
+    //
+    // "hauling" keeps its id even though its label became "CARGO" (trade/cargo fusion spec,
+    // 2026-08-09, section 5): this id is persisted in AppSettings as the restored tab, and changing
+    // it would reset every user's tab on upgrade. Only LabelFor's display string changed.
     public static readonly string[] Ids = ["stats", "scan", "orders", "shopping", "hauling", "guides", "trade"];
 
     public const string Default = "stats";
@@ -17,13 +21,16 @@ public static class OverlayTabs
         => saved is not null && Array.IndexOf(Ids, saved) >= 0 ? saved : Default;
 
     // Display labels for the strip's pill and hover chips.
+    // "hauling" -> "CARGO" (trade/cargo fusion spec, 2026-08-09, section 5): the tab folds the
+    // deleted PLANNER/PINNED accepted-routes display in beside contracts, so the label now names
+    // what the tab actually holds. The id stays "hauling" - see the comment on Ids above.
     public static string LabelFor(string id) => id switch
     {
         "stats" => "HUB",
         "scan" => "SCAN",
         "orders" => "REFINERY",
         "shopping" => "SHOPPING",
-        "hauling" => "HAULING",
+        "hauling" => "CARGO",
         "guides" => "GUIDES",
         "trade" => "TRADE",
         _ => id.ToUpperInvariant(),
