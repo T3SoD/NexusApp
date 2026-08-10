@@ -94,10 +94,13 @@ public class ConversionDisplayTests
         Assert.Contains("BuildConversionBar", src);
     }
 
+    // Moved off Trade onto Cargo Hauling (task B4, spec 2026-08-09 section 2.3/3): this panel was
+    // TradePage.Profit.cs, a partial of TradePage; it is now MoneyPanel.cs, a self-contained
+    // control hosted by HaulingPage.
     [Fact]
-    public void TradeProfitPanel_RendersTheConversionBar()
+    public void MoneyPanel_RendersTheConversionBar()
     {
-        var src = SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs");
+        var src = SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs");
         Assert.Contains("BuildConversionBar", src);
     }
 
@@ -106,7 +109,7 @@ public class ConversionDisplayTests
     public void BothConversionBars_AppendTheUnit()
     {
         Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
-        Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs"));
+        Assert.Contains("\" aUEC\"", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
     }
 
     // EXPECTED needs a route's sell price, which does not exist yet. Passing anything but null here
@@ -115,7 +118,7 @@ public class ConversionDisplayTests
     public void ExpectedIsNotYetComputedOnEitherSurface()
     {
         Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\OverlayWindow.xaml.cs"));
-        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\TradePage.Profit.cs"));
+        Assert.Contains("expected: null", SourceFiles.ReadAppSource(@"Views\MoneyPanel.cs"));
     }
 
     // ── Filter shelves (spec section 2.2) ──────────────────────────────────────────

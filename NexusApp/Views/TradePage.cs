@@ -110,15 +110,14 @@ public sealed partial class TradePage : UserControl
         Grid.SetRow(stripRow, 1);
         root.Children.Add(stripRow);
 
-        // Context row plus the session profit panel that expands in place under it (issue #39,
-        // TradePage.Profit.cs). One stack in the same grid row: the row keeps its old top margin,
-        // the stack carries the old bottom margin, so the collapsed layout is unchanged.
+        // Context row (mock .ctxrow, index.html:1113-1131). It used to carry the session profit
+        // panel beneath it as well (issue #39, TradePage.Profit.cs); that panel moved to Cargo
+        // Hauling with the rest of the money surfaces (spec 2026-08-09, the verb split - "Trade is
+        // a catalogue; the money belongs with the work"), so this stack now holds just the row.
+        // Kept as a StackPanel rather than folded away: the row's own top margin and this stack's
+        // bottom margin are what keep the collapsed layout's spacing unchanged.
         var contextBlock = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
         contextBlock.Children.Add(BuildContextRow());
-        // The auto-load panel moved to Cargo Hauling (spec 2026-08-09, the verb split): a countdown
-        // belongs with the cargo it is loading, not with the catalogue you shop from. Contract cargo
-        // auto-loads through the same kiosk and never had a countdown while this lived here.
-        contextBlock.Children.Add(BuildProfitPanel());
         Grid.SetRow(contextBlock, 2);
         root.Children.Add(contextBlock);
 
@@ -172,18 +171,13 @@ public sealed partial class TradePage : UserControl
         // live session backs the reading), so game start/exit repaints it, not only a move.
         // StateChanged still fires on process flips even while the log monitor is stopped: the
         // session relays the shared feed's probe regardless of its own attachment.
-        // The profit chip's OFFLINE dimming keys on the same probe, so it repaints on the same flips.
-        App.GameLog.StateChanged += () => Dispatcher.BeginInvoke(() => { if (IsVisible) { RefreshContextRow(); RefreshProfitSurfaces(); } });
+        // The money surfaces' own OFFLINE dimming keys on the same probe (MoneyPanel.cs, moved off
+        // this page 2026-08-09), so this page's half of the subscription is only the context row now.
+        App.GameLog.StateChanged += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshContextRow(); });
         // SCT is a worker-thread raise (the service documents it), so this marshals like the other
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
         // age pill and every corroboration badge waited for the next hourly market tick.
         App.Sct.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshSctSurfaces(); });
-        // Session profit ticks (issue #39): same visibility gate as the other live feeds - a
-        // settlement that lands while the user is elsewhere is caught by Refresh() on re-entry.
-        App.Profit.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
-        // Wallet ticks (OCR wallet, 2026-08-06): a confirmed capture, an untracked row or a manual
-        // set repaints the WALLET block atop the same panel; same visibility gate as the profit tick.
-        App.Wallet.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
         // The old SctConsentChanged subscription is gone with the separate toggle. Turning market
         // data off publishes no snapshot and so raises no Changed, but the painted SCT badges still
         // have to leave the screen - MainWindow's consent strip calls Refresh() on this page for
@@ -212,7 +206,6 @@ public sealed partial class TradePage : UserControl
         _lastLiveLocation = App.Locations.LastKnownLocation;   // this pass ranks on it, so the
                                                                  // rebuild guard starts from here
         RefreshContextRow();
-        RefreshProfitSurfaces();
         RebuildPlanner();
         RebuildSell();
         RebuildPrices();
@@ -276,7 +269,7 @@ public sealed partial class TradePage : UserControl
     //
     // Body visibility uses Visibility, never Height (WPF has no cheap height-to-auto): collapse is
     // an instant flip and expand is a QuickRevealMs fade + 12px rise on Motion.Settle, snapped under
-    // Motion.Reduced - the exact house idiom ToggleProfitPanel already uses (TradePage.Profit.cs).
+    // Motion.Reduced - the exact house idiom ToggleProfitPanel already uses (MoneyPanel.cs).
     // The chevron rotates 0<->90 on Motion.ChipFadeMs/Settle, also snapped under Reduced.
     private (FrameworkElement Container, TextBlock Summary) BuildFilterShelf(
         FrameworkElement body, string flowName, Func<bool> getExpanded, Action<bool> setExpanded)
@@ -348,7 +341,7 @@ public sealed partial class TradePage : UserControl
             ApplyExpandedState(expanded);
 
             // Chevron 0<->90 on ChipFadeMs/Settle, snapping under Reduced - exact house idiom
-            // (TradePage.Profit.cs, ToggleProfitPanel).
+            // (MoneyPanel.cs, ToggleProfitPanel).
             if (Motion.Reduced)
             {
                 chevronT.BeginAnimation(RotateTransform.AngleProperty, null);
@@ -715,7 +708,7 @@ public sealed partial class TradePage : UserControl
     // ── Context row (mock .ctxrow, index.html:1113-1131) ─────────────────────────────────────
     private FrameworkElement BuildContextRow()
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 16, 0, 0) };   // mock:143 top margin; the bottom 18 moved to the ctor's contextBlock so the profit panel can attach here
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 16, 0, 0) };   // mock:143 top margin; the bottom 18 lives on the ctor's contextBlock wrapper
 
         _originChip = BuildOriginChip();
         row.Children.Add(_originChip);
@@ -730,10 +723,8 @@ public sealed partial class TradePage : UserControl
             row.Children.Add(pill);
         }
 
-        // SESSION PROFIT chip (issue #39, mock .plChip): pill grammar, no lamp, click expands the
-        // profit panel in place below this row. Built in TradePage.Profit.cs.
-        row.Children.Add(Sep());
-        row.Children.Add(BuildProfitChip());
+        // The SESSION PROFIT chip (issue #39, mock .plChip) used to close this row here; it moved
+        // to Cargo Hauling with the rest of the money surfaces (spec 2026-08-09, MoneyPanel.cs).
 
         RefreshContextRow();
         RefreshScopePills();

@@ -22,6 +22,7 @@ public sealed class HaulingPage : UserControl
     private readonly StackPanel _body = new();
     private Button? _clearBtn;   // built once in the header; visibility toggled by Refresh()
     private AutoLoadStatusLine? _autoLoadPanel;   // moved off Trade 2026-08-09; app-lifetime, started once
+    private MoneyPanel? _moneyPanel;   // moved off Trade 2026-08-09 (task B4); repainted via Refresh()
 
     // Row-insert highlight identity: haul id + leg/objective key, tracked across rebuilds so the
     // one-shot flash only ever plays once per row, on the Refresh() where it first appears.
@@ -51,6 +52,13 @@ public sealed class HaulingPage : UserControl
     /// <summary>Rebuild every section from the current App.Hauls state.</summary>
     public void Refresh()
     {
+        // Money surfaces (task B4): MoneyPanel gates its own live subscriptions on IsVisible, so a
+        // settlement or a capture that lands while the user is elsewhere is missed on purpose - this
+        // unconditional call is what catches it on re-entry, the same contract TradePage.Refresh()
+        // gave these surfaces before the move. MainWindow.InitHaulingPage calls this page's own
+        // Refresh() on every visit, so no extra wiring is needed there.
+        _moneyPanel?.Refresh();
+
         _body.Children.Clear();
 
         // The very first Refresh() (page construction) only seeds row identity - no light show on
@@ -80,6 +88,7 @@ public sealed class HaulingPage : UserControl
     {
         var root = new Grid { Margin = new Thickness(20, 16, 20, 16) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // header
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // money panel
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // auto-load
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // content
 
@@ -103,6 +112,15 @@ public sealed class HaulingPage : UserControl
             "Work you have taken on: contracts, loading and payout.", actions);
         Grid.SetRow(header, 0); root.Children.Add(header);
 
+        // Money surfaces, moved here from Trade (task B4, spec 2026-08-09 section 2.3/3, the verb
+        // split - "Trade is a catalogue; the money belongs with the work"). Sits above the
+        // auto-load panel per the spec's section 3 ordering (money bar, then AUTO-LOADING). Built
+        // once, like the auto-load panel below it; MoneyPanel wires its own live subscriptions and
+        // Refresh() below repaints it on every page entry.
+        _moneyPanel = new MoneyPanel();
+        _moneyPanel.Margin = new Thickness(0, 0, 0, 12);
+        Grid.SetRow(_moneyPanel, 1); root.Children.Add(_moneyPanel);
+
         // Auto-load countdown, moved here from Trade (spec 2026-08-09, the verb split). Lifetime is
         // caller-owned and this page is an app-lifetime singleton like TradePage, so Start() once
         // here and never Stop(): App.AutoLoad is a shared, lock-guarded singleton and each status
@@ -111,14 +129,14 @@ public sealed class HaulingPage : UserControl
         _autoLoadPanel = new AutoLoadStatusLine(compact: false, surfaceName: "hauling");
         _autoLoadPanel.Start();
         _autoLoadPanel.Margin = new Thickness(0, 0, 0, 12);
-        Grid.SetRow(_autoLoadPanel, 1); root.Children.Add(_autoLoadPanel);
+        Grid.SetRow(_autoLoadPanel, 2); root.Children.Add(_autoLoadPanel);
 
         var scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = _body,
         };
-        Grid.SetRow(scroller, 2); root.Children.Add(scroller);
+        Grid.SetRow(scroller, 3); root.Children.Add(scroller);
 
         Content = root;
     }

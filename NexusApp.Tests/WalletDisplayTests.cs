@@ -207,9 +207,10 @@ public class WalletDisplayTests
     // ProfitDisplay.LedgerHiddenCount only ever sees the int its caller hands it; it cannot tell
     // whether that total included purchases. This pins the arithmetic against a purchase-inclusive
     // total (the exact regression shape: 30 trades, 5 untracked, 40 purchases), but it cannot
-    // reach TradePage.Profit.cs's own call site directly, since that WPF view code does not
-    // compile in this test project. The merge-side test above covers the row-dropping behaviour;
-    // this one covers only the fold-note arithmetic in isolation.
+    // reach MoneyPanel.cs's own call site directly (moved off TradePage.Profit.cs 2026-08-09,
+    // task B4), since that WPF view code does not compile in this test project. The merge-side
+    // test above covers the row-dropping behaviour; this one covers only the fold-note arithmetic
+    // in isolation.
     [Fact]
     public void LedgerHiddenCount_AccountsForAPurchaseInclusiveTotal()
     {

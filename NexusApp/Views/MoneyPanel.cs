@@ -16,12 +16,18 @@ using NexusApp.Services;
 namespace NexusApp.Views;
 
 // Session profit surfaces (issue #39, spec docs/superpowers/specs/2026-08-05-session-profit-
-// tracker.md sections 5/6/9; mock nexus-design-lab/profit-tracker). The SESSION PROFIT chip in
-// the context row and the expanding panel under it: the 40px net, the derivation line, the
-// ledger rows (voided rows stay, dim, with their refusal code), the PROFIT HISTORY strip folded
-// by local calendar day (section 9 ruling 4), and the footer caveat. All arithmetic and copy
-// live in ProfitDisplay; this partial only paints.
-public sealed partial class TradePage
+// tracker.md sections 5/6/9; mock nexus-design-lab/profit-tracker). The SESSION PROFIT chip and
+// the expanding panel under it: the 40px net, the derivation line, the ledger rows (voided rows
+// stay, dim, with their refusal code), the PROFIT HISTORY strip folded by local calendar day
+// (section 9 ruling 4), and the footer caveat. All arithmetic and copy live in ProfitDisplay;
+// this control only paints.
+//
+// Moved off Trade onto Cargo Hauling (task B4, spec 2026-08-09-trade-cargo-fusion-design.md
+// section 2.3/3: "Trade is a catalogue you browse, Cargo Hauling is the work you took on, and
+// money belongs with the work"). Was TradePage.Profit.cs, a partial of TradePage; is now this
+// self-contained control, hosted by HaulingPage. The code moved as-is - no string, colour, size
+// or animation changed in the move, only the wiring that gets it on screen.
+public sealed class MoneyPanel : UserControl
 {
     private Border _profitChip = null!;
     private TextBlock _profitChipValue = null!;
@@ -31,6 +37,40 @@ public sealed partial class TradePage
     private bool _profitExpanded;
     private long _profitShownNet;          // the panel's last rendered net: the count-up's from-value
     private bool _profitTrendDrawPending;  // trend draw-on rides the expand, never a data tick
+
+    public MoneyPanel()
+    {
+        var stack = new StackPanel();
+        var chip = BuildProfitChip();
+        // The chip lived in TradePage's horizontal context row, where a StackPanel never
+        // constrains a child's width regardless of alignment. This control's own root is
+        // vertical, so without an explicit Left alignment the chip's Border (default Stretch)
+        // would fill the whole row width instead of sizing to its content - a visual change the
+        // move must not make.
+        chip.HorizontalAlignment = HorizontalAlignment.Left;
+        stack.Children.Add(chip);
+        stack.Children.Add(BuildProfitPanel());
+        Content = stack;
+
+        // Live data refresh triggers, each gated on this control actually being on screen - the
+        // same discipline TradePage used while it owned these surfaces: a settlement or a capture
+        // that lands while the user is elsewhere is caught by Refresh() on re-entry instead of
+        // repainting for nobody. HaulingPage collapses its whole page host on navigation away
+        // (MainWindow's SetActivePage), which clears IsVisible here exactly as it did on TradePage.
+        App.Profit.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
+        // Wallet ticks (OCR wallet, 2026-08-06): a confirmed capture, an untracked row or a manual
+        // set repaints the WALLET block atop the same panel; same visibility gate as the profit tick.
+        App.Wallet.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
+        // The profit chip's OFFLINE dimming keys on the game-process probe (StateChanged still
+        // fires on process flips even while the log monitor is stopped, per TradePage's own ORIGIN
+        // chip ruling, 2026-08-04, on the same feed), so it repaints on the same flips.
+        App.GameLog.StateChanged += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshProfitSurfaces(); });
+    }
+
+    /// <summary>Called by HaulingPage.Refresh() on every visit, so a settlement, a capture or a
+    /// process flip that happened while the user was elsewhere is caught immediately - the same
+    /// contract TradePage.Refresh() gave these surfaces before the move.</summary>
+    public void Refresh() => RefreshProfitSurfaces();
 
     // ── Chip (mock .plChip): pill chrome, deliberately NO lamp (S5, F14 one-lamp rule). State
     // rides the value color: green positive, red negative, dim zero-or-empty; OFFLINE dims the
@@ -78,8 +118,8 @@ public sealed partial class TradePage
     }
 
     // ── Panel shell (mock .plPanel: panel fill, 1px line, padding 18 20 16). The mock fuses it
-    // under a bordered context row; this page's context row is bare pills, so the panel stands
-    // 8px below as its own card instead. Collapsed by default, session-only state. ──
+    // under a bordered context row; this control has no context row of its own, so the panel
+    // stands 8px below the chip as its own card instead. Collapsed by default, session-only state. ──
     private FrameworkElement BuildProfitPanel()
     {
         _profitBody = new StackPanel();
@@ -133,7 +173,8 @@ public sealed partial class TradePage
         shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = Motion.Settle });
     }
 
-    // Called on App.Profit.Changed, game-process flips and every page Refresh().
+    // Called on App.Profit.Changed, App.Wallet.Changed, a game-process flip and every
+    // HaulingPage.Refresh() (routed through this control's own Refresh()).
     private void RefreshProfitSurfaces()
     {
         RefreshProfitChip();
@@ -257,6 +298,27 @@ public sealed partial class TradePage
         BuildProfitLedgerSection(txs, App.Wallet.SessionUntracked, voided, entrance, live);
         BuildProfitHistoryStrip();
         BuildProfitFooter(ProfitDisplay.State(settled, net, sessionLive: true) == ProfitState.Negative);
+    }
+
+    // ── CascadeIn: hand-duplicated per page/control by house convention (confirmed: NOT a shared
+    // Hud helper; CommandPage.cs and MainWindow.Codex.cs each keep their own copy on purpose, and
+    // TradePage.cs kept one for its own partials). MoneyPanel keeps its own copy here since the
+    // move off TradePage (spec 2026-08-09) took this one call site with it. ──
+    private static void CascadeIn(FrameworkElement fe, int index)
+    {
+        if (Motion.Reduced) { fe.Opacity = 1; fe.RenderTransform = null; return; }
+        const int riseInPx = 12;
+        const int stepMs = 40;      // MainWindow.xaml.cs:1693, mock MS.cascadeStep
+        const int durMs = 200;      // MainWindow.xaml.cs:1694/mock MS.cascade
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };   // mock QUADOUT
+        var begin = TimeSpan.FromMilliseconds(index * stepMs);
+        var tt = new TranslateTransform(0, riseInPx);
+        fe.RenderTransform = tt;
+        fe.Opacity = 0;
+        fe.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(durMs)) { BeginTime = begin, EasingFunction = ease });
+        tt.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(riseInPx, 0, TimeSpan.FromMilliseconds(durMs)) { BeginTime = begin, EasingFunction = ease });
     }
 
     // ── Ledger (mock .ledgerHead/.row): newest first, voided rows stay at 0.45 opacity with the
@@ -444,10 +506,10 @@ public sealed partial class TradePage
 
     private bool _walletEditorOpen;   // survives panel rebuilds; the TextBox itself does not
 
-    // The conversion bar, desktop variant. A per-page copy rather than a shared helper, the house
-    // convention for chrome builders (CascadeIn is hand-duplicated per page on purpose): this one
-    // renders every segment and uses the page's Hud accessors, while the overlay's copy is capped
-    // at two segments by its 320px width.
+    // The conversion bar, desktop variant. A per-surface copy rather than a shared helper, the
+    // house convention for chrome builders (CascadeIn is hand-duplicated per page/control on
+    // purpose): this one renders every segment and uses the shared Hud accessors, while the
+    // overlay's copy is capped at two segments by its 320px width.
     private Border BuildConversionBar(IReadOnlyList<ConversionSegment> segs, double height)
     {
         var grid = new Grid { Height = height };
@@ -1149,7 +1211,7 @@ public sealed partial class TradePage
     // CountUpMs and Settle), seeded from the prior net instead of 0: S5 mandates the number never
     // restarts at zero, which is exactly what CountUp.cs does for fresh RS readings. ──
     private static readonly DependencyProperty ProfitCountProperty = DependencyProperty.RegisterAttached(
-        "ProfitCount", typeof(double), typeof(TradePage), new PropertyMetadata(0.0, OnProfitCountChanged));
+        "ProfitCount", typeof(double), typeof(MoneyPanel), new PropertyMetadata(0.0, OnProfitCountChanged));
 
     private static void OnProfitCountChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
     {

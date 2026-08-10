@@ -265,10 +265,11 @@ public sealed partial class TradePage
     internal event Action<double?>? SessionBudgetChanged;
 
     // WALLET budget chip refresh: reads the live wallet estimate through the same WalletDisplay.
-    // State fold every other wallet surface uses (MainWindow's chip, the Trade profit panel), then
-    // WalletBudgetChip's usability rule decides whether the chip shows at all. Only touches the
-    // slot when the label actually changed (guard mirrors RefreshPrefillChip in TradePage.Sell.cs)
-    // - re-creating an unchanged chip is the exact mid-click bug that idiom exists to avoid.
+    // State fold every other wallet surface uses (MainWindow's chip, the Cargo Hauling money
+    // panel), then WalletBudgetChip's usability rule decides whether the chip shows at all. Only
+    // touches the slot when the label actually changed (guard mirrors RefreshPrefillChip in
+    // TradePage.Sell.cs) - re-creating an unchanged chip is the exact mid-click bug that idiom
+    // exists to avoid.
     private void RefreshWalletChip()
     {
         var w = App.Wallet;

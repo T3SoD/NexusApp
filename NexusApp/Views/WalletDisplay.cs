@@ -8,7 +8,8 @@ namespace NexusApp.Views;
 
 // The wallet block's pure folds (OCR wallet spec sections 5 and 11; superseded-mock state
 // vocabulary carried forward). Everything the WALLET block and the untracked ledger rows render
-// is derived here so TradePage.Profit.cs keeps doing no arithmetic, the ProfitDisplay split.
+// is derived here so MoneyPanel.cs (was TradePage.Profit.cs; moved 2026-08-09, task B4) keeps
+// doing no arithmetic, the ProfitDisplay split.
 internal static class WalletDisplay
 {
     internal const string BlockLabel = "WALLET";
