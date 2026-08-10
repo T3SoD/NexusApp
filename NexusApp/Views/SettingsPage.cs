@@ -630,12 +630,24 @@ public sealed class SettingsPage : UserControl
                 Logger.Info($"[UI] CPU rendering (compatibility): {(on ? "on" : "off")} - takes effect next launch");
             },
         };
+        var exportGameLogBtn = GhostButton("Export Game.log…");
+        exportGameLogBtn.Click += (s, e) =>
+        {
+            var dlg = new GameLogExportDialog(App.GameLogFeed?.Path ?? "") { Owner = Window.GetWindow(this) };
+            dlg.ShowDialog();
+        };
         panel.Children.Add(SectionPanel("Diagnostics", false,
             SettingRow("App Log Monitor",
                 "See Nexus's own activity log live, and save a snapshot (app info + log) to send to the " +
                 "developer if you hit a bug, on Discord or attached to a GitHub issue at " +
                 "github.com/T3SoD/NexusApp/issues.",
                 openAppLogBtn, last: false),
+            SettingRow("Export Game.log",
+                "Save a slice of Star Citizen's own Game.log to a file you can attach to a bug report. " +
+                "Pick the dates and times around what went wrong. Personal details (your handle, " +
+                "account and player ids, IP addresses and your Windows user folder) are removed unless " +
+                "you say otherwise.",
+                exportGameLogBtn, last: false),
             SettingRow("CPU rendering",
                 "If Nexus restarts itself or its window breaks when Star Citizen crashes or quits, " +
                 "turn this on: Nexus draws with the CPU instead of the graphics card, which sidesteps " +
