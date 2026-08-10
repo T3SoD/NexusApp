@@ -117,12 +117,7 @@ public partial class MainWindow : Window
         // BeginInvoke (not Invoke) matches the SettingsPage market subscription, since
         // Market.Dispose only drains an in-flight cycle for up to 3s.
         App.Market.Changed += () => Dispatcher.BeginInvoke(OnMarketDataChanged);
-        MarketChipLabel.Text = MarketNotice.PillLabel;
         InitCodexSellToggle();
-        // Amber edge on hover, the mock's affordance for the one status chip that is clickable.
-        MarketChip.MouseEnter += (_, _) => MarketChip.BorderBrush = Hud.Br("AccentStrongBrush");
-        MarketChip.MouseLeave += (_, _) => MarketChip.BorderBrush = Hud.Br("NavBorderBrush");
-        RefreshMarketPill();
         _vm = new MainViewModel();
         DataContext = _vm;
         _vm.OcrValueReceived    += v => { _overlay?.ReceiveOcrValue(v); _scanIndicator?.FlashGreen(); };
@@ -137,11 +132,10 @@ public partial class MainWindow : Window
         _vm.ScanHistory.CollectionChanged += OnScanHistoryChanged;
 
         _scanChipTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        // The status-strip refresh tick: the WALLET chip's walk across the AGING boundary (age
-        // crossing 30 min raises no event), and the MARKET pill's only route to the two states
-        // nothing raises an event for (a cycle STARTING, and the Settings toggle being flipped).
-        // RefreshMarketPill returns immediately unless the state actually changed.
-        _scanChipTimer.Tick += (_, __) => { UpdateWalletChip(); RefreshMarketPill(); };
+        // The status-strip refresh tick: the WALLET chip's walk across the AGING boundary, since
+        // age crossing 30 min raises no event. The MARKET pill left the strip on 2026-08-10 and
+        // now lives only on the Trade page, which paints it from its own rebuild.
+        _scanChipTimer.Tick += (_, __) => { UpdateWalletChip(); };
         _scanChipTimer.Start();
         UpdateWalletChip();
         // A confirmed capture, an untracked row or a manual set repaints the chip immediately
@@ -579,7 +573,6 @@ public partial class MainWindow : Window
             App.KickSctFetch("market consent");
             RefreshMarketConsent();
             RefreshCodexPrices();
-            RefreshMarketPill();   // the pill appears the moment the feature is turned on
             // Same fan-out reason as RefreshCodexPrices below: answering "Turn on" while standing on
             // TRADE has to repaint that page too, or all three of its flows keep showing the
             // "Turn on live market data..." message until the fetch's Changed lands.
@@ -596,7 +589,6 @@ public partial class MainWindow : Window
             Logger.Info("[NET] market consent: declined");
             RefreshMarketConsent();
             RefreshCodexPrices();
-            RefreshMarketPill();
         };
         // Both buttons are ghost StripButtons by design (mock review ruling): the accent
         // "Turn on" from the mock is deliberately NOT copied.
@@ -1421,101 +1413,11 @@ public partial class MainWindow : Window
         RefreshHeroMarket();
         RefreshCodexPrices();
         RefreshWorkOrderSells();
-        RefreshMarketPill();
     }
 
-    // ── MARKET status pill (top strip) ────────────────────────────────────────
-    // The strip's own chip chrome (MainWindow.xaml, between BLUEPRINTS and SCAN) carrying the state
-    // of the live market data channel, per the approved mock (nexus-design-lab/market-data section
-    // 07B). Not rendered at all when the feature is off - the same silence-over-placeholder rule
-    // the price surfaces follow. Every state differs in TEXT as well as colour, so none of them
-    // rides on colour alone.
-    //
-    // It is polled from the status-strip timer as well as fired from Changed because the service
-    // raises Changed only at the END of a cycle (the same reason SettingsPage disables its refresh
-    // button at click time): a cycle STARTING, and a Settings toggle flip - which raises nothing at
-    // all - would otherwise never reach the pill. The cached state below makes the poll free and,
-    // more importantly, keeps the breathing dot from being restarted every 1.5 seconds.
-    private string? _marketPillState;
-    private string? _marketPillText;
-    // The tooltip is part of the cache key, not just the visuals: in the error state it carries
-    // LastError, and two consecutive failures with DIFFERENT reasons produce the same state and the
-    // same "offline" text. Comparing state and text alone would leave the first failure's reason
-    // showing (a fast-failing cycle can start and fail between two 1.5s polls, so the busy state
-    // that would otherwise break the tie is not guaranteed to be observed).
-    private string? _marketPillTip;
-
-    private void RefreshMarketPill()
-    {
-        if (MarketChip == null) return;
-
-        var (state, text, tip) = MarketPillState();
-        if (state == _marketPillState && text == _marketPillText && tip == _marketPillTip) return;
-        bool stateChanged = state != _marketPillState;
-        _marketPillState = state;
-        _marketPillText = text;
-        _marketPillTip = tip;
-
-        if (state == "off")
-        {
-            MarketChip.Visibility = Visibility.Collapsed;
-            Hud.PulseDot(MarketDot, false);
-            return;
-        }
-
-        // F14 palette: one freshness grammar with the Trade page's UEX pill (same feed, same
-        // colors) - green fresh / amber stale / red for error AND never-fetched. Cyan-fresh died
-        // here because cyan is the app's live-location identity, not its health color; and
-        // "nothing fetched" moved from dim to red because a feed the user enabled that has no
-        // data at all is a missing thing, not an absent-by-choice one.
-        var (dot, value) = state switch
-        {
-            "busy"   => (Hud.Br("AccentBrush"), Hud.Br("FgBrush")),
-            "error"  => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
-            "fresh"  => (Hud.Br("OkBrush"),     Hud.Br("FgBrush")),
-            "nodata" => (Hud.Br("DangerBrush"), Hud.Br("DangerBrush")),
-            _        => (Hud.Br("AccentBrush"), Hud.Br("AccentBrush")),   // stale
-        };
-
-        MarketChip.Visibility = Visibility.Visible;
-        MarketChip.ToolTip = tip;
-        MarketChipText.Text = text;
-        MarketChipText.Foreground = value;
-        MarketDot.Fill = dot;
-        // Pulse only on state transitions: the value text ages now (PillState), so a text-only
-        // repaint (a minute or hour boundary crossing) must not restart the busy breathe from
-        // full opacity mid-loop - the exact artifact the change-guard above exists to prevent.
-        if (stateChanged) Hud.PulseDot(MarketDot, state == "busy");   // amber breathe while a cycle runs; solid otherwise
-    }
-
-    // Which state the pill is in, its value text, and its tooltip - the fold itself is
-    // MarketNotice.PillState, shared grammar with the Trade page's strip pill (2026-08-04:
-    // both TRADE DATA pills show hours since the last update). The age is stamped off the TRADE
-    // price dataset - the exact stamp the strip pill dates (TradePage.RefreshContextRow) - not
-    // RefinedPrices: the two datasets usually share one fetch stamp, but a partial cycle leaves
-    // them apart and the two pills then read different numbers for the same label (observed live
-    // 2026-08-04, 9m against 6m). Still a per-dataset stamp, never the snapshot's newest fetch,
-    // so the old day-old-data-reads-fresh concern stays covered.
-    private (string State, string Text, string Tip) MarketPillState()
-    {
-        // The demo profile never fetches (MarketDataService.ShouldFetch), so a pill there could
-        // only ever read "no data" forever - it stays hidden, exactly like the Settings section
-        // renders its inert Unavailable row instead of the live controls.
-        if (AppPaths.IsDemoProfile || App.Settings.Current.MarketDataEnabled != true)
-            return ("off", "", MarketNotice.PillTooltip);
-
-        var snap = App.Market.Snapshot;
-        var priced = snap is { } s && s.TradePrices.FetchedUtc != default;
-        TimeSpan? age = priced ? DateTime.UtcNow - snap!.TradePrices.FetchedUtc : null;
-        return MarketNotice.PillState(App.Market.FetchInProgress, App.Market.LastError, age);
-    }
-
-    // The pill is a shortcut to the setting that governs it: mouse only, like every other control.
-    private void MarketChip_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        InteractionLog.Click("market status pill", MarketChip);
-        SetActivePage("settings");
-    }
+    // The MARKET (TRADE DATA) status pill left the top strip on 2026-08-10. It now lives only on
+    // the Trade page (TradePage.cs, _uexPill), which is where the data it describes is used: the
+    // strip carried it on every page, including ones with nothing to do with trading.
 
     // Rebuilds the Codex only while it is the page on screen; from anywhere else the prices are
     // picked up by SetActivePage's own BuildReferenceTree when the user next opens the Codex.
