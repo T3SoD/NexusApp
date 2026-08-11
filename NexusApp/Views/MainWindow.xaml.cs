@@ -1122,6 +1122,10 @@ public partial class MainWindow : Window
         _plannerPage?.ShutdownWebViewForUpdate();
         _gridStudioPage?.ShutdownWebViewForUpdate();
         _mapPage?.ShutdownWebViewForUpdate();
+        // Operations hosts its own WebView2 for the system view (redesign 2026-08-10). It holds
+        // file handles under the app directory exactly like the other three, so a portable swap
+        // that skipped it would fail to replace those files.
+        _commandPage?.ShutdownWebViewForUpdate();
     }
 
     private AdminPage? _adminPage;

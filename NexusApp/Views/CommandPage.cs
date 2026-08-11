@@ -1,15 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using NexusApp.Models;
 using NexusApp.Services;
 using NexusApp.ViewModels;
 
@@ -17,20 +14,24 @@ namespace NexusApp.Views;
 
 /// <summary>
 /// Operations dashboard - the command-center landing page, rebuilt on the shared
-/// MOBIGLAS HUD primitives (chamfered panels, reticle hero, glowing status chips,
-/// state progress bars). Aggregates live state from the existing services and is
-/// rebuilt fresh on every visit. Read-only; the navigate callback drills in.
+/// MOBIGLAS HUD primitives (chamfered panels, glowing status chips, state progress
+/// bars). Aggregates live state from the existing services and is rebuilt fresh on
+/// every visit. Read-only; the navigate callback drills in.
+///
+/// <para>This file owns the page frame: the header, the notice strips, the entrance
+/// animation and the live ticker. The body it hosts is the system-view layout in
+/// CommandPage.SystemView.cs.</para>
 /// </summary>
-public sealed class CommandPage : UserControl
+public sealed partial class CommandPage : UserControl
 {
     private readonly Action<string> _navigate;
     private readonly MainViewModel _vm;
     private readonly StackPanel _root = new() { Margin = new Thickness(24, 22, 26, 40) };
 
-    private Grid? _kpiRow;
-
-    /// <summary>The KPI card row, for the welcome tour's Operations step to ring.</summary>
-    public FrameworkElement? KpiRowTarget => _kpiRow;
+    /// <summary>The job card strip, for the welcome tour's Operations step to ring. Named for the
+    /// tour step it serves rather than the cards it points at, so the anchor survives the next
+    /// layout change the way it did not survive this one.</summary>
+    public FrameworkElement? KpiRowTarget => _jobStrip;
 
     // ── Auto-relaunch notice strip (render-crash recovery) ──
     // Session-scoped state: this page is one persistent instance, and both tab-opens and live data
@@ -69,12 +70,10 @@ public sealed class CommandPage : UserControl
 
     // Number Runs/TextBlocks captured fresh on each Refresh(), so PlayEntrance can retrigger
     // their count-up. TextBlock targets (no separately-styled unit alongside the number) go
-    // through the real CountUp.To; Run targets (Refinery Queue "active", Cargo In Transit
-    // "SCU" - a second, differently-styled Run sits next to the number) go through the local
-    // CountUpRun mirror below, since CountUp.cs only supports a whole TextBlock target.
+    // through the real CountUp.To; Run targets (a second, differently-styled unit Run sits next
+    // to the number) go through the local CountUpRun mirror below, since CountUp.cs only supports
+    // a whole TextBlock target.
     private readonly List<(DependencyObject El, double To, string Suffix)> _kpiCountTargets = new();
-
-    private Polyline? _sparklinePoly;
 
     // Full-page overlay layer above the dashboard's ScrollViewer; hosts the install confirmation.
     private readonly Grid _modalHost;
@@ -142,96 +141,70 @@ public sealed class CommandPage : UserControl
         // IsVisible, not Loaded: Operations is a lazy singleton kept permanently in MainWindow's
         // tree, and page switches are pure Visibility toggling, so Loaded/Unloaded never fire for it
         // (the same trap GuidesPage documents for its own hangar line).
-        IsVisibleChanged += (_, _) => { if (IsVisible) StartQueueTicker(); else _queueTicker?.Stop(); };
+        IsVisibleChanged += (_, _) => { if (IsVisible) StartLiveTicker(); else _liveTicker?.Stop(); };
     }
 
-    // ── REMAINING countdown (app review F11) ───────────────────────────────────────────────────
-    // Deliberately NOT a page Refresh on a timer. Refresh rebuilds the entire dashboard's visual
-    // tree, which at one hertz would be indefensible for a number that changes once a minute. This
-    // rewrites the one TextBlock per row that is actually volatile, and only when its text really
-    // changed - WorkOrder.TimerRemainingShort has minute resolution, so 59 ticks in 60 are no-ops
-    // and must not touch the property at all, or WPF invalidates layout for nothing.
-    private readonly List<(WorkOrder Order, TextBlock Cell)> _queueCells = new();
-    private DispatcherTimer? _queueTicker;
+    // The one-hertz clock behind the job strip's two countdown cards (auto load, exec hangar). The
+    // cells themselves and the no-op guard live in CommandPage.SystemView.cs; only the timer is
+    // here, because IsVisible owns its lifetime.
+    //
+    // IsVisible, not Loaded: Operations is a lazy singleton kept permanently in MainWindow's tree,
+    // and page switches are pure Visibility toggling, so Loaded/Unloaded never fire for it (the
+    // same trap GuidesPage documents for its own hangar line).
+    private DispatcherTimer? _liveTicker;
 
-    private void StartQueueTicker()
-    {
-        // Nothing counting down means nothing to tick. A queue of orders that are all ready to
-        // collect, or have no timer at all, leaves the timer stopped rather than spinning.
-        if (!_queueCells.Any(c => c.Order.TimerEnd.HasValue))
-        {
-            _queueTicker?.Stop();
-            return;
-        }
-
-        _queueTicker ??= MakeQueueTicker();
-        _queueTicker.Start();
-    }
-
-    private DispatcherTimer MakeQueueTicker()
+    private DispatcherTimer MakeLiveTicker()
     {
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        timer.Tick += (_, _) => TickQueueCells();
+        timer.Tick += (_, _) => TickLiveCells();
         return timer;
     }
 
-    private void TickQueueCells()
-    {
-        var live = false;
-        foreach (var (order, cell) in _queueCells)
-        {
-            if (order.TimerEnd.HasValue) live = true;
-            var text = QueueRemainingText(order);
-            if (!string.Equals(cell.Text, text, StringComparison.Ordinal))
-            {
-                cell.Text = text;
-                // F14 latent defect (pill inventory P54): the ticker rewrote the text but never
-                // the color, so an order going ready mid-view read "ready" in dim gray until
-                // something forced a full Refresh. The color rule is the row builder's own,
-                // re-applied on the same text-actually-changed guard - 59 no-op ticks in 60
-                // still touch nothing.
-                cell.Foreground = order.Status == WorkOrderStatus.ReadyToCollect
-                    ? UiHelpers.BrushFromHex(order.StatusColorHex) : Br("FgDimBrush");
-            }
-        }
-        // An order whose timer ran out stops being volatile. Its own status transition is owned
-        // elsewhere (WorkOrderEditorPanel raises OrderReadyToCollect, which rebuilds this page), so
-        // all this has to do is stop burning a tick once nothing is counting.
-        if (!live) _queueTicker?.Stop();
-    }
-
-    private static string QueueRemainingText(WorkOrder o) =>
-        !string.IsNullOrEmpty(o.TimerRemainingShort) ? o.TimerRemainingShort
-        : o.Status == WorkOrderStatus.ReadyToCollect ? "ready"
-        : "-";
+    // The header and the strip stack, so Refresh can rebuild those in place. _root itself is
+    // assembled once and never cleared: the body below it hosts the system view's WebView2, which
+    // is a native window, and detaching it from the tree on every live data tick would reparent
+    // that window several times a minute while the player is flying.
+    private readonly ContentControl _headerHost = new();
+    private readonly StackPanel _stripHost = new();
 
     public void Refresh()
     {
-        _root.Children.Clear();
-        _root.Children.Add(HeaderRow());
+        if (_root.Children.Count == 0)
+        {
+            _root.Children.Add(_headerHost);
+            _root.Children.Add(_stripHost);
+            _root.Children.Add(SystemViewFrame());
+        }
+
+        _headerHost.Content = HeaderRow();
+
+        _stripHost.Children.Clear();
         _relaunchStrip = RelaunchStrip();
-        if (_relaunchStrip != null) _root.Children.Add(_relaunchStrip);
+        if (_relaunchStrip != null) _stripHost.Children.Add(_relaunchStrip);
         var postUpdate = PostUpdateStrip();
-        if (postUpdate != null) _root.Children.Add(postUpdate);
+        if (postUpdate != null) _stripHost.Children.Add(postUpdate);
         var swapFailed = SwapFailedStrip();
-        if (swapFailed != null) _root.Children.Add(swapFailed);
+        if (swapFailed != null) _stripHost.Children.Add(swapFailed);
         var customChannel = CustomChannelStrip();
-        if (customChannel != null) _root.Children.Add(customChannel);
+        if (customChannel != null) _stripHost.Children.Add(customChannel);
         var consent = ConsentStrip();
-        if (consent != null) _root.Children.Add(consent);
+        if (consent != null) _stripHost.Children.Add(consent);
         _updateStrip = UpdateStrip();
-        if (_updateStrip != null) _root.Children.Add(_updateStrip);
-        _root.Children.Add(KpiRow());
-        _root.Children.Add(Panels());
+        if (_updateStrip != null) _stripHost.Children.Add(_updateStrip);
+
+        // Rebuilt fresh every Refresh() (tab-open AND live data ticks) - reset the count-up
+        // targets so PlayEntrance only ever sees the current visit's fresh elements.
+        _kpiCountTargets.Clear();
+        FillSystemViewBody();
     }
 
     /// <summary>
-    /// Operations entrance: KPI cascade (fade+rise, 200ms/40ms stagger/12px, cap 5) + a
-    /// count-up retrigger on the 5 KPI numbers + the Last Scan sparkline drawing itself in.
-    /// Called by MainWindow's SetActivePage right after InitCommandPage/Refresh, ONLY on tab
-    /// open - never on the live data ticks that also call Refresh() while the tab stays open.
-    /// The _entrancePlayed flag (reset via ResetEntrance whenever this page is not the active
-    /// one) makes this idempotent for the current visit even if called more than once.
+    /// Operations entrance: job card cascade (fade+rise, 200ms/40ms stagger/12px) plus a count-up
+    /// retrigger on the coverage percentage. Called by MainWindow's SetActivePage right after
+    /// InitCommandPage/Refresh, ONLY on tab open - never on the live data ticks that also call
+    /// Refresh() while the tab stays open. The _entrancePlayed flag (reset via ResetEntrance
+    /// whenever this page is not the active one) makes this idempotent for the current visit even
+    /// if called more than once.
     /// </summary>
     public void PlayEntrance()
     {
@@ -247,15 +220,13 @@ public sealed class CommandPage : UserControl
             CascadeInSingle(_relaunchStrip);
         }
 
-        if (_kpiRow != null) CascadeIn(_kpiRow.Children, maxAnimated: 5);
+        if (_jobStrip != null) CascadeIn(_jobStrip.Children, maxAnimated: 3);
 
         foreach (var (el, to, suffix) in _kpiCountTargets)
         {
             if (el is Run run) CountUpRun(run, to);
             else if (el is TextBlock tb) { CountUp.SetSuffix(tb, suffix); CountUp.SetTo(tb, to); }
         }
-
-        AnimateSparkline();
     }
 
     /// <summary>Clears the entrance-played flag so the next tab-open plays it again.</summary>
@@ -314,37 +285,6 @@ public sealed class CommandPage : UserControl
         run.Text = "0";
         var anim = new DoubleAnimation(0, to, new Duration(TimeSpan.FromMilliseconds(Motion.CountUpMs))) { EasingFunction = Motion.Settle };
         run.BeginAnimation(RunCountProperty, anim);
-    }
-
-    // Sparkline draw-on: StrokeDashOffset animates full-length -> 0 (600ms, Motion.SlideOut),
-    // then the dash is cleared so subsequent live-data rebuilds (fresh Polyline instances) just
-    // render plainly - copies the donut draw-in idiom at NetworkPage.cs (dash units are multiples
-    // of StrokeThickness, so the raw pixel length is divided by it, same as the donut's radius/stroke).
-    private void AnimateSparkline()
-    {
-        var poly = _sparklinePoly;
-        if (poly == null || poly.Points.Count < 2) return;
-        double lenPx = PolylineLength(poly.Points);
-        if (lenPx <= 0) return;
-        double dashLen = lenPx / poly.StrokeThickness;
-
-        poly.StrokeDashArray = new DoubleCollection { dashLen };
-        poly.StrokeDashOffset = dashLen;
-        var anim = new DoubleAnimation(dashLen, 0, TimeSpan.FromMilliseconds(600)) { EasingFunction = Motion.SlideOut };
-        anim.Completed += (_, _) =>
-        {
-            poly.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
-            poly.StrokeDashArray = null;
-        };
-        poly.BeginAnimation(Shape.StrokeDashOffsetProperty, anim);
-    }
-
-    private static double PolylineLength(PointCollection points)
-    {
-        double len = 0;
-        for (int i = 1; i < points.Count; i++)
-            len += (points[i] - points[i - 1]).Length;
-        return len;
     }
 
     // ── header: glow-dash eyebrow + title + subtitle, with an ambient radar sweep accent ──
@@ -781,443 +721,15 @@ public sealed class CommandPage : UserControl
                 MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
-    // ── 4 KPI cards: Last scan (hero, reticle) · Refinery queue · Cargo · Session ──
-    private UIElement KpiRow()
-    {
-        var orders = App.Data.GetWorkOrders();
-        int activeOrders = orders.Count(o => o.Status != WorkOrderStatus.Complete);
-        int ready = orders.Count(o => o.Status == WorkOrderStatus.ReadyToCollect);
-        var hauls = App.Hauls.ActiveHauls;
-        int scu = hauls.Sum(h => h.Legs.Sum(l => l.TargetScu));
-        int session = App.GameLog.Count;
-
-        // Network coverage: share of the blueprint catalog owned by you or any network member.
-        var catalog = App.Data.GetAllBlueprints();
-        int bpTotal = catalog.Count;
-        var ownerCounts = App.Network.OwnerCounts();
-        int covered = catalog.Count(b => (ownerCounts.TryGetValue(b.Name, out var c) && c > 0) || App.Settings.IsBlueprintOwned(b.Name));
-        int covPct = UiHelpers.PctOf(covered, bpTotal);
-
-        // Rebuilt fresh every Refresh() (tab-open AND live data ticks) - reset the count-up
-        // targets so PlayEntrance only ever sees the current visit's fresh elements.
-        _kpiCountTargets.Clear();
-
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 16), Height = 132 };
-        for (int i = 0; i < 5; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-
-        var cards = new UIElement[]
-        {
-            LastScanCard(),
-            Kpi(IconRefinery(), "REFINERY QUEUE", activeOrders.ToString("N0"), "active", ready > 0 ? $"{ready} ready to collect" : "none ready", ready > 0, "FgBrush", activeOrders, nav: "workorders"),
-            Kpi(IconCargo(), "CARGO IN TRANSIT", scu.ToString("N0"), "SCU", $"{hauls.Count} active haul(s)", false, "CyanBrush", scu, nav: "hauling"),
-            Kpi(IconBlueprint(), "SESSION BLUEPRINTS", session.ToString("N0"), "", "Auto-tracked from Game.log", false, "CyanBrush", session),
-            Kpi(IconNetwork(), "NETWORK COVERAGE", covPct + "%", "", $"{covered} of {bpTotal} owned", false, "CyanBrush", covPct, "%"),
-        };
-        for (int i = 0; i < cards.Length; i++)
-        {
-            ((FrameworkElement)cards[i]).Margin = new Thickness(i == 0 ? 0 : 7, 0, i == cards.Length - 1 ? 0 : 7, 0);
-            Grid.SetColumn(cards[i], i);
-            grid.Children.Add(cards[i]);
-        }
-        _kpiRow = grid;
-        return grid;
-    }
-
-    private UIElement LastScanCard()
-    {
-        var last = _vm.ScanHistory.FirstOrDefault();
-        var sp = new StackPanel();
-        sp.Children.Add(KpiLabel(IconScan(), "LAST SCAN · RS"));
-        if (last != null)
-        {
-            var val = new TextBlock { Text = last.Rs.ToString("N0"), FontFamily = Disp, FontSize = 34, FontWeight = FontWeights.Bold, Foreground = Br("GoldBrush"), Margin = new Thickness(0, 6, 0, 0) };
-            val.Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("GoldBrush")).Color, BlurRadius = 16, ShadowDepth = 0, Opacity = 0.35 };
-            sp.Children.Add(val);
-            _kpiCountTargets.Add((val, last.Rs, ""));
-            var match = last.Match == MatchKind.Exact ? "exact" : last.Match == MatchKind.Close ? "close" : "no match";
-            var foot = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-            foot.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = Br("AccentBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center });
-            foot.Children.Add(new TextBlock { Text = $"{last.TopResource} · {match}", FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-            sp.Children.Add(foot);
-        }
-        else
-        {
-            sp.Children.Add(new TextBlock { Text = "-", FontFamily = Disp, FontSize = 34, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 6, 0, 0) });
-            sp.Children.Add(new TextBlock { Text = "No scans yet", FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 6, 0, 0) });
-        }
-
-        var inner = new Grid();
-        inner.Children.Add(sp);
-        inner.Children.Add(Sparkline());
-
-        var panel = Hud.Panel(inner, chamfer: 12, glow: false, border: Br("AccentStrongBrush"), padding: new Thickness(16, 14, 16, 14));
-        Hud.AttachReticle(panel, 18);
-        return panel;
-    }
-
-    private UIElement Sparkline()
-    {
-        var vals = _vm.ScanHistory.Take(7).Select(e => (double)e.Rs).Reverse().ToList();
-        if (vals.Count < 2) { _sparklinePoly = null; return new Grid(); }
-        double min = vals.Min(), max = vals.Max(), range = max - min < 1 ? 1 : max - min;
-        const double w = 86, h = 26;
-        var poly = new Polyline { Stroke = Br("CyanBrush"), StrokeThickness = 1.6, StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Right, Width = w, Height = h };
-        poly.Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("CyanBrush")).Color, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5 };
-        for (int i = 0; i < vals.Count; i++)
-        {
-            double x = w * i / (vals.Count - 1);
-            double y = h - h * (vals[i] - min) / range;
-            poly.Points.Add(new Point(x, y));
-        }
-        // Drawn fully visible by default (data ticks just render it plainly) - PlayEntrance
-        // is what dashes it and animates the reveal, tab-open only.
-        _sparklinePoly = poly;
-        return poly;
-    }
-
-    private UIElement Kpi(UIElement icon, string key, string val, string unit, string foot, bool accent, string valueBrush, double countTo, string countSuffix = "", string? nav = null)
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(KpiLabel(icon, key));
-        var value = new TextBlock { FontFamily = Disp, FontSize = 34, FontWeight = FontWeights.Bold, Foreground = Br(valueBrush), Margin = new Thickness(0, 6, 0, 0) };
-        if (valueBrush == "CyanBrush")
-            value.Effect = new DropShadowEffect { Color = ((SolidColorBrush)Br("CyanBrush")).Color, BlurRadius = 14, ShadowDepth = 0, Opacity = 0.3 };
-        var numberRun = new Run(val);
-        value.Inlines.Add(numberRun);
-        if (!string.IsNullOrEmpty(unit))
-        {
-            value.Inlines.Add(new Run("  " + unit) { FontFamily = Ui, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
-            // A second, differently-styled Run sits next to the number - CountUp.cs only
-            // supports a whole TextBlock target, so drive just the number Run instead.
-            _kpiCountTargets.Add((numberRun, countTo, ""));
-        }
-        else
-        {
-            _kpiCountTargets.Add((value, countTo, countSuffix));
-        }
-        sp.Children.Add(value);
-        var footEl = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        if (accent)
-        {
-            footEl.Inlines.Add(new Run("READY ") { Foreground = Br("GoldBrush"), FontWeight = FontWeights.Bold });
-            footEl.Inlines.Add(new Run(foot.Replace("ready to collect", "to collect")));
-        }
-        else footEl.Text = foot;
-        sp.Children.Add(footEl);
-
-        var panel = Hud.Panel(sp, chamfer: 12, brackets: false, border: accent ? Br("AccentStrongBrush") : Br("NavBorderBrush"),
-                         padding: new Thickness(16, 14, 16, 14));
-
-        // Refinery Queue and Cargo In Transit are the only KPI cards with a single obvious drill-in
-        // destination (Network Coverage/Session Blueprints stay static, per review recommendation).
-        // They're panels, not Buttons, so wire the hover/click/log trio by hand instead of getting it
-        // from a Style; the hover tint matches NetworkPage's chip hover (background toward HighlightBrush).
-        if (nav != null)
-        {
-            var frame = (System.Windows.Shapes.Path)panel.Children[0];
-            var restFill = frame.Fill;
-            panel.Cursor = System.Windows.Input.Cursors.Hand;
-            panel.MouseEnter += (_, _) => frame.Fill = Br("HighlightBrush");
-            panel.MouseLeave += (_, _) => frame.Fill = restFill;
-            panel.MouseLeftButtonUp += (_, _) =>
-            {
-                InteractionLog.Nav($"Command dashboard: {key} card", panel);
-                _navigate(nav);
-            };
-        }
-        return panel;
-    }
-
-    private UIElement KpiLabel(UIElement icon, string text)
-    {
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(icon);
-        row.Children.Add(new TextBlock { Text = text, FontFamily = Ui, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center });
-        return row;
-    }
-
-    // small cyan line icons for the KPI labels
+    // small cyan line icons for the panel labels
     private UIElement Icon(string data) => new Viewbox
     {
         Width = 13, Height = 13, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
         Child = new Path { Data = Geometry.Parse(data), Stroke = Br("CyanBrush"), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform },
     };
-    private UIElement IconScan() => Icon("M7,1 A6,6 0 1,0 7,13 A6,6 0 1,0 7,1 M11,11 L15,15");
     private UIElement IconRefinery() => Icon("M2,15 L2,6 L7,9 L7,6 L12,9 L12,15 Z");
     private UIElement IconCargo() => Icon("M2,5 L14,5 L14,14 L2,14 Z M2,8 L14,8");
-    private UIElement IconBlueprint() => Icon("M2,2 L14,2 L14,14 L2,14 Z M8,2 L8,14 M2,8 L14,8");
     private UIElement IconNetwork() => Icon("M4,5 L12,5 M4,5 L8,13 M12,5 L8,13");
-
-    // ── refinery queue table (left) + active hauls / network risk (right, stacked) ──
-    private UIElement Panels()
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.45, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var left = Hud.Panel(RefineryQueue(), chamfer: 14, padding: new Thickness(18));
-        left.Margin = new Thickness(0, 0, 8, 0);
-        Grid.SetColumn(left, 0); grid.Children.Add(left);
-
-        var right = new StackPanel { Margin = new Thickness(8, 0, 0, 0) };
-        right.Children.Add(Hud.Panel(ActiveHauls(), chamfer: 14, padding: new Thickness(18)));
-        var profit = Hud.Panel(SessionProfit(), chamfer: 14, padding: new Thickness(18));
-        profit.Margin = new Thickness(0, 12, 0, 0);
-        right.Children.Add(profit);
-        var wallet = Hud.Panel(WalletCard(), chamfer: 14, padding: new Thickness(18));
-        wallet.Margin = new Thickness(0, 12, 0, 0);
-        right.Children.Add(wallet);
-        var risk = NetworkRisk();
-        if (risk != null) { risk.Margin = new Thickness(0, 12, 0, 0); right.Children.Add(risk); }
-        var shardCard = ShardCard();
-        shardCard.Margin = new Thickness(0, 12, 0, 0);
-        right.Children.Add(shardCard);
-        Grid.SetColumn(right, 1); grid.Children.Add(right);
-        return grid;
-    }
-
-    private UIElement RefineryQueue()
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(PanelHead("REFINERY QUEUE", "Open tracker", "workorders"));
-        // Rebuilt every Refresh, so the old TextBlocks are dropped with the tree they belonged to;
-        // holding them would tick controls that are no longer on screen (F11).
-        _queueCells.Clear();
-        var active = App.Data.GetWorkOrders().Where(o => o.Status != WorkOrderStatus.Complete).ToList();
-        if (active.Count == 0) { sp.Children.Add(Empty("No active work orders.")); _queueTicker?.Stop(); return sp; }
-
-        sp.Children.Add(TableRow(Th("ORDER"), Th("STATION"), Th("STATUS"), Th("REMAINING", right: true), header: true));
-        foreach (var o in active)
-        {
-            var order = new TextBlock
-            {
-                Text = !string.IsNullOrWhiteSpace(o.Label) ? o.Label : (!string.IsNullOrWhiteSpace(o.Resources) ? o.Resources : "Work order"),
-                FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-            };
-            var station = new TextBlock { Text = !string.IsNullOrWhiteSpace(o.Refinery) ? o.Refinery : o.Location, FontFamily = Ui, FontSize = 12, Foreground = Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
-            var chipHolder = new ContentControl { Content = Hud.StatusChip(o.Status), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            var rem = new TextBlock { Text = QueueRemainingText(o), FontFamily = Mono, FontSize = 11.5, Foreground = o.Status == WorkOrderStatus.ReadyToCollect ? UiHelpers.BrushFromHex(o.StatusColorHex) : Br("FgDimBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            _queueCells.Add((o, rem));
-            sp.Children.Add(TableRow(order, station, chipHolder, rem));
-        }
-        StartQueueTicker();
-        return sp;
-    }
-
-    private static readonly GridLength[] _cols =
-        { new(1, GridUnitType.Star), new(120), new(104), new(86) };
-
-    private UIElement TableRow(UIElement c0, UIElement c1, UIElement c2, UIElement c3, bool header = false)
-    {
-        var g = new Grid();
-        foreach (var w in _cols) g.ColumnDefinitions.Add(new ColumnDefinition { Width = w });
-        var cells = new[] { c0, c1, c2, c3 };
-        for (int i = 0; i < 4; i++) { Grid.SetColumn(cells[i], i); g.Children.Add(cells[i]); }
-        return new Border
-        {
-            BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, header ? 0 : 11, 0, header ? 9 : 11), Child = g,
-        };
-    }
-
-    private TextBlock Th(string t, bool right = false) => new()
-    {
-        Text = t, FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"),
-        HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-    };
-
-    private UIElement ActiveHauls()
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(PanelHead("ACTIVE HAULS", "Open hauling", "hauling"));
-        var hauls = App.Hauls.ActiveHauls;
-        if (hauls.Count == 0)
-            sp.Children.Add(Empty("No active hauls."));
-        else
-            foreach (var h in hauls)
-            {
-                var drops = h.Legs.Where(l => l.Role == HaulRole.Dropoff).ToList();
-                int total = drops.Sum(l => l.TargetScu);
-                int done = drops.Where(l => l.Completed).Sum(l => l.TargetScu);
-                double frac = total > 0 ? (double)done / total : 0;
-
-                var top = new Grid { Margin = new Thickness(0, 8, 0, 5) };
-                top.ColumnDefinitions.Add(new ColumnDefinition());
-                top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var title = !string.IsNullOrWhiteSpace(h.RouteTitle) ? h.RouteTitle : (!string.IsNullOrWhiteSpace(h.Topology) ? h.Topology : "Haul");
-                var t = new TextBlock { Text = title, FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis };
-                Grid.SetColumn(t, 0); top.Children.Add(t);
-                var scu = new TextBlock { Text = $"{done:N0} / {total:N0} SCU", FontFamily = Mono, FontSize = 11, Foreground = Br("CyanBrush"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(scu, 1); top.Children.Add(scu);
-                sp.Children.Add(top);
-                sp.Children.Add(Hud.StateBar(frac, frac >= 1 ? Hud.BarState.Green : Hud.BarState.Cyan));
-            }
-        return sp;
-    }
-
-    // Commodity trading profit quick reference (issue #39; reworked 2026-08-05: the ALL-TIME
-    // figure leads, the session net demotes to a foot line). Same ProfitDisplay folds the Trade
-    // panel renders, one card deep; the ledger, chart, and caveats stay on Trade where there is
-    // room to be honest.
-    private UIElement SessionProfit()
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(PanelHead("ALL TIME TRADING PROFIT", "Open trade", "trade"));
-        if (App.Profit == null) return sp;
-
-        var channel = App.GameLogFeed.ActiveChannel;
-        var ch = App.Profit.History.Channels.Find(c => c.Channel == channel);
-        bool hasHistory = ch != null && ch.Entries.Count + ch.PrunedCount > 0;
-        long allNet = hasHistory ? ProfitHistory.AllTimeNet(App.Profit.History, channel) : 0;
-
-        var value = new TextBlock
-        {
-            FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold,
-            Foreground = !hasHistory || allNet == 0 ? Br("FgDimBrush") : allNet > 0 ? Br("OkBrush") : Br("DangerBrush"),
-        };
-        value.Inlines.Add(new Run(hasHistory ? ProfitDisplay.Compact(allNet) : ProfitDisplay.NoneValue));
-        if (hasHistory)
-            value.Inlines.Add(new Run("  aUEC") { FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
-        sp.Children.Add(value);
-
-        sp.Children.Add(new TextBlock
-        {
-            Text = hasHistory
-                ? ProfitDisplay.AllTimeLine(ProfitHistory.AllTimeSessionCount(App.Profit.History, channel), ch!.FirstSessionUtc)
-                : "No kiosk transactions observed yet.",
-            FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"),
-            Margin = new Thickness(0, 5, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-
-        var ledger = App.Profit.Ledger;
-        var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
-        var session = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        session.Inlines.Add(new Run("THIS SESSION ") { FontWeight = FontWeights.Bold });
-        session.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net))
-        {
-            FontFamily = Mono,
-            Foreground = state switch
-            {
-                ProfitState.Positive => Br("OkBrush"),
-                ProfitState.Negative => Br("DangerBrush"),
-                _ => Br("FgDimBrush"),
-            },
-        });
-        if (ledger.UnvoidedCount > 0) session.Inlines.Add(new Run(" aUEC"));
-        if (state == ProfitState.Offline) session.Inlines.Add(new Run("  (game offline)"));
-        sp.Children.Add(session);
-        return sp;
-    }
-
-    // Wallet quick reference (OCR wallet; ruling 2026-08-06: Operations gains a wallet card,
-    // overriding the spec's not-in-v1 note). The estimate leads exact, never compacted - a
-    // wallet is a balance, not a trend; provenance foots it, and the untracked count appears
-    // only when there is one. Same WalletDisplay folds the Trade block renders.
-    private UIElement WalletCard()
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade"));
-        if (App.Wallet == null) return sp;
-
-        var w = App.Wallet;
-        var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
-                                        DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
-        var value = new TextBlock
-        {
-            FontFamily = Mono, FontSize = 20, FontWeight = FontWeights.Bold,
-            Foreground = state switch
-            {
-                WalletUiState.Current => Br("FgBrush"),
-                WalletUiState.Aging => Br("AccentBrush"),
-                WalletUiState.Impossible => Br("DangerBrush"),
-                _ => Br("FgDimBrush"),
-            },
-        };
-        value.Inlines.Add(new Run(w.Estimate is { } est ? ProfitDisplay.Format(est) : ProfitDisplay.NoneValue));
-        if (w.HasAnchor)
-            value.Inlines.Add(new Run("  aUEC") { FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Br("FgDimBrush") });
-        sp.Children.Add(value);
-
-        sp.Children.Add(new TextBlock
-        {
-            Text = w.HasAnchor
-                ? WalletDisplay.Provenance(w.AnchorSource, w.AnchorUtc, DateTime.UtcNow)
-                : WalletDisplay.CardHint,
-            FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"),
-            Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap,
-        });
-
-        int untracked = App.Wallet.SessionUntracked.Count;
-        if (untracked > 0)
-        {
-            var foot = new TextBlock { FontFamily = Ui, FontSize = 11, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 3, 0, 0) };
-            foot.Inlines.Add(new Run("THIS SESSION ") { FontWeight = FontWeights.Bold });
-            foot.Inlines.Add(new Run($"{untracked} untracked row{(untracked == 1 ? "" : "s")}") { FontFamily = Mono });
-            sp.Children.Add(foot);
-        }
-        return sp;
-    }
-
-    // Network risk as its own standalone amber alert card (matches the mock).
-    private FrameworkElement? NetworkRisk()
-    {
-        if (App.Network.MemberCount == 0) return null;
-        var counts = App.Network.OwnerCounts();
-        int single = 0;
-        foreach (var b in App.Data.GetAllBlueprints())
-        {
-            int o = (counts.TryGetValue(b.Name, out var c) ? c : 0) + (App.Settings.IsBlueprintOwned(b.Name) ? 1 : 0);
-            if (o == 1) single++;
-        }
-
-        var sp = new StackPanel();
-        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        head.Children.Add(new Viewbox { Width = 15, Height = 15, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center, Child = new Path { Data = Geometry.Parse("M8,1 L15,14 L1,14 Z M8,6 L8,10 M8,12 L8,12.5"), Stroke = Br("AccentBrush"), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform } });
-        head.Children.Add(new TextBlock { Text = "NETWORK RISK", FontFamily = Ui, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = Br("AccentBrush"), VerticalAlignment = VerticalAlignment.Center });
-        sp.Children.Add(head);
-
-        sp.Children.Add(new TextBlock { Text = single == 0 ? "No single-owner blueprints." : $"{single} blueprint(s) have only one owner.", FontFamily = Ui, FontSize = 12.5, Foreground = Br("FgBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
-        var review = new TextBlock { Text = "Review  →", FontFamily = Ui, FontSize = 11.5, Foreground = Br("CyanBrush"), Cursor = System.Windows.Input.Cursors.Hand };
-        review.MouseEnter += (_, _) => review.TextDecorations = TextDecorations.Underline;
-        review.MouseLeave += (_, _) => review.TextDecorations = null;
-        review.MouseLeftButtonUp += (_, _) => _navigate("network");
-        sp.Children.Add(review);
-
-        return Hud.Panel(sp, chamfer: 12, padding: new Thickness(14, 12, 14, 12),
-                         bg: new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xB2, 0x3E)), border: Br("AccentStrongBrush"));
-    }
-
-    // Server / shard card: the current shard (region + instance + raw id) and up to 3 recent shards,
-    // mirroring the overlay's STATS shard panel. Reads App.Shards (Current / Recent); shard metadata only.
-    private FrameworkElement ShardCard()
-    {
-        var sp = new StackPanel();
-        sp.Children.Add(new TextBlock { Text = "SERVER / SHARD", FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush"), Margin = new Thickness(0, 0, 0, 10) });
-
-        var current = App.Shards.Current;
-        if (current != null)
-        {
-            sp.Children.Add(new TextBlock { Text = "CURRENT", FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 0, 0, 3) });
-            var card = new StackPanel();
-            card.Children.Add(new TextBlock { Text = $"{current.Region}  -  Shard {current.Instance}", FontFamily = Ui, FontSize = 13, Foreground = Br("CyanBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
-            card.Children.Add(new TextBlock { Text = current.ShardId, FontFamily = Mono, FontSize = 10, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
-            sp.Children.Add(new Border { Child = card, Background = Br("Bg2NavBrush"), BorderBrush = Br("NavBorderBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(13, 9, 13, 9) });
-        }
-        else
-        {
-            sp.Children.Add(new TextBlock { Text = "Not on a shard.", FontSize = 12, Foreground = Br("FgDimBrush") });
-        }
-
-        var recent = App.Shards.Recent;
-        if (recent.Count > 0)
-        {
-            sp.Children.Add(new TextBlock { Text = "RECENT", FontFamily = Ui, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 12, 0, 4) });
-            foreach (var s in recent)
-                sp.Children.Add(new TextBlock { Text = $"{Ago(s.JoinedAt)}   {s.Region} - {s.Instance}" + (s.Channel is "" or "LIVE" ? "" : $" · {s.Channel}"), FontFamily = Mono, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(4, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
-        }
-
-        return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
-    }
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
     private static string Ago(DateTime utcWhen) => MarketNotice.FormatAge(DateTime.UtcNow - utcWhen);

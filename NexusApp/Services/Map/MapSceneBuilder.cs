@@ -20,6 +20,15 @@ public sealed record MapLayerPins(
     IReadOnlyDictionary<int, IReadOnlyList<string>>? HaulStopsByObject = null,   // objectId -> stop labels
     IReadOnlyDictionary<int, IReadOnlyList<string>>? OrdersByObject = null)      // objectId -> work order labels
 {
+    // Locator mode (Operations system view) paints no pins at all, so it needs a pin set that
+    // flags nothing. Every layer dictionary is empty, which BuildInit reads as "present means
+    // true" against nothing, so every per-row layer boolean serializes false.
+    public static MapLayerPins Empty { get; } = new(
+        new Dictionary<int, IReadOnlyList<int>>(),
+        new Dictionary<int, string>(),
+        new Dictionary<int, IReadOnlyList<string>>(),
+        null);
+
     public IReadOnlyDictionary<int, IReadOnlyList<string>> Hauls =>
         HaulStopsByObject ?? new Dictionary<int, IReadOnlyList<string>>();
 
@@ -43,7 +52,8 @@ public static class MapSceneBuilder
     public static string BuildInit(MapCatalog catalog, string system, MapLayerPins pins,
         bool tradeOn, bool guidesOn, bool miningOn, bool hangarOn, bool asteroidsOn,
         int? selection, IReadOnlyList<int> draft, IReadOnlyList<int> planner, bool reduced,
-        int? player = null, bool haulsOn = false, bool ordersOn = false)
+        int? player = null, bool haulsOn = false, bool ordersOn = false,
+        bool lite = false, string? playerNote = null, string? playerName = null)
     {
         var rows = catalog.Objects
             .Where(o => string.Equals(o.System, system, StringComparison.OrdinalIgnoreCase))
@@ -77,6 +87,19 @@ public static class MapSceneBuilder
             draft,
             planner,
             player,
+            // Locator mode: the Operations system view asks for the same scene with every planner
+            // affordance off (no pins, no picking, no route, no measure) plus its own page-side
+            // chrome. It is a flag rather than a second page because WebView2 is a native window,
+            // so the locator's controls could never be WPF elements laid over it.
+            //
+            // playerName and playerNote are the locator card's two lines. They are sent SEPARATELY
+            // from the player marker id on purpose: the catalog resolves only some of the log's
+            // location tokens, so the app is regularly in the middle state of knowing the place by
+            // name with no object to mark. The page renders that state rather than calling it
+            // unknown.
+            lite,
+            playerNote,
+            playerName,
         };
         return JsonSerializer.Serialize(payload);
     }

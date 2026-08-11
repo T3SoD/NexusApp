@@ -564,10 +564,15 @@ function setDrift(on){
 function applyLite(msg){
   document.getElementById('liteSystem').textContent = (state.system||'').toUpperCase();
   const o = (state.playerMarker!=null)? BY_ID.get(state.playerMarker) : null;
-  document.getElementById('liteYouName').textContent = o ? o.name : 'Location unknown';
+  /* Three states, not two. The catalog resolves only some of the log's location tokens, so the app
+     often KNOWS where the player is by name while having no object to put a marker on. Falling
+     back to "unknown" in that middle state would contradict the line right underneath it, which
+     names the place. Named-but-unmarked reads at reduced opacity: known, but not placeable. */
+  const name = o ? o.name : (msg.playerName || null);
+  document.getElementById('liteYouName').textContent = name || 'Location unknown';
   document.getElementById('liteYouSub').textContent =
-    o ? (msg.playerNote || (state.system||'')) : 'Nexus has not seen a location yet.';
-  document.getElementById('liteYou').style.opacity = o ? '1' : '.72';
+    name ? (msg.playerNote || (state.system||'')) : 'Nexus has not seen a location yet.';
+  document.getElementById('liteYou').style.opacity = o ? '1' : (name ? '.86' : '.72');
   setDrift(false);
 }
 document.getElementById('liteMe').onclick    = centreOnMe;

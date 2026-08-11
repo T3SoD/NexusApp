@@ -87,6 +87,67 @@ public class MapSceneBuilderTests
         Assert.Contains("\"id\":42", json);
     }
 
+    // ── locator mode (Operations system view) ──
+    // The flag and its note ride the SAME init the full map uses, so these pin that the default
+    // (absent) case still serializes the full map exactly as before.
+
+    [Fact]
+    public void BuildInit_LiteOmitted_SerializesFalseAndNoNote()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", EmptyPins,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: true,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false);
+
+        Assert.Contains("\"lite\":false", json);
+        Assert.Contains("\"playerNote\":null", json);
+        Assert.Contains("\"playerName\":null", json);
+    }
+
+    // The middle state the locator card exists to render: the log named a place the catalog cannot
+    // resolve to an object, so there is a name to show and no marker to place. Name and marker are
+    // carried independently, or the card would have to call a known place unknown.
+    [Fact]
+    public void BuildInit_NamedPlaceWithNoMarker_CarriesNameWithNullPlayer()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", MapLayerPins.Empty,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: false,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false,
+            player: null, haulsOn: false, ordersOn: false,
+            lite: true, playerNote: "Stanton. Seen 4m ago.", playerName: "Rough and Ready space");
+
+        Assert.Contains("\"player\":null", json);
+        Assert.Contains("Rough and Ready space", json);
+    }
+
+    [Fact]
+    public void BuildInit_LiteTrue_CarriesNote()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", EmptyPins,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: false,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false,
+            player: null, haulsOn: false, ordersOn: false,
+            lite: true, playerNote: "Everus Harbor. Seen 4m ago.");
+
+        Assert.Contains("\"lite\":true", json);
+        Assert.Contains("Everus Harbor. Seen 4m ago.", json);
+    }
+
+    // Empty is the pin set locator mode posts. Nothing may be flagged for any layer, or the
+    // "no pins at all" promise breaks the moment the catalog gains an object.
+    [Fact]
+    public void EmptyPins_FlagNothing()
+    {
+        var json = MapSceneBuilder.BuildInit(Catalog, "Stanton", MapLayerPins.Empty,
+            tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: false,
+            selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(), reduced: false,
+            lite: true);
+
+        Assert.DoesNotContain("\"trade\":true", json);
+        Assert.DoesNotContain("\"guide\":true", json);
+        Assert.DoesNotContain("\"mine\":true", json);
+        Assert.DoesNotContain("\"hangar\":true", json);
+    }
+
     [Fact]
     public void BuildInit_ReducedTrue_RoundTrips()
     {
