@@ -28,6 +28,9 @@ public sealed class MapWebView : UserControl
     public event Action<int>? PinDoubleClicked;
     public event Action<int, int>? MeasurePicked;
 
+    /// <summary>Locator mode asked the app to open the full map tab (Operations system view).</summary>
+    public event Action? OpenMapRequested;
+
     public MapWebView()
     {
         _web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0xFF, 0x07, 0x0B, 0x11);
@@ -165,6 +168,10 @@ public sealed class MapWebView : UserControl
                 case "measureResult":
                     if (msg.A.HasValue && msg.B.HasValue) MeasurePicked?.Invoke(msg.A.Value, msg.B.Value);
                     break;
+                case "openMap":
+                    Logger.Info("[UI] Operations system view: open full starmap");
+                    OpenMapRequested?.Invoke();
+                    break;
                 case "log":     // surface a page-side error/warning into nexus.log (App Log Monitor)
                     if (msg.Msg != null) Logger.Info($"[UI] map scene: {msg.Msg}");
                     break;
@@ -216,6 +223,10 @@ public sealed class MapWebView : UserControl
                     return root.TryGetProperty("msg", out var m) && m.ValueKind == JsonValueKind.String
                         ? new MapWebMessage("log", Msg: m.GetString())
                         : null;
+                // Locator mode's only outbound action: the Operations system view asks the app to
+                // open the real map tab. It carries no payload because the destination is fixed.
+                case "openMap":
+                    return new MapWebMessage("openMap");
                 default:
                     return null;
             }

@@ -144,6 +144,34 @@
           font-family:var(--tech); font-size:10.5px; font-weight:700; letter-spacing:0.1em;
           padding:6px 14px; border-radius:3px; pointer-events:none;
           box-shadow:0 0 14px rgba(255,178,62,0.15)}
+
+/* ---- locator mode chrome (Operations system view) ---- */
+.lite{position:absolute; inset:0; pointer-events:none; padding:13px 15px;
+      display:flex; flex-direction:column; justify-content:space-between; z-index:6}
+.liteTop,.liteBot{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
+.liteBot{align-items:flex-end}
+.liteEyebrow{font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:#7FE9E0}
+.liteHint{font:400 9px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#8693A0;
+          margin-top:5px; opacity:.75}
+.liteCtl{display:flex; gap:6px; pointer-events:auto}
+.liteBtn{font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.08em; padding:5px 9px;
+         background:rgba(12,18,25,.82); color:#8693A0; border:1px solid rgba(127,233,224,.102);
+         cursor:pointer; border-radius:3px; backdrop-filter:blur(3px)}
+.liteBtn:hover{color:#FFB23E; border-color:rgba(255,178,62,.42)}
+.liteBtn.on{color:#FFB23E; border-color:rgba(255,178,62,.42); background:rgba(255,178,62,.10)}
+.liteYou{background:rgba(6,9,14,.86); border:1px solid rgba(127,233,224,.40);
+         padding:9px 13px 10px; backdrop-filter:blur(4px); max-width:280px}
+.liteYouHead{display:flex; align-items:center; gap:8px}
+.liteYouHead i{width:7px; height:7px; border-radius:50%; background:#7FE9E0; box-shadow:0 0 8px #7FE9E0}
+.liteYouHead span{font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:#7FE9E0}
+.liteYouName{font:700 19px/1.1 'Rajdhani',sans-serif; color:#EAF1F6; margin-top:5px}
+.liteYouSub{font:400 11px/1.4 'Chakra Petch',sans-serif; color:#8693A0; margin-top:3px}
+.liteOpen{pointer-events:auto; font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.12em;
+          padding:6px 11px; background:rgba(12,18,25,.82); color:#8693A0;
+          border:1px solid rgba(127,233,224,.102); cursor:pointer; border-radius:3px}
+.liteOpen:hover{color:#FFB23E; border-color:rgba(255,178,62,.42)}
+/* Locator mode hides every planner affordance the full map carries. */
+.lite-on .breadcrumb,.lite-on .scalebar,.lite-on .measurehint{display:none !important}
 </style>
 </head>
 <body>
@@ -153,6 +181,31 @@
   <div class="scalebar" id="scalebar"><div class="bar" style="width:90px"></div><span id="scaletxt"></span></div>
   <div class="measurehint" id="measurehint" style="display:none"></div>
   <div class="notice" id="notice" style="display:none"></div>
+
+  <!-- Locator chrome (Operations system view). Lives in the page, not in WPF, because a WebView2
+       is a native window and no WPF element can render on top of it. Hidden unless lite mode. -->
+  <div class="lite" id="lite" style="display:none">
+    <div class="liteTop">
+      <div>
+        <div class="liteEyebrow">SYSTEM VIEW / <span id="liteSystem">STANTON</span></div>
+        <div class="liteHint">DRAG TO ROTATE. WHEEL TO ZOOM.</div>
+      </div>
+      <div class="liteCtl">
+        <button class="liteBtn" id="liteMe">CENTRE ON ME</button>
+        <button class="liteBtn" id="liteTop">TOP DOWN</button>
+        <button class="liteBtn" id="liteDrift">DRIFT</button>
+        <button class="liteBtn" id="liteReset">RESET</button>
+      </div>
+    </div>
+    <div class="liteBot">
+      <div class="liteYou" id="liteYou">
+        <div class="liteYouHead"><i></i><span>YOU ARE HERE</span></div>
+        <div class="liteYouName" id="liteYouName">Unknown</div>
+        <div class="liteYouSub" id="liteYouSub">Nexus has not seen a location yet.</div>
+      </div>
+      <button class="liteOpen" id="liteOpen">OPEN FULL STARMAP</button>
+    </div>
+  </div>
 </div>
 
 <script type="importmap">{"imports":{"three":"./three.module.js"}}</script>
@@ -290,6 +343,7 @@ const state = {
   draft:[], planner:[],
   measure:{armed:false, first:null, result:null},
   playerMarker:null,           // MapObject.Id the live Game.log location resolved to, or null
+  lite:false,                  // locator mode: no pins, no routes, no measure (Operations system view)
 };
 let BY_ID = new Map();
 let childrenOf = new Map();
@@ -475,6 +529,53 @@ function focusObject(id){
   renderBreadcrumb();
 }
 
+/* ---- locator mode (Operations system view) ------------------------------------------------- */
+/* Position of the object the player resolved to, in scene space. Null when Nexus has not seen a
+   location yet, which is a normal cold-start state and never an error. */
+function playerPos(){
+  const o = (state.playerMarker!=null)? BY_ID.get(state.playerMarker) : null;
+  return o ? new THREE.Vector3(o.x/MM, o.z/MM, -o.y/MM) : null;
+}
+function centreOnMe(){
+  const p = playerPos(); if(!p) return;
+  const r = Math.max((subRadius.get(state.playerMarker)||0)*1.8, 1200);
+  frameRadius(r, false, p);
+  log('locator: centre on player');
+}
+/* Straight down the ecliptic. frameRadius keeps the current view direction, so a top down needs
+   its own placement rather than a reframe. */
+function topDown(){
+  const star=catalogRows.find(r=>r.type==='Star');
+  const r = star? (subRadius.get(star.id)||45000)*1.12 : 45000;
+  const dist = r/Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*1.12;
+  tween=null;
+  controls.target.set(0,0,0);
+  camera.position.set(0, dist, 0.001);   /* not exactly 0, or the up vector degenerates */
+  controls.update();
+  log('locator: top down');
+}
+function setDrift(on){
+  controls.autoRotate = !!on && !REDUCED;   /* reduced motion never spins on its own */
+  controls.autoRotateSpeed = 0.45;
+  document.getElementById('liteDrift').classList.toggle('on', !!on && !REDUCED);
+}
+/* Fills the locator card and wires its controls. Called on every init so a location change while
+   Operations is open repaints the card without rebuilding the scene. */
+function applyLite(msg){
+  document.getElementById('liteSystem').textContent = (state.system||'').toUpperCase();
+  const o = (state.playerMarker!=null)? BY_ID.get(state.playerMarker) : null;
+  document.getElementById('liteYouName').textContent = o ? o.name : 'Location unknown';
+  document.getElementById('liteYouSub').textContent =
+    o ? (msg.playerNote || (state.system||'')) : 'Nexus has not seen a location yet.';
+  document.getElementById('liteYou').style.opacity = o ? '1' : '.72';
+  setDrift(false);
+}
+document.getElementById('liteMe').onclick    = centreOnMe;
+document.getElementById('liteTop').onclick   = topDown;
+document.getElementById('liteReset').onclick = ()=>{ setDrift(false); systemView(); };
+document.getElementById('liteDrift').onclick = ()=> setDrift(!controls.autoRotate);
+document.getElementById('liteOpen').onclick  = ()=> post({type:'openMap'});
+
 function systemView(){
   state.focusName=null;
   const star=catalogRows.find(r=>r.type==='Star');
@@ -485,6 +586,9 @@ function systemView(){
 
 /* picking: screen-space nearest within 28px (no sprite raycast quirks) */
 function pick(ev){
+  /* Locator mode has no pins to pick: it answers where you are and nothing else. Refusing here
+     kills hover, click, double click and measure in one place rather than in four handlers. */
+  if(state.lite) return null;
   const rect=renderer.domElement.getBoundingClientRect();
   const mx=ev.clientX-rect.left, my=ev.clientY-rect.top;
   const LIMIT=28*28; // 28px radius acceptance
@@ -663,6 +767,15 @@ function applyInit(msg){
   state.draft = Array.isArray(msg.draft)? msg.draft.slice() : [];
   state.planner = Array.isArray(msg.planner)? msg.planner.slice() : [];
   state.playerMarker = (msg.player==null)? null : msg.player;
+
+  /* Locator mode (Operations system view): the same scene with every planner affordance off.
+     Deliberately a flag on the existing scene rather than a second page, so there is one starmap
+     to maintain and one WebView asset to ship. Absent flag means the full map, unchanged. */
+  state.lite = !!msg.lite;
+  sceneEl.classList.toggle('lite-on', state.lite);
+  document.getElementById('lite').style.display = state.lite ? 'flex' : 'none';
+  /* applyLite is NOT called here: it reads BY_ID, which this function rebuilds further down.
+     Calling it now would name the player's location from the PREVIOUS catalog. */
   state.measure = {armed:false, first:null, result:null};
   document.getElementById('measurehint').style.display='none';
 
@@ -678,6 +791,7 @@ function applyInit(msg){
   redrawRoute();
   redrawMeasure();
   renderBreadcrumb();
+  if(state.lite) applyLite(msg);   /* after BY_ID exists, so the card can name the player's object */
 
   log(`init ${state.system} (${catalogRows.length} objects)`);
   if(isSystemChange && (hadDraft||hadMeasure)){                 /* routes and measurements stay within one system */

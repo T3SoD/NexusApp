@@ -59,6 +59,19 @@ public class MapWebViewNavigationTests
         Assert.Equal("ready", msg!.Type);
     }
 
+    // Locator mode (Operations system view) asks the app to open the real map tab. It carries no
+    // payload, so an unknown extra field must not stop it parsing.
+    [Fact]
+    public void ParseMessage_OpenMap()
+    {
+        var msg = MapWebView.ParseMessage("{\"type\":\"openMap\"}");
+        Assert.NotNull(msg);
+        Assert.Equal("openMap", msg!.Type);
+
+        var extra = MapWebView.ParseMessage("{\"type\":\"openMap\",\"unused\":1}");
+        Assert.Equal("openMap", extra!.Type);
+    }
+
     [Fact]
     public void ParseMessage_PinClick()
     {
