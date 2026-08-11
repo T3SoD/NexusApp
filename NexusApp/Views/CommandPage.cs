@@ -26,7 +26,12 @@ public sealed partial class CommandPage : UserControl
 {
     private readonly Action<string> _navigate;
     private readonly MainViewModel _vm;
-    private readonly StackPanel _root = new() { Margin = new Thickness(24, 22, 26, 40) };
+    // A Grid, not a scrolling stack. The system view is a WebView2, and a native window is composed
+    // by the OS rather than by WPF's render pass, so it cannot scroll in step with the WPF content
+    // around it - it visibly lags behind. There is no tuning that fixes that, so the page does not
+    // scroll the map at all: the frame fills the viewport, the map takes the space left over, and
+    // only the right column scrolls when it needs to.
+    private readonly Grid _root = new() { Margin = new Thickness(24, 22, 26, 22) };
 
     /// <summary>The job card strip, for the welcome tour's Operations step to ring. Named for the
     /// tour step it serves rather than the cards it points at, so the anchor survives the next
@@ -87,12 +92,18 @@ public sealed partial class CommandPage : UserControl
     {
         _navigate = navigate;
         _vm = vm;
-        // The scrolling dashboard and a full-page modal layer share one host grid, so the
-        // install confirmation can scrim the whole page instead of scrolling with it.
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root };
+        // Header, notice strips, then the body taking everything that is left.
+        _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        // The dashboard, its depth layers and a full-page modal layer share one host grid, so the
+        // install confirmation can scrim the whole page.
         _modalHost = new Grid { Visibility = Visibility.Collapsed };
         var host = new Grid();
-        host.Children.Add(scroll);
+        host.Children.Add(DepthGround());
+        host.Children.Add(DepthGrid());
+        host.Children.Add(_root);
+        host.Children.Add(DepthVignette());
         host.Children.Add(_modalHost);
         Content = host;
         // Keep the dashboard live (shard card + KPIs) when the shard changes while Operations is open.
@@ -160,6 +171,83 @@ public sealed partial class CommandPage : UserControl
         return timer;
     }
 
+    // ── depth layers (ATMOSPHERE, 2026-08-11) ───────────────────────────────────────────────────
+    // The Operations redesign is lit rather than recoloured: nothing here introduces a hue that is
+    // not already in Palette.Luxury.xaml. The page sits on a graded ground, a faint grid gives the
+    // dark a sense of extent, and a vignette holds the eye at the centre where the system view is.
+    //
+    // Deliberately gradients and opacity masks only, NO blur. This app ships with software (CPU)
+    // rendering on by default for display-driver compatibility, and a blur effect per panel would
+    // be paid for on the CPU every frame. The one exception is the system view's own bloom, which
+    // is a single element (see SystemViewFrame).
+    private static UIElement DepthGround() => new Border
+    {
+        Background = new RadialGradientBrush
+        {
+            GradientOrigin = new Point(0.5, -0.1), Center = new Point(0.5, -0.1),
+            RadiusX = 1.2, RadiusY = 0.9,
+            GradientStops = new GradientStopCollection
+            {
+                new(Color.FromRgb(0x0D, 0x14, 0x1D), 0),
+                new(Color.FromRgb(0x07, 0x0A, 0x10), 0.55),
+                new(Color.FromRgb(0x04, 0x06, 0x0A), 1),
+            },
+        },
+    };
+
+    // A 44px lattice that fades out toward the edges, so it reads as depth rather than as a table.
+    private static UIElement DepthGrid()
+    {
+        var line = new SolidColorBrush(Color.FromArgb(0x09, 0x7F, 0xE9, 0xE0));
+        var cell = new GeometryDrawing
+        {
+            Pen = new Pen(line, 1),
+            Geometry = new GeometryGroup
+            {
+                Children =
+                {
+                    new LineGeometry(new Point(0, 0), new Point(44, 0)),
+                    new LineGeometry(new Point(0, 0), new Point(0, 44)),
+                },
+            },
+        };
+        return new Border
+        {
+            IsHitTestVisible = false,
+            Background = new DrawingBrush(cell)
+            {
+                TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 44, 44),
+                ViewportUnits = BrushMappingMode.Absolute, Stretch = Stretch.None,
+            },
+            OpacityMask = new RadialGradientBrush
+            {
+                Center = new Point(0.5, 0.42), GradientOrigin = new Point(0.5, 0.42),
+                RadiusX = 0.7, RadiusY = 0.6,
+                GradientStops = new GradientStopCollection
+                {
+                    new(Colors.Black, 0), new(Colors.Transparent, 1),
+                },
+            },
+        };
+    }
+
+    // Painted OVER the content, under the modal layer. Transparent through the middle, so it darkens
+    // only the corners and never touches legibility where the numbers are.
+    private static UIElement DepthVignette() => new Border
+    {
+        IsHitTestVisible = false,
+        Background = new RadialGradientBrush
+        {
+            Center = new Point(0.5, 0.4), GradientOrigin = new Point(0.5, 0.4),
+            RadiusX = 0.78, RadiusY = 0.72,
+            GradientStops = new GradientStopCollection
+            {
+                new(Colors.Transparent, 0.52),
+                new(Color.FromArgb(0x80, 0, 0, 0), 1),
+            },
+        },
+    };
+
     // The header and the strip stack, so Refresh can rebuild those in place. _root itself is
     // assembled once and never cleared: the body below it hosts the system view's WebView2, which
     // is a native window, and detaching it from the tree on every live data tick would reparent
@@ -171,9 +259,13 @@ public sealed partial class CommandPage : UserControl
     {
         if (_root.Children.Count == 0)
         {
+            Grid.SetRow(_headerHost, 0);
             _root.Children.Add(_headerHost);
+            Grid.SetRow(_stripHost, 1);
             _root.Children.Add(_stripHost);
-            _root.Children.Add(SystemViewFrame());
+            var body = SystemViewFrame();
+            Grid.SetRow(body, 2);
+            _root.Children.Add(body);
         }
 
         _headerHost.Content = HeaderRow();
@@ -220,13 +312,20 @@ public sealed partial class CommandPage : UserControl
             CascadeInSingle(_relaunchStrip);
         }
 
+        // The page assembles from the top left outward: the three job cards, then coverage, then the
+        // right rail. The map is deliberately NOT in the cascade - it is a native window and cannot
+        // be faded, and trying would only make the one thing that cannot animate look broken.
         if (_jobStrip != null) CascadeIn(_jobStrip.Children, maxAnimated: 3);
+        CascadeInSingle(_coverageSlot, delayMs: 165);
+        CascadeIn(_rightCol.Children, maxAnimated: 3, startDelayMs: 200);
 
         foreach (var (el, to, suffix) in _kpiCountTargets)
         {
             if (el is Run run) CountUpRun(run, to);
             else if (el is TextBlock tb) { CountUp.SetSuffix(tb, suffix); CountUp.SetTo(tb, to); }
         }
+
+        GrowProfitBars();
     }
 
     /// <summary>Clears the entrance-played flag so the next tab-open plays it again.</summary>
@@ -235,7 +334,7 @@ public sealed partial class CommandPage : UserControl
     // Fade + rise the first few children in sequence (200ms/40ms stagger/12px rise, QuadraticEase
     // EaseOut) - a local copy of MainWindow's CascadeIn idiom (private there; copied here rather
     // than exposed, per the motion-pass plan).
-    private static void CascadeIn(UIElementCollection children, int maxAnimated)
+    private static void CascadeIn(UIElementCollection children, int maxAnimated, int startDelayMs = 0)
     {
         int n = Math.Min(children.Count, maxAnimated);
         for (int i = 0; i < n; i++)
@@ -244,7 +343,7 @@ public sealed partial class CommandPage : UserControl
             var slide = new TranslateTransform(0, 12);
             fe.RenderTransform = slide;
             fe.Opacity = 0;
-            var delay = TimeSpan.FromMilliseconds(i * 40);
+            var delay = TimeSpan.FromMilliseconds(startDelayMs + i * 40);
             var dur = TimeSpan.FromMilliseconds(200);
             var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
             var fade = new DoubleAnimation(0, 1, dur) { BeginTime = delay, EasingFunction = ease };
@@ -256,15 +355,37 @@ public sealed partial class CommandPage : UserControl
 
     // One-element version of CascadeIn (fade + 12px rise, 200ms, QuadraticEase EaseOut) - the
     // motion the mock's relaunch strip uses for its one-time entrance.
-    private static void CascadeInSingle(FrameworkElement fe)
+    private static void CascadeInSingle(FrameworkElement fe, int delayMs = 0)
     {
         var slide = new TranslateTransform(0, 12);
         fe.RenderTransform = slide;
         fe.Opacity = 0;
         var dur = TimeSpan.FromMilliseconds(200);
+        var begin = TimeSpan.FromMilliseconds(delayMs);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-        fe.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
-        slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, dur) { EasingFunction = ease });
+        fe.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, dur) { BeginTime = begin, EasingFunction = ease });
+        slide.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(12, 0, dur) { BeginTime = begin, EasingFunction = ease });
+    }
+
+    // The seven session bars grow from the baseline, left to right. A ScaleTransform, not a Height
+    // animation: scaling is a render-time transform, so this never invalidates layout, which is what
+    // keeps it cheap under software rendering.
+    private void GrowProfitBars()
+    {
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        for (int i = 0; i < _profitBars.Count; i++)
+        {
+            var scale = new ScaleTransform(1, 0);
+            _profitBars[i].RenderTransformOrigin = new Point(0.5, 1);
+            _profitBars[i].RenderTransform = scale;
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(420))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(300 + i * 45), EasingFunction = ease,
+                });
+        }
     }
 
     // Local mirror of CountUp.cs's 0 -> to roll-up (Motion.CountUpMs, Motion.Settle), targeting

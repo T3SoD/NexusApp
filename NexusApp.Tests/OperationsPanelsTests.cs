@@ -33,7 +33,9 @@ public class OperationsPanelsTests
 
         var row = Assert.Single(rows);
         Assert.True(row.Live);
-        Assert.Equal("USE1C 142", row.Id);
+        Assert.Equal("US East", row.Region);
+        Assert.Equal("142", row.Instance);
+        Assert.Equal("pub_use1c_12030094_142", row.ShardId);
         Assert.Equal("1h 12m", row.Duration);
         Assert.Equal("now", row.When);
     }
@@ -92,7 +94,7 @@ public class OperationsPanelsTests
         }, onShard: true, Now, max: 4);
 
         Assert.Equal(4, rows.Count);
-        Assert.Equal("USE1C 142", rows[0].Id);
+        Assert.Equal("142", rows[0].Instance);
         Assert.Equal("4h ago", rows[1].When);
         Assert.Equal("yesterday", rows[2].When);
     }

@@ -554,9 +554,44 @@ function topDown(){
   controls.update();
   log('locator: top down');
 }
+/* The locator's home view. Tilt and swing are named constants rather than a direction vector
+   buried in the framing helper, so the default can be set to a MEASURED preference instead of a
+   guessed one. LOCATOR_POLAR is degrees off straight-down-the-ecliptic (0 is top down, 90 is edge
+   on); LOCATOR_AZIMUTH is the swing around it.
+
+   Both values are MEASURED, not guessed: they were read off a live session's own capture line, so
+   the view the locator opens on is the view that was actually settled on at the controls. The
+   distance is deliberately NOT baked alongside them - framing is computed from the system's own
+   radius so the view still fills whatever window it is given. */
+const LOCATOR_POLAR = 58.2, LOCATOR_AZIMUTH = -148.0;
+let liteHomed = false;
+
+function locatorHome(){
+  const star=catalogRows.find(r=>r.type==='Star');
+  const r = star? (subRadius.get(star.id)||45000)*1.12 : 45000;
+  const dist = r/Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*1.12;
+  const p = THREE.MathUtils.degToRad(LOCATOR_POLAR), a = THREE.MathUtils.degToRad(LOCATOR_AZIMUTH);
+  tween=null;
+  controls.target.set(0,0,0);
+  /* OrbitControls measures polar from +Y and azimuth as atan2(x, z), so the placement has to be
+     built in that order or RESET would not land where the capture below says it will. */
+  camera.position.set(dist*Math.sin(p)*Math.sin(a), dist*Math.cos(p), dist*Math.sin(p)*Math.cos(a));
+  controls.update();
+}
+
+/* Tilt capture. Logs where the camera settled, every time the user finishes a drag or a zoom, so a
+   preferred default can be read out of nexus.log and pasted into the two constants above. Locator
+   only: the map tab has its own framing and does not need the noise. */
+controls.addEventListener('end', ()=>{
+  if(!state.lite) return;
+  log('locator camera: polar ' + THREE.MathUtils.radToDeg(controls.getPolarAngle()).toFixed(1)
+    + ' azimuth ' + THREE.MathUtils.radToDeg(controls.getAzimuthalAngle()).toFixed(1)
+    + ' distance ' + camera.position.distanceTo(controls.target).toFixed(0));
+});
+
 function setDrift(on){
   controls.autoRotate = !!on && !REDUCED;   /* reduced motion never spins on its own */
-  controls.autoRotateSpeed = 0.45;
+  controls.autoRotateSpeed = 0.36;          /* 20% under the old 0.45, a calmer idle */
   document.getElementById('liteDrift').classList.toggle('on', !!on && !REDUCED);
 }
 /* Fills the locator card and wires its controls. Called on every init so a location change while
@@ -573,11 +608,16 @@ function applyLite(msg){
   document.getElementById('liteYouSub').textContent =
     name ? (msg.playerNote || (state.system||'')) : 'Nexus has not seen a location yet.';
   document.getElementById('liteYou').style.opacity = o ? '1' : (name ? '.86' : '.72');
-  setDrift(false);
+  /* Homed ONCE, not on every init, and the same for the drift default. A location change re-sends
+     the init, and snapping the camera home or restarting a drift the user switched off would be the
+     app fighting the user. */
+  if(!liteHomed){ liteHomed = true; locatorHome(); setDrift(true); }
 }
 document.getElementById('liteMe').onclick    = centreOnMe;
 document.getElementById('liteTop').onclick   = topDown;
-document.getElementById('liteReset').onclick = ()=>{ setDrift(false); systemView(); };
+/* RESET restores the home TILT too, not just the framing. systemView keeps whatever direction the
+   camera already had, which made reset feel like it half worked. */
+document.getElementById('liteReset').onclick = ()=>{ setDrift(false); locatorHome(); };
 document.getElementById('liteDrift').onclick = ()=> setDrift(!controls.autoRotate);
 document.getElementById('liteOpen').onclick  = ()=> post({type:'openMap'});
 

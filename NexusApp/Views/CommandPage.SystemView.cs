@@ -28,6 +28,29 @@ public sealed partial class CommandPage
 {
     private Grid? _jobStrip;
 
+    // The session bars, captured fresh on each Refresh so PlayEntrance grows the current visit's
+    // own elements and never a previous build's.
+    private readonly List<Border> _profitBars = new();
+
+    // ── the lit panel surface (ATMOSPHERE) ──────────────────────────────────────────────────────
+    // A top-lit gradient instead of the flat Bg2Nav fill, so panels read as surfaces catching light
+    // from the same direction as the page ground behind them. Both stops are existing palette
+    // colours; this adds no hue, only a direction for the light.
+    private static readonly Brush LitPanel = new LinearGradientBrush(
+        new GradientStopCollection
+        {
+            new(Color.FromRgb(0x10, 0x18, 0x21), 0),
+            new(Color.FromRgb(0x0C, 0x12, 0x19), 0.62),
+        },
+        new Point(0.15, 0), new Point(0.85, 1));
+
+    /// <summary>A panel on the lit surface. Every panel on this page goes through here so the
+    /// treatment cannot drift between them.</summary>
+    private Grid LitCard(UIElement content, double chamfer = 12, Thickness? padding = null,
+                         Brush? border = null)
+        => Hud.Panel(content, chamfer: chamfer, brackets: false, bg: LitPanel,
+                     border: border ?? Br("NavBorderBrush"), padding: padding ?? new Thickness(16));
+
     // ── the page body ───────────────────────────────────────────────────────────────────────────
     // Built ONCE and then refilled in place, unlike every other part of this page. The system view
     // is a WebView2, which is a native window: detaching and reattaching it on every live data tick
@@ -41,14 +64,19 @@ public sealed partial class CommandPage
 
     /// <summary>Builds the permanent body frame, once. The caller adds the result to the page once
     /// and never removes it.</summary>
-    private UIElement SystemViewFrame()
+    private Grid SystemViewFrame()
     {
         _bodyGrid = new Grid();
         _bodyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.45, GridUnitType.Star) });
         _bodyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        // The map takes the star row, so it grows with the window instead of sitting at a fixed
+        // height below the fold. That is the whole point of not scrolling: the system view is
+        // always fully on screen, at whatever size the window can spare.
         var left = new Grid { Margin = new Thickness(0, 0, 8, 0) };
-        for (int i = 0; i < 3; i++) left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        left.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 240 });
         Grid.SetRow(_jobSlot, 0);
         left.Children.Add(_jobSlot);
         Grid.SetRow(_coverageSlot, 1);
@@ -60,8 +88,15 @@ public sealed partial class CommandPage
         Grid.SetColumn(left, 0);
         _bodyGrid.Children.Add(left);
 
-        Grid.SetColumn(_rightCol, 1);
-        _bodyGrid.Children.Add(_rightCol);
+        // Only the right column scrolls, and it holds no native window, so it scrolls cleanly.
+        var rightScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = _rightCol,
+        };
+        Grid.SetColumn(rightScroll, 1);
+        _bodyGrid.Children.Add(rightScroll);
         return _bodyGrid;
     }
 
@@ -252,8 +287,7 @@ public sealed partial class CommandPage
         };
         sp.Children.Add(subCell);
 
-        var panel = Hud.Panel(sp, chamfer: 10, brackets: false, border: Br("NavBorderBrush"),
-                              padding: new Thickness(14, 12, 14, 12));
+        var panel = LitCard(sp, chamfer: 10, padding: new Thickness(14, 12, 14, 12));
         WireNav(panel, $"Operations: {key} card", nav);
         return (panel, valueCell, subCell);
     }
@@ -378,7 +412,7 @@ public sealed partial class CommandPage
         Grid.SetColumn(chev, 2);
         grid.Children.Add(chev);
 
-        var panel = Hud.Panel(grid, chamfer: 12, padding: new Thickness(16, 14, 16, 15));
+        var panel = LitCard(grid, chamfer: 12, padding: new Thickness(16, 14, 16, 15));
         WireNav(panel, "Operations: network coverage card", "network");
         return panel;
     }
@@ -409,15 +443,22 @@ public sealed partial class CommandPage
         if (rows.Count == 0)
         {
             sp.Children.Add(Empty("No shard seen yet. Start Star Citizen and Nexus reads it from the log."));
-            return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+            return LitCard(sp, chamfer: 14, padding: new Thickness(18));
         }
 
+        // Named exactly as the overlay's STATS panel names it, down to the spacing: one shard, one
+        // name, wherever the player reads it.
         var cur = rows[0];
         sp.Children.Add(new TextBlock
         {
-            Text = cur.Id, FontFamily = Mono, FontSize = 19, FontWeight = FontWeights.Bold,
-            Foreground = Br(cur.Live ? "CyanBrush" : "FgBrush"),
+            Text = $"{cur.Region}  .  Shard {cur.Instance}", FontFamily = Ui, FontSize = 17,
+            FontWeight = FontWeights.SemiBold, Foreground = Br(cur.Live ? "CyanBrush" : "FgBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        sp.Children.Add(new TextBlock
+        {
+            Text = cur.ShardId, FontFamily = Mono, FontSize = 10, Foreground = Br("FgDimBrush"),
+            Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
         });
         sp.Children.Add(new TextBlock
         {
@@ -438,7 +479,7 @@ public sealed partial class CommandPage
             });
             for (int i = 1; i < rows.Count; i++) sp.Children.Add(ShardRowLine(rows[i]));
         }
-        return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+        return LitCard(sp, chamfer: 14, padding: new Thickness(18));
     }
 
     private UIElement ShardRowLine(ShardRow r)
@@ -456,7 +497,7 @@ public sealed partial class CommandPage
         });
         var id = new TextBlock
         {
-            Text = r.Id, FontFamily = Mono, FontSize = 11,
+            Text = $"{r.Region} . {r.Instance}", FontFamily = Ui, FontSize = 11.5,
             Foreground = Br(r.Live ? "FgBrush" : "FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -496,7 +537,7 @@ public sealed partial class CommandPage
         if (w == null)
         {
             sp.Children.Add(Empty("Wallet tracking is not running."));
-            return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+            return LitCard(sp, chamfer: 14, padding: new Thickness(18));
         }
 
         var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
@@ -512,7 +553,11 @@ public sealed partial class CommandPage
                 _ => Br("FgDimBrush"),
             },
         };
-        value.Inlines.Add(new Run(w.Estimate is { } est ? ProfitDisplay.Format(est) : ProfitDisplay.NoneValue));
+        var balanceRun = new Run(w.Estimate is { } est ? ProfitDisplay.Format(est) : ProfitDisplay.NoneValue);
+        value.Inlines.Add(balanceRun);
+        // Only a real balance rolls up. The "- - -" placeholder is not a number and must never be
+        // animated toward one, or an unknown wallet would read as a wallet counting to zero.
+        if (w.Estimate is { } roll) _kpiCountTargets.Add((balanceRun, roll, ""));
         if (w.HasAnchor)
             value.Inlines.Add(new Run("  aUEC")
             {
@@ -543,7 +588,7 @@ public sealed partial class CommandPage
             Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(0, 10, 0, 0),
             Child = TransactionList(rows),
         });
-        return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+        return LitCard(sp, chamfer: 14, padding: new Thickness(18));
     }
 
     private UIElement TransactionList(IReadOnlyList<TxRow> rows)
@@ -615,7 +660,7 @@ public sealed partial class CommandPage
         if (App.Profit == null)
         {
             sp.Children.Add(Empty("Profit tracking is not running."));
-            return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+            return LitCard(sp, chamfer: 14, padding: new Thickness(18));
         }
 
         var ledger = App.Profit.Ledger;
@@ -630,7 +675,9 @@ public sealed partial class CommandPage
                 _ => Br("FgDimBrush"),
             },
         };
-        value.Inlines.Add(new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)));
+        var netRun = new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net));
+        value.Inlines.Add(netRun);
+        if (ledger.UnvoidedCount > 0) _kpiCountTargets.Add((netRun, ledger.Net, ""));
         if (ledger.UnvoidedCount > 0)
             value.Inlines.Add(new Run("  aUEC")
             {
@@ -653,7 +700,7 @@ public sealed partial class CommandPage
             Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(0, 10, 0, 0),
             Child = ProfitBarChart(ProfitBarsForChannel()),
         });
-        return Hud.Panel(sp, chamfer: 14, padding: new Thickness(18));
+        return LitCard(sp, chamfer: 14, padding: new Thickness(18));
     }
 
     // The bars come from the ACTIVE channel only: a PTU session must never move the LIVE trend,
@@ -683,10 +730,12 @@ public sealed partial class CommandPage
 
         if (bars.Count == 0)
         {
+            _profitBars.Clear();
             sp.Children.Add(Empty("No finished sessions yet. The first one lands here when you close one."));
             return sp;
         }
 
+        _profitBars.Clear();
         long peak = Math.Max(1, bars.Max(b => Math.Abs(b.Net)));
         var best = new TextBlock
         {
@@ -720,6 +769,7 @@ public sealed partial class CommandPage
             };
             Grid.SetColumn(bar, i);
             chart.Children.Add(bar);
+            _profitBars.Add(bar);
 
             var lbl = new TextBlock
             {
@@ -748,7 +798,17 @@ public sealed partial class CommandPage
     // Called exactly once, from the body's one-time build above.
     private FrameworkElement MapSlot()
     {
-        var host = new Grid { Height = 420, Background = Br("BgBrush") };
+        // The hero, and the only panel allowed to glow. The halo is two hairline rings rather than a
+        // blur: it reads the same at this scale and costs nothing, which matters because the app
+        // runs software-rendered by default. The 1px padding is load-bearing - the WebView is a
+        // native window and would paint straight over a ring drawn at the same bounds.
+        var host = new Grid { Background = Br("BgBrush") };
+        host.Children.Add(new Border
+        {
+            IsHitTestVisible = false,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x1F, 0x7F, 0xE9, 0xE0)),
+            BorderThickness = new Thickness(1), Margin = new Thickness(-3),
+        });
         _mapView = new MapWebView();
         _mapView.Ready += () =>
         {
@@ -758,7 +818,11 @@ public sealed partial class CommandPage
         };
         // The locator's only outbound action: hand the player to the real map tab.
         _mapView.OpenMapRequested += () => Dispatcher.BeginInvoke(() => _navigate("map"));
-        host.Children.Add(_mapView);
+        host.Children.Add(new Border
+        {
+            BorderBrush = Br("CyanStrongBrush"), BorderThickness = new Thickness(1),
+            Padding = new Thickness(1), Child = _mapView,
+        });
         return host;
     }
 

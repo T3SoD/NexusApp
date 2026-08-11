@@ -7,10 +7,15 @@ using NexusApp.Models;
 namespace NexusApp.Services;
 
 /// <summary>One shard the player was on, folded for display.
+/// <para>The shard's identity is carried as its three raw parts rather than one preformatted
+/// string. Naming a shard is a DISPLAY convention that the overlay's STATS panel already owns
+/// ("US East . Shard 142", with the raw id beneath), and a second copy of that rule here is how the
+/// two surfaces drift apart. The view composes; this only measures.</para>
 /// <para><paramref name="Duration"/> is null when it cannot be known rather than 0: the game logs a
 /// join and never a leave, so the newest shard has no measurable length once the player is off it.
 /// A zero would read as "was there for no time", which is a different and false claim.</para></summary>
-public sealed record ShardRow(string Id, string? Duration, string When, bool Live);
+public sealed record ShardRow(string Region, string Instance, string ShardId,
+    string? Duration, string When, bool Live);
 
 /// <summary>One session's profit, folded for the history bars. A losing session is still a bar.</summary>
 public sealed record ProfitBar(string Label, long Net, bool Current);
@@ -62,18 +67,10 @@ public static class OperationsPanels
                 if (span >= TimeSpan.Zero) duration = FormatSpan(span);
             }
 
-            rows.Add(new ShardRow(FormatShardId(s), duration, live ? "now" : FormatWhen(nowUtc - s.JoinedAt), live));
+            rows.Add(new ShardRow(s.Region ?? "", s.Instance ?? "", s.ShardId ?? "",
+                                  duration, live ? "now" : FormatWhen(nowUtc - s.JoinedAt), live));
         }
         return rows;
-    }
-
-    // "USE1C 142". The raw ShardId is a server-side token nobody reads; region code plus instance
-    // is what the player sees in game.
-    private static string FormatShardId(ShardSession s)
-    {
-        var code = (s.RegionCode ?? "").ToUpperInvariant();
-        if (code.Length == 0) return string.IsNullOrEmpty(s.Instance) ? "UNKNOWN" : s.Instance;
-        return string.IsNullOrEmpty(s.Instance) ? code : code + " " + s.Instance;
     }
 
     // "1h 12m" / "46m". Minutes stay two digits beside an hour so a column of these does not jitter.
