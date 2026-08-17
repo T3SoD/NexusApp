@@ -58,6 +58,26 @@ public class TradeOriginResolverTests
         Assert.Empty(TradeOriginResolver.TerminalIdsForLocation("", Terminals));
     }
 
+    // ── ResolveOriginTerminalIds, the sell flow's D3 gate (2026-08-17) ──
+
+    [Fact]
+    public void ResolveOrigin_LiveSession_ResolvesTheLocation()
+        => Assert.Equal(new HashSet<int> { 1, 2 },
+            TradePage.ResolveOriginTerminalIds(sessionLive: true, "Crusader", null, Terminals));
+
+    [Fact]
+    public void ResolveOrigin_NoLiveSession_IsEmpty_EvenThoughTheLocationResolves()
+    {
+        // The gate itself: LastKnownLocation never clears, so without the sessionLive conjunct
+        // the sell flow kept measuring tiers and distances from a dead session's origin. A
+        // resolvable location with no live session must yield nothing.
+        Assert.Empty(TradePage.ResolveOriginTerminalIds(sessionLive: false, "Crusader", null, Terminals));
+    }
+
+    [Fact]
+    public void ResolveOrigin_LiveSession_NoLocationYet_IsEmpty_NotAGuess()
+        => Assert.Empty(TradePage.ResolveOriginTerminalIds(sessionLive: true, null, null, Terminals));
+
     // Route planner STARTING LOCATION seam (task 10): TradeOriginResolver.StartTerminalIds is what
     // RebuildPlanner calls to turn the combo's persisted kind into RoutePlanner's terminal id set.
     [Fact]

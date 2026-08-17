@@ -394,7 +394,7 @@ public partial class MainWindow
         // same system, the distance. Silence rule preserved: an unresolvable terminal returns null
         // and this renders byte-for-byte as it did before.
         var where = PriceLocationLabel.Describe(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
-                                                App.Map, App.Player.Current);
+                                                App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive));
         var term = new TextBlock
         {
             Text = where is null ? hit.TerminalName : $"{hit.TerminalName}  ({where})",

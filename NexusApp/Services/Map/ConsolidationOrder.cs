@@ -57,6 +57,13 @@ internal static class ConsolidationOrder
             .ToList();
     }
 
+    /// <summary>The offline order (D3 WITHHELD, 2026-08-17): alphabetical by place name. Nearest
+    /// is a claim about now, so with no live session the list stops claiming it and falls back to
+    /// the one order that stays meaningful and stable with the game closed. OrderBy is stable, so
+    /// same-named stops keep their original relative order, matching ByDistanceFrom's tie rule.</summary>
+    public static List<T> ByPlace<T>(IEnumerable<T> stops, Func<T, string> location)
+        => stops.OrderBy(s => location(s) ?? "", StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>The formatted distance to one stop, or null when it does not resolve. Callers append
     /// it and render nothing on null, the same silence rule the price surfaces follow.</summary>
     public static string? DistanceTo(ConsolidationStop stop, MapCatalog map, MapObject? from)

@@ -1645,7 +1645,9 @@ public partial class OverlayWindow : Window
             MaxWidth = 110, TextTrimming = TextTrimming.CharacterEllipsis,
         };
         right.Children.Add(_hubLocationText);
-        right.ToolTip = "Where Game.log last placed you. Route bands and sell-line distances measure from here.";
+        // No route bands anymore (deleted in the trade/cargo fusion), and distances only measure
+        // while a session is live (D3, 2026-08-17) - the tooltip is where that rule gets said.
+        right.ToolTip = "Where Game.log last placed you. Sell-line distances measure from here while a session is live.";
         Grid.SetColumn(right, 1);
         HubSessionHost.Children.Add(right);
 
@@ -1931,6 +1933,15 @@ public partial class OverlayWindow : Window
         };
         SellLineRuns(line, MarketNotice.OverlayLabel, hit, ageText);
         host.Children.Add(line);
+        // The withheld note (D3, 2026-08-17), same as the decoder pane's: the mock shows it on
+        // this surface too, and a distance that silently vanished mid-flight would read as a bug.
+        if (!App.GameLogFeed.IsSessionLive)
+            host.Children.Add(new TextBlock
+            {
+                Text = "Distances return when a session is live.", FontSize = 9.5,
+                FontStyle = FontStyles.Italic, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
+            });
         return true;
     }
 
@@ -1953,7 +1964,7 @@ public partial class OverlayWindow : Window
         // answer is a real distance - the bare system name is worth printing on the Codex and the
         // work order rows, but here it would just crowd a line read at a glance mid-flight.
         if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
-                                            App.Map, App.Player.Current) is { } away)
+                                            App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive)) is { } away)
             line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }
@@ -2511,6 +2522,9 @@ public partial class OverlayWindow : Window
         // The HUB location line keys its live-vs-last-known dressing on this same probe
         // (2026-08-17), and no location event fires when the game merely opens or closes.
         RefreshHubLocation();
+        // The scan cards' sell-line distances withdraw with the session (D3, 2026-08-17);
+        // without this they held a dead session's "(12.4 Gm)" until the next hourly publish.
+        RefreshMarketSellLines();
     }
 
     // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.

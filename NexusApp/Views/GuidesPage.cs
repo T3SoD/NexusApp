@@ -53,6 +53,11 @@ public sealed class GuidesPage : UserControl
     // Section heads and cards in cascade order, credits appended last.
     private readonly List<FrameworkElement> _cascade = new();
 
+    // The place strips, by guide, so their distance half can be re-read after the one-time
+    // BuildList: the cards are built once in the constructor, and before this list existed the
+    // "12.4 Gm" a strip was born with froze for the whole app run (D3, 2026-08-17).
+    private readonly List<(string GuideId, TextBlock Strip)> _placeStrips = new();
+
     private GuideEntry? _openGuide;
 
     // Executive Hangar status line (issue #26; extracted into a shared control across GuidesPage
@@ -82,14 +87,33 @@ public sealed class GuidesPage : UserControl
         // field comment on _hangarLine), so it drives the hangar control's start/stop on every
         // entry and exit, not just the first one.
         IsVisibleChanged += (_, _) => { if (IsVisible) _hangarLine?.Start(); else _hangarLine?.Stop(); };
+
+        // The strips' distance half moves with the player and withdraws with the session (D3,
+        // 2026-08-17) - before these two wires it froze at whatever BuildList saw. Off-screen
+        // flips are caught by Activate's own refresh on the next entry.
+        App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlaceStrips(); });
+        App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlaceStrips(); });
     }
 
     /// <summary>Called by MainWindow every time the dock activates this page.</summary>
     public void Activate()
     {
         Logger.Info("[UI] guides page opened");
+        RefreshPlaceStrips();
         if (_openGuide != null) CloseGuide(replayCascade: false);
         PlayCascade();
+    }
+
+    /// <summary>Re-reads every card's place strip from the current measuring read: live session
+    /// in the same system appends the distance, anything else drops back to "Checkmate - Pyro".
+    /// Describe can only return null for a guide with no resolvable site, and those never got a
+    /// strip in the first place, so the null arm is a keep-last-text belt, not a real state.</summary>
+    private void RefreshPlaceStrips()
+    {
+        var at = App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive);
+        foreach (var (id, strip) in _placeStrips)
+            if (GuidePlaces.Describe(App.Map, id, at) is { } where)
+                strip.Text = $"◆  {where}";
     }
 
     // -- guide open / close ----------------------------------------------------------
@@ -308,7 +332,7 @@ public sealed class GuidesPage : UserControl
         // said where they were, so the two features knew about each other in one direction only.
         // Absent for the two Tactical Strike Groups guides, which document a formation rather than
         // a location: those cards keep exactly the shape they have today.
-        if (GuidePlaces.Describe(App.Map, guide.Id, App.Player.Current) is { } where)
+        if (GuidePlaces.Describe(App.Map, guide.Id, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive)) is { } where)
         {
             var place = new TextBlock
             {
@@ -317,6 +341,7 @@ public sealed class GuidesPage : UserControl
                 TextTrimming = TextTrimming.CharacterEllipsis, Cursor = Cursors.Hand,
                 ToolTip = "Show this place on the Starmap.",
             };
+            _placeStrips.Add((guide.Id, place));
             place.MouseEnter += (_, _) => place.Foreground = Hud.Br("AccentBrush");
             place.MouseLeave += (_, _) => place.Foreground = Hud.Br("FgDimBrush");
             place.MouseLeftButtonUp += (_, e) =>

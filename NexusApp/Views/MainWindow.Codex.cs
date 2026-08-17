@@ -547,7 +547,7 @@ public partial class MainWindow
         // full price board - the same jump the Starmap already makes. Silence rule: an unresolvable
         // terminal renders exactly as before, with no click affordance.
         var where = PriceLocationLabel.Describe(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
-                                                App.Map, App.Player.Current);
+                                                App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive));
         var name = new TextBlock
         {
             Text = where is null ? hit.TerminalName : $"{hit.TerminalName}  ({where})",
@@ -965,7 +965,7 @@ public partial class MainWindow
             // Where that refinery actually is (app review G10). The line named a station and a
             // percentage and nothing else, so a +8% refinery a jump away read exactly like a +8%
             // one next door. Same words the price surfaces use, and silent when it cannot place it.
-            if (RefineryPlaces.Describe(bestYield, App.Map, App.Player.Current) is { } where)
+            if (RefineryPlaces.Describe(bestYield, App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive)) is { } where)
                 right.Children.Add(new TextBlock
                 {
                     Text = where, FontSize = 11, Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
@@ -1207,7 +1207,9 @@ public partial class MainWindow
             // The headline pick is RefineryPlaces.Best, not yields[0] (app review G10): the modifier
             // still decides it, but ties - and this seed has many, ten stations deep for some ores -
             // now go to the nearest rather than to whichever the seed listed first.
-            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, RefineryPlaces.Best(r.Refineries, App.Map, App.Player.Current)));
+            // The measuring read is session-gated (D3, 2026-08-17): with the game closed the tie
+            // falls back to the seed-order pick rather than "nearest to a dead session's spot".
+            ReferenceDetailPanel.Children.Add(ValueSummaryRow(topHit, RefineryPlaces.Best(r.Refineries, App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive))));
 
             var valueDetails = new StackPanel { ClipToBounds = true };   // clips mid-reveal, like the work order sell rows
             if (priceHits.Count > 0)

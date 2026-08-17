@@ -278,8 +278,9 @@ public sealed partial class TradePage
         var originIds = OriginTerminalIds(snap.Terminals.Rows);
         // SellLookup takes ONE optional origin, not a set. Every terminal of one location shares the
         // same hierarchy (system/orbit/planet), so any of them derives the same proximity tier -
-        // taking the first is correct for a multi-terminal station, where collapsing to null used to
-        // force every buyer to CROSS-SYSTEM. null only for a genuinely empty set.
+        // taking the first is correct for a multi-terminal station. null only for a genuinely empty
+        // set (origin unknown, or game not running per the D3 gate in OriginTerminalIds), which
+        // withdraws every tier chip: SellLookup returns no tier, never a CROSS-SYSTEM default.
         int? originId = originIds.Count >= 1 ? originIds.First() : null;
         var buyers = SellLookup.Rank(snap.TradePrices.Rows, terminals, picked.CommodityId, qty, originId, App.Settings.Current.TradeScope);
 
@@ -316,6 +317,17 @@ public sealed partial class TradePage
             CascadeIn(row, idx);
             _sellResults.Children.Add(row);
         }
+
+        // The withheld note (D3, 2026-08-17): with no live session the rows above carry no tier
+        // chip and no distance tag, and one dim line under the list says why - the mock's paneNote,
+        // once per panel, never per row.
+        if (!App.GameLogFeed.IsSessionLive)
+            _sellResults.Children.Add(new TextBlock
+            {
+                Text = "Distances return when a session is live.",
+                FontFamily = Hud.Font("UiFont"), FontSize = 10.5, FontStyle = FontStyles.Italic,
+                Foreground = Hud.Br("FgDimBrush"), Margin = new Thickness(2, 0, 0, 4),
+            });
 
         string sctSuffix = App.Settings.Current.MarketDataEnabled == true ? $", sctOnly {sctOnly.Count}" : "";
         Logger.Info($"[UI] Trade sell run: {buyers.Count} buyers, commodity {picked.CommodityName}, qty {qty}, scope {App.Settings.Current.TradeScope}{sctSuffix}");

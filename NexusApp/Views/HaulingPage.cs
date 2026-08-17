@@ -67,6 +67,11 @@ public sealed class HaulingPage : UserControl
         Refresh();
         InteractionLog.Nav("Cargo Hauling");
         App.Hauls.Changed += () => Dispatcher.Invoke(Refresh);
+        // The STOPS board's ordering, distances and "nearest first" claim withdraw with the
+        // session (D3, 2026-08-17), and no haul event fires when the game merely exits - without
+        // this the board kept its live dressing until the next haul change or page re-entry.
+        // IsVisible-guarded like CommandPage's subscription; re-entry always calls Refresh().
+        App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() => { if (IsVisible) Refresh(); });
     }
 
     /// <summary>Rebuild every section from the current App.Hauls state.</summary>
@@ -638,15 +643,20 @@ public sealed class HaulingPage : UserControl
 
         // App review 2026-08-01: these stops used to render in dictionary insertion order, which is
         // the order contracts happened to be accepted in - meaningless to a hauler planning a run.
-        // The app has had real coordinates for these places and a live player position all along and
-        // used neither. Now ordered nearest-first when a session places the player; unchanged when
-        // it does not, because sorting by distance from nowhere would be theatre.
-        var here = App.Player.Current;
-        var ordered = ConsolidationOrder.ByDistanceFrom(stops, s => s.Location, App.Map, here);
+        // Now ordered nearest-first when a LIVE session places the player (D3, 2026-08-17: nearest
+        // is a claim about now, and LastKnownLocation never clears, so the measuring read is gated
+        // on the process probe). With no measurable position the board falls back to by-place
+        // (alphabetical), the one order that stays meaningful with the game closed - acceptance
+        // order meant nothing, and sorting by distance from nowhere would be theatre.
+        bool live = App.GameLogFeed.IsSessionLive;
+        var here = App.Player.MeasureFrom(live);
+        var ordered = here is null
+            ? ConsolidationOrder.ByPlace(stops, s => s.Location)
+            : ConsolidationOrder.ByDistanceFrom(stops, s => s.Location, App.Map, here);
 
         var bodyStack = new StackPanel();
         bodyStack.Children.Add(PanelHeaderBar($"Stops · {ordered.Count}",
-            here is null ? "everything that happens at each place" : "everything that happens at each place, nearest first"));
+            here is null ? "everything that happens at each place, by place" : "everything that happens at each place, nearest first"));
 
         if (ordered.Count == 0)
         {
@@ -686,6 +696,19 @@ public sealed class HaulingPage : UserControl
         }
 
         bodyStack.Children.Add(table);
+        // The withheld note (D3, 2026-08-17): with the game closed the rows above carry no
+        // distance and the order stops claiming nearest - one dim italic line per panel says why,
+        // the mock's paneNote, never a line per row.
+        if (!live)
+            bodyStack.Children.Add(new Border
+            {
+                Padding = new Thickness(14, 0, 14, 12),
+                Child = new TextBlock
+                {
+                    Text = "Distances return when a session is live.", FontSize = 11,
+                    FontStyle = FontStyles.Italic, Foreground = Br("FgDimBrush"),
+                },
+            });
         var panel = Hud.Panel(bodyStack, padding: new Thickness(0));
         panel.Margin = new Thickness(0, 16, 0, 0);
         _body.Children.Add(panel);

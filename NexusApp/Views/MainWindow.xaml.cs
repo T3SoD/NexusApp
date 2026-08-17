@@ -54,7 +54,20 @@ public partial class MainWindow : Window
             // The ungated belt (2026-08-17): GameLogSession swallows the feed's flip while the
             // log monitor is detached, and with the game closed no location event fires either -
             // without this, the chip could hold its live cyan through an exit in that state.
-            App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(UpdateLocationChip);
+            // The same flip also drives the distance gate (D3, 2026-08-17): every player-relative
+            // distance this window renders withdraws with the session, so the three market
+            // surfaces repaint through the same fan-out a snapshot publish uses. Each is a no-op
+            // unless its page or host is actually on screen.
+            App.GameLogFeed.SessionLiveChanged += live => Dispatcher.BeginInvoke(() =>
+            {
+                UpdateLocationChip();
+                OnMarketDataChanged();
+                // The scan cards' "Best refinery" tie-break also folds the gate, but it lives
+                // behind one-shot bindings on a record - only a container rebuild re-reads it
+                // (this repaints the overlay's scan cards too; they share FilteredScanResults).
+                _vm?.RepaintScanResults();
+                Logger.Info($"[UI] distance gate: {(live ? "live" : "withheld, no session")}");
+            });
             // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
             // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
             // ChipSuffix on the next Game.log channel resolve.
@@ -1513,6 +1526,17 @@ public partial class MainWindow : Window
         var line = new TextBlock { FontSize = 12 };
         SellLineRuns(line, MarketNotice.DecoderLabel, hit, ageText);
         host.Children.Add(line);
+
+        // The withheld note (D3, 2026-08-17): the line above carries no distance while the game
+        // is closed, and this pane is one the picked mock gives the explanation to. Only when a
+        // sell line actually rendered - an empty host stays empty.
+        if (!App.GameLogFeed.IsSessionLive)
+            host.Children.Add(new TextBlock
+            {
+                Text = "Distances return when a session is live.", FontSize = 10.5,
+                FontStyle = FontStyles.Italic, Foreground = Hud.Br("FgDimBrush"),
+                Margin = new Thickness(0, 3, 0, 0),
+            });
     }
 
     // The mock renders every one-line sell surface SEGMENTED (mock .sellline: label dim, value
@@ -1533,7 +1557,7 @@ public partial class MainWindow : Window
         // single decode line rather than a table row, so it takes the overlay's cramped variant: a
         // real distance or nothing, never a bare system name.
         if (PriceLocationLabel.DistanceOnly(hit.TerminalId, App.Market.Snapshot?.Terminals.Rows,
-                                            App.Map, App.Player.Current) is { } away)
+                                            App.Map, App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive)) is { } away)
             line.Inlines.Add(new System.Windows.Documents.Run($"  ({away})") { Foreground = dim });
         line.Inlines.Add(new System.Windows.Documents.Run(" " + MarketNotice.AgePart(ageText)) { Foreground = dim });
     }

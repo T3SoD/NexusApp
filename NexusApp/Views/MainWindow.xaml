@@ -469,7 +469,7 @@
                                 <TextBlock x:Name="OperatorName" Text="OPERATOR" FontFamily="{StaticResource UiFont}" FontWeight="Bold" FontSize="11"
                                            Foreground="{DynamicResource FgBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
-                                            ToolTip="Where Game.log last placed you. Distances across the app measure from here.">
+                                            ToolTip="Where Game.log last placed you. Distances across the app measure from here while a session is live.">
                                     <Ellipse x:Name="LocationDot" Width="7" Height="7" Fill="{StaticResource FgDimBrush}" Margin="0,0,7,0" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="LocationChipText" Text="unknown" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                                Foreground="{StaticResource FgDimBrush}" VerticalAlignment="Center" MaxWidth="136" TextTrimming="CharacterEllipsis"/>

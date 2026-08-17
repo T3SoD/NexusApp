@@ -181,4 +181,35 @@ public class MapCatalogTerminalDistanceTests
         Assert.Null(place.System);
         Assert.Null(place.DistanceFrom(Map.ByName("Stanton", "Hurston")));
     }
+
+    // ── MeasureFrom, the D3 WITHHELD gate (2026-08-17) ──
+
+    [Fact]
+    public void PlayerPlace_MeasureFrom_LiveSession_IsCurrent()
+    {
+        var tracker = new LocationTracker(new GameLogFeed());
+        tracker.Ingest(E("<2026-07-29T22:39:34.863Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+            "requested inventory for Location[Stanton4_NewBabbage] [Team_CoreGameplayFeatures][Inventory]"));
+
+        var place = new PlayerPlace(Map, tracker);
+
+        Assert.NotNull(place.MeasureFrom(sessionLive: true));
+        Assert.Same(place.Current, place.MeasureFrom(sessionLive: true));
+    }
+
+    [Fact]
+    public void PlayerPlace_MeasureFrom_NoLiveSession_IsNull_EvenThoughCurrentResolves()
+    {
+        // The whole point of the gate: LastKnownLocation never clears, so Current keeps resolving
+        // after the game exits. The measuring read must not - a distance from a dead session's
+        // position is withheld, while Current stays available for the grey last-known marker.
+        var tracker = new LocationTracker(new GameLogFeed());
+        tracker.Ingest(E("<2026-07-29T22:39:34.863Z> [Notice] <RequestLocationInventory> Player[TestPilot] " +
+            "requested inventory for Location[Stanton4_NewBabbage] [Team_CoreGameplayFeatures][Inventory]"));
+
+        var place = new PlayerPlace(Map, tracker);
+
+        Assert.NotNull(place.Current);
+        Assert.Null(place.MeasureFrom(sessionLive: false));
+    }
 }

@@ -36,8 +36,18 @@ public sealed class PlayerPlace
 
     /// <summary>The display name the log gave, even when it does not resolve to an object - a
     /// jurisdiction like "Rough and Ready", or a gateway with no captured token. Callers that want to
-    /// SAY where the player is should prefer this; callers that want to MEASURE need Current.</summary>
+    /// SAY where the player is should prefer this; callers that want to MEASURE need
+    /// <see cref="MeasureFrom"/>, and callers that want to POSITION a marker need Current.</summary>
     public string? Label => _locations.LastKnownLocation;
+
+    /// <summary>The measuring read (offline-distances ruling, 2026-08-17): the player's place while
+    /// a session is live, null when it is not. LastKnownLocation never clears, so Current keeps
+    /// resolving after the game exits - honest for placing a grey last-known marker, dishonest as
+    /// the origin of a distance, an ordering, or a proximity tier. Every distance call site folds
+    /// the process probe (App.GameLogFeed.IsSessionLive) through this one rule, so a withheld
+    /// distance falls out of the existing null-player silence path rather than a second code path.
+    /// Kept pure (the probe is an argument, not a dependency) like StatusChips' folds.</summary>
+    public MapObject? MeasureFrom(bool sessionLive) => sessionLive ? Current : null;
 
     /// <summary>True when <see cref="Label"/> is a JURISDICTION reading - whose space the player
     /// crossed into, not a place they are standing (2026-08-01: "Crusader Industries" rendered as

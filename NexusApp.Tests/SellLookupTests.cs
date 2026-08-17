@@ -67,26 +67,29 @@ public class SellLookupTests
         Assert.Equal(ProximityTier.CrossSystem, buyer.Tier);
     }
 
+    // D3 WITHHELD (2026-08-17): an unknown origin yields NO tier, not a CrossSystem default -
+    // the old fallback painted an affirmative "CROSS-SYSTEM" claim on every row with the game
+    // closed, and the row builder already omits the chip on null.
     [Fact]
-    public void Rank_NoOriginProvided_DefaultsToCrossSystem()
+    public void Rank_NoOriginProvided_TierIsWithheld()
     {
         var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton") };
         var rows = new List<TradePriceRow> { SellRow(1, 47, 8500, 100) };
 
         var buyer = Assert.Single(SellLookup.Rank(rows, terminals, 47, 50, originTerminalId: null, scope: "ALL"));
 
-        Assert.Equal(ProximityTier.CrossSystem, buyer.Tier);
+        Assert.Null(buyer.Tier);
     }
 
     [Fact]
-    public void Rank_OriginTerminalNotFoundInLookup_DefaultsToCrossSystem()
+    public void Rank_OriginTerminalNotFoundInLookup_TierIsWithheld()
     {
         var terminals = new Dictionary<int, MarketTerminal> { [1] = Term(1, "Stanton") };   // no id 99
         var rows = new List<TradePriceRow> { SellRow(1, 47, 8500, 100) };
 
         var buyer = Assert.Single(SellLookup.Rank(rows, terminals, 47, 50, originTerminalId: 99, scope: "ALL"));
 
-        Assert.Equal(ProximityTier.CrossSystem, buyer.Tier);
+        Assert.Null(buyer.Tier);
     }
 
     // Guards the tier path itself, not just its fallback: every other origin test here lands on

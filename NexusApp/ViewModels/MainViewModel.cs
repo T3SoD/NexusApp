@@ -200,6 +200,26 @@ public partial class MainViewModel : ObservableObject
         RebuildFilteredHistory();
     }
 
+    /// <summary>Repaints every scan-result card without changing the scan (D3, 2026-08-17): the
+    /// cards' "Best refinery" line reads the session-gated BestRefinery through one-shot bindings
+    /// on a record with no change notification, so a session flip needs the containers rebuilt to
+    /// re-evaluate it. The raise-through-empty is deliberate: a record clone compares EQUAL by
+    /// value, so the hero ContentControl's Content change would short-circuit - pushing BestMatch
+    /// through null and back is what forces the hero to re-template. The filter-flip guard keeps
+    /// the view from replaying the scan choreography, same as OnHistoryFilterChanged.</summary>
+    public void RepaintScanResults()
+    {
+        if (ScanResults.Count == 0) return;
+        ResultsRebuildIsFilterFlip = true;
+        try
+        {
+            FilteredScanResults.Clear();
+            NotifyScanDerived();
+            RebuildFilteredResults();
+        }
+        finally { ResultsRebuildIsFilterFlip = false; }
+    }
+
     [RelayCommand]
     private void ClearScan()
     {
@@ -394,11 +414,13 @@ public record MatchResult(Resource Resource, int InputRs, int Nodes, bool IsExac
 
     // Same picker the Codex dossier uses (app review G10). It has to be the same one: two surfaces
     // naming a different "best refinery" for the same ore would be worse than either being wrong.
-    // Modifier still decides; the player's position only settles ties.
+    // Modifier still decides; the player's position only settles ties - and only while a session
+    // is live (D3, 2026-08-17), gated identically to the dossier's call so the two never disagree.
     // (RefineryText/RefineryColor, which used to sit here, were removed in the F14 pass: the pill
     // inventory's repo-wide grep found ZERO bindings to either - dead code that never rendered.)
     public RefineryYield? BestRefinery =>
-        NexusApp.Services.Map.RefineryPlaces.Best(Resource.Refineries, App.Map, App.Player.Current);
+        NexusApp.Services.Map.RefineryPlaces.Best(Resource.Refineries, App.Map,
+            App.Player.MeasureFrom(App.GameLogFeed.IsSessionLive));
 }
 
 public enum MatchKind { None, Close, Exact }

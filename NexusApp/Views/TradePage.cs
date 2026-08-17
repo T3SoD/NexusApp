@@ -182,6 +182,11 @@ public sealed partial class TradePage : UserControl
             if (!IsVisible) return;
             RefreshContextRow();
             RefreshStartCombo(App.Market.Snapshot);
+            // The sell flow's tiers and origin distances withdraw with the session (D3, 2026-08-17)
+            // and return with it, and no location event fires with the game closed - without this
+            // rebuild a game exit left them measuring from the dead session until an unrelated
+            // trigger. Mirrors the Locations.Changed handler's RebuildSell above.
+            RebuildSell();
         });
         // SCT is a worker-thread raise (the service documents it), so this marshals like the other
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
@@ -797,10 +802,21 @@ public sealed partial class TradePage : UserControl
     /// session was live is gone (the ORIGIN chip is display-only now; the route planner's own
     /// Starting Location picker replaces it for the planner flow specifically). Empty, not a
     /// guess, whenever no live location is known - the same honesty rule TradeOriginResolver
-    /// already applies to every other unresolved-origin case.</summary>
+    /// already applies to every other unresolved-origin case. Also empty while the game is not
+    /// running (D3 WITHHELD, 2026-08-17): LastKnownLocation never clears, so without the probe the
+    /// sell flow kept measuring tiers and distances from a dead session's origin forever.</summary>
     internal IReadOnlySet<int> OriginTerminalIds(IReadOnlyList<MarketTerminal> terminals) =>
-        App.Locations.LastKnownLocation is { } loc
-            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals, App.Locations.LastKnownUexLocation)
+        ResolveOriginTerminalIds(App.GameLogFeed.IsSessionLive, App.Locations.LastKnownLocation,
+            App.Locations.LastKnownUexLocation, terminals);
+
+    /// <summary>The pure fold behind <see cref="OriginTerminalIds"/>, static so the gate itself is
+    /// pinnable by tests the way MeasureFrom is (the instance member reads App statics no test can
+    /// construct): a resolvable last-known location with NO live session must yield the empty set,
+    /// never a dead session's terminals.</summary>
+    internal static IReadOnlySet<int> ResolveOriginTerminalIds(bool sessionLive, string? lastKnown,
+        string? lastKnownUex, IReadOnlyList<MarketTerminal> terminals) =>
+        sessionLive && lastKnown is { } loc
+            ? TradeOriginResolver.TerminalIdsForLocation(loc, terminals, lastKnownUex)
             : new HashSet<int>();
 
     private void RefreshContextRow()

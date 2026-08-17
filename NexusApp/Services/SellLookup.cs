@@ -6,7 +6,7 @@ namespace NexusApp.Services;
 // terminal that will buy it (Sell > 0), ranked by what the load is actually worth there.
 public static class SellLookup
 {
-    public sealed record Buyer(TradePriceRow Row, int SellableScu, double EffectiveValue, ProximityTier Tier);
+    public sealed record Buyer(TradePriceRow Row, int SellableScu, double EffectiveValue, ProximityTier? Tier);
 
     public static IReadOnlyList<Buyer> Rank(IReadOnlyList<TradePriceRow> rows,
         IReadOnlyDictionary<int, MarketTerminal> terminals, int commodityId, int qtyScu, int? originTerminalId,
@@ -25,10 +25,12 @@ public static class SellLookup
             if (!InScope(terminal, scope)) continue;
 
             var sellable = Math.Min(qtyScu, row.SellDemandScu);
-            // Origin unknown (no live session, no manual pick yet) or unresolvable: CrossSystem
-            // is the conservative default - the same "cannot confirm a closer tier" rule
-            // ProximityTiers itself applies to missing location fields.
-            var tier = origin is not null ? ProximityTiers.Derive(origin, terminal) : ProximityTier.CrossSystem;
+            // Origin unknown (no live session, or nothing resolvable yet): NO tier, not a
+            // CrossSystem default. A tier is a claim about where the buyer sits relative to the
+            // origin, and with no origin there is no claim to make - the old default painted
+            // "CROSS-SYSTEM" on every row, which reads as a fact rather than an absence
+            // (offline-distances ruling, 2026-08-17: withheld, never guessed).
+            var tier = origin is not null ? ProximityTiers.Derive(origin, terminal) : (ProximityTier?)null;
             result.Add(new Buyer(row, sellable, sellable * row.Sell, tier));
         }
 

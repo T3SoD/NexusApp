@@ -33,8 +33,10 @@ public class ConsolidationOrderTests
     [Fact]
     public void NoPlayerPosition_LeavesTheOrderExactlyAsItCame()
     {
-        // Sorting by distance from nowhere would be theatre. This is the normal state with the game
-        // closed, so it must be a clean passthrough rather than a reshuffle.
+        // Sorting by distance from nowhere would be theatre, so a null origin is a clean
+        // passthrough. This pins the method's defensive contract only: since D3 (2026-08-17)
+        // production never sends null here - HaulingPage routes a null measuring read to ByPlace,
+        // so the game-closed board orders by place name, not by this passthrough.
         var input = new[] { Stop("Baijini Point"), Stop("Everus Harbor"), Stop("Area18") };
         var ordered = ConsolidationOrder.ByDistanceFrom(input, Map, from: null);
 
@@ -85,6 +87,36 @@ public class ConsolidationOrderTests
     [Fact]
     public void EmptyInput_DoesNotThrow()
         => Assert.Empty(ConsolidationOrder.ByDistanceFrom(Array.Empty<ConsolidationStop>(), Map, At("Stanton", "Hurston")));
+
+    // ── ByPlace, the offline order (D3 WITHHELD, 2026-08-17) ──
+
+    [Fact]
+    public void ByPlace_OrdersAlphabetically_CaseInsensitive()
+    {
+        // "Nearest" is a claim about now, so with no live session the board orders by place name
+        // instead - the one order that stays meaningful and stable with the game closed.
+        var ordered = ConsolidationOrder.ByPlace(
+            new[] { Stop("Port Tressler"), Stop("everus Harbor"), Stop("Baijini Point") }, s => s.Location);
+
+        Assert.Equal(new List<string> { "Baijini Point", "everus Harbor", "Port Tressler" }, Names(ordered));
+    }
+
+    [Fact]
+    public void ByPlace_SameName_KeepsOriginalRelativeOrder()
+    {
+        // OrderBy is stable, so a location that appears twice (two contracts at one station) keeps
+        // its arrival order - the same tie rule ByDistanceFrom applies to equal distances.
+        var a = Stop("Everus Harbor");
+        var b = Stop("Everus Harbor");
+        var ordered = ConsolidationOrder.ByPlace(new[] { a, b }, s => s.Location);
+
+        Assert.Same(a, ordered[0]);
+        Assert.Same(b, ordered[1]);
+    }
+
+    [Fact]
+    public void ByPlace_EmptyInput_DoesNotThrow()
+        => Assert.Empty(ConsolidationOrder.ByPlace(Array.Empty<ConsolidationStop>(), s => s.Location));
 
     // ── DistanceTo, the per-stop label ──
 
