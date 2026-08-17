@@ -625,7 +625,7 @@ controls.addEventListener('end', ()=>{
 
 function setDrift(on){
   controls.autoRotate = !!on && !REDUCED;   /* reduced motion never spins on its own */
-  controls.autoRotateSpeed = 0.36;          /* 20% under the old 0.45, a calmer idle */
+  controls.autoRotateSpeed = 0.288;         /* 20% under the old 0.36 (2026-08-17), calmer still */
   document.getElementById('liteDrift').classList.toggle('on', !!on && !REDUCED);
 }
 /* Fills the locator card and wires its controls. Called on every init so a location change while
