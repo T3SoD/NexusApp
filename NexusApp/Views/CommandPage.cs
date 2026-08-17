@@ -181,10 +181,9 @@ public sealed partial class CommandPage : UserControl
     // Painted OVER the content, under the modal layer. Transparent through the middle, so it darkens
     // only the corners and never touches legibility where the numbers are. The geometry is the
     // mock's own, not a tuned one: 130% x 100% radii at a 50%/40% centre, clear until 52%.
-    private static UIElement DepthVignette() => new Border
+    private static UIElement DepthVignette()
     {
-        IsHitTestVisible = false,
-        Background = new RadialGradientBrush
+        var brush = new RadialGradientBrush
         {
             Center = new Point(0.5, 0.4), GradientOrigin = new Point(0.5, 0.4),
             RadiusX = 1.3, RadiusY = 1.0,
@@ -193,8 +192,14 @@ public sealed partial class CommandPage : UserControl
                 new(Colors.Transparent, 0.52),
                 new(Color.FromArgb(0x80, 0, 0, 0), 1),
             },
-        },
-    };
+        };
+        brush.Freeze();
+        // Cached to a bitmap: this overlay sits above the whole page, so under software rendering
+        // every dirty region of every animation repaints through it, and re-evaluating a radial
+        // gradient per pixel per frame taxed the entire entrance. The cache costs one window-sized
+        // surface and pays it once.
+        return new Border { IsHitTestVisible = false, Background = brush, CacheMode = new BitmapCache() };
+    }
 
     // The header and the strip stack, so Refresh can rebuild those in place. _root itself is
     // assembled once and never cleared: the body below it hosts the system view's WebView2, which
@@ -263,7 +268,12 @@ public sealed partial class CommandPage : UserControl
         // The page assembles from the top left outward: the three job cards, then coverage, then the
         // right rail. The map is deliberately NOT in the cascade - it is a native window and cannot
         // be faded, and trying would only make the one thing that cannot animate look broken.
-        if (_jobStrip != null) CascadeIn(_jobStrip.Children, maxAnimated: 3);
+        //
+        // The job cards cache: their content holds still mid-flight, so the card renders once into
+        // a bitmap and the fade moves the bitmap. Coverage and the right rail must NOT cache - the
+        // count-ups below rewrite their number Runs every frame, and each rewrite would re-render
+        // the whole cached panel, which under software rendering costs more than not caching.
+        if (_jobStrip != null) CascadeIn(_jobStrip.Children, maxAnimated: 3, cache: true);
         CascadeInSingle(_coverageSlot, delayMs: 165);
         CascadeIn(_rightCol.Children, maxAnimated: 3, startDelayMs: 200);
 
@@ -282,7 +292,7 @@ public sealed partial class CommandPage : UserControl
     // Fade + rise the first few children in sequence (200ms/40ms stagger/12px rise, QuadraticEase
     // EaseOut) - a local copy of MainWindow's CascadeIn idiom (private there; copied here rather
     // than exposed, per the motion-pass plan).
-    private static void CascadeIn(UIElementCollection children, int maxAnimated, int startDelayMs = 0)
+    private static void CascadeIn(UIElementCollection children, int maxAnimated, int startDelayMs = 0, bool cache = false)
     {
         int n = Math.Min(children.Count, maxAnimated);
         for (int i = 0; i < n; i++)
@@ -296,6 +306,12 @@ public sealed partial class CommandPage : UserControl
             var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
             var fade = new DoubleAnimation(0, 1, dur) { BeginTime = delay, EasingFunction = ease };
             var rise = new DoubleAnimation(12, 0, dur) { BeginTime = delay, EasingFunction = ease };
+            if (cache)
+            {
+                var el = fe;
+                el.CacheMode = new BitmapCache();
+                fade.Completed += (_, _) => el.CacheMode = null;
+            }
             fe.BeginAnimation(UIElement.OpacityProperty, fade);
             slide.BeginAnimation(TranslateTransform.YProperty, rise);
         }
@@ -325,14 +341,20 @@ public sealed partial class CommandPage : UserControl
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
         for (int i = 0; i < _profitBars.Count; i++)
         {
+            var bar = _profitBars[i];
             var scale = new ScaleTransform(1, 0);
-            _profitBars[i].RenderTransformOrigin = new Point(0.5, 1);
-            _profitBars[i].RenderTransform = scale;
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(420))
-                {
-                    BeginTime = TimeSpan.FromMilliseconds(300 + i * 45), EasingFunction = ease,
-                });
+            bar.RenderTransformOrigin = new Point(0.5, 1);
+            bar.RenderTransform = scale;
+            // Each bar carries a glow, and growing an uncached bar re-runs that blur on every
+            // frame of the entrance - seven blurs per frame on the CPU. Cached, the blur renders
+            // once and the growth stretches the bitmap; the cache clears when the bar lands.
+            bar.CacheMode = new BitmapCache();
+            var grow = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(420))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(300 + i * 45), EasingFunction = ease,
+            };
+            grow.Completed += (_, _) => bar.CacheMode = null;
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
         }
     }
 

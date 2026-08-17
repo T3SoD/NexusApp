@@ -397,6 +397,10 @@ public sealed partial class CommandPage
             coverGlow.BlurRadius = 12;
             coverGlow.Opacity = 1;
         }
+        // Cached so the entrance fade of the card around it moves a bitmap instead of re-running
+        // the fill's blur on every frame. The card is rebuilt on every Refresh, so the cache lives
+        // exactly as long as the value it shows.
+        bar.CacheMode = new BitmapCache();
         mid.Children.Add(bar);
 
         // A network with no members has no single-owner risk to report: every blueprint you own is
@@ -443,7 +447,7 @@ public sealed partial class CommandPage
         head.Children.Add(hl);
         bool onShard = App.Shards.OnShard;
         var chip = Hud.Chip(onShard ? Color.FromRgb(0x66, 0xE6, 0xA6) : Color.FromRgb(0x86, 0x93, 0xA0),
-                            onShard ? "CONNECTED" : "OFF SHARD");
+                            onShard ? "CONNECTED" : "OFFLINE");
         Grid.SetColumn(chip, 1);
         head.Children.Add(chip);
         sp.Children.Add(head);
