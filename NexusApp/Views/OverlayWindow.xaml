@@ -127,86 +127,143 @@
             <!-- ── Tab content ── -->
             <Grid Grid.Row="3">
 
-                <!-- HUB tab (Beta Game.log session): MOBIGLAS glance. Mock order = SCAN STATUS LEDs,
-                     hero tiles (READY ORDERS + HAUL, accent chamfer), SERVER / SHARD (chamfer),
-                     COLLECTION LOG. One vertical scroll, like the mock's .body. The pills / status line /
-                     footer the old layout carried are gone: session-monitoring shows via the LEDs, and
-                     Reset session / advanced monitor now live in the advanced Game.log monitor. -->
+                <!-- HUB tab, VITALS layout (2026-08-16 redesign, mock overlay-operations O2): the
+                     approved system-view language at overlay scale. Order = session line, 3-up mini
+                     job cards (gold refinery / amber auto load / green hangar - the same fixed tones
+                     the main Operations tab wears), LEDGER (wallet + session profit + bars),
+                     SERVER / SHARD, COLLECTION LOG. One vertical scroll, like the mock's .body.
+                     Panels are FLAT (Bg2Nav fill + the .16 cyan lit edge), same reasoning as
+                     CommandPage's LitCard: the depth cue is the edge, never a wash. This supersedes
+                     the F1 hero tiles and the HUB scan rail; RS/CT scanner state lives on the
+                     SCAN / CARGO tabs that own the toggles, and the hangar's full status line (with
+                     Re-anchor / Reset and next times) stays on GUIDES. -->
                 <ScrollViewer x:Name="StatsTabContent" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="12,10,12,12">
 
-                        <!-- SCAN STATUS: read-only LED pills (green on / yellow paused / red off),
-                             synced from the SCAN + HAULING toggles (built in BuildHubScanControls). -->
-                        <TextBlock Text="SCAN STATUS" Style="{StaticResource SectionLabel}" Margin="1,0,0,6"/>
-                        <WrapPanel x:Name="HubScanBar"/>
+                        <!-- Session line: LED + LIVE/OFFLINE + channel left, location right.
+                             Built in code-behind (BuildHubSessionLine). -->
+                        <Grid x:Name="HubSessionHost" Margin="1,0,1,9"/>
 
-                        <!-- F1 hero tiles (frozen 2026-07-11 overlay pass): 2-column grid, 8px gap, each tile
-                             the same accent ChamferPanel look (amber-line border + amber glow) the old single
-                             BLUEPRINTS COLLECTED hero used. READY ORDERS = work orders ready to collect (cyan
-                             when > 0, else dim); HAUL = total committed SCU across active hauls (always cyan)
-                             + delivered x/y drops sub-line. Values are set in code-behind (RebuildStatsPanel);
-                             the old count-up moved into the COLLECTION LOG header below as "(N)". -->
-                        <Grid Margin="0,11,0,0">
+                        <!-- 3-up mini job cards. Values are set in RebuildStatsPanel; the two
+                             countdowns tick on the HUB's own 1Hz timer (stats-tab scoped). -->
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <views:ChamferPanel Grid.Column="0" Accent="True" ShowBrackets="True" Chamfer="12"
-                                                Padding="10,11">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock x:Name="HubReadyValue" Text="0"
-                                               FontFamily="{StaticResource MonoFont}" FontSize="24" FontWeight="Bold"
-                                               Foreground="{DynamicResource FgDimBrush}" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="READY ORDERS" FontSize="8.5" FontWeight="Bold"
-                                               Foreground="{DynamicResource FgDimBrush}"
-                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            <views:ChamferPanel Grid.Column="0" Chamfer="8" Padding="8,7"
+                                                Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <views:AnimatedDockIcon x:Name="HubIconRefinery" IconKey="refinery"
+                                                                Width="12" Height="12" Margin="0,0,4,0"/>
+                                        <TextBlock Text="REFINERY" FontSize="7" FontWeight="Bold"
+                                                   Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="HubRefValue" FontFamily="{StaticResource DisplayFont}"
+                                               FontSize="13" FontWeight="Bold"
+                                               Foreground="{DynamicResource GoldBrush}" Margin="0,5,0,0"/>
+                                    <TextBlock x:Name="HubRefSub" FontSize="8" Foreground="{DynamicResource FgDimBrush}"
+                                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </views:ChamferPanel>
-                            <views:ChamferPanel Grid.Column="2" Accent="True" ShowBrackets="True" Chamfer="12"
-                                                Padding="10,11">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock x:Name="HubHaulValue" Text="0 SCU"
-                                               FontFamily="{StaticResource MonoFont}" FontSize="24" FontWeight="Bold"
-                                               Foreground="{DynamicResource CyanBrush}" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="HAUL" FontSize="8.5" FontWeight="Bold"
-                                               Foreground="{DynamicResource FgDimBrush}"
-                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                                    <TextBlock x:Name="HubHaulSub" Text="0/0 drops"
-                                               FontFamily="{StaticResource MonoFont}" FontSize="10"
-                                               Foreground="{DynamicResource FgDimBrush}"
-                                               HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            <views:ChamferPanel Grid.Column="2" Chamfer="8" Padding="8,7"
+                                                Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <views:AnimatedDockIcon x:Name="HubIconLoad" IconKey="cargo"
+                                                                Width="12" Height="12" Margin="0,0,4,0"/>
+                                        <TextBlock Text="AUTO LOAD" FontSize="7" FontWeight="Bold"
+                                                   Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="HubLoadValue" FontFamily="{StaticResource MonoFont}"
+                                               FontSize="12" FontWeight="Bold"
+                                               Foreground="{DynamicResource AccentBrush}" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="HubLoadSub" FontSize="8" Foreground="{DynamicResource FgDimBrush}"
+                                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </views:ChamferPanel>
+                            <views:ChamferPanel Grid.Column="4" Chamfer="8" Padding="8,7"
+                                                Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <views:AnimatedDockIcon x:Name="HubIconHangar" IconKey="guides"
+                                                                Width="12" Height="12" Margin="0,0,4,0"/>
+                                        <TextBlock Text="HANGAR" FontSize="7" FontWeight="Bold"
+                                                   Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="HubHangValue" FontFamily="{StaticResource DisplayFont}"
+                                               FontSize="13" FontWeight="Bold"
+                                               Foreground="{DynamicResource OkBrush}" Margin="0,5,0,0"/>
+                                    <TextBlock x:Name="HubHangSub" FontSize="8" Foreground="{DynamicResource FgDimBrush}"
+                                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </views:ChamferPanel>
                         </Grid>
 
-                        <!-- Executive Hangar countdown (app review 2026-08-01). HUB is the restore default,
-                             so it is what the player sees mid-flight, and it answered neither of the two
-                             clock-driven facts in the product. The countdown existed but lived inside the
-                             GUIDES tab's Contested Zones section and only ticked while GUIDES was active.
-                             This is a SECOND ExecHangarStatusLine, started and stopped on the "stats" tab
-                             exactly as the guides copy is; the hero tiles above are a frozen, signed-off
-                             surface and are deliberately untouched. -->
-                        <ContentControl x:Name="HubHangarHost" Margin="0,11,0,0"/>
+                        <!-- LEDGER: wallet + session profit in one panel of money. Values and the
+                             seven session bars are set in RebuildStatsPanel; state colors follow
+                             the main tab (WalletDisplay states; profit by sign, zero reads dim). -->
+                        <views:ChamferPanel Chamfer="10" Padding="11,9" Margin="0,8,0,0"
+                                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <views:AnimatedDockIcon x:Name="HubIconLedger" IconKey="trade"
+                                                            Width="12" Height="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="LEDGER" FontSize="8.5" FontWeight="Bold"
+                                               Foreground="{DynamicResource FgDimBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock x:Name="HubWalletValue" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="16" FontWeight="Bold" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="HubWalletSub" FontSize="8.5" Foreground="{DynamicResource FgDimBrush}"
+                                           Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                <Border BorderBrush="{DynamicResource NavBorderBrush}" BorderThickness="0,1,0,0"
+                                        Margin="0,7,0,0" Padding="0,6,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="SESSION" FontSize="7.5" FontWeight="Bold"
+                                                       Foreground="{DynamicResource FgDimBrush}"/>
+                                            <TextBlock x:Name="HubProfitValue" FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="12" FontWeight="Bold" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="HubProfitBars" Grid.Column="1" Orientation="Horizontal"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </views:ChamferPanel>
 
                         <!-- SERVER / SHARD: current + recent shards (built in code-behind, RebuildShardPanel). -->
-                        <views:ChamferPanel Chamfer="12" Padding="13,10" Margin="0,11,0,0">
+                        <views:ChamferPanel Chamfer="10" Padding="11,9" Margin="0,8,0,0"
+                                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
                             <StackPanel x:Name="ShardPanel"/>
                         </views:ChamferPanel>
 
-                        <!-- COLLECTION LOG: blueprint feed (newest first), inline in the scroll. Header count
-                             is the same App.GameLog.Count the old hero count-up rendered (F2, frozen). -->
-                        <TextBlock x:Name="StatsFeedHeader" Text="COLLECTION LOG (0)" FontSize="10" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}" Margin="1,13,0,4"/>
-                        <Grid MinHeight="56">
-                            <StackPanel x:Name="StatsFeedItems"/>
-                            <TextBlock x:Name="StatsEmptyState"
-                                       Text="No blueprints yet this session.&#x0a;Unlock one in-game and it appears here."
-                                       FontSize="10" Foreground="{DynamicResource FgDimBrush}"
-                                       TextAlignment="Center" TextWrapping="Wrap"
-                                       VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                        </Grid>
+                        <!-- COLLECTION LOG: blueprint feed (newest first), now inside its own flat
+                             panel. Header count is the same App.GameLog.Count as ever (F2 value). -->
+                        <views:ChamferPanel Chamfer="10" Padding="11,9" Margin="0,8,0,0"
+                                            Background="{DynamicResource Bg2NavBrush}" BorderBrush="#297FE9E0">
+                            <StackPanel>
+                                <TextBlock x:Name="StatsFeedHeader" Text="COLLECTION LOG (0)" FontSize="8.5" FontWeight="Bold"
+                                           Foreground="{DynamicResource FgDimBrush}" Margin="0,0,0,4"/>
+                                <Grid MinHeight="56">
+                                    <StackPanel x:Name="StatsFeedItems"/>
+                                    <TextBlock x:Name="StatsEmptyState"
+                                               Text="No blueprints yet this session.&#x0a;Unlock one in-game and it appears here."
+                                               FontSize="10" Foreground="{DynamicResource FgDimBrush}"
+                                               TextAlignment="Center" TextWrapping="Wrap"
+                                               VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                </Grid>
+                            </StackPanel>
+                        </views:ChamferPanel>
                     </StackPanel>
                 </ScrollViewer>
 

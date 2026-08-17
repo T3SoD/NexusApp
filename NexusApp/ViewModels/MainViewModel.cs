@@ -267,8 +267,8 @@ public partial class MainViewModel : ObservableObject
         if (_scanIntent) { _scanIntent = false; _scanner.Start(); IsScanActive = true; }
     }
 
-    // RS auto-scan status for the HUB / header indicators: On while running, Paused when the user has it
-    // on but it is suspended because neither Nexus nor Star Citizen is in front, else Off.
+    // RS auto-scan status for the SCAN-tab / header indicators: On while running, Paused when the user
+    // has it on but it is suspended because neither Nexus nor Star Citizen is in front, else Off.
     public ScanIndicator RsScanState =>
         IsScanActive                          ? ScanIndicator.On
         : (_scanIntent && _pausedByBackground) ? ScanIndicator.Paused

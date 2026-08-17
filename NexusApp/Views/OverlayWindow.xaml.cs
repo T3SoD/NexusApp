@@ -60,13 +60,13 @@ public partial class OverlayWindow : Window
 
     // ── Welcome-tour targets ───────────────────────────────────────────────────
     public FrameworkElement ScanToggleTarget  => _scanSwitchPair ?? SetRegionBtn;
-    public FrameworkElement HubTarget         => HubScanBar;      // the HUB's SCAN STATUS light rows
+    public FrameworkElement HubTarget         => HubSessionHost;  // the HUB's session line (was the scan rail)
     public FrameworkElement ContractRegionTarget => SetContractRegionBtn;   // HAULING tab's set-region link
 
     /// <summary>Force the SCAN tab visible so the tour can point at the scan controls.</summary>
     public void ShowScanTabForTutorial() => SwitchTab("scan", persist: false);
 
-    /// <summary>Force the HUB tab visible so the tour can point at the status lights.</summary>
+    /// <summary>Force the HUB tab visible so the tour can point at the session line.</summary>
     public void ShowHubTabForTutorial() => SwitchTab("stats", persist: false);
 
     /// <summary>Force the HAULING tab visible so the tour can point at the contract scan controls.</summary>
@@ -172,7 +172,7 @@ public partial class OverlayWindow : Window
         {
             UpdateRefineryTabBadge();
             if (IsTabPresented("orders")) RebuildOrdersPanel();
-            if (IsTabPresented("stats")) RebuildStatsPanel();   // F1: READY ORDERS hero tile tracks the same count
+            if (IsTabPresented("stats")) RebuildStatsPanel();   // the REFINERY mini card tracks the same counts
         };
         _vm.ShoppingList.CollectionChanged += (s, e) => { if (IsTabPresented("shopping")) RebuildShoppingPanel(); };
 
@@ -221,6 +221,9 @@ public partial class OverlayWindow : Window
         _onWalletChanged = () => Dispatcher.BeginInvoke(() =>
         {
             if (IsTabPresented("trade")) TradeSessionHost.Content = BuildTradeMoneyBlock();
+            // The HUB LEDGER shows the same estimate; values only - a capture mid-flight must not
+            // rebuild the seven effect-bearing bars, which only history changes can move.
+            if (IsTabPresented("stats")) FillHubLedgerValues();
         });
         if (App.Wallet != null) App.Wallet.Changed += _onWalletChanged;
 
@@ -278,8 +281,15 @@ public partial class OverlayWindow : Window
 
         BuildScanControls();
         BuildHaulingControls();
-        BuildHubScanControls();
+        BuildHubSessionLine();
         BuildQuickAddPanel();      // E2 quick-add trigger + form (built once into QuickAddHost)
+
+        // The mini-card and LEDGER glyphs wear their card's tone, matching the main Operations tab
+        // (2026-08-16 VITALS). Safe before load: SetStaticColor stores the brush for Build.
+        HubIconRefinery.SetStaticColor((Brush)FindResource("GoldBrush"));
+        HubIconLoad.SetStaticColor((Brush)FindResource("AccentBrush"));
+        HubIconHangar.SetStaticColor((Brush)FindResource("OkBrush"));
+        HubIconLedger.SetStaticColor((Brush)FindResource("GoldBrush"));
 
         // When an order turns ready, rebuild the orders panel if it is showing: the ready card flashes itself in
         // BuildOverlayOrderCard (pill fade + one-shot border flash). The old 4x opacity pulse on the dock button is gone.
@@ -290,9 +300,16 @@ public partial class OverlayWindow : Window
         {
             bool visible = (bool)e.NewValue;
             Logger.Info($"[WIN] overlay {(visible ? "shown" : "hidden")}");
-            if (visible) Shown?.Invoke();
+            if (visible)
+            {
+                // The HUB's 1Hz ticker is visibility-scoped as well as tab-scoped: a hidden window
+                // must not pay a standing wakeup, and the countdown catches up on the next tick.
+                if (IsTabPresented("stats")) StartHubTicker();
+                Shown?.Invoke();
+            }
             else
             {
+                StopHubTicker();
                 if (_normalFlyoutOpen) CloseNormalFlyout(animate: false);
                 SaveBounds();
                 Hidden?.Invoke();
@@ -659,7 +676,7 @@ public partial class OverlayWindow : Window
     private void LeaveActiveTabForGhost()
     {
         _guidesHangarLine?.Stop();
-        _hubHangarLine?.Stop();
+        StopHubTicker();
         _ordersTicker?.Stop();
         _ordersTicker = null;
     }
@@ -1484,7 +1501,7 @@ public partial class OverlayWindow : Window
     {
         SetSwitch(_scanSwTrack, _scanSwKnob, _vm.RsScanState);   // amber on / yellow paused / grey off
         SetSwitch(_boxSwTrack, _boxSwKnob, _boxVisible);
-        SetHubLed(_hubScanLed, _vm.RsScanState);   // Hub status LED (green on / amber paused / dim off)
+        // (2026-08-16: the HUB scan-rail mirror LED is gone; RS state shows beside its own toggle.)
         if (OverlayScanStatus == null) return;
         OverlayScanStatus.Text = _vm.RsScanState switch
         {
@@ -1578,29 +1595,46 @@ public partial class OverlayWindow : Window
             App.ContractScan.IsRunning, App.Settings.Current.AutoScanContracts);
         SetSwitch(_haulScanSwTrack, _haulScanSwKnob, contractState);   // amber on / yellow paused / grey off
         SetSwitch(_haulBoxSwTrack, _haulBoxSwKnob, _contractBoxVisible);
-        SetHubLed(_hubHaulScanLed, contractState);   // Hub status LED (green on / amber paused / dim off)
+        // (2026-08-16: the HUB scan-rail mirror LED is gone; contract state shows beside its own toggle.)
     }
 
-    // ── HUB tab: a READ-ONLY status glance (mock's SCAN STATUS row) - the overlay's own health
-    // rail, since it renders in-game where the main window's header strip is hidden. Session shows
-    // Game.log monitoring (green = live, red = SC closed / no log); Location (F14) shows where the
-    // log last placed the player, cyan breathing when known - it explains at a glance why route
-    // bands or the scan sell line have no distances; Auto-scan RS + Contracts mirror the SCAN /
-    // HAULING toggles (green on / amber paused / DIM off - off is a choice, red is reserved for
-    // broken). LEDs sync via SyncScanControls / SyncHaulingControls / RefreshSessionLed /
-    // RefreshHubLocation. Toggles live on the tabs.
-    private Border? _hubScanLed, _hubHaulScanLed, _hubSessionLed, _hubLocationLed;
-    private TextBlock? _hubLocationText;
+    // ── HUB tab: the VITALS session line (2026-08-16 redesign) - the overlay's own health line,
+    // since it renders in-game where the main window's header strip is hidden. Session shows
+    // Game.log monitoring in the LED and the words (green LIVE = live, red OFFLINE = SC closed /
+    // no log - the broken-trunk case, the one red on this tab); Location (F14) shows where the
+    // log last placed the player, cyan breathing when precisely known - it explains at a glance
+    // why route bands or the scan sell line have no distances. Synced via RefreshSessionLed /
+    // RefreshHubLocation; the scanner LEDs live beside their own toggles on SCAN / CARGO.
+    private Border? _hubSessionLed, _hubLocationLed;
+    private TextBlock? _hubLocationText, _hubSessionText;
 
-    private void BuildHubScanControls()
+    // The VITALS session line (2026-08-16 redesign): LED + LIVE/OFFLINE + channel on the left,
+    // location LED + place on the right. The RS/CT scanner LEDs the old scan rail carried are gone
+    // from HUB - their state lives beside the toggles that own them, on SCAN and CARGO.
+    private void BuildHubSessionLine()
     {
-        HubScanBar.Children.Clear();
+        HubSessionHost.Children.Clear();
+        HubSessionHost.ColumnDefinitions.Clear();
+        HubSessionHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        HubSessionHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         _hubSessionLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubSessionLed, "Session",
-            "Game.log session tracking (always on): green = monitoring a live game session, red = Star Citizen closed / no log"));
+        left.Children.Add(_hubSessionLed);
+        _hubSessionText = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 8.5, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource("FgDimBrush"),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0),
+        };
+        left.Children.Add(_hubSessionText);
+        left.ToolTip = "Game.log session tracking (always on): green = monitoring a live game session, " +
+                       "red = Star Citizen closed / no log";
+        HubSessionHost.Children.Add(left);
 
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         _hubLocationLed = NewLed();
+        right.Children.Add(_hubLocationLed);
         _hubLocationText = new TextBlock
         {
             FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 9,
@@ -1608,27 +1642,34 @@ public partial class OverlayWindow : Window
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
             MaxWidth = 110, TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        HubScanBar.Children.Add(HubLedRow(_hubLocationLed, "Location",
-            "Where Game.log last placed you. Route bands and sell-line distances measure from here.",
-            _hubLocationText));
+        right.Children.Add(_hubLocationText);
+        right.ToolTip = "Where Game.log last placed you. Route bands and sell-line distances measure from here.";
+        Grid.SetColumn(right, 1);
+        HubSessionHost.Children.Add(right);
 
-        _hubScanLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubScanLed, "Auto-scan RS", "Auto-scan RS: toggle on the SCAN tab"));
-
-        _hubHaulScanLed = NewLed();
-        HubScanBar.Children.Add(HubLedRow(_hubHaulScanLed, "Auto-scan Contracts", "Auto-scan contracts: toggle on the CARGO tab"));
-
-        SyncScanControls();
-        SyncHaulingControls();
         RefreshSessionLed();
         RefreshHubLocation();
     }
 
     // SESSION LED: green (pulsing) while a live game session is being monitored, red when Star Citizen is
-    // closed / no log. The one LED on this rail allowed to show red for its low state: an absent session
-    // is the broken-trunk case, not a switched-off choice (F14 palette rule).
-    private void RefreshSessionLed() => SetLedColor(_hubSessionLed, App.GameLog.IsSessionLive ? LedOn : LedBroken,
-        pulse: App.GameLog.IsSessionLive);
+    // closed / no log. The one LED on this line allowed to show red for its low state: an absent session
+    // is the broken-trunk case, not a switched-off choice (F14 palette rule). The words carry the same
+    // state (OverlayHub.SessionLine), because color must never be the only signal.
+    private bool? _hubSessionLedLive;   // last painted state, so rebuild bursts cannot churn the breathe
+
+    private void RefreshSessionLed()
+    {
+        bool live = App.GameLog.IsSessionLive;
+        // FolderName, not ToString: the canonical channel casing every other surface prints.
+        var text = OverlayHub.SessionLine(live, GameChannels.FolderName(App.GameLogFeed.ActiveChannel));
+        if (_hubSessionText != null && !string.Equals(_hubSessionText.Text, text, StringComparison.Ordinal))
+            _hubSessionText.Text = text;
+        // Idempotent on the LED: repainting restarts the Forever breathe clock and reallocates the
+        // glow, and WorkOrders bursts reach here once per item. Paint only on a real flip.
+        if (_hubSessionLedLive == live) return;
+        _hubSessionLedLive = live;
+        SetLedColor(_hubSessionLed, live ? LedOn : LedBroken, pulse: live);
+    }
     private void OnGameLogStatusChanged(string _) => RefreshSessionLed();
 
     // LOCATION LED (F14): cyan breathing when the log places the player somewhere, dim when it does
@@ -1643,44 +1684,9 @@ public partial class OverlayWindow : Window
         bool coarse = known && App.Player!.LabelIsJurisdiction;
         _hubLocationText.Text = !known ? "unknown" : coarse ? $"{place} space" : place;
         _hubLocationText.Foreground = known && !coarse ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
-        SetLedColor(_hubLocationLed, known && !coarse ? LedLocation : LedOff, pulse: known && !coarse);
-    }
-
-    // Read-only HUB status pill (mock .led): a bordered chip with an LED dot + short label, full text in
-    // the tooltip. Sizes to content and tiles in a WrapPanel. Not interactive; the live toggle is on
-    // SCAN / HAULING.
-    private FrameworkElement HubLedRow(Border led, string label, string tooltip, TextBlock? value = null)
-    {
-        var row = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
-        };
-        row.Children.Add(led);
-        row.Children.Add(new TextBlock
-        {
-            Text = label, FontSize = 9, FontWeight = FontWeights.Bold,
-            Foreground = (Brush)FindResource("FgDimBrush"),
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
-        });
-        if (value != null) row.Children.Add(value);
-        return new Border
-        {
-            Child = row,
-            Background = (Brush)FindResource("Bg2NavBrush"),
-            BorderBrush = (Brush)FindResource("NavBorderBrush"),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(8, 4, 8, 4),
-            Margin = new Thickness(0, 0, 7, 7),
-            ToolTip = tooltip,
-        };
-    }
-
-    // HUB status LED: paint it (green on / amber paused / dim off) and gently pulse it while On,
-    // matching the mock's breathing scan-status dots. Static while paused / off.
-    private void SetHubLed(Border? led, ScanIndicator state)
-    {
-        SetLed(led, state);
-        if (led != null) Hud.PulseDot(led, state == ScanIndicator.On);
+        // glow follows the state: a dim coarse/unknown lamp with a glow would still read as a signal.
+        SetLedColor(_hubLocationLed, known && !coarse ? LedLocation : LedOff,
+                    pulse: known && !coarse, glow: known && !coarse);
     }
 
     // Status LED colors (F14 palette): green = running, amber = paused (the app accent - the old
@@ -1700,21 +1706,9 @@ public partial class OverlayWindow : Window
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    // Paints an LED green (on), amber (paused), or dim (off). Off gets no glow at all - a glow on
-    // a switched-off lamp would still read as a signal.
-    private void SetLed(Border? led, ScanIndicator state)
-    {
-        var c = state switch
-        {
-            ScanIndicator.On     => LedOn,
-            ScanIndicator.Paused => LedPaused,
-            _                    => LedOff,
-        };
-        SetLedColor(led, c, pulse: null, glow: state != ScanIndicator.Off);
-    }
-
-    // Base painter for every HUB LED. pulse: null = leave the current animation alone (SetHubLed
-    // drives it separately for the scanner LEDs), true/false = start/stop the breathe here.
+    // Base painter for every HUB LED. Off gets no glow at all - a glow on a switched-off lamp
+    // would still read as a signal. pulse: null = leave the current animation alone,
+    // true/false = start/stop the breathe here.
     private static void SetLedColor(Border? led, Color c, bool? pulse, bool glow = true)
     {
         if (led == null) return;
@@ -2314,8 +2308,8 @@ public partial class OverlayWindow : Window
         // while HUB is the presented tab. Two independent ExecHangarStatusLine instances is
         // deliberate - the control owns its own timer, and sharing one across two hosts would mean
         // reparenting it on every tab switch.
-        if (tab == "stats") { EnsureHubHangarLine(); _hubHangarLine?.Start(); }
-        else if (prev == "stats") _hubHangarLine?.Stop();
+        if (tab == "stats") StartHubTicker();
+        else if (prev == "stats") StopHubTicker();
 
         if (tab == "orders")
         {
@@ -2488,13 +2482,17 @@ public partial class OverlayWindow : Window
         App.OverlayGhostModeChanged -= OnGhostModeChanged;   // ghost mode (issue #27)
         _guidesHangarLine?.Stop();   // issue #26 amendment: whole-window teardown
         _autoLoadStrip?.Stop();      // task 8: whole-window teardown
+        StopHubTicker();             // 2026-08-16: a discarded window must not keep a rooted 1Hz timer
         base.OnClosed(e);
     }
 
-    // Repaint the TRADE tab's SESSION line when the profit tracker applies or voids a settlement.
+    // Repaint the TRADE tab's SESSION line when the profit tracker applies or voids a settlement,
+    // and the HUB LEDGER when that tab is the one on screen (2026-08-16: the LEDGER replaced the
+    // hero tiles, whose facts all had live triggers; money must not go stale mid-trade either).
     private void OnProfitChanged()
     {
         if (IsTabPresented("trade")) RebuildTradePanel();
+        if (IsTabPresented("stats")) FillHubLedger();
     }
 
     // And when the game opens or exits: the SESSION line's OFFLINE dim state folds on the feed's
@@ -2506,7 +2504,8 @@ public partial class OverlayWindow : Window
     {
         UpdateHaulingTabBadge();                 // keep the tab count fresh even off the HAULING tab
         if (IsTabPresented("hauling")) RebuildHaulingPanel();
-        if (IsTabPresented("stats")) RebuildStatsPanel();   // F1: HAUL hero tile tracks the same active-haul totals
+        // (2026-08-16: the stats rebuild that lived here served the HAUL hero tile; the VITALS
+        // layout shows no haul fact, so a haul change no longer touches the HUB.)
     }
 
     // The CARGO tab's badge counts FINISHED AUTO-LOADS the player has not looked at yet
@@ -2585,7 +2584,7 @@ public partial class OverlayWindow : Window
         if (IsTabPresented("stats")) RebuildShardPanel();
     }
 
-    // Foreground relevance flipped (Nexus/SC moved to or from the front): re-sync the HUB scan LEDs so
+    // Foreground relevance flipped (Nexus/SC moved to or from the front): re-sync the scan controls so
     // the auto-scan indicators move between green (on) and yellow (paused).
     private void OnForegroundRelevanceChanged(bool relevant)
         => Dispatcher.Invoke(() => { SyncScanControls(); SyncHaulingControls(); });
@@ -2601,24 +2600,25 @@ public partial class OverlayWindow : Window
         // Server / Shard section sits in the STATS tab; refresh it whenever the tab is built.
         RebuildShardPanel();
 
-        // Shared brushes / fonts for the hero tiles + feed below them.
+        // Shared brushes / fonts for the mini cards + feed below them.
         var dim    = (Brush)FindResource("FgDimBrush");
         var fg     = (Brush)FindResource("FgBrush");
-        var cyan   = (Brush)FindResource("CyanBrush");
         var border = (Brush)FindResource("NavBorderBrush");
         var mono   = (FontFamily)FindResource("MonoFont");
 
-        // F1 hero tiles: READY ORDERS (cyan when > 0, else dim - shares the enum walk with the REFINERY
-        // tab badge via ReadyOrdersCount) and HAUL (committed SCU + delivered/total drops across active
-        // hauls, always cyan per the frozen values - shares the totals math with RebuildHaulingPanel via
-        // HaulTotals). Both tiles keep the accent ChamferPanel look (border color set in XAML).
-        var ready = ReadyOrdersCount();
-        HubReadyValue.Text = ready.ToString();
-        HubReadyValue.Foreground = ready > 0 ? cyan : dim;
+        // VITALS mini job cards (2026-08-16, supersedes the F1 hero tiles): the same facts and
+        // fixed tones the main Operations tab wears - gold refinery, amber load, green hangar.
+        // The two countdown cards get their first paint here, then tick on the HUB's 1Hz timer.
+        int ready = ReadyOrdersCount();
+        int refining = _vm.WorkOrders.Count(w => w.Status != WorkOrderStatus.Complete
+                                             && w.Status != WorkOrderStatus.ReadyToCollect);
+        HubRefValue.Text = OverlayHub.RefineryValue(ready, refining);
+        HubRefSub.Text = OverlayHub.RefinerySub(ready, refining);
+        TickHubCells();
+        RefreshSessionLed();
 
-        var (scu, done, total) = HaulTotals(App.Hauls.ActiveHauls);
-        HubHaulValue.Text = $"{scu:N0} SCU";
-        HubHaulSub.Text = $"{done}/{total} drops";
+        // LEDGER: wallet + session profit, the main tab's derivations.
+        FillHubLedger();
 
         // F2: the feed header carries the same session count the old hero count-up rendered
         // (App.GameLog.Count), so the demoted number is exactly the approved one.
@@ -2669,18 +2669,29 @@ public partial class OverlayWindow : Window
     {
         ShardPanel.Children.Clear();
 
-        var accent   = (Brush)FindResource("AccentBrush");
         var cyan     = (Brush)FindResource("CyanBrush");
         var dim      = (Brush)FindResource("FgDimBrush");
         var headFont = (FontFamily)FindResource("HeadFont");
         var monoFont = (FontFamily)FindResource("MonoFont");
 
-        // Panel title (amber kicker).
-        ShardPanel.Children.Add(new TextBlock
+        // Panel key (dim, VITALS 2026-08-16) with the connection state docked right: green
+        // CONNECTED on a shard, dim OFFLINE off one. The word carries what the dot color says.
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.Children.Add(new TextBlock
         {
-            Text = "SERVER / SHARD", FontSize = 9, FontWeight = FontWeights.Bold,
-            Foreground = accent, Margin = new Thickness(0, 0, 0, 5),
+            Text = "SERVER / SHARD", FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = dim,
         });
+        var conn = new TextBlock
+        {
+            Text = App.Shards.Current != null ? "CONNECTED" : "OFFLINE",
+            FontFamily = monoFont, FontSize = 8, FontWeight = FontWeights.Bold,
+            Foreground = App.Shards.Current != null ? (Brush)FindResource("OkBrush") : dim,
+        };
+        Grid.SetColumn(conn, 1);
+        head.Children.Add(conn);
+        ShardPanel.Children.Add(head);
 
         // CURRENT: the shard the player is on right now (cyan), or a "not on a shard" line after they leave
         // (App.Shards.Current goes null once the log shows they left, until the next join).
@@ -2688,7 +2699,16 @@ public partial class OverlayWindow : Window
         if (current != null)
         {
             // Current shard/instance is the live "where am I" readout -> cyan (MOBIGLAS signature).
-            ShardPanel.Children.Add(ShardRow(ShardDot(cyan),
+            // The dot glows like the other live LEDs on this tab (static, no breathe: it changes
+            // only on a shard hop, and a standing animation per glowing dot would add up).
+            var liveDot = ShardDot(cyan);
+            var dotGlow = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(0x7F, 0xE9, 0xE0), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.9,
+            };
+            dotGlow.Freeze();
+            liveDot.Effect = dotGlow;
+            ShardPanel.Children.Add(ShardRow(liveDot,
                 $"{current.Region}  .  Shard {current.Instance}", cyan, headFont, 13, FontWeights.SemiBold));
             ShardPanel.Children.Add(new TextBlock
             {
@@ -2840,7 +2860,7 @@ public partial class OverlayWindow : Window
         }
 
         // ── TOTALS: how big is this run, will it fit, what is it worth, and how far along am I ──
-        // SCU + drops share the HUB hero tile's math (HaulTotals); reward is a separate, tiny sum kept
+        // SCU + drops go through the shared totals math (HaulTotals); reward is a separate, tiny sum kept
         // local to this tab since the hero tile doesn't render it.
         var (totalScu, dropsDone, drops) = HaulTotals(active);
         int totalReward = active.Where(h => h.Reward > 0).Sum(h => h.Reward);
@@ -3719,13 +3739,155 @@ public partial class OverlayWindow : Window
 
     // The HUB's Executive Hangar countdown (app review 2026-08-01). Built lazily on first entry to
     // the tab, like the guides copy, so an overlay that never opens HUB never pays for it.
-    private ExecHangarStatusLine? _hubHangarLine;
+    // ── the HUB's live cells (VITALS, 2026-08-16) ───────────────────────────────────
+    // A 1Hz timer scoped to the stats tab, the same lifecycle the HUB's ExecHangarStatusLine had
+    // before the mini cards replaced it: started on tab entry, stopped on exit and on ghost
+    // collapse. Ticks rewrite only text that actually changed, so a quiet second touches no
+    // dependency property and invalidates no layout (the main tab's live-cell rule).
+    private System.Windows.Threading.DispatcherTimer? _hubTicker;
 
-    private void EnsureHubHangarLine()
+    private void StartHubTicker()
     {
-        if (_hubHangarLine is not null) return;
-        _hubHangarLine = new ExecHangarStatusLine(compact: true, surfaceName: "overlay HUB");
-        HubHangarHost.Content = _hubHangarLine;
+        _hubTicker ??= MakeHubTicker();
+        if (!_hubTicker.IsEnabled)
+        {
+            _hubTicker.Start();
+            Logger.Info("[UI] overlay HUB ticker started");
+        }
+    }
+
+    private void StopHubTicker()
+    {
+        if (_hubTicker is { IsEnabled: true })
+        {
+            _hubTicker.Stop();
+            Logger.Info("[UI] overlay HUB ticker stopped");
+        }
+    }
+
+    private System.Windows.Threading.DispatcherTimer MakeHubTicker()
+    {
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        t.Tick += (_, _) => TickHubCells();
+        return t;
+    }
+
+    private int _hubTickCount;
+
+    private void TickHubCells()
+    {
+        var now = DateTime.UtcNow;
+        // The wallet's Current-to-Aging flip and the "captured Xm ago" provenance move only because
+        // time passes, so no event ever repaints them; a slow beat on this ticker does. Fifteen
+        // seconds is a fraction of the aging boundary, and the fill is text-and-brush only.
+        if (++_hubTickCount % 15 == 0) FillHubLedgerValues();
+        var entries = App.AutoLoad.Entries;
+        SetIfChanged(HubLoadValue, CommandPage.AutoLoadValue(entries, now));
+        int running = 0, untimed = 0, finished = 0;
+        foreach (var e in entries)
+        {
+            if (AutoLoadBadge.CompletesAt(e) is not { } done) untimed++;
+            else if (done > now) running++;
+            else finished++;
+        }
+        SetIfChanged(HubLoadSub, OverlayHub.AutoLoadSub(running, untimed, finished));
+
+        var s = ExecHangarCycle.At(now, App.Settings.Current.ExecHangarAnchorOverrideUtc);
+        SetIfChanged(HubHangValue, s.IsOpen ? "OPEN" : "CLOSED");
+        SetIfChanged(HubHangSub, OverlayHub.HangarSub(s.IsOpen, ExecHangarCycle.FormatCountdown(s.TimeToTransition)));
+    }
+
+    private static void SetIfChanged(TextBlock tb, string v)
+    {
+        if (!string.Equals(tb.Text, v, StringComparison.Ordinal)) tb.Text = v;
+    }
+
+    // ── LEDGER (VITALS): wallet + session profit + the seven session bars ───────────
+    // State colors follow the main Operations tab exactly: wallet gold current / amber aging /
+    // red impossible / dim unset; profit by sign, and zero reads dim like empty, never green
+    // (ProfitDisplay spec section 6). The bars come from the ACTIVE channel only, the same
+    // partition rule as the main tab's chart.
+    private void FillHubLedger()
+    {
+        FillHubLedgerValues();
+        FillHubLedgerBars();
+    }
+
+    // Text and brushes only: cheap enough to run on every wallet event and on the slow tick that
+    // walks the Current-to-Aging boundary. The effect-bearing bars are rebuilt separately, because
+    // only a history change (a session closing) can move them.
+    private void FillHubLedgerValues()
+    {
+        var dim = (Brush)FindResource("FgDimBrush");
+        var w = App.Wallet;
+        if (w == null)
+        {
+            HubWalletValue.Text = ProfitDisplay.NoneValue;
+            HubWalletValue.Foreground = dim;
+            HubWalletSub.Text = "Wallet tracking is not running.";
+        }
+        else
+        {
+            var state = WalletDisplay.State(w.HasAnchor, w.Estimate, w.AnchorUtc,
+                                            DateTime.UtcNow, App.GameLogFeed.IsSessionLive);
+            HubWalletValue.Text = w.Estimate is { } est ? ProfitDisplay.Format(est) + " aUEC"
+                                                        : ProfitDisplay.NoneValue;
+            HubWalletValue.Foreground = state switch
+            {
+                WalletUiState.Current => (Brush)FindResource("GoldBrush"),
+                WalletUiState.Aging => (Brush)FindResource("AccentBrush"),
+                WalletUiState.Impossible => (Brush)FindResource("DangerBrush"),
+                _ => dim,
+            };
+            HubWalletSub.Text = w.HasAnchor
+                ? WalletDisplay.Provenance(w.AnchorSource, w.AnchorUtc, DateTime.UtcNow)
+                : WalletDisplay.CardHint;
+        }
+
+        if (App.Profit == null)
+        {
+            HubProfitValue.Text = ProfitDisplay.NoneValue;
+            HubProfitValue.Foreground = dim;
+            return;
+        }
+        var ledger = App.Profit.Ledger;
+        HubProfitValue.Text = ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net)
+                            + (ledger.UnvoidedCount > 0 ? " aUEC" : "");
+        HubProfitValue.Foreground = ledger.UnvoidedCount == 0 || ledger.Net == 0 ? dim
+            : ledger.Net < 0 ? (Brush)FindResource("DangerBrush") : (Brush)FindResource("OkBrush");
+    }
+
+    private void FillHubLedgerBars()
+    {
+        HubProfitBars.Children.Clear();
+        if (App.Profit == null) return;
+        var ch = App.Profit.History.Channels.Find(c => c.Channel == App.GameLogFeed.ActiveChannel);
+        var bars = ch == null ? Array.Empty<ProfitBar>()
+                              : (IReadOnlyList<ProfitBar>)OperationsPanels.ProfitBars(ch.Entries, currentKey: null, count: 7);
+        long peak = 1;
+        foreach (var b in bars) peak = Math.Max(peak, Math.Abs(b.Net));
+        foreach (var b in bars)
+        {
+            var c = Hud.Col(b.Net == 0 ? "FgDimBrush" : b.Net < 0 ? "DangerBrush" : "OkBrush");
+            var fill = new SolidColorBrush(c);
+            fill.Freeze();
+            // A break-even bar carries no glow: the no-glow-on-off rule, and the mock's own zero case.
+            System.Windows.Media.Effects.DropShadowEffect? glow = null;
+            if (b.Net != 0)
+            {
+                glow = new System.Windows.Media.Effects.DropShadowEffect { Color = c, BlurRadius = 6, ShadowDepth = 0 };
+                glow.Freeze();
+            }
+            HubProfitBars.Children.Add(new Border
+            {
+                Width = 8, Height = Math.Max(2, Math.Abs(b.Net) / (double)peak * 22),
+                Margin = new Thickness(3, 0, 0, 0), CornerRadius = new CornerRadius(1, 1, 0, 0),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Background = fill, Opacity = b.Current ? 1 : 0.62,
+                ToolTip = $"{b.Label}: {ProfitDisplay.Signed(b.Net)} aUEC",
+                Effect = glow,
+            });
+        }
     }
 
     // Auto-load / auto-unload strip (task 8). Unlike the Exec Hangar lines above, this is not

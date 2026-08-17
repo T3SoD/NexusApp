@@ -20,7 +20,7 @@ public enum TutorialTarget
     HaulingTile,     // dock tile (ring only, no navigation)
     NetworkTile,     // dock tile (ring only, no navigation)
     OpenOverlay,     // overlay toggle button in the header
-    OverlayHub,      // overlay HUB tab status lights
+    OverlayHub,      // overlay HUB tab session line
     ScanToggle,      // overlay SCAN tab Auto-scan RS switch
     ContractRegion,  // overlay HAULING tab set-contract-region link
 }
@@ -76,7 +76,7 @@ public sealed class TourController
         new(TutorialTarget.OpenOverlay, "The third space",
             "Click here to launch the overlay - a compact panel that floats over Star Citizen so you never leave the game to use Nexus."),
         new(TutorialTarget.OverlayHub, "Proof of life",
-            "The overlay opens on the HUB: green lights mean a feed is live right now - session, RS auto-scan, contracts - and the cyan one is where the game last placed you. Blueprints collected, server, and shard read out below."),
+            "The overlay opens on the HUB: the green light means Nexus is reading a live game session, and the cyan one is where the game last placed you. Refinery, auto-load and hangar cards, your money, server and shard read out below."),
         new(TutorialTarget.ScanToggle, "Auto-scan is opt-in",
             "Switch this on and Nexus reads rock signatures straight off your screen through the magenta box you draw once. It pauses on its own whenever you and the game are both in the background."),
         new(TutorialTarget.ContractRegion, "Contracts get their own box",

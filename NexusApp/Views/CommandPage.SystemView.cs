@@ -774,10 +774,15 @@ public sealed partial class CommandPage
             // dim, not green - a session that made nothing must not read as one that made money.
             double h = Math.Max(3, Math.Abs(b.Net) / (double)peak * 54);
             var barColor = Hud.Col(b.Net == 0 ? "FgDimBrush" : b.Net < 0 ? "DangerBrush" : "OkBrush");
-            // The mock's exact glow: 10px blur, the bar's own color at full alpha. The .62 element
-            // opacity on past bars dims bar and glow together, which is also the mock's behavior.
-            var glow = new DropShadowEffect { Color = barColor, BlurRadius = 10, ShadowDepth = 0 };
-            glow.Freeze();
+            // The mock's exact glow: 10px blur, the bar's own color at full alpha, and NO glow on a
+            // break-even bar (a glow on a dim lamp still reads as a signal). The .62 element opacity
+            // on past bars dims bar and glow together, which is also the mock's behavior.
+            DropShadowEffect? glow = null;
+            if (b.Net != 0)
+            {
+                glow = new DropShadowEffect { Color = barColor, BlurRadius = 10, ShadowDepth = 0 };
+                glow.Freeze();
+            }
             var bar = new Border
             {
                 Height = h, VerticalAlignment = VerticalAlignment.Bottom,

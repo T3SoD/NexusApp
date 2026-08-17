@@ -43,7 +43,7 @@ The **Blueprint Network** adds ownership tracking for friends or your org. You t
 **Highlights**
 
 - **Auto-scan overlay:** Draw a region over the RS value on your screen. Nexus then reads the value automatically with the native OCR engine in Windows.
-- **Overlay:** The overlay floats over the game with six tabs: HUB, SCAN, REFINERY, SHOPPING, HAULING, and GUIDES. Each tab is an icon, and the active tab expands into an amber pill with its name. A gear in the header opens quick settings in-game: ghost mode, click-through, opacity, and rail size. The overlay passes your mouse through to the game when Star Citizen hides the cursor in flight or on foot. You can turn this off in Settings. The HUB tab shows hero tiles for ready refinery orders and your haul totals.
+- **Overlay:** The overlay floats over the game with six tabs: HUB, SCAN, REFINERY, SHOPPING, HAULING, and GUIDES. Each tab is an icon, and the active tab expands into an amber pill with its name. A gear in the header opens quick settings in-game: ghost mode, click-through, opacity, and rail size. The overlay passes your mouse through to the game when Star Citizen hides the cursor in flight or on foot. You can turn this off in Settings. The HUB tab shows cards for refinery orders, auto-load timers and the executive hangar, plus your wallet and session profit.
 - **Ghost mode:** One toggle collapses the overlay to a slim icon rail. Click a glyph to slide that tab out beside the rail. Click the glyph again to collapse back. You can size the rail on its own, from 75% to 150%, separate from the panels.
 - **Mission Guides:** Browse zoomable maps and tactical reference guides on the Mission Guides page and in the overlay GUIDES tab. The contested zone guides show the executive hangar lights and a live open-close countdown. All guides ship inside the app, fully offline.
 - **Blueprint ownership tracking:** Mark the blueprints that you own. Filter the library by owned or not owned. Track your collection completion for each category. Then you do not need to check in-game. You can also import the blueprints that you own from an SCMDB export file. A preview shows exactly which blueprints will be marked owned before anything applies.
@@ -77,9 +77,9 @@ The overlay SCAN tab sits over Star Citizen during mining. The detection box sur
 [![Nexus overlay auto-scanning an RS value in the Star Citizen mining cockpit and decoding it live](docs/screenshots/overlay-scan.png)](docs/screenshots/overlay-scan.png)
 
 ### Overlay HUB over the game
-The HUB tab floats over gameplay. It shows green status lights for session tracking and both scanners, the blueprints collected this session, and your current server and shard. Everything is read-only.
+The HUB tab floats over gameplay. It shows the live session line, cards for refinery, auto-load and hangar, your money, blueprints collected, and your shard. Everything is read-only.
 
-[![Nexus overlay HUB tab floating over Star Citizen gameplay with status lights and shard panel](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
+[![Nexus overlay HUB tab floating over Star Citizen gameplay with the session line, job cards and shard panel](docs/screenshots/overlay.jpg)](docs/screenshots/overlay.jpg)
 
 ### RS Signal Decoder
 Type any RS value to get a ranked breakdown. The best match shows as a hero card with the node count, the best refinery, and what the rock can contain. Close matches show below. The re-runnable scan history shows on the right.
