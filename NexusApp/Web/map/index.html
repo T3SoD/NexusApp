@@ -407,7 +407,13 @@ function buildSystem(){
   rows.filter(r=>r.type==='Moon').forEach(m=>{ const p=BY_ID.get(m.parent);
     if(p&&p.type==='Planet') mkRing(p.x/MM,-p.y/MM,m.z/MM, distM(p,m)/MM); });
   redrawPlanner();
-  frameRadius((star? subRadius.get(star.id):45000)*1.12 || 45000, true);
+  /* First build on the FULL map homes to the locator's measured tilt and starts the same idle
+     drift (2026-08-17: both starmaps open on one view, unlinked - each page owns its camera).
+     Once only: later inits and system switches keep whatever direction the user settled on, the
+     same rule liteHomed applies. The locator's own homing stays in applyLite. */
+  if(!state.lite && !mapHomed){ mapHomed=true; locatorHome(); setDrift(true);
+    log('map: homed to locator tilt, drift on'); }
+  else frameRadius((star? subRadius.get(star.id):45000)*1.12 || 45000, true);
   refreshTicks();
 }
 
@@ -537,7 +543,12 @@ function frameRadius(r, instant, target){
     camera.position.lerpVectors(sPos,endPos,e); controls.target.lerpVectors(sTgt,tgt,e);
     if(t<1) requestAnimationFrame(step); else tween=null; })();
 }
-renderer.domElement.addEventListener('pointerdown',()=>{ tween=null; });
+renderer.domElement.addEventListener('pointerdown',()=>{ tween=null;
+  /* The full map's idle drift hands over for good on first touch: pins, measure and the route
+     builder are precision work, and a camera that resumed moving after every drag would fight
+     the user. The locator keeps drifting - its DRIFT button owns that choice there. */
+  if(!state.lite && controls.autoRotate){ setDrift(false);
+    log('map: drift off, user took the controls'); } });
 
 function focusObject(id){
   const o=BY_ID.get(id); if(!o) return;
@@ -583,6 +594,10 @@ function topDown(){
    radius so the view still fills whatever window it is given. */
 const LOCATOR_POLAR = 58.2, LOCATOR_AZIMUTH = -148.0;
 let liteHomed = false;
+/* The full map homes to the same tilt and drift on ITS first build (2026-08-17: the dedicated
+   MAP tab and the Operations locator open looking the same, but stay unlinked - separate
+   WebView2 pages, separate cameras). Separate flag, same home-once rule. */
+let mapHomed = false;
 
 function locatorHome(){
   const star=catalogRows.find(r=>r.type==='Star');
@@ -599,7 +614,8 @@ function locatorHome(){
 
 /* Tilt capture. Logs where the camera settled, every time the user finishes a drag or a zoom, so a
    preferred default can be read out of nexus.log and pasted into the two constants above. Locator
-   only: the map tab has its own framing and does not need the noise. */
+   only: the full map now homes to the same constants, but re-measuring them happens at the
+   locator's controls, so the map tab does not need the noise. */
 controls.addEventListener('end', ()=>{
   if(!state.lite) return;
   log('locator camera: polar ' + THREE.MathUtils.radToDeg(controls.getPolarAngle()).toFixed(1)
