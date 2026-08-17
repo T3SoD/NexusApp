@@ -42,8 +42,10 @@
                  the AUTO-SCAN chip mid-glyph flush against the clock, which read as the clock
                  overlapping the chip) - an overflowing strip now fades out ahead of the boundary,
                  and the mask lives on the Border because the panel's own mask would map to its full
-                 desired width and put the fade off screen. -->
-            <Border ClipToBounds="True">
+                 desired width and put the fade off screen. The mask engages only on a REAL
+                 overflow (2026-08-16, ChipStrip_SizeChanged): unconditional, it half-faded the
+                 last chip whenever the strip merely ended inside the band. -->
+            <Border x:Name="ChipStripClip" ClipToBounds="True" SizeChanged="ChipStrip_SizeChanged">
                 <Border.OpacityMask>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                         <GradientStop Color="#FFFFFFFF" Offset="0"/>
@@ -51,7 +53,7 @@
                         <GradientStop Color="#00FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.OpacityMask>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+            <StackPanel x:Name="ChipStrip" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0" SizeChanged="ChipStrip_SizeChanged">
                 <views:NexusBeamIcon Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
                     <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="Bold"

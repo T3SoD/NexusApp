@@ -933,6 +933,22 @@ public partial class MainWindow : Window
         SetActivePage("trade");
     }
 
+    // The strip's fade-out mask, detached whenever the strip fits (2026-08-16): unconditional,
+    // the mask half-faded the LAST chip whenever the strip merely ended inside the band, and the
+    // wallet value dissolving mid-number read as a defect. The decision is pure and tested
+    // (StatusChips.StripFades); this fold only measures. Fires on both elements: the panel
+    // resizes when chip text changes, the border when the window does. The panel's left margin
+    // is walked off the clip width because the panel's ActualWidth excludes its own margin.
+    private System.Windows.Media.Brush? _chipStripFade;
+
+    private void ChipStrip_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        _chipStripFade ??= ChipStripClip.OpacityMask;
+        bool fades = StatusChips.StripFades(ChipStrip.ActualWidth,
+            ChipStripClip.ActualWidth - ChipStrip.Margin.Left - ChipStrip.Margin.Right);
+        ChipStripClip.OpacityMask = fades ? _chipStripFade : null;
+    }
+
     /// <summary>Keeps the dock's Refinery and Hauling count badges live. Wired in the constructor to
     /// the same two signals Operations listens to (app review): before this, UpdateNavBadges ran only
     /// from SetActivePage, so accepting a contract or finishing a refine left the dock badges stale

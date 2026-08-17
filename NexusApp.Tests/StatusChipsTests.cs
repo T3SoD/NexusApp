@@ -109,4 +109,17 @@ public class StatusChipsTests
     [InlineData(true,  true,  true,  LocationLamp.Coarse)]
     public void LocationLampState_Matrix(bool known, bool coarse, bool sessionLive, LocationLamp expected)
         => Assert.Equal(expected, StatusChips.LocationLampState(known, coarse, sessionLive));
+
+    // ── StripFades: the header fade mask engages only on a real overflow (2026-08-16) ──
+    // A strip that merely ends inside the fade band must render its last chip whole; the fade is
+    // overflow protection, not decoration. Half a pixel of tolerance absorbs DPI rounding.
+
+    [Theory]
+    [InlineData(600, 700, false)]   // fits with room - no fade
+    [InlineData(699.8, 700, false)] // ends inside the old fade band - still no fade
+    [InlineData(700, 700, false)]   // exact fit - no fade
+    [InlineData(700.4, 700, false)] // within rounding tolerance - no fade
+    [InlineData(701, 700, true)]    // genuinely overflows - fade engages
+    public void StripFades_OnlyOnRealOverflow(double content, double clip, bool expected)
+        => Assert.Equal(expected, StatusChips.StripFades(content, clip));
 }

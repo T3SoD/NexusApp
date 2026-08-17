@@ -84,6 +84,15 @@ public static class StatusChips
          : !sessionLive ? LocationLamp.Offline
          : coarse ? LocationLamp.Coarse
          : LocationLamp.Live;
+
+    /// <summary>Whether the header strip's fade-out mask engages (2026-08-16). The mask used to be
+    /// unconditional, so a strip that merely ENDED inside the fade band showed a half-faded last
+    /// chip with nothing overflowing - the wallet value dissolving mid-number read as a defect.
+    /// The fade exists to soften a real overflow ahead of the clip boundary, so it engages only
+    /// when the content genuinely does not fit. Half a pixel of tolerance so DPI rounding on
+    /// equal widths cannot flicker the mask.</summary>
+    public static bool StripFades(double contentWidth, double clipWidth)
+        => contentWidth > clipWidth + 0.5;
 }
 
 /// <summary>What a location readout may claim right now: Unknown (dim, no reading), Live (cyan,
