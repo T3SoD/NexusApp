@@ -871,9 +871,12 @@ public sealed partial class CommandPage
         var resolved = App.Player?.Current;
         var name = LocatorName();
         var system = resolved?.System ?? App.Settings.Current.MapSystem ?? "Stanton";
+        bool live = App.GameLogFeed.IsSessionLive;
         // The token covers everything the card renders, not just the marker: the label can change
-        // (a new jurisdiction) while the resolved object stays null, and that still has to repaint.
-        var token = (resolved?.Id.ToString() ?? "none") + "|" + system + "|" + (name ?? "");
+        // (a new jurisdiction) while the resolved object stays null, and that still has to
+        // repaint. Liveness is in the token (2026-08-17) so the game closing flips the card to
+        // its grey LAST KNOWN state - Refresh already runs on SessionLiveChanged.
+        var token = (resolved?.Id.ToString() ?? "none") + "|" + system + "|" + (name ?? "") + "|" + live;
         if (!force && token == _mapPostedFor) return;
         _mapPostedFor = token;
 
@@ -882,7 +885,7 @@ public sealed partial class CommandPage
             tradeOn: false, guidesOn: false, miningOn: false, hangarOn: false, asteroidsOn: false,
             selection: null, draft: Array.Empty<int>(), planner: Array.Empty<int>(),
             reduced: Motion.Reduced, player: resolved?.Id, haulsOn: false, ordersOn: false,
-            lite: true, playerNote: LocatorNote(), playerName: name));
+            lite: true, playerNote: LocatorNote(), playerName: name, playerLive: live));
         Logger.Info($"[UI] Operations system view: locator init {system}, " +
                     $"place {name ?? "unknown"}, marker {(resolved != null ? "placed" : "none")}");
     }

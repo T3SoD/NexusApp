@@ -110,6 +110,19 @@ public class StatusChipsTests
     public void LocationLampState_Matrix(bool known, bool coarse, bool sessionLive, LocationLamp expected)
         => Assert.Equal(expected, StatusChips.LocationLampState(known, coarse, sessionLive));
 
+    // ── LocationText: one wording rule for every location surface (2026-08-17) ──
+    // Live names the place; offline SAYS "Last known" instead of dressing history as live.
+
+    [Theory]
+    [InlineData("Everus Harbor", false, true, "Everus Harbor")]
+    [InlineData("Crusader", true, true, "Crusader space")]
+    [InlineData("Everus Harbor", false, false, "Last known: Everus Harbor")]
+    [InlineData("Crusader", true, false, "Last known: Crusader space")]   // coarse honesty survives offline
+    [InlineData(null, false, true, "unknown")]
+    [InlineData("", true, false, "unknown")]
+    public void LocationText_SaysLastKnownWhenOffline(string? label, bool coarse, bool live, string expected)
+        => Assert.Equal(expected, StatusChips.LocationText(label, coarse, live));
+
     // ── StripFades: the header fade mask engages only on a real overflow (2026-08-16) ──
     // A strip that merely ends inside the fade band must render its last chip whole; the fade is
     // overflow protection, not decoration. Half a pixel of tolerance absorbs DPI rounding.

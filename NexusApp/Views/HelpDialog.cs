@@ -34,7 +34,7 @@ public class HelpDialog : Window
                 "The overlay stays on top of all windows including your game.",
                 "Close it with the ✕ button - position and size are saved for next time.",
                 "The overlay has six tabs: HUB, SCAN, REFINERY, SHOPPING, HAULING, and GUIDES - it opens on the HUB the first time, then reopens on the tab you last used.",
-                "HUB - a read-only glance: the session line (green = live session, red = game closed, cyan = your last known place), the REFINERY / AUTO LOAD / HANGAR cards, the LEDGER with your wallet and session profit, the SERVER / SHARD panel, and the Collection Log feed with a live blueprint count in its header (see Session Tracking).",
+                "HUB - a read-only glance: the session line (green = live session, red = game closed; the location shows cyan while live and grey 'Last known' when the game is not running), the REFINERY / AUTO LOAD / HANGAR cards, the LEDGER with your wallet and session profit, the SERVER / SHARD panel, and the Collection Log feed with a live blueprint count in its header (see Session Tracking).",
                 "SCAN - the Auto-scan RS switch, RS input, results, and the RECENT scan history (shown on this tab only).",
                 "REFINERY - your work orders at a glance, plus ▤ Open Refinery Tracker for the flyout panel.",
                 "SHOPPING - an inline view of your current shopping list.",

@@ -49,8 +49,12 @@ public partial class MainWindow : Window
         if (App.GameLog != null)
         {
             // UpdateLocationChip rides the session flips too (2026-08-04): its lamp folds
-            // App.GameLog.IsSessionLive in, so game start/exit repaints it, not only a move.
+            // the process probe in, so game start/exit repaints it, not only a move.
             App.GameLog.StateChanged += () => { UpdateSessionChip(); UpdateLocationChip(); RefreshBlueprintTrackingLine(); };
+            // The ungated belt (2026-08-17): GameLogSession swallows the feed's flip while the
+            // log monitor is detached, and with the game closed no location event fires either -
+            // without this, the chip could hold its live cyan through an exit in that state.
+            App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(UpdateLocationChip);
             // Channel switches (LIVE <-> PTU/EPTU/etc, issue #28) don't flip IsSessionLive, so they
             // don't fire StateChanged - the SESSION chip needs its own trigger to pick up the new
             // ChipSuffix on the next Game.log channel resolve.
@@ -834,11 +838,12 @@ public partial class MainWindow : Window
     // LOCATION telemetry chip (F14, new): where Game.log last placed the player - the gate for
     // every distance the app renders (Codex, work orders, Trade ranking, map marker, overlay route
     // bands), which until this chip had no global lamp. Cyan breathing when a place is known AND a
-    // session is live (cyan = the app's live-location identity, reserved), red when the reading
-    // has no live session behind it (2026-08-04: LastKnownLocation never clears, so
-    // known-ness alone kept the chip cyan after the game closed), dim "unknown" otherwise. Label
-    // over resolution: App.Player.Label is the log's own words even when the catalog cannot place
-    // them, which is the honest thing for a chip that SAYS rather than MEASURES (PlayerPlace's rule).
+    // session is live (cyan = the app's live-location identity, reserved); with no live session
+    // behind the reading it dims GREY and says "Last known" (2026-08-17 ruling, superseding the
+    // 2026-08-04 red - LastKnownLocation never clears, so known-ness alone kept the chip cyan
+    // after the game closed); dim "unknown" otherwise. Label over resolution: App.Player.Label is
+    // the log's own words even when the catalog cannot place them, which is the honest thing for
+    // a chip that SAYS rather than MEASURES (PlayerPlace's rule).
     private LocationLamp? _locationChipLamp;
     private void UpdateLocationChip()
     {
@@ -853,8 +858,10 @@ public partial class MainWindow : Window
         // The FEED's process probe, not GameLogSession's gated read: the latter goes false when
         // the log monitor is stopped while the game still runs, and this chip's location keeps
         // updating live off the feed in exactly that state.
-        var lamp = StatusChips.LocationLampState(known, coarse, App.GameLogFeed?.IsSessionLive == true);
-        LocationChipText.Text = !known ? "unknown" : coarse ? $"{label} space" : label;
+        bool live = App.GameLogFeed?.IsSessionLive == true;
+        var lamp = StatusChips.LocationLampState(known, coarse, live);
+        // One wording rule for every location surface (2026-08-17): offline SAYS "Last known".
+        LocationChipText.Text = StatusChips.LocationText(label, coarse, live);
         // The value is width-capped (long outpost names trim at 136px so the line never outgrows
         // the operator name above it) - the tooltip always carries the full text.
         LocationChipText.ToolTip = lamp switch
@@ -864,19 +871,18 @@ public partial class MainWindow : Window
             LocationLamp.Coarse => $"{label} jurisdiction - the area the game last reported, not a specific place. Opening any inventory in game pins it down.",
             _ => label,
         };
-        var brush = lamp switch
-        {
-            LocationLamp.Live => Hud.Br("CyanBrush"),
-            LocationLamp.Offline => Hud.Br("DangerBrush"),
-            _ => Hud.Br("FgDimBrush"),
-        };
+        // Offline is dim grey like every offline idiom (2026-08-17 ruling, supersedes the
+        // 2026-08-04 red): red stays reserved for the broken session trunk.
+        var brush = lamp == LocationLamp.Live ? Hud.Br("CyanBrush") : Hud.Br("FgDimBrush");
         LocationChipText.Foreground = brush;
         LocationDot.Fill = brush;
-        Hud.PulseDot(LocationDot, lamp == LocationLamp.Live);
-        // Log only the lamp flips, not every place change - the tracker already logs the timeline.
+        // Pulse and log only on lamp flips: restarting the Forever breathe on every location
+        // raise snapped the dot back to full brightness on ticks that changed nothing (the same
+        // guard the overlay HUB LED and the ORIGIN chip's redress already carry).
         if (_locationChipLamp != lamp)
         {
             _locationChipLamp = lamp;
+            Hud.PulseDot(LocationDot, lamp == LocationLamp.Live);
             Logger.Info($"[UI] dock location: {(known ? LocationChipText.Text : "unknown")}"
                 + (lamp == LocationLamp.Offline ? " (game offline)" : ""));
         }

@@ -70,20 +70,31 @@ public static class StatusChips
         _ => "off",
     };
 
-    /// <summary>The location lamps' shared fold (2026-08-04: the pills wore the live cyan
-    /// forever, game running or not - they must go red when no session is live). Used by the dock
-    /// LOCATION chip and the Trade page's ORIGIN chip. Offline outranks coarse: with the game
-    /// closed the reading is history regardless of its precision, and red is the lamp saying
-    /// tracking is NOT current. LastKnownLocation is app-lifetime (seeded from the previous
-    /// session's Game.log at startup and never cleared), so location-known alone can never mean
-    /// live; sessionLive is the game-process probe (App.GameLogFeed.IsSessionLive - the pure
-    /// probe, not GameLogSession's attachment-gated read, which goes false when the log monitor
-    /// is stopped while the game still runs).</summary>
+    /// <summary>The location lamps' shared fold (2026-08-04, recolored 2026-08-17: offline reads
+    /// GREY like every other offline idiom, not red - red stays reserved for the broken session
+    /// trunk). Every surface that shows the player's location goes through this fold and
+    /// <see cref="LocationText"/>. Offline outranks coarse: with the game closed the reading is
+    /// history regardless of its precision. LastKnownLocation is app-lifetime (seeded from the
+    /// previous session's Game.log at startup and never cleared), so location-known alone can
+    /// never mean live; sessionLive is the game-process probe (App.GameLogFeed.IsSessionLive -
+    /// the pure probe, not GameLogSession's attachment-gated read, which goes false when the log
+    /// monitor is stopped while the game still runs).</summary>
     public static LocationLamp LocationLampState(bool locationKnown, bool coarse, bool sessionLive)
         => !locationKnown ? LocationLamp.Unknown
          : !sessionLive ? LocationLamp.Offline
          : coarse ? LocationLamp.Coarse
          : LocationLamp.Live;
+
+    /// <summary>The location readout's display text, one rule for every surface (2026-08-17): a
+    /// live reading names the place (a jurisdiction gains the " space" qualifier), and a reading
+    /// with no session behind it SAYS it is the last known location instead of dressing history
+    /// as a live fact. Unknown renders "unknown"; surfaces that prefer silence check the lamp.</summary>
+    public static string LocationText(string? label, bool coarse, bool sessionLive)
+    {
+        if (string.IsNullOrWhiteSpace(label)) return "unknown";
+        var place = coarse ? $"{label} space" : label;
+        return sessionLive ? place : $"Last known: {place}";
+    }
 
     /// <summary>Whether the header strip's fade-out mask engages (2026-08-16). The mask used to be
     /// unconditional, so a strip that merely ENDED inside the fade band showed a half-faded last
@@ -97,5 +108,5 @@ public static class StatusChips
 
 /// <summary>What a location readout may claim right now: Unknown (dim, no reading), Live (cyan,
 /// precise place with a live session behind it), Coarse (dim, jurisdiction-only reading), or
-/// Offline (red, a reading with no live session behind it).</summary>
+/// Offline (dim grey, a last-known reading with no live session behind it).</summary>
 public enum LocationLamp { Unknown, Live, Coarse, Offline }

@@ -230,13 +230,22 @@ public class MapSceneBuilderTests
     public void BuildPlayerMarker_Null_SerializesIdAsNull()
     {
         var json = MapSceneBuilder.BuildPlayerMarker(null);
-        Assert.Equal("{\"type\":\"playerMarker\",\"id\":null}", json);
+        Assert.Equal("{\"type\":\"playerMarker\",\"id\":null,\"live\":true}", json);
     }
 
     [Fact]
     public void BuildPlayerMarker_WithId_SerializesIdValue()
     {
         var json = MapSceneBuilder.BuildPlayerMarker(543);
-        Assert.Equal("{\"type\":\"playerMarker\",\"id\":543}", json);
+        Assert.Equal("{\"type\":\"playerMarker\",\"id\":543,\"live\":true}", json);
+    }
+
+    // Two liveness states on every location surface (2026-08-17): the marker message carries the
+    // flag so the page can drop the pulse and grey the YOU tag when the reading is last-known.
+    [Fact]
+    public void BuildPlayerMarker_Offline_SerializesLiveFalse()
+    {
+        var json = MapSceneBuilder.BuildPlayerMarker(543, live: false);
+        Assert.Equal("{\"type\":\"playerMarker\",\"id\":543,\"live\":false}", json);
     }
 }

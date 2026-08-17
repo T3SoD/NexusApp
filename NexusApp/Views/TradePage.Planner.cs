@@ -66,6 +66,10 @@ public sealed partial class TradePage
     // per-rebuild idiom as the DESTINATION picker below.
     private const string AnyStart = "ANY";
     private const string LiveStartPrefix = "LIVE - ";
+    // Same picker item, honest wording (2026-08-17): with the game closed the player's position is
+    // a last-known fact, and an item claiming LIVE would dress history as current. Both prefixes
+    // resolve to the same "LIVE" kind - the choice means "start from wherever I am/was".
+    private const string LastKnownStartPrefix = "LAST KNOWN - ";
     private ComboBox _startCombo = null!;
     private Border _startLiveBtn = null!;       // small pill button: selects LIVE when a session is live, else just logs
     private List<string>? _startNames;          // the list currently bound to the ComboBox (DISPLAY strings - see _startDisplayToKind)
@@ -644,7 +648,11 @@ public sealed partial class TradePage
                     Value = () => CurrentBudget() is { } b ? $"{b:N0} aUEC" : "NONE",
                     IsSet = () => CurrentBudget() is not null },
             new() { Key = "START", Content = startGrp, PopoverWidth = 270,
-                    Value = () => App.Settings.Current.TradeStartManual is { Length: > 0 } k ? k : AnyStart,
+                    // The LIVE kind rewords by liveness (2026-08-17): a chip claiming LIVE with
+                    // the game closed would contradict the ORIGIN chip on the same screen.
+                    Value = () => App.Settings.Current.TradeStartManual is { Length: > 0 } k
+                        ? (k == "LIVE" && !App.GameLogFeed.IsSessionLive ? "LAST KNOWN" : k)
+                        : AnyStart,
                     IsSet = () => App.Settings.Current.TradeStartManual is { Length: > 0 } s && s != AnyStart },
             new() { Key = "DEST", Content = destGrp, PopoverWidth = 250,
                     Value = () => _destSelectedName ?? AnyDestination,
@@ -691,6 +699,7 @@ public sealed partial class TradePage
     private static string StartKindForDisplay(string display) =>
         display == AnyStart ? AnyStart :
         display.StartsWith(LiveStartPrefix, StringComparison.Ordinal) ? "LIVE" :
+        display.StartsWith(LastKnownStartPrefix, StringComparison.Ordinal) ? "LIVE" :
         display;
 
     private void RebuildPlanner()
@@ -928,7 +937,7 @@ public sealed partial class TradePage
         var displayToKind = new Dictionary<string, string>(StringComparer.Ordinal) { [AnyStart] = AnyStart };
         if (liveLoc is not null)
         {
-            var liveDisplay = $"{LiveStartPrefix}{liveLoc}";
+            var liveDisplay = (App.GameLogFeed.IsSessionLive ? LiveStartPrefix : LastKnownStartPrefix) + liveLoc;
             kindToDisplay["LIVE"] = liveDisplay;
             displayToKind[liveDisplay] = "LIVE";
         }

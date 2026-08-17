@@ -74,6 +74,7 @@ public sealed class MapPage : UserControl
     // no live location resolves (LocationTracker has nothing yet, or it named something the map
     // catalog cannot place - a jurisdiction like "Rough & Ready", or a gateway with no raw token).
     private MapObject? _playerLocation;
+    private bool _playerLive = true;   // last posted liveness, so a session flip re-posts the marker
 
     private ExecHangarStatusLine _hangarLine = null!;
 
@@ -257,6 +258,10 @@ public sealed class MapPage : UserControl
         // just as visible as a market tick is. Never moves the camera on its own (design b/c); it
         // only updates the resolved location and the side panel.
         App.Locations.Changed += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlayerLocation(); });
+        // The marker and LOCATION zone carry a live-vs-last-known state (2026-08-17), and no
+        // location event fires when the game merely opens or closes - the liveness probe's own
+        // event has to drive that flip. Same guard-and-catch-up idiom as the line above.
+        App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshPlayerLocation(); });
 
         // Live-state layers (app review G11). A contract accepted or completed while the MAP tab is
         // open moves pins, exactly as a Game.log location change moves the marker one line above.
@@ -419,7 +424,8 @@ public sealed class MapPage : UserControl
         _sceneReady = true;
         _scene.PostJson(MapSceneBuilder.BuildInit(_catalog, _system, _pins,
             _tradeOn, _guidesOn, _miningOn, _hangarOn, _asteroidsOn,
-            _selection, _draft, _plannerIds, Motion.Reduced, _playerLocation?.Id, _haulsOn, _ordersOn));
+            _selection, _draft, _plannerIds, Motion.Reduced, _playerLocation?.Id, _haulsOn, _ordersOn,
+            playerLive: App.GameLogFeed.IsSessionLive));
     }
 
     // ── player marker (design a/b/c) ──
@@ -435,19 +441,21 @@ public sealed class MapPage : UserControl
     private void RefreshPlayerLocation()
     {
         var resolved = _catalog.ResolvePlayerLocation(App.Locations.LastKnownLocation, App.Locations.LastKnownRawToken);
-        bool changed = resolved?.Id != _playerLocation?.Id;
+        bool live = App.GameLogFeed.IsSessionLive;
+        bool changed = resolved?.Id != _playerLocation?.Id || live != _playerLive;
         _playerLocation = resolved;
+        _playerLive = live;
 
         // Only on change: every SendInit path (scene ready, system switch, market delta) already
         // carries _playerLocation in the init payload, so a rebuild restores the marker by itself.
         if (_sceneReady && changed)
-            _scene.PostJson(MapSceneBuilder.BuildPlayerMarker(resolved?.Id));
+            _scene.PostJson(MapSceneBuilder.BuildPlayerMarker(resolved?.Id, live));
 
         RefreshLocationZone();
 
         if (!changed) return;
         Logger.Info(resolved != null
-            ? $"[UI] map: player marker {resolved.Name} ({resolved.System})"
+            ? $"[UI] map: player marker {resolved.Name} ({resolved.System})" + (live ? "" : " (last known)")
             : "[UI] map: player marker cleared");
     }
 
@@ -1031,10 +1039,14 @@ public sealed class MapPage : UserControl
 
     // Same-system: name only (the marker is already visible in the current view - design b calls
     // for JUMP TO ME specifically for the cross-system case). Cross-system: name + dim system tag +
-    // the button. Unresolved: the quiet state above, no button - never a guess.
+    // the button. Unresolved: the quiet state above, no button - never a guess. Liveness
+    // (2026-08-17): with the game closed the name dims grey and a "Last known location" line
+    // appears under it - the zone must not dress a previous session's place as a live fact.
     private void RefreshLocationZone()
     {
         var obj = _playerLocation;
+        bool live = _playerLive;
+        _locEmptyText.Text = live ? "No live location." : "No location. Star Citizen is not running.";
         _locEmptyText.Visibility = obj == null ? Visibility.Visible : Visibility.Collapsed;
         _locContent.Visibility = obj == null ? Visibility.Collapsed : Visibility.Visible;
         if (obj == null) return;
@@ -1044,9 +1056,18 @@ public sealed class MapPage : UserControl
         _locNameRow.Children.Clear();
         _locNameRow.Children.Add(new TextBlock
         {
-            Text = obj.Name, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Hud.Br("FgBrush"),
+            Text = obj.Name, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, FontWeight = FontWeights.SemiBold,
+            Foreground = Hud.Br(live ? "FgBrush" : "FgDimBrush"),
         });
         if (crossSystem && TradePage.SystemTag(obj.System) is { } tag) _locNameRow.Children.Add(tag);
+        if (!live)
+            _locNameRow.Children.Add(new TextBlock
+            {
+                Text = "  LAST KNOWN", FontFamily = Hud.Font("MonoFont"), FontSize = 8.5,
+                FontWeight = FontWeights.Bold, Foreground = Hud.Br("FgDimBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Last known location. Star Citizen is not running.",
+            });
 
         _jumpToMeBtn.Visibility = crossSystem ? Visibility.Visible : Visibility.Collapsed;
     }

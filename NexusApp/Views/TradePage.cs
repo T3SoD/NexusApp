@@ -167,13 +167,22 @@ public sealed partial class TradePage : UserControl
             if (TradeOriginResolver.StartDependsOnLiveLocation(App.Settings.Current.TradeStartManual))
                 RebuildPlanner();
         });
-        // The ORIGIN chip's lamp folds the game-process probe in (2026-08-04: red when no
-        // live session backs the reading), so game start/exit repaints it, not only a move.
-        // StateChanged still fires on process flips even while the log monitor is stopped: the
-        // session relays the shared feed's probe regardless of its own attachment.
-        // The money surfaces' own OFFLINE dimming keys on the same probe (MoneyPanel.cs, moved off
-        // this page 2026-08-09), so this page's half of the subscription is only the context row now.
+        // The ORIGIN chip's lamp folds the game-process probe in (2026-08-04, grey since the
+        // 2026-08-17 last-known ruling), so game start/exit repaints it, not only a move.
+        // NOTE: GameLogSession swallows the feed's flip while the log monitor is detached, so
+        // StateChanged alone can miss an exit in that state - the feed subscription below is the
+        // ungated belt. The money surfaces' own OFFLINE dimming keys on the same probe
+        // (MoneyPanel.cs, moved off this page 2026-08-09).
         App.GameLog.StateChanged += () => Dispatcher.BeginInvoke(() => { if (IsVisible) RefreshContextRow(); });
+        // The start picker's LIVE / LAST KNOWN wording keys on the same probe (2026-08-17), and no
+        // location event can fire with the game closed - the probe's own raise has to reword the
+        // combo, or the picker claims LIVE under an ORIGIN chip that already says LAST KNOWN.
+        App.GameLogFeed.SessionLiveChanged += _ => Dispatcher.BeginInvoke(() =>
+        {
+            if (!IsVisible) return;
+            RefreshContextRow();
+            RefreshStartCombo(App.Market.Snapshot);
+        });
         // SCT is a worker-thread raise (the service documents it), so this marshals like the other
         // two. Without this subscription nothing repainted when the first dark fetch landed: the
         // age pill and every corroboration badge waited for the next hourly market tick.
@@ -845,18 +854,19 @@ public sealed partial class TradePage : UserControl
         }
         else if (lamp == LocationLamp.Offline)
         {
-            // Red, not cyan: the game is not running, so the reading is the last session's, not a
-            // live one. Same DangerBrush the SESSION chip flips to, same glow shape as the live
-            // dressing, no breathe - the pulse is the claim that tracking is alive.
-            _originValue.Text = $"{App.Locations.LastKnownLocation} - OFFLINE";
-            _originValue.Foreground = Hud.Br("DangerBrush");
+            // Grey, not red (2026-08-17 ruling, supersedes the 2026-08-04 red): the game is not
+            // running, so the reading is the last session's. It SAYS so, dims like every offline
+            // idiom, and carries no glow and no breathe - a glow on a dim lamp still reads as a
+            // signal, and the pulse is the claim that tracking is alive.
+            _originValue.Text = $"{App.Locations.LastKnownLocation} - LAST KNOWN";
+            _originValue.Foreground = Hud.Br("FgDimBrush");
             content.Children.Add(_originValue);
-            _originDot.Fill = Hud.Br("DangerBrush");
+            _originDot.Fill = Hud.Br("FgDimBrush");
             if (redress)
             {
                 _originDot.BeginAnimation(UIElement.OpacityProperty, null);
                 _originDot.Opacity = 1.0;
-                _originDot.Effect = new DropShadowEffect { Color = Hud.Col("DangerBrush"), BlurRadius = 7, ShadowDepth = 0, Opacity = 0.8 };
+                _originDot.Effect = null;
             }
             _originChip.ToolTip = "Last known location. Star Citizen is not running.";
         }

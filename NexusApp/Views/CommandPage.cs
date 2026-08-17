@@ -393,7 +393,7 @@ public sealed partial class CommandPage : UserControl
     /// <summary>The subtitle, with the player's location folded in when it is known. Pure string
     /// assembly so the rule is testable: silence when there is no session, which is the normal state
     /// with the game closed and must not read as an error or a placeholder.</summary>
-    internal static string OperationsSubtitle(string? placeLabel, string? system)
+    internal static string OperationsSubtitle(string? placeLabel, string? system, bool sessionLive)
     {
         const string Base = "Everything live, in one glance. Drill into any module from the rail.";
         if (string.IsNullOrWhiteSpace(placeLabel)) return Base;
@@ -405,11 +405,15 @@ public sealed partial class CommandPage : UserControl
                     && !string.Equals(system, placeLabel, StringComparison.OrdinalIgnoreCase)
             ? $"{placeLabel}, {system}"
             : placeLabel;
-        return $"Last seen at {where}. " + Base;
+        // Two liveness states (2026-08-17): a live session says "Last seen at" (readings are
+        // boundary-driven and can lag even live); with the game closed the line says the reading
+        // is the last KNOWN location, never dressing history as a current fact.
+        return sessionLive ? $"Last seen at {where}. " + Base
+                           : $"Last known location: {where}. " + Base;
     }
 
     private static string HeaderSubtitle()
-        => OperationsSubtitle(App.Player?.Label, App.Player?.System);
+        => OperationsSubtitle(App.Player?.Label, App.Player?.System, App.GameLogFeed.IsSessionLive);
 
     // ── auto-relaunch notice strip: amber alert shown on a render-relaunch start ──
     // Sits between the header and the KPI row, only when this session was auto-relaunched by

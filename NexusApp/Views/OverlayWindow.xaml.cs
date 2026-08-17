@@ -1602,11 +1602,13 @@ public partial class OverlayWindow : Window
     // since it renders in-game where the main window's header strip is hidden. Session shows
     // Game.log monitoring in the LED and the words (green LIVE = live, red OFFLINE = SC closed /
     // no log - the broken-trunk case, the one red on this tab); Location (F14) shows where the
-    // log last placed the player, cyan breathing when precisely known - it explains at a glance
-    // why route bands or the scan sell line have no distances. Synced via RefreshSessionLed /
-    // RefreshHubLocation; the scanner LEDs live beside their own toggles on SCAN / CARGO.
+    // log last placed the player, cyan breathing only when precisely known AND a session is live,
+    // grey "Last known" otherwise (2026-08-17) - it explains at a glance why route bands or the
+    // scan sell line have no distances. Synced via RefreshSessionLed / RefreshHubLocation; the
+    // scanner LEDs live beside their own toggles on SCAN / CARGO.
     private Border? _hubSessionLed, _hubLocationLed;
     private TextBlock? _hubLocationText, _hubSessionText;
+    private LocationLamp? _hubLocationLamp;   // last painted lamp, so updates cannot churn the breathe
 
     // The VITALS session line (2026-08-16 redesign): LED + LIVE/OFFLINE + channel on the left,
     // location LED + place on the right. The RS/CT scanner LEDs the old scan rail carried are gone
@@ -1672,21 +1674,27 @@ public partial class OverlayWindow : Window
     }
     private void OnGameLogStatusChanged(string _) => RefreshSessionLed();
 
-    // LOCATION LED (F14): cyan breathing when the log places the player somewhere, dim when it does
-    // not. Cyan is the app's reserved live-location identity (Trade ORIGIN, map player marker).
+    // LOCATION LED (F14): cyan breathing only for a precise place with a live session behind it;
+    // grey "Last known" otherwise (2026-08-17). Cyan is the app's reserved live-location identity.
     private void RefreshHubLocation()
     {
         if (_hubLocationLed is null || _hubLocationText is null) return;
         var place = App.Player?.Label;
         bool known = !string.IsNullOrWhiteSpace(place);
         // Same jurisdiction honesty as the header chip: an area reading shows dim with a "space"
-        // qualifier and no cyan pulse, never dressed up as a place.
+        // qualifier and no cyan pulse, never dressed up as a place. Liveness rides the shared fold
+        // (2026-08-17): with the game closed this line SAYS "Last known" and dims grey - it used
+        // to stay cyan and breathing forever after the game exited.
         bool coarse = known && App.Player!.LabelIsJurisdiction;
-        _hubLocationText.Text = !known ? "unknown" : coarse ? $"{place} space" : place;
-        _hubLocationText.Foreground = known && !coarse ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
-        // glow follows the state: a dim coarse/unknown lamp with a glow would still read as a signal.
-        SetLedColor(_hubLocationLed, known && !coarse ? LedLocation : LedOff,
-                    pulse: known && !coarse, glow: known && !coarse);
+        var lamp = StatusChips.LocationLampState(known, coarse, App.GameLogFeed.IsSessionLive);
+        _hubLocationText.Text = StatusChips.LocationText(place, coarse, App.GameLogFeed.IsSessionLive);
+        _hubLocationText.Foreground = lamp == LocationLamp.Live
+            ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("FgDimBrush");
+        // LED dressing only on a lamp flip, so location updates cannot restart the breathe clock.
+        if (_hubLocationLamp == lamp) return;
+        _hubLocationLamp = lamp;
+        bool liveLamp = lamp == LocationLamp.Live;
+        SetLedColor(_hubLocationLed, liveLamp ? LedLocation : LedOff, pulse: liveLamp, glow: liveLamp);
     }
 
     // Status LED colors (F14 palette): green = running, amber = paused (the app accent - the old
@@ -2497,7 +2505,13 @@ public partial class OverlayWindow : Window
 
     // And when the game opens or exits: the SESSION line's OFFLINE dim state folds on the feed's
     // process probe, which no settlement raise accompanies (review fix, 2026-08-05).
-    private void OnProfitSessionLiveChanged(bool _) => OnProfitChanged();
+    private void OnProfitSessionLiveChanged(bool _)
+    {
+        OnProfitChanged();
+        // The HUB location line keys its live-vs-last-known dressing on this same probe
+        // (2026-08-17), and no location event fires when the game merely opens or closes.
+        RefreshHubLocation();
+    }
 
     // Refresh the HAULING glance list when the tracker changes, but only while that tab is on screen.
     private void OnHaulsChanged()
@@ -4288,21 +4302,31 @@ public partial class OverlayWindow : Window
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        // Liveness rides the shared fold (2026-08-17): the cyan pulse is the claim that this is a
+        // live reading, so with the game closed the row dims grey and SAYS "Last known" - it used
+        // to stay cyan and pulsing forever after the game exited. Jurisdiction honesty too: a
+        // coarse reading shows " space", dim, no pulse, same as the HUB line above it.
+        bool live = App.GameLogFeed.IsSessionLive;
+        bool coarse = place is not null && App.Player.LabelIsJurisdiction;
+        bool liveRead = place is not null && live && !coarse;
         var placeDot = new System.Windows.Shapes.Ellipse
         {
             Width = 5, Height = 5, VerticalAlignment = VerticalAlignment.Center,
-            Fill = place is null ? dim : cyan,
+            Fill = liveRead ? cyan : dim,
             Margin = new Thickness(0, 0, 7, 0),   // mock gap 7
         };
-        Hud.PulseDot(placeDot, place is not null);
+        Hud.PulseDot(placeDot, liveRead);
         row.Children.Add(placeDot);
 
         var placeValue = new TextBlock
         {
-            Text = place ?? "Unknown", FontSize = 10.5,   // mock: cyan 10.5, ellipsized flex
-            Foreground = place is null ? dim : cyan,
+            Text = place is null ? "Unknown" : StatusChips.LocationText(place, coarse, live),
+            FontSize = 10.5,   // mock: cyan 10.5, ellipsized flex
+            Foreground = liveRead ? cyan : dim,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-            ToolTip = place,
+            // The tooltip's job is the untrimmed name, so offline it carries the place AND the state.
+            ToolTip = place is null || live ? place
+                    : $"{place} - last known location. Star Citizen is not running.",
         };
         Grid.SetColumn(placeValue, 1);
         row.Children.Add(placeValue);
@@ -4715,8 +4739,14 @@ public partial class OverlayWindow : Window
     // seed's LIVE fallback: the overlay ranks straight off the persisted value, and
     // StartTerminalIds treats null/"" as unconstrained - the text must name what the ranking
     // actually does. In practice the value is never null (AppSettings defaults it to "LIVE").
-    private static string OverlayStartKindLabel() =>
-        App.Settings.Current.TradeStartManual is { Length: > 0 } kind ? kind : "ANY";
+    // The LIVE kind rewords by liveness (2026-08-17): the field must not claim LIVE with the
+    // game closed. The dropdown's pinned LIVE item keeps its name - it is the CHOICE "wherever
+    // I am or was", and this field reports what that choice resolves to right now.
+    private static string OverlayStartKindLabel()
+    {
+        var kind = App.Settings.Current.TradeStartManual is { Length: > 0 } k ? k : "ANY";
+        return kind == "LIVE" && !App.GameLogFeed.IsSessionLive ? "LAST KNOWN" : kind;
+    }
 
     // The DEST field's display: null and "" both mean ANY (TradeDestManual's own contract).
     private static string OverlayDestLabel() =>

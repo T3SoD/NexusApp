@@ -89,4 +89,24 @@ public class OperationsJobStripTests
         var entries = new[] { Entry(30, 300), Entry(30, null), Entry(600, 120) };
         Assert.Equal("1 running, 1 with no estimate, 1 finished", CommandPage.AutoLoadSub(entries, Now));
     }
+
+    // ── OperationsSubtitle: two liveness states (2026-08-17) ──
+    // A live session says "Last seen at" (readings are boundary-driven and can lag even live);
+    // with the game closed the line says the reading is the last KNOWN location.
+
+    [Theory]
+    [InlineData("Everus Harbor", "Stanton", true, "Last seen at Everus Harbor, Stanton. ")]
+    [InlineData("Everus Harbor", "Stanton", false, "Last known location: Everus Harbor, Stanton. ")]
+    [InlineData("Stanton", "Stanton", true, "Last seen at Stanton. ")]   // no "Stanton, Stanton"
+    public void OperationsSubtitle_TwoLivenessStates(string place, string system, bool live, string expectedPrefix)
+    {
+        var s = CommandPage.OperationsSubtitle(place, system, live);
+        Assert.StartsWith(expectedPrefix, s);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OperationsSubtitle_NoPlace_IsSilent(bool live)
+        => Assert.StartsWith("Everything live", CommandPage.OperationsSubtitle(null, null, live));
 }

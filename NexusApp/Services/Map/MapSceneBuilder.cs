@@ -53,7 +53,8 @@ public static class MapSceneBuilder
         bool tradeOn, bool guidesOn, bool miningOn, bool hangarOn, bool asteroidsOn,
         int? selection, IReadOnlyList<int> draft, IReadOnlyList<int> planner, bool reduced,
         int? player = null, bool haulsOn = false, bool ordersOn = false,
-        bool lite = false, string? playerNote = null, string? playerName = null)
+        bool lite = false, string? playerNote = null, string? playerName = null,
+        bool playerLive = true)
     {
         var rows = catalog.Objects
             .Where(o => string.Equals(o.System, system, StringComparison.OrdinalIgnoreCase))
@@ -100,6 +101,9 @@ public static class MapSceneBuilder
             lite,
             playerNote,
             playerName,
+            // Two liveness states on every location surface (2026-08-17): with no live session the
+            // page renders the marker and the locator card as a grey LAST KNOWN reading.
+            playerLive,
         };
         return JsonSerializer.Serialize(payload);
     }
@@ -131,8 +135,8 @@ public static class MapSceneBuilder
     // in the scene's currently active system is a safe no-op there (the page's own pins lookup
     // handles that, same defensive pattern as focusObject/onSelect - see the page's own header
     // comment), never an error here.
-    public static string BuildPlayerMarker(int? id) =>
-        JsonSerializer.Serialize(new { type = "playerMarker", id });
+    public static string BuildPlayerMarker(int? id, bool live = true) =>
+        JsonSerializer.Serialize(new { type = "playerMarker", id, live });
 
     // Pure leg/total distance math for a draft route (MapPage's ROUTE BUILDER zone uses this to
     // paint per-stop leg distances plus the running total): meters between each consecutive pair,
