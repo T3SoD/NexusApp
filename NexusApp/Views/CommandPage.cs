@@ -812,19 +812,13 @@ public sealed partial class CommandPage : UserControl
                 MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
-    // small line icons for the panel labels: cyan by default, but a panel that owns a tone puts it
-    // on the icon, never on the key text - the wallet's is gold and the profit trend is green
-    private UIElement Icon(string data) => Icon(data, "CyanBrush");
-    private UIElement Icon(string data, string brush) => new Viewbox
+    // Small cyan line icon for the one panel key with no module behind it (the shard). Every
+    // other key wears its module's own dock glyph - see ModuleIcon in CommandPage.SystemView.cs.
+    private UIElement Icon(string data) => new Viewbox
     {
         Width = 13, Height = 13, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
-        Child = new Path { Data = Geometry.Parse(data), Stroke = Br(brush), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform },
+        Child = new Path { Data = Geometry.Parse(data), Stroke = Br("CyanBrush"), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform },
     };
-    private UIElement IconRefinery() => Icon("M2,15 L2,6 L7,9 L7,6 L12,9 L12,15 Z");
-    private UIElement IconCargo() => Icon("M2,5 L14,5 L14,14 L2,14 Z M2,8 L14,8");
-    private UIElement IconNetwork() => Icon("M4,5 L12,5 M4,5 L8,13 M12,5 L8,13");
-    private UIElement IconWallet() => Icon("M2,5 L14,5 L14,13 L2,13 Z M10,8 L14,8 L14,10 L10,10", "GoldBrush");
-    private UIElement IconTrend() => Icon("M2,12 L6.5,7.5 L9,10 L14,4.5 M10.5,4.5 L14,4.5 L14,8", "OkBrush");
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
     private static string Ago(DateTime utcWhen) => MarketNotice.FormatAge(DateTime.UtcNow - utcWhen);

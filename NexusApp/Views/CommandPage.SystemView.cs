@@ -156,7 +156,7 @@ public sealed partial class CommandPage
         // Each job card owns one tone for its whole life, the mock's rule: gold is the refinery,
         // amber is the load, green is the hangar. Toning by state was tried first and left the
         // idle page all white, which is the monotone this round exists to fix.
-        return JobCard(IconRefinery(), "REFINERY QUEUE",
+        return JobCard(ModuleIcon("refinery"), "REFINERY QUEUE",
             ready > 0 ? $"{ready} READY" : refining > 0 ? $"{refining} REFINING" : "CLEAR",
             ready > 0 ? $"{refining} still refining"
                       : refining > 0 ? "nothing ready to collect yet"
@@ -169,7 +169,7 @@ public sealed partial class CommandPage
     private FrameworkElement AutoLoadCard()
     {
         var entries = App.AutoLoad.Entries;
-        var card = JobCard(IconCargo(), "AUTO LOAD", AutoLoadValue(entries, DateTime.UtcNow),
+        var card = JobCard(ModuleIcon("cargo"), "AUTO LOAD", AutoLoadValue(entries, DateTime.UtcNow),
             AutoLoadSub(entries, DateTime.UtcNow), "AccentBrush", "hauling");
         _liveCells.Add((card.Value, card.Sub,
             () => AutoLoadValue(App.AutoLoad.Entries, DateTime.UtcNow),
@@ -230,7 +230,7 @@ public sealed partial class CommandPage
 
     private FrameworkElement HangarCard()
     {
-        var card = JobCard(IconClock(), "EXEC HANGAR", HangarValue(DateTime.UtcNow),
+        var card = JobCard(ModuleIcon("guides"), "EXEC HANGAR", HangarValue(DateTime.UtcNow),
             HangarSub(DateTime.UtcNow), "OkBrush", "guides");
         _liveCells.Add((card.Value, card.Sub,
             () => HangarValue(DateTime.UtcNow), () => HangarSub(DateTime.UtcNow)));
@@ -342,7 +342,7 @@ public sealed partial class CommandPage
 
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 20, 0) };
         var lbl = new StackPanel { Orientation = Orientation.Horizontal };
-        lbl.Children.Add(IconNetwork());
+        lbl.Children.Add(ModuleIcon("network"));
         lbl.Children.Add(new TextBlock
         {
             Text = "NETWORK COVERAGE", FontFamily = Ui, FontSize = 10, FontWeight = FontWeights.Bold,
@@ -545,7 +545,7 @@ public sealed partial class CommandPage
     private FrameworkElement WalletPanel()
     {
         var sp = new StackPanel();
-        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade", IconWallet()));
+        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade", ModuleIcon("trade", "GoldBrush")));
 
         var w = App.Wallet;
         if (w == null)
@@ -669,7 +669,7 @@ public sealed partial class CommandPage
     private FrameworkElement ProfitPanel()
     {
         var sp = new StackPanel();
-        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade", IconTrend()));
+        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade", ModuleIcon("trade", "OkBrush")));
 
         if (App.Profit == null)
         {
@@ -904,6 +904,20 @@ public sealed partial class CommandPage
     }
 
     // ── shared bits ──────────────────────────────────────────────────────────────────────────────
+    // A panel key wears the dock glyph of the module its card opens, statically colored, so the
+    // key reads as a link to the tile it navigates to. Same no-host static idiom as the Help
+    // topic list; the shard panel keeps a local glyph because it opens nothing.
+    private UIElement ModuleIcon(string iconKey, string brush = "CyanBrush")
+    {
+        var icon = new AnimatedDockIcon
+        {
+            IconKey = iconKey, Width = 18, Height = 18,
+            Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
+        };
+        icon.SetStaticColor(Br(brush));
+        return icon;
+    }
+
     private FrameworkElement Chevron() => new Viewbox
     {
         Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Right,
@@ -931,6 +945,5 @@ public sealed partial class CommandPage
         };
     }
 
-    private UIElement IconClock() => Icon("M8,1 A7,7 0 1,0 8,15 A7,7 0 1,0 8,1 M8,4 L8,8 L11,9.5");
     private UIElement IconLayers() => Icon("M8,2 L1,5.5 L8,9 L15,5.5 Z M1,10 L8,13.5 L15,10");
 }
