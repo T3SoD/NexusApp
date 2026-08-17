@@ -100,8 +100,6 @@ public sealed partial class CommandPage : UserControl
         // install confirmation can scrim the whole page.
         _modalHost = new Grid { Visibility = Visibility.Collapsed };
         var host = new Grid();
-        host.Children.Add(DepthGround());
-        host.Children.Add(DepthGrid());
         host.Children.Add(_root);
         host.Children.Add(DepthVignette());
         host.Children.Add(_modalHost);
@@ -172,74 +170,24 @@ public sealed partial class CommandPage : UserControl
     }
 
     // ── depth layers (ATMOSPHERE, 2026-08-11) ───────────────────────────────────────────────────
-    // The Operations redesign is lit rather than recoloured: nothing here introduces a hue that is
-    // not already in Palette.Luxury.xaml. The page sits on a graded ground, a faint grid gives the
-    // dark a sense of extent, and a vignette holds the eye at the centre where the system view is.
+    // The page ground stays exactly as dark as it always was. A graded ground and a faint lattice
+    // were tried first and both were wrong: measured against the approved mock, they lifted the page
+    // from #05070A-#0A1018 to #0E161D-#111920, which reads as a wash rather than as depth. In the
+    // mock the depth comes entirely from panels sitting a few points ABOVE a near-black ground, plus
+    // a vignette, and that contrast is destroyed the moment the ground itself is lifted.
     //
-    // Deliberately gradients and opacity masks only, NO blur. This app ships with software (CPU)
-    // rendering on by default for display-driver compatibility, and a blur effect per panel would
-    // be paid for on the CPU every frame. The one exception is the system view's own bloom, which
-    // is a single element (see SystemViewFrame).
-    private static UIElement DepthGround() => new Border
-    {
-        Background = new RadialGradientBrush
-        {
-            GradientOrigin = new Point(0.5, -0.1), Center = new Point(0.5, -0.1),
-            RadiusX = 1.2, RadiusY = 0.9,
-            GradientStops = new GradientStopCollection
-            {
-                new(Color.FromRgb(0x0D, 0x14, 0x1D), 0),
-                new(Color.FromRgb(0x07, 0x0A, 0x10), 0.55),
-                new(Color.FromRgb(0x04, 0x06, 0x0A), 1),
-            },
-        },
-    };
-
-    // A 44px lattice that fades out toward the edges, so it reads as depth rather than as a table.
-    private static UIElement DepthGrid()
-    {
-        var line = new SolidColorBrush(Color.FromArgb(0x09, 0x7F, 0xE9, 0xE0));
-        var cell = new GeometryDrawing
-        {
-            Pen = new Pen(line, 1),
-            Geometry = new GeometryGroup
-            {
-                Children =
-                {
-                    new LineGeometry(new Point(0, 0), new Point(44, 0)),
-                    new LineGeometry(new Point(0, 0), new Point(0, 44)),
-                },
-            },
-        };
-        return new Border
-        {
-            IsHitTestVisible = false,
-            Background = new DrawingBrush(cell)
-            {
-                TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 44, 44),
-                ViewportUnits = BrushMappingMode.Absolute, Stretch = Stretch.None,
-            },
-            OpacityMask = new RadialGradientBrush
-            {
-                Center = new Point(0.5, 0.42), GradientOrigin = new Point(0.5, 0.42),
-                RadiusX = 0.7, RadiusY = 0.6,
-                GradientStops = new GradientStopCollection
-                {
-                    new(Colors.Black, 0), new(Colors.Transparent, 1),
-                },
-            },
-        };
-    }
-
+    // The vignette below is pure black, so it introduces no hue at all, and it is a gradient rather
+    // than a blur: this app ships software-rendered by default and cannot afford per-frame blurs.
     // Painted OVER the content, under the modal layer. Transparent through the middle, so it darkens
-    // only the corners and never touches legibility where the numbers are.
+    // only the corners and never touches legibility where the numbers are. The geometry is the
+    // mock's own, not a tuned one: 130% x 100% radii at a 50%/40% centre, clear until 52%.
     private static UIElement DepthVignette() => new Border
     {
         IsHitTestVisible = false,
         Background = new RadialGradientBrush
         {
             Center = new Point(0.5, 0.4), GradientOrigin = new Point(0.5, 0.4),
-            RadiusX = 0.78, RadiusY = 0.72,
+            RadiusX = 1.3, RadiusY = 1.0,
             GradientStops = new GradientStopCollection
             {
                 new(Colors.Transparent, 0.52),
@@ -842,28 +790,41 @@ public sealed partial class CommandPage : UserControl
                 MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
-    // small cyan line icons for the panel labels
-    private UIElement Icon(string data) => new Viewbox
+    // small line icons for the panel labels: cyan by default, but a panel that owns a tone puts it
+    // on the icon, never on the key text - the wallet's is gold and the profit trend is green
+    private UIElement Icon(string data) => Icon(data, "CyanBrush");
+    private UIElement Icon(string data, string brush) => new Viewbox
     {
         Width = 13, Height = 13, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
-        Child = new Path { Data = Geometry.Parse(data), Stroke = Br("CyanBrush"), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform },
+        Child = new Path { Data = Geometry.Parse(data), Stroke = Br(brush), StrokeThickness = 1.4, Fill = Brushes.Transparent, Width = 16, Height = 16, Stretch = Stretch.Uniform },
     };
     private UIElement IconRefinery() => Icon("M2,15 L2,6 L7,9 L7,6 L12,9 L12,15 Z");
     private UIElement IconCargo() => Icon("M2,5 L14,5 L14,14 L2,14 Z M2,8 L14,8");
     private UIElement IconNetwork() => Icon("M4,5 L12,5 M4,5 L8,13 M12,5 L8,13");
+    private UIElement IconWallet() => Icon("M2,5 L14,5 L14,13 L2,13 Z M10,8 L14,8 L14,10 L10,10", "GoldBrush");
+    private UIElement IconTrend() => Icon("M2,12 L6.5,7.5 L9,10 L14,4.5 M10.5,4.5 L14,4.5 L14,8", "OkBrush");
 
     // Compact relative-time label for a UTC instant: "just now" / "Nm ago" / "Nh ago" / "Nd ago".
     private static string Ago(DateTime utcWhen) => MarketNotice.FormatAge(DateTime.UtcNow - utcWhen);
 
     // ── small helpers ──
-    private UIElement PanelHead(string title, string link, string nav)
+    private UIElement PanelHead(string title, string link, string nav, UIElement? icon = null)
     {
         // Star + auto columns so a long title trims instead of running under the right-docked
         // link (the ALL TIME COMMODITY TRADING PROFIT head was the first to collide).
+        // The key is dim, like every other key on this page: a white head on a dark panel was one
+        // of the whites that made the old page monotone. The panel's tone sits on the icon alone.
         var g = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.Children.Add(new TextBlock { Text = title, FontFamily = Ui, FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Br("FgBrush"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 10, 0) });
+        var label = new Grid { Margin = new Thickness(0, 0, 10, 0) };
+        label.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        label.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (icon != null) label.Children.Add(icon);
+        var key = new TextBlock { Text = title, FontFamily = Ui, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = Br("FgDimBrush"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(key, 1);
+        label.Children.Add(key);
+        g.Children.Add(label);
         var a = new TextBlock { Text = link + "  →", FontFamily = Ui, FontSize = 11, Foreground = Br("AccentBrush"), HorizontalAlignment = HorizontalAlignment.Right, Cursor = System.Windows.Input.Cursors.Hand };
         Grid.SetColumn(a, 1);
         a.MouseEnter += (_, _) => a.TextDecorations = TextDecorations.Underline;

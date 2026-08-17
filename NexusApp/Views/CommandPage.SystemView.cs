@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using NexusApp.Models;
 using NexusApp.Services;
@@ -33,23 +34,22 @@ public sealed partial class CommandPage
     private readonly List<Border> _profitBars = new();
 
     // ── the lit panel surface (ATMOSPHERE) ──────────────────────────────────────────────────────
-    // A top-lit gradient instead of the flat Bg2Nav fill, so panels read as surfaces catching light
-    // from the same direction as the page ground behind them. Both stops are existing palette
-    // colours; this adds no hue, only a direction for the light.
-    private static readonly Brush LitPanel = new LinearGradientBrush(
-        new GradientStopCollection
-        {
-            new(Color.FromRgb(0x10, 0x18, 0x21), 0),
-            new(Color.FromRgb(0x0C, 0x12, 0x19), 0.62),
-        },
-        new Point(0.15, 0), new Point(0.85, 1));
+    // A panel is the FLAT card surface, a few points above the near-black page, with an edge one
+    // step brighter than the shipped NavBorder:
+    //   fill   #0C1219 (Bg2Nav)     border rgba(127,233,224,.16) -> 0x29
+    // The mock's gradient fill was tried twice and dropped both times: at panel size on the shipped
+    // page it reads as a blue wash, not as light. The depth cue is the edge plus the toned values
+    // below, nothing on the surface itself.
+    private static readonly Brush LitEdge = Frozen(Color.FromArgb(0x29, 0x7F, 0xE9, 0xE0));
+
+    private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
 
     /// <summary>A panel on the lit surface. Every panel on this page goes through here so the
     /// treatment cannot drift between them.</summary>
     private Grid LitCard(UIElement content, double chamfer = 12, Thickness? padding = null,
                          Brush? border = null)
-        => Hud.Panel(content, chamfer: chamfer, brackets: false, bg: LitPanel,
-                     border: border ?? Br("NavBorderBrush"), padding: padding ?? new Thickness(16));
+        => Hud.Panel(content, chamfer: chamfer, brackets: false, bg: Br("Bg2NavBrush"),
+                     border: border ?? LitEdge, padding: padding ?? new Thickness(16));
 
     // ── the page body ───────────────────────────────────────────────────────────────────────────
     // Built ONCE and then refilled in place, unlike every other part of this page. The system view
@@ -153,12 +153,15 @@ public sealed partial class CommandPage
         int refining = orders.Count(o => o.Status != WorkOrderStatus.Complete
                                       && o.Status != WorkOrderStatus.ReadyToCollect);
 
+        // Each job card owns one tone for its whole life, the mock's rule: gold is the refinery,
+        // amber is the load, green is the hangar. Toning by state was tried first and left the
+        // idle page all white, which is the monotone this round exists to fix.
         return JobCard(IconRefinery(), "REFINERY QUEUE",
             ready > 0 ? $"{ready} READY" : refining > 0 ? $"{refining} REFINING" : "CLEAR",
             ready > 0 ? $"{refining} still refining"
                       : refining > 0 ? "nothing ready to collect yet"
                                      : "no active work orders",
-            ready > 0 ? "GoldBrush" : "FgBrush", "workorders").Panel;
+            "GoldBrush", "workorders").Panel;
     }
 
     // Auto load and the hangar are the only cards here driven by the clock rather than by data, so
@@ -167,8 +170,7 @@ public sealed partial class CommandPage
     {
         var entries = App.AutoLoad.Entries;
         var card = JobCard(IconCargo(), "AUTO LOAD", AutoLoadValue(entries, DateTime.UtcNow),
-            AutoLoadSub(entries, DateTime.UtcNow),
-            AutoLoadBadge.AnyPending(entries, DateTime.UtcNow) ? "AccentBrush" : "FgBrush", "hauling");
+            AutoLoadSub(entries, DateTime.UtcNow), "AccentBrush", "hauling");
         _liveCells.Add((card.Value, card.Sub,
             () => AutoLoadValue(App.AutoLoad.Entries, DateTime.UtcNow),
             () => AutoLoadSub(App.AutoLoad.Entries, DateTime.UtcNow)));
@@ -229,10 +231,7 @@ public sealed partial class CommandPage
     private FrameworkElement HangarCard()
     {
         var card = JobCard(IconClock(), "EXEC HANGAR", HangarValue(DateTime.UtcNow),
-            HangarSub(DateTime.UtcNow),
-            ExecHangarCycle.At(DateTime.UtcNow, App.Settings.Current.ExecHangarAnchorOverrideUtc).IsOpen
-                ? "OkBrush" : "FgBrush",
-            "guides");
+            HangarSub(DateTime.UtcNow), "OkBrush", "guides");
         _liveCells.Add((card.Value, card.Sub,
             () => HangarValue(DateTime.UtcNow), () => HangarSub(DateTime.UtcNow)));
         return card.Panel;
@@ -388,6 +387,16 @@ public sealed partial class CommandPage
 
         var bar = Hud.StateBar(pct / 100.0, Hud.BarState.Cyan, height: 9);
         if (bar is FrameworkElement barEl) barEl.Margin = new Thickness(0, 7, 0, 0);
+        // The lit page brightens the fill's glow from the shared bar's 8 at .55 to the mock's 12
+        // at full alpha. Pattern-matched into StateBar's shape so a change there degrades this
+        // page to the shipped glow instead of crashing the landing tab.
+        if (bar is Grid barGrid && barGrid.Children.Count > 1 && barGrid.Children[1] is Grid fillHost
+            && fillHost.Children.Count > 0 && fillHost.Children[0] is Border coverFill
+            && coverFill.Effect is DropShadowEffect coverGlow)
+        {
+            coverGlow.BlurRadius = 12;
+            coverGlow.Opacity = 1;
+        }
         mid.Children.Add(bar);
 
         // A network with no members has no single-owner risk to report: every blueprint you own is
@@ -447,12 +456,13 @@ public sealed partial class CommandPage
         }
 
         // Named exactly as the overlay's STATS panel names it, down to the spacing: one shard, one
-        // name, wherever the player reads it.
+        // name, wherever the player reads it. Cyan in every state; the chip above already carries
+        // live versus not, and a white line here was one of the whites that made the page monotone.
         var cur = rows[0];
         sp.Children.Add(new TextBlock
         {
             Text = $"{cur.Region}  .  Shard {cur.Instance}", FontFamily = Ui, FontSize = 17,
-            FontWeight = FontWeights.SemiBold, Foreground = Br(cur.Live ? "CyanBrush" : "FgBrush"),
+            FontWeight = FontWeights.SemiBold, Foreground = Br("CyanBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
         sp.Children.Add(new TextBlock
@@ -531,7 +541,7 @@ public sealed partial class CommandPage
     private FrameworkElement WalletPanel()
     {
         var sp = new StackPanel();
-        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade"));
+        sp.Children.Add(PanelHead("WALLET", "Open trade", "trade", IconWallet()));
 
         var w = App.Wallet;
         if (w == null)
@@ -655,7 +665,7 @@ public sealed partial class CommandPage
     private FrameworkElement ProfitPanel()
     {
         var sp = new StackPanel();
-        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade"));
+        sp.Children.Add(PanelHead("SESSION PROFIT", "Open trade", "trade", IconTrend()));
 
         if (App.Profit == null)
         {
@@ -665,15 +675,14 @@ public sealed partial class CommandPage
 
         var ledger = App.Profit.Ledger;
         var state = ProfitDisplay.State(ledger.UnvoidedCount, ledger.Net, App.GameLogFeed.IsSessionLive);
+        // Toned by sign, not by liveness: a closed session's profit is still a profit, and the sub
+        // line below already says the session is over. Zero has no sign, so empty and break-even
+        // both read dim - the display spec's rule that a flat net must never read as money made.
         var value = new TextBlock
         {
             FontFamily = Mono, FontSize = 24, FontWeight = FontWeights.Bold,
-            Foreground = state switch
-            {
-                ProfitState.Positive => Br("OkBrush"),
-                ProfitState.Negative => Br("DangerBrush"),
-                _ => Br("FgDimBrush"),
-            },
+            Foreground = ledger.UnvoidedCount == 0 || ledger.Net == 0 ? Br("FgDimBrush")
+                       : ledger.Net < 0 ? Br("DangerBrush") : Br("OkBrush"),
         };
         var netRun = new Run(ProfitDisplay.ChipValue(ledger.UnvoidedCount, ledger.Net));
         value.Inlines.Add(netRun);
@@ -757,15 +766,22 @@ public sealed partial class CommandPage
         {
             var b = bars[i];
             // A losing or break-even session still gets a visible stub, never a gap: a missing bar
-            // would silently under-report how many sessions were actually played.
+            // would silently under-report how many sessions were actually played. Break-even is
+            // dim, not green - a session that made nothing must not read as one that made money.
             double h = Math.Max(3, Math.Abs(b.Net) / (double)peak * 54);
+            var barColor = Hud.Col(b.Net == 0 ? "FgDimBrush" : b.Net < 0 ? "DangerBrush" : "OkBrush");
+            // The mock's exact glow: 10px blur, the bar's own color at full alpha. The .62 element
+            // opacity on past bars dims bar and glow together, which is also the mock's behavior.
+            var glow = new DropShadowEffect { Color = barColor, BlurRadius = 10, ShadowDepth = 0 };
+            glow.Freeze();
             var bar = new Border
             {
                 Height = h, VerticalAlignment = VerticalAlignment.Bottom,
                 Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(2, 2, 0, 0),
-                Background = b.Net < 0 ? Br("DangerBrush") : Br("OkBrush"),
+                Background = Frozen(barColor),
                 Opacity = b.Current ? 1 : 0.62,
                 ToolTip = $"{b.Label}: {ProfitDisplay.Signed(b.Net)} aUEC",
+                Effect = glow,
             };
             Grid.SetColumn(bar, i);
             chart.Children.Add(bar);
