@@ -13,6 +13,14 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.1  -  Aug 17, 2026",
+        [
+            "The Operations tab is rebuilt as a SYSTEM VIEW. A live starmap holds the centre of the page with a YOU ARE HERE locator, and the refinery queue, auto-load countdown, hangar, wallet and profit trend stand around it as instruments rather than tables",
+            "The overlay HUB tab is rebuilt as VITALS - a session line reading LIVE or OFFLINE with your channel and location, three mini cards for refinery, auto-load and hangar, and a LEDGER holding your wallet, session profit and a seven-day bar strip",
+            "Where you are now has exactly two states everywhere. While the game runs a location reads live, and once it closes the same surface dims to a grey Last known, so history is never dressed up as a live fact",
+            "Distances step back when the game is closed. Anything measured from your position - sell distances, proximity tags, nearest-first ordering - withdraws instead of measuring from a stale place, and returns the moment a session is live. Stop lists order by place in the meantime",
+            "The dedicated starmap opens on the same tilt and slow drift as the Operations view, and hands you the controls the moment you touch the map",
+        ]),
         ("App  6.14.0  -  Aug 10, 2026",
         [
             "Trade and Cargo Hauling are now two halves of one job. Trade is where you find work: the planner, SELL LOAD and MARKET. Cargo Hauling is where you do it, holding your accepted routes alongside your contracts, the auto-load countdown, and the money",
