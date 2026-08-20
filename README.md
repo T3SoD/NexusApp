@@ -168,7 +168,7 @@ Every download and install asks first. You can always update by hand from the [R
 
 **Tech stack**
 
-- **C# / .NET 8** with **WPF** (Windows-only, self-contained `win-x64` build)
+- **C# / .NET 10** with **WPF** (Windows-only, self-contained `win-x64` build)
 - **CommunityToolkit.Mvvm** for MVVM
 - **Microsoft.Data.Sqlite** for local storage
 - **Windows.Media.Ocr** (native WinRT OCR engine) for the auto-scan feature

@@ -6,8 +6,8 @@ boundary (network access, file access, and game-process access), see
 
 ## Overview
 
-NexusApp is a single-process **WPF desktop app** that targets **.NET 8**
-(`net8.0-windows`). The build publishes NexusApp self-contained for `win-x64`.
+NexusApp is a single-process **WPF desktop app** that targets **.NET 10**
+(`net10.0-windows`). The build publishes NexusApp self-contained for `win-x64`.
 NexusApp uses the **MVVM** pattern with `CommunityToolkit.Mvvm`. A thin services
 layer sits under the UI.
 

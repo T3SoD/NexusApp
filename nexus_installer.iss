@@ -2,7 +2,7 @@
 #define ExeName    "NexusApp.exe"
 ; PublishDir can be overridden from the command line (CI passes /DPublishDir=publish_out).
 #ifndef PublishDir
-  #define PublishDir "NexusApp\bin\x64\Release\net8.0-windows10.0.17763.0\win-x64\publish"
+  #define PublishDir "NexusApp\bin\x64\Release\net10.0-windows10.0.17763.0\win-x64\publish"
 #endif
 ; Version is single-sourced: by default it's read from the built exe's file
 ; version (which comes from the csproj <Version>). CI can still override with a
