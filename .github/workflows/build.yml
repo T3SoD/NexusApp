@@ -21,7 +21,11 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
+
+      # Records which SDK the run resolved, so the log answers this itself.
+      - name: Show SDK
+        run: dotnet --info
 
       # Restoring the test project also restores the app project it references.
       - name: Restore
