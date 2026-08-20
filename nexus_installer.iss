@@ -42,6 +42,18 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 ; shipped as Nexus_v4.*; on upgrade, remove those so the app folder is left with
 ; only the renamed NexusApp.* files (no stale Nexus_v4.exe to launch by mistake).
 Type: files; Name: "{app}\Nexus_v4.*"
+; The .NET 10 publish no longer bundles the WinForms/designer assemblies or the 8.0
+; debugger DAC. Inno only overwrites shipped files, so on upgrade from a .NET 8
+; install these stale runtime files must be removed explicitly.
+Type: files; Name: "{app}\System.Windows.Forms.dll"
+Type: files; Name: "{app}\System.Windows.Forms.Primitives.dll"
+Type: files; Name: "{app}\System.Windows.Forms.Design.dll"
+Type: files; Name: "{app}\System.Windows.Forms.Design.Editors.dll"
+Type: files; Name: "{app}\WindowsFormsIntegration.dll"
+Type: files; Name: "{app}\Microsoft.VisualBasic.Forms.dll"
+Type: files; Name: "{app}\System.Design.dll"
+Type: files; Name: "{app}\System.Drawing.Design.dll"
+Type: files; Name: "{app}\mscordaccore_amd64_amd64_8.0.*.dll"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

@@ -11,7 +11,7 @@ internal static class SourceFiles
 {
     public static string ReadAppSource(string relativePath)
     {
-        // bin/Debug/net8.0-windows.../ -> walk up to the directory that contains NexusApp/Views.
+        // bin/Debug/net10.0-windows.../ -> walk up to the directory that contains NexusApp/Views.
         var dir = new DirectoryInfo(System.AppContext.BaseDirectory);
         while (dir != null && !File.Exists(Path.Combine(dir.FullName, "NexusApp", "Views", "OverlayWindow.xaml.cs")))
             dir = dir.Parent;
