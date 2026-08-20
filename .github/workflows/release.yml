@@ -26,7 +26,8 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          # Single source of truth for the SDK version: global.json at the repo root.
+          global-json-file: ./global.json
 
       - name: Determine version
         id: ver

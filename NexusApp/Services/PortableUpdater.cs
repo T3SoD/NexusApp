@@ -244,7 +244,7 @@ public sealed class PortableUpdater : IPortableSwapper
                 throw new InvalidOperationException($"refused archive entry \"{entry.FullName}\": {issue}");
             if (rel.Length == 0) continue;   // the top-level folder entry itself
             var target = Path.GetFullPath(Path.Combine(destRoot, rel));
-            // Defense in depth beside NormalizeEntry (and .NET 8's own refusal): nothing
+            // Defense in depth beside NormalizeEntry (and the runtime's own refusal): nothing
             // canonicalizing outside the destination is ever created.
             if (!target.StartsWith(destRoot, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"refused archive entry \"{entry.FullName}\": escapes the destination");
