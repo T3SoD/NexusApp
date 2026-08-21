@@ -153,7 +153,9 @@
 .lite{position:absolute; inset:0; pointer-events:none; padding:13px 15px;
       display:flex; flex-direction:column; justify-content:space-between; z-index:6}
 .liteTop,.liteBot{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
-.liteBot{align-items:flex-end}
+/* The bottom row holds only the full-starmap link since the location card left (2026-08-20):
+   the pilot card beside the map already names the place, so the scene stopped repeating it. */
+.liteBot{align-items:flex-end; justify-content:flex-end}
 .liteEyebrow{font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:#7FE9E0}
 .liteHint{font:400 9px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#8693A0;
           margin-top:5px; opacity:.75}
@@ -163,18 +165,6 @@
          cursor:pointer; border-radius:3px; backdrop-filter:blur(3px)}
 .liteBtn:hover{color:#FFB23E; border-color:rgba(255,178,62,.42)}
 .liteBtn.on{color:#FFB23E; border-color:rgba(255,178,62,.42); background:rgba(255,178,62,.10)}
-.liteYou{background:rgba(6,9,14,.86); border:1px solid rgba(127,233,224,.40);
-         padding:9px 13px 10px; backdrop-filter:blur(4px); max-width:280px}
-.liteYouHead{display:flex; align-items:center; gap:8px}
-.liteYouHead i{width:7px; height:7px; border-radius:50%; background:#7FE9E0; box-shadow:0 0 8px #7FE9E0}
-.liteYouHead span{font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:#7FE9E0}
-/* Last-known state (2026-08-17): grey card, no glow, the head SAYS the reading is history. */
-.liteYou.stale{border-color:rgba(134,147,160,.45)}
-.liteYou.stale .liteYouHead i{background:#8693A0; box-shadow:none}
-.liteYou.stale .liteYouHead span{color:#8693A0}
-.liteYou.stale .liteYouName{color:#8693A0}
-.liteYouName{font:700 19px/1.1 'Rajdhani',sans-serif; color:#EAF1F6; margin-top:5px}
-.liteYouSub{font:400 11px/1.4 'Chakra Petch',sans-serif; color:#8693A0; margin-top:3px}
 .liteOpen{pointer-events:auto; font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.12em;
           padding:6px 11px; background:rgba(12,18,25,.82); color:#8693A0;
           border:1px solid rgba(127,233,224,.102); cursor:pointer; border-radius:3px}
@@ -207,11 +197,6 @@
       </div>
     </div>
     <div class="liteBot">
-      <div class="liteYou" id="liteYou">
-        <div class="liteYouHead"><i></i><span>YOU ARE HERE</span></div>
-        <div class="liteYouName" id="liteYouName">Unknown</div>
-        <div class="liteYouSub" id="liteYouSub">Nexus has not seen a location yet.</div>
-      </div>
       <button class="liteOpen" id="liteOpen">OPEN FULL STARMAP</button>
     </div>
   </div>
@@ -628,26 +613,11 @@ function setDrift(on){
   controls.autoRotateSpeed = 0.144;         /* half the old 0.288 (2026-08-17), a barely-there idle */
   document.getElementById('liteDrift').classList.toggle('on', !!on && !REDUCED);
 }
-/* Fills the locator card and wires its controls. Called on every init so a location change while
-   Operations is open repaints the card without rebuilding the scene. */
+/* Wires the locator chrome. The location card left on 2026-08-20 (the pilot card beside the map
+   already names the place); the scene's own player marker still carries the live/last-known
+   styling. Called on every init so a system change repaints the eyebrow without a rebuild. */
 function applyLite(msg){
   document.getElementById('liteSystem').textContent = (state.system||'').toUpperCase();
-  const o = (state.playerMarker!=null)? BY_ID.get(state.playerMarker) : null;
-  /* Three states, not two. The catalog resolves only some of the log's location tokens, so the app
-     often KNOWS where the player is by name while having no object to put a marker on. Falling
-     back to "unknown" in that middle state would contradict the line right underneath it, which
-     names the place. Named-but-unmarked reads at reduced opacity: known, but not placeable. */
-  const name = o ? o.name : (msg.playerName || null);
-  /* Liveness (2026-08-17): with the game closed the card goes grey and its head SAYS the reading
-     is history - YOU ARE HERE is a live claim and must not survive the session. */
-  const live = state.playerLive !== false;
-  document.getElementById('liteYou').classList.toggle('stale', !live && !!name);
-  document.querySelector('#liteYou .liteYouHead span').textContent =
-    live || !name ? 'YOU ARE HERE' : 'LAST KNOWN LOCATION';
-  document.getElementById('liteYouName').textContent = name || 'Location unknown';
-  document.getElementById('liteYouSub').textContent =
-    name ? (msg.playerNote || (state.system||'')) : 'Nexus has not seen a location yet.';
-  document.getElementById('liteYou').style.opacity = o ? '1' : (name ? '.86' : '.72');
   /* Homed ONCE, not on every init, and the same for the drift default. A location change re-sends
      the init, and snapping the camera home or restarting a drift the user switched off would be the
      app fighting the user. */
