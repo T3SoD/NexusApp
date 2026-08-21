@@ -64,6 +64,30 @@ public class HaulLogParserTests
     public void LooksHaulRelevant_CfpHaulingMarker_IsTrue() =>
         Assert.True(HaulLogParser.LooksHaulRelevant(HaulLogParserFixtures.CfpMarkerPickup));
 
+    [Fact]
+    public void ParseMarker_DataminedContractWithoutHaulingSubstring_IsDetected()
+    {
+        // Issue #51: Headhunters "Stock Taking". The token is in contract_caps.json, which makes
+        // it a known haul even though it contains neither "HaulCargo" nor "Hauling".
+        var m = HaulLogParser.ParseMarker(HaulLogParserFixtures.HhPafMarkerDropoff);
+        Assert.NotNull(m);
+        Assert.Equal("HeadHunters_Generator", m!.Generator);
+        Assert.Equal("HH_PAF_AtoB_Small_Slam_unproccessed", m.Contract);
+        Assert.Equal(HaulRole.Dropoff, m.Role);
+    }
+
+    [Fact]
+    public void ParseMarker_CleanAirDataminedContract_IsDetected()
+    {
+        var line = HaulLogParserFixtures.HhPafMarkerDropoff.Replace(
+            "HH_PAF_AtoB_Small_Slam_unproccessed", "CleanAir_Bulk_MedicalSupplies");
+        Assert.NotNull(HaulLogParser.ParseMarker(line));
+    }
+
+    [Fact]
+    public void LooksHaulRelevant_MarkerLineWithoutHaulingSubstring_IsTrue() =>
+        Assert.True(HaulLogParser.LooksHaulRelevant(HaulLogParserFixtures.HhPafMarkerDropoff));
+
     [Theory]
     [InlineData("CFP_Pyro_VeryEasy_RecoverCargo_2")]
     [InlineData("Hockrow_FacilityDelve_P2M1-Stanton4")]
@@ -130,6 +154,7 @@ public class HaulLogParserTests
     [InlineData("HaulCargo_SingleToMulti2_Processed_AgriculturalSupplies_Stanton2_SmallGrade", "1 to 2")]
     [InlineData("HaulCargo_SingleToMulti3_Processed_Stims_Stanton2_SmallGrade1", "1 to 3")]
     [InlineData("HaulCargo_Multi2ToSingle_Waste_Waste_Stanton1_SupplyGrade", "2 to 1")]
+    [InlineData("HH_PAF_AtoB_Small_Slam_unproccessed", "1 to 1")]
     [InlineData("Something_Unrecognized", "Unknown")]
     public void ParseTopology_FromContractName(string contract, string expected) =>
         Assert.Equal(expected, HaulLogParser.ParseTopology(contract));
@@ -138,6 +163,12 @@ public class HaulLogParserTests
     [InlineData("RedWind_Hauling", "Red Wind")]
     [InlineData("Covalex_Hauling", "Covalex")]
     [InlineData("CitizensForProsperity_Generator", "Citizens For Prosperity")]
+    [InlineData("FoxwellEnforcement_Generator", "Foxwell Enforcement")]
+    // The three generators whose derived name does not match the in-game contractor. The display
+    // names come from the datamined contract generator records and localization strings.
+    [InlineData("HeadHunters_Generator", "Headhunters")]
+    [InlineData("CleanAir", "Ling Family Hauling")]
+    [InlineData("TheBackpocket", "Covalex Independent Contractors")]
     public void CompanyDisplay_KnownGenerators(string generator, string expected) =>
         Assert.Equal(expected, HaulLogParser.CompanyDisplay(generator));
 }

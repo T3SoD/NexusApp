@@ -55,6 +55,18 @@ public static class HaulLogParserFixtures
         "objectiveId [pickup_0540719d-0ef2-4e2b-87d5-41ae5cffe412_0], markerEntityId [3322], zoneHostId [524846443194], " +
         "position [x: 383115.366423, y: -245829.717381, z: -272467.223889] [Team_MissionFeatures][Missions]";
 
+    // Headhunters "Stock Taking" (HH_Hauling family): the contract token contains neither
+    // "HaulCargo" nor "Hauling", so haul-ness must come from the datamined contract catalog.
+    // Line synthesized from the real marker shape above with fresh ids; the generator and
+    // contract names are verified against the datamined contract generator records.
+    public const string HhPafMarkerDropoff =
+        "<2026-08-18T10:02:31.101Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: " +
+        "missionId [3d8a1c62-90f4-4f2e-9b1a-52a7c46d1c11], generator name [HeadHunters_Generator], " +
+        "contract [HH_PAF_AtoB_Small_Slam_unproccessed], " +
+        "contractDefinitionId[8fb0a7ce-2f34-4f8f-9a0f-6f1f0a5f2b77], " +
+        "objectiveId [dropoff_9c2f16b4-8f34-4b0a-b8f6-1de2c66a9a10_0], markerEntityId [4101], zoneHostId [612345678901], " +
+        "position [x: 12345.678901, y: -23456.789012, z: 3456.789012] [Team_MissionFeatures][Missions]";
+
     public const string EndAbandon =
         "<2026-06-27T13:30:27.252Z> [Notice] <EndMission> Ending mission for player. " +
         "MissionId[e179ea2b-3099-48a3-b0ef-6795bfb5337b] Player[REDACTED] PlayerId[REDACTED] " +
