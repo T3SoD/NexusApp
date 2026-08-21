@@ -67,9 +67,9 @@ public class RefineryPlacesTests
     [Fact]
     public void Resolve_StationTheCatalogDoesNotCarry_ReturnsNull()
     {
-        // Levski, the one refinery in the seed that does not resolve: Delamar is not an object in
-        // the catalog. Null is the answer, and callers render it exactly as they do today.
-        Assert.Null(RefineryPlaces.Resolve(Map, Y("Levski", "Nyx", 5)));
+        // A station name the catalog cannot know. Null is the answer, and callers render it
+        // exactly as they do today.
+        Assert.Null(RefineryPlaces.Resolve(Map, Y("No Such Station", "Nyx", 5)));
     }
 
     [Fact]
@@ -161,9 +161,9 @@ public class RefineryPlacesTests
     [Fact]
     public void Describe_UnplaceableStation_StillNamesItsSystem()
     {
-        // Levski does not resolve, but the seed still knows what system it is in, and that half
-        // needs no geometry at all.
-        Assert.Equal("Nyx", RefineryPlaces.Describe(Y("Levski", "Nyx", 5), Map, Map.ByName("Nyx", "Nyx I")));
+        // A station with no geometry still names its system, and that half needs no geometry
+        // at all.
+        Assert.Equal("Nyx", RefineryPlaces.Describe(Y("No Such Station", "Nyx", 5), Map, Map.ByName("Nyx", "Nyx I")));
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class RefineryPlacesTests
     // ---- The seed itself: coverage, asserted rather than assumed -------------------------------
 
     [Fact]
-    public void EverySeededRefineryStation_ResolvesExceptTheOneKnownGap()
+    public void EverySeededRefineryStation_Resolves()
     {
         // Straight from the embedded seed, so this measures the real data rather than a fixture
         // that could drift away from it.
@@ -194,10 +194,10 @@ public class RefineryPlacesTests
         }
 
         Assert.NotEmpty(stations);
-        // Levski is the only one, and it is a data gap (Delamar is absent from the object catalog),
-        // not a resolver bug. If this list ever grows, the resolver silently stopped placing
-        // refineries and the distance quietly vanished from the line - which is the exact failure
-        // mode G10 was raised about.
-        Assert.Equal(new[] { "Levski" }, unresolved);
+        // Every seeded refinery now places, Levski included (issue #53 closed the last gap). If
+        // this list ever gains an entry, the resolver silently stopped placing refineries and the
+        // distance quietly vanished from the line - which is the exact failure mode G10 was
+        // raised about.
+        Assert.Empty(unresolved);
     }
 }

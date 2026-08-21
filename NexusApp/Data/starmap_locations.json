@@ -2124,6 +2124,16 @@
     },
     {
       "system": "Nyx",
+      "kind": "location",
+      "uexName": "Levski",
+      "x": -9641669472.432566,
+      "y": -11490738598.66563,
+      "z": -93642.5508,
+      "starmap": "StarMapObject.Nyx_Levski",
+      "match": "exact"
+    },
+    {
+      "system": "Nyx",
       "kind": "orbit",
       "uexName": "Pyro Gateway (Nyx system)",
       "x": -12000043844.931711,

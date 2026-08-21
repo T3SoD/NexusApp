@@ -15,10 +15,23 @@ public class MapCatalogTests
     {
         // 4 source placeholder records ("<= UNINITIALIZED =>", Stanton) were filtered out of the
         // extractor's map artifact; ids 419/437/473/515 are gaps, not renumbered.
-        // 961 = 963 in the artifact minus the 2 objects for systems that are not in the game,
-        // excluded at load (MapCatalog.ExcludedObjects).
-        Assert.Equal(961, Catalog.Count);
-        Assert.Equal(961, Catalog.Objects.Count);
+        // 962 = 964 in the artifact (963 extracted plus the hand-added Levski, id 967) minus the
+        // 2 objects for systems that are not in the game, excluded at load (MapCatalog.ExcludedObjects).
+        Assert.Equal(962, Catalog.Count);
+        Assert.Equal(962, Catalog.Objects.Count);
+    }
+
+    [Fact]
+    public void Levski_IsInTheCatalog_AndParentsToTheNyxStar()
+    {
+        // Issue #53: the reworked Levski hangs off a Glaciem Ring segment container that the
+        // extractor's junk filter skipped, so its row is hand-added from the verified container
+        // chain (nyxsystem -> glaciemring_segment_levski -> levski_all, ~15M km from the Nyx star).
+        var levski = Catalog.ByName("Nyx", "Levski");
+        Assert.NotNull(levski);
+        Assert.Equal("Manmade", levski!.Type);
+        Assert.NotNull(levski.Parent);
+        Assert.Equal("Nyx", Catalog.ById(levski.Parent!.Value)!.Name);
     }
 
     // ── Unreachable-system exclusions (2026-08-01) ──
@@ -472,12 +485,13 @@ public class MapCatalogTests
     }
 
     [Fact]
-    public void ResolvePlayerLocation_Levski_StillDoesNotPlace_AndThatIsTheKnownCatalogGap()
+    public void ResolvePlayerLocation_Levski_PlacesInNyx()
     {
-        // Levski now reads correctly on the origin pill, but Delamar is absent from the object
-        // catalog - the same gap RefineryPlacesTests pins from the refinery side. Asserting it here
-        // keeps the two halves of that gap described in one voice.
-        Assert.Null(Catalog.ResolvePlayerLocation("Levski", rawToken: null));
+        // Issue #53: the origin pill already read Levski; the catalog now places it too, from the
+        // verified container chain. RefineryPlacesTests pins the refinery half of the same fix.
+        var obj = Catalog.ResolvePlayerLocation("Levski", rawToken: null);
+        Assert.NotNull(obj);
+        Assert.Equal("Nyx", obj!.System);
     }
 
     [Fact]
