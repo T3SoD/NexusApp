@@ -30,8 +30,9 @@ public record AcceptInfo(string MissionId, string Title);
 public record CompletedInfo(string MissionId, string ObjectiveId);
 public record EndInfo(string MissionId, HaulOutcome Outcome);
 
-// Pure, stateless parsing of the haul-relevant Game.log line shapes. No file I/O, no PII:
-// EndMission's Player[..]/PlayerId[..] are never read. See HaulLogParserTests for the line fixtures.
+// Stateless parsing of the haul-relevant Game.log line shapes. No PII: EndMission's
+// Player[..]/PlayerId[..] are never read. The only data dependency is the embedded datamined
+// contract catalog, consulted for haul-ness. See HaulLogParserTests for the line fixtures.
 public static class HaulLogParser
 {
     private static readonly Regex Marker = new(
@@ -62,8 +63,12 @@ public static class HaulLogParser
     private static readonly Regex EmTag = new(@"</?EM\d*>", RegexOptions.Compiled);
 
     // Cheap pre-filter so the tracker can skip the bulk of lines before running regex.
+    // CLocalMissionPhaseMarker is included on its own because some haul families' contract
+    // tokens (HH_*, CleanAir_*) contain neither "HaulCargo" nor "Hauling"; ParseMarker then
+    // decides haul-ness per contract (issue #51).
     public static bool LooksHaulRelevant(string raw) =>
         raw.Contains("HaulCargo") || raw.Contains("Hauling") ||
+        raw.Contains("CLocalMissionPhaseMarker") ||
         raw.Contains("SCU of") || raw.Contains("Contract Accepted") ||
         raw.Contains("ObjectiveUpserted") || raw.Contains("EndMission");
 
@@ -72,8 +77,9 @@ public static class HaulLogParser
         var m = Marker.Match(raw);
         if (!m.Success) return null;
         // Haul families: HaulCargo_* (Stanton), *CargoHauling* (RedWind), *_Hauling (CFP / Citizens For
-        // Prosperity). All contain "HaulCargo" or "Hauling". Missions that also use pickup/dropoff markers
-        // but are NOT hauls (RecoverCargo, Hockrow facility delve, Shubin mining) contain neither.
+        // Prosperity), plus families whose tokens carry neither substring but sit in the datamined
+        // contract catalog (HH_* Headhunters, CleanAir_*). Missions that also use pickup/dropoff markers
+        // but are NOT hauls (RecoverCargo, Hockrow facility delve, Shubin mining) match none of these.
         if (!IsHaulContract(m.Groups["contract"].Value)) return null;
         var role = m.Groups["role"].Value == "pickup" ? HaulRole.Pickup : HaulRole.Dropoff;
         return new MarkerInfo(
@@ -130,8 +136,21 @@ public static class HaulLogParser
         return "Unknown";
     }
 
+    // Generators whose derived name is not the contractor the game shows. The display names come
+    // from the datamined contract generator records and localization strings: HeadHunters_Generator
+    // camel-splits to "Head Hunters" but the game says "Headhunters"; the CleanAir event generator's
+    // hauling handler contracts for Ling Family Hauling; TheBackpocket's ORS hauls contract for
+    // Covalex Independent Contractors.
+    private static readonly Dictionary<string, string> GeneratorCompanies = new(StringComparer.Ordinal)
+    {
+        ["HeadHunters_Generator"] = "Headhunters",
+        ["CleanAir"] = "Ling Family Hauling",
+        ["TheBackpocket"] = "Covalex Independent Contractors",
+    };
+
     public static string CompanyDisplay(string generator)
     {
+        if (GeneratorCompanies.TryGetValue(generator, out var known)) return known;
         var name = generator.Replace("_Hauling", "").Replace("Hauling", "")
                             .Replace("_Generator", "").Replace('_', ' ').Trim();
         // Split runs like "RedWind" -> "Red Wind".
@@ -139,7 +158,12 @@ public static class HaulLogParser
         return string.IsNullOrWhiteSpace(name) ? generator : name;
     }
 
+    // A contract is a haul when its token carries a hauling family substring, or when the
+    // datamined contract catalog knows it (HH_*, CleanAir_* and friends carry neither substring
+    // yet are cargo hauls with datamined container caps; issue #51). The catalog is embedded
+    // data, so this stays deterministic and offline.
     private static bool IsHaulContract(string contract) =>
         contract.Contains("HaulCargo", StringComparison.OrdinalIgnoreCase) ||
-        contract.Contains("Hauling", StringComparison.OrdinalIgnoreCase);
+        contract.Contains("Hauling", StringComparison.OrdinalIgnoreCase) ||
+        ContractCapCatalog.Instance.Lookup(contract).HasValue;
 }
