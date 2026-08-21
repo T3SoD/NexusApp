@@ -12,7 +12,20 @@ public class StarmapCatalogTests
     public void LoadEmbedded_HasExpectedPlaceCount()
     {
         var catalog = StarmapCatalog.LoadEmbedded();
-        Assert.Equal(215, catalog.PlaceCount);
+        Assert.Equal(216, catalog.PlaceCount);
+    }
+
+    [Fact]
+    public void LoadEmbedded_Levski_ResolvesWithRealChainPosition()
+    {
+        // Issue #53: values from the verified 4.9.188 container chain (nyxsystem ->
+        // glaciemring_segment_levski -> levski_all), 14,999,962 km from the Nyx star.
+        var catalog = StarmapCatalog.LoadEmbedded();
+        var pos = catalog.Resolve(Terminal("Nyx", location: "Levski"));
+        Assert.NotNull(pos);
+        Assert.Equal(-9641669472.432566, pos!.Value.X, 3);
+        Assert.Equal(-11490738598.66563, pos.Value.Y, 3);
+        Assert.Equal(-93642.5508, pos.Value.Z, 3);
     }
 
     [Fact]
@@ -189,6 +202,6 @@ public class StarmapCatalogTests
     public void StarmapId_EveryEmbeddedPlaceCarriesOne()
     {
         var catalog = StarmapCatalog.LoadEmbedded();
-        Assert.Equal(215, catalog.StarmapIdCount);
+        Assert.Equal(216, catalog.StarmapIdCount);
     }
 }
