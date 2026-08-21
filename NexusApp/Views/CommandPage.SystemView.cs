@@ -861,6 +861,18 @@ public sealed partial class CommandPage
         _mapPostedFor = null;
     }
 
+    // Modal support: the WebView2 owns its rectangle, so the page's modal layer cannot draw
+    // over it. Hidden (not Collapsed) keeps the layout hole in place while a modal is up.
+    private void HideMapForModal()
+    {
+        if (_mapView is not null) _mapView.Visibility = Visibility.Hidden;
+    }
+
+    private void RestoreMapAfterModal()
+    {
+        if (_mapView is not null) _mapView.Visibility = Visibility.Visible;
+    }
+
     /// <summary>Sends the locator init: the player's system, the player marker, and every planner
     /// affordance off. Skipped when nothing about the location changed, because Refresh runs on
     /// every data tick and reinitializing the scene rebuilds its whole object graph.</summary>

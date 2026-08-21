@@ -744,14 +744,29 @@ public sealed partial class CommandPage : UserControl
         panel.HorizontalAlignment = HorizontalAlignment.Center;
         panel.MouseLeftButtonDown += (_, e) => e.Handled = true;
         _modalHost.Children.Add(panel);
-        _modalHost.Visibility = Visibility.Visible;
+        ShowModalHost();
     }
 
     private void CloseInstallConfirm(bool cancelled)
     {
         if (cancelled) Logger.Info("[UI] install update: cancelled");
+        HideModalHost();
+    }
+
+    // The system view's starmap is a native WebView2 window, so no WPF modal can draw over it.
+    // Every modal on this page must show and hide through this pair, which parks the map for
+    // exactly as long as the modal is up.
+    private void ShowModalHost()
+    {
+        HideMapForModal();
+        _modalHost.Visibility = Visibility.Visible;
+    }
+
+    private void HideModalHost()
+    {
         _modalHost.Visibility = Visibility.Collapsed;
         _modalHost.Children.Clear();
+        RestoreMapAfterModal();
     }
 
     // Confirm already given: quiesce the UI (version-skew guard: nothing may lazily load
@@ -793,13 +808,12 @@ public sealed partial class CommandPage : UserControl
         panel.VerticalAlignment = VerticalAlignment.Center;
         panel.HorizontalAlignment = HorizontalAlignment.Center;
         _modalHost.Children.Add(panel);
-        _modalHost.Visibility = Visibility.Visible;
+        ShowModalHost();
     }
 
     private void CloseInstallingOverlay()
     {
-        _modalHost.Visibility = Visibility.Collapsed;
-        _modalHost.Children.Clear();
+        HideModalHost();
     }
 
     // Spec-mandated warning when a download or install-time hash check refused the file.
