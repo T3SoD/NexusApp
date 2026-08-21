@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.2  -  Aug 20, 2026",
+        [
+            "Nexus now runs on .NET 10, the long-term supported platform through 2028. Every bundled dependency moves to its current security-patched version, clearing a known vulnerability in the bundled SQLite component. Nothing to install: Nexus keeps bundling its own runtime",
+            "Hauling missions from Headhunters, Ling Family Hauling and Covalex Independent Contractors now show their company, route shape and container size instead of an Unknown company card",
+            "Levski is on the starmap. The landing zone anchors in the Glaciem Ring fifteen million kilometres from the Nyx star, distances to it read as real numbers, and every refinery in the game now places",
+        ]),
         ("App  6.14.1  -  Aug 17, 2026",
         [
             "The Operations tab is rebuilt as a SYSTEM VIEW. A live starmap holds the centre of the page with a YOU ARE HERE locator, and the refinery queue, auto-load countdown, hangar, wallet and profit trend stand around it as instruments rather than tables",
