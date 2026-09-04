@@ -83,6 +83,13 @@ public class AppSettings
     // CloseAction.Parse owns that fallback.
     public string CloseButtonAction { get; set; } = "exit";
 
+    // Where component names carry their size/class/grade label ("Mirage - S1 - Stealth - A").
+    // "off" (default, the display every existing install already has), "library" (Blueprint
+    // Library only), or "everywhere". Stored as a string so an unknown value from a hand-edited
+    // settings.json degrades to off instead of throwing; ComponentLabelMode.Parse owns that
+    // fallback.
+    public string ComponentLabels { get; set; } = "off";
+
     // One-shot: the tray balloon that explains where the window went is shown on the FIRST hide
     // only. Without this the app looks like it closed and the user hunts for it in Task Manager.
     public bool TrayHintShown { get; set; }

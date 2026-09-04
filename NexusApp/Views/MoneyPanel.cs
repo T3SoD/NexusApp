@@ -878,7 +878,10 @@ public sealed class MoneyPanel : UserControl
         var mainLine = new StackPanel { Orientation = Orientation.Horizontal };
         mainLine.Children.Add(new TextBlock
         {
-            Text = ProfitDisplay.PurchaseRowTitle(sell, p.Quantity, WalletDisplay.PurchaseTitle(p)),
+            // Decorate at render, never at ingest: the stored DisplayName stays canonical so
+            // the setting can change without rewriting ledger history. Token-gated because
+            // wallet names span the whole item domain, not just components.
+            Text = ProfitDisplay.PurchaseRowTitle(sell, p.Quantity, ComponentLabels.GlobalForToken(p.ItemToken, WalletDisplay.PurchaseTitle(p))),
             FontFamily = Hud.Font("UiFont"), FontSize = 12.5,
             Foreground = Hud.Br(refused ? "FgDimBrush" : "FgBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,

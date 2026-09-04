@@ -168,7 +168,10 @@ public sealed class BlueprintListView : UserControl
     {
         if (string.IsNullOrWhiteSpace(_search)) return true;
         var s = _search.Trim();
-        return Has(b.Name, s) || Has(b.Category, s) || Has(b.SubCategory, s);
+        // The decorated form too: when rows read "Mirage - S1 - Stealth - A", typing the
+        // visible "S1" or "Stealth" must match, not just the underlying name.
+        return Has(b.Name, s) || Has(b.Category, s) || Has(b.SubCategory, s)
+            || Has(ComponentLabels.Global(b.Name), s);
     }
 
     private static bool Has(string? hay, string needle) =>
@@ -194,7 +197,8 @@ public sealed class BlueprintListView : UserControl
         Grid.SetColumn(strip, 0); top.Children.Add(strip);
 
         var info = new StackPanel { Margin = new Thickness(0, 9, 0, 9), VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock { Text = b.Name, FontFamily = Ui, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
+        // Display text only: expand logging and ownership joins keep b.Name.
+        info.Children.Add(new TextBlock { Text = ComponentLabels.Global(b.Name), FontFamily = Ui, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Br("FgBrush") });
         if (!string.IsNullOrEmpty(b.SubCategory))
             info.Children.Add(new TextBlock { Text = b.SubCategory, FontFamily = Ui, FontSize = 10.5, Foreground = Br("FgDimBrush"), Margin = new Thickness(0, 2, 0, 0) });
         Grid.SetColumn(info, 1); top.Children.Add(info);

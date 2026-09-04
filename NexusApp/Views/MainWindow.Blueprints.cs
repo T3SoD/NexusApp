@@ -52,6 +52,15 @@ public partial class MainWindow
         UpdateOwnedChips();
         UpdateOwnedCount();
         GoRoot();
+        // Repaint the rendered nav and any open detail the moment the component label
+        // setting changes; without this a parked Library keeps the old naming until the
+        // user navigates. Subscribed once, inside the _bpInit guard, after panels exist;
+        // MainWindow is app-lifetime, so the subscription is never detached.
+        App.ComponentLabelsChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            RenderBlueprintNav();
+            if (_detailBpName is { } shown) RenderBlueprintDetail(shown);
+        });
     }
 
     // ── Ownership filter chips + count ──────────────────────────────────────────
@@ -596,7 +605,8 @@ public partial class MainWindow
 
         var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sp, 1);
-        sp.Children.Add(new TextBlock { Text = bp.Name, FontWeight = FontWeights.SemiBold, Foreground = fg, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
+        // Display text only: ownership maps, network chips, and click handlers keep bp.Name.
+        sp.Children.Add(new TextBlock { Text = ComponentLabels.Library(bp.Name), FontWeight = FontWeights.SemiBold, Foreground = fg, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
         if (showCategory)
             sp.Children.Add(new TextBlock { Text = bp.Category + (string.IsNullOrEmpty(bp.SubCategory) ? "" : " · " + bp.SubCategory), FontSize = 10, Foreground = dim, Margin = new Thickness(0, 2, 0, 0) });
         rowGrid.Children.Add(sp);
@@ -977,7 +987,14 @@ public partial class MainWindow
     private void ShowBlueprintDetail(NexusApp.Models.Blueprint selected)
     {
         InteractionLog.Nav($"Blueprint Library: open {selected.Name}");
-        var full = App.Data.GetBlueprintFull(selected.Name);
+        RenderBlueprintDetail(selected.Name);
+    }
+
+    // Body split from ShowBlueprintDetail so a component-label change can repaint the open
+    // detail without logging a navigation that did not happen.
+    private void RenderBlueprintDetail(string selectedName)
+    {
+        var full = App.Data.GetBlueprintFull(selectedName);
         BlueprintDetailPanel.Children.Clear();
         _detailBpName = null;
         _detailOwnedToggle = null;
@@ -999,7 +1016,7 @@ public partial class MainWindow
         heroContent.Children.Add(new TextBlock { Text = eyebrow, FontFamily = monoFont, FontSize = 11, Foreground = heroAccent });
         heroContent.Children.Add(new TextBlock
         {
-            Text = full.Name, FontFamily = headFont, FontSize = 25, FontWeight = FontWeights.SemiBold,
+            Text = ComponentLabels.Library(full.Name), FontFamily = headFont, FontSize = 25, FontWeight = FontWeights.SemiBold,
             Foreground = fgB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap,
         });
         heroContent.Children.Add(new Border { Height = 1, Background = heroAccent, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0) });

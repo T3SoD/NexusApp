@@ -64,7 +64,9 @@ public sealed class ImportResultDialog : Window
         if (anyMatched)
         {
             panel.Children.Add(SectionLabel("WILL BE MARKED OWNED"));
-            panel.Children.Add(NamesBox(matched));
+            // Display only; the copy/export payload keeps raw log lines, and the unmatched
+            // list below stays verbatim by design.
+            panel.Children.Add(NamesBox([.. matched.Select(ComponentLabels.Global)]));
         }
 
         if (unmatched.Count > 0)

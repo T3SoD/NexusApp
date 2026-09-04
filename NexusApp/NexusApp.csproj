@@ -57,7 +57,9 @@
     <None Remove="Data\trade_ships.json" />
     <EmbeddedResource Include="Data\trade_ships.json" />
     <None Remove="Data\contract_caps.json" />
+    <None Remove="Data\component_attributes.json" />
     <EmbeddedResource Include="Data\contract_caps.json" />
+    <EmbeddedResource Include="Data\component_attributes.json" />
     <None Remove="Data\sct_uex_map.json" />
     <EmbeddedResource Include="Data\sct_uex_map.json" />
     <None Remove="Data\starmap_locations.json" />

@@ -1373,7 +1373,8 @@ public partial class MainWindow
             var accentBr = (System.Windows.Media.Brush)FindResource("AccentBrush");
             UIElement BpRow(string nm)
             {
-                var tb = new TextBlock { Text = $"▪  {nm}", FontSize = 12, Foreground = fg, Margin = new Thickness(0, 0, 0, 4), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
+                // Display text only: NavigateToBlueprint below keeps the raw name.
+                var tb = new TextBlock { Text = $"▪  {ComponentLabels.Global(nm)}", FontSize = 12, Foreground = fg, Margin = new Thickness(0, 0, 0, 4), TextTrimming = System.Windows.TextTrimming.CharacterEllipsis };
                 var b = new Border { Child = tb, Background = System.Windows.Media.Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Open in Blueprint Library" };
                 b.MouseEnter += (s, _) => tb.Foreground = accentBr;
                 b.MouseLeave += (s, _) => tb.Foreground = fg;

@@ -126,6 +126,18 @@ public partial class App : Application
         ContractBoxVisibilityChanged?.Invoke(on);
     }
 
+    // Component labels: single write path so the Settings pills and every open surface
+    // rendering component names repaint together instead of waiting for their next rebuild.
+    public static event System.Action<ComponentLabelScope, string>? ComponentLabelsChanged;
+    public static void SetComponentLabels(ComponentLabelScope scope, string source)
+    {
+        if (ComponentLabelMode.Parse(Settings.Current.ComponentLabels) == scope) return;
+        Settings.Current.ComponentLabels = ComponentLabelMode.ToStored(scope);
+        Settings.Save();
+        Logger.Info($"[UI] component labels: {ComponentLabelMode.Label(scope)} ({source})");
+        ComponentLabelsChanged?.Invoke(scope, source);
+    }
+
     // Ghost mode (issue #27): single write path so the Settings page toggle, the rail's
     // gear flyout, and the overlay window itself can never disagree. Writers call
     // SetOverlayGhostMode; the overlay subscribes and applies the chrome swap.

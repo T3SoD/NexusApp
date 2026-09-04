@@ -230,7 +230,7 @@ public sealed class LogMonitorWindow : Window
     private void OnMarked(BlueprintMark m)
     {
         _markCountLabel.Text = $"Collected this session: {App.GameLog.Count}";
-        _status.Text = $"Collected: {m.Name}";
+        _status.Text = $"Collected: {ComponentLabels.Global(m.Name)}";
     }
 
     // A new SC session (or a manual reset elsewhere) cleared the tally - clear the count label

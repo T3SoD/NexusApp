@@ -1131,6 +1131,11 @@ public sealed class SettingsPage : UserControl
             SettingRow("24-hour clock",
                 "Show the top-bar clock in 24-hour time. Off uses 12-hour with AM/PM.",
                 clockToggle, last: false),
+            SettingRow("Component labels",
+                "Add size, class and grade to graded ship component names, so Mirage reads " +
+                "Mirage - S1 - Stealth - A. Library labels the Blueprint Library only; Everywhere " +
+                "also labels the other surfaces that name a component.",
+                BuildComponentLabelPills(), last: false),
             ScaleRow("App scale",
                 "Make everything in the main window larger. 100% is the standard size; higher " +
                 "values enlarge all text and controls together. Dialogs and tool windows pick " +
@@ -1203,6 +1208,53 @@ public sealed class SettingsPage : UserControl
         }
 
         Select(CloseAction.Parse(App.Settings.Current.CloseButtonAction));
+        return new Border { Child = row, HorizontalAlignment = HorizontalAlignment.Right };
+    }
+
+    // Component label scope, the BuildCloseActionPills idiom: three states need pills, and a
+    // dropdown would hide two of them behind a click. The write goes through
+    // App.SetComponentLabels so every open surface repaints immediately (the ghost-mode
+    // single-write-path precedent; a parked Library kept stale labels without it).
+    private Border BuildComponentLabelPills()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var pills = new Dictionary<ComponentLabelScope, Border>();
+
+        void Select(ComponentLabelScope chosen)
+        {
+            foreach (var (scope, pill) in pills)
+            {
+                bool on = scope == chosen;
+                pill.BorderBrush = on ? Hud.Br("AccentStrongBrush") : Hud.Br("NavBorderBrush");
+                pill.Background = on ? Hud.Br("AccentFaintBrush") : Brushes.Transparent;
+                ((TextBlock)pill.Child).Foreground = on ? Hud.Br("AccentBrush") : Hud.Br("FgDimBrush");
+            }
+        }
+
+        foreach (var scope in new[] { ComponentLabelScope.Off, ComponentLabelScope.Library, ComponentLabelScope.Everywhere })
+        {
+            var pill = new Border
+            {
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(6, 0, 0, 0),
+                Cursor = Cursors.Hand,
+                Child = new TextBlock
+                {
+                    Text = ComponentLabelMode.Label(scope), FontFamily = Hud.Font("UiFont"),
+                    FontSize = 9.5, FontWeight = FontWeights.Bold,
+                },
+            };
+            var captured = scope;
+            pill.MouseLeftButtonUp += (_, _) =>
+            {
+                App.SetComponentLabels(captured, "settings");
+                Select(captured);
+            };
+            pills[scope] = pill;
+            row.Children.Add(pill);
+        }
+
+        Select(ComponentLabelMode.Parse(App.Settings.Current.ComponentLabels));
         return new Border { Child = row, HorizontalAlignment = HorizontalAlignment.Right };
     }
 

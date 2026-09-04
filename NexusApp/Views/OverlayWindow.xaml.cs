@@ -199,6 +199,14 @@ public partial class OverlayWindow : Window
         // the HAULING tab is the one on screen (mirrors how OnGameLogMarked guards the STATS tab).
         App.Hauls.Changed += OnHaulsChanged;
 
+        // Component label setting: repaint the visible COLLECTION LOG so an in-game viewer
+        // is never looking at stale naming (same guard as OnGameLogMarked; overlay lives
+        // for the app's lifetime, so this never unsubscribes).
+        App.ComponentLabelsChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            if (IsTabPresented("stats")) RebuildStatsPanel();
+        });
+
         // A kiosk auto-load opening or closing changes what the CARGO badge can count, and starts
         // or stops its ticker. The overlay lives for the app's lifetime, so this never unsubscribes.
         App.AutoLoad.EntriesChanged += () => Dispatcher.BeginInvoke(UpdateHaulingTabBadge);
@@ -2671,7 +2679,7 @@ public partial class OverlayWindow : Window
             };
             var name = new TextBlock
             {
-                Text = mk.Name, FontSize = 11, Foreground = fg,
+                Text = ComponentLabels.Global(mk.Name), FontSize = 11, Foreground = fg,
                 VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
             };
             Grid.SetColumn(name, 1);

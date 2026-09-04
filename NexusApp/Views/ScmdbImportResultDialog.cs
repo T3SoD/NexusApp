@@ -67,7 +67,8 @@ public sealed class ScmdbImportResultDialog : Window
         if (anyToImport)
         {
             panel.Children.Add(SectionLabel("WILL BE MARKED OWNED"));
-            panel.Children.Add(NamesBox(toImport));
+            // Display only; the unrecognized list below stays verbatim by design.
+            panel.Children.Add(NamesBox([.. toImport.Select(ComponentLabels.Global)]));
         }
 
         if (unrecognized.Count > 0)
