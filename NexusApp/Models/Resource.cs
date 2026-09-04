@@ -23,9 +23,8 @@ public class Resource
         double ratio = (double)rs / BaseRs;
         int nearest = (int)Math.Round(ratio);
         if (nearest < 1) return (false, 0, false, 0);
-        // Issue #34: clusters cap at a per-rarity rock count (ClusterLimits), so a node multiple
-        // past the cap is not a real deposit and must not surface as a match.
-        if (ClusterLimits.MaxNodes(Rarity) is int max && nearest > max) return (false, 0, false, 0);
+        // No node-count ceiling: SC 4.10 spawns packs far past the old per-rarity cluster
+        // caps (issue #34), so any multiple inside the band below is a plausible reading.
 
         if (rs % BaseRs == 0)
             return (true, nearest, true, 0.0);

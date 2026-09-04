@@ -506,12 +506,10 @@ public class DataService : IDisposable
             var (matches, nodes, isExact, errorPct) = r.CheckRs(rs);
             if (matches)
                 results.Add(new RsMatch(r, nodes, isExact, errorPct));
-            else if (logThis && ClusterLimits.MaxNodes(r.Rarity) is int max && WouldMatchUncapped(rs, r.BaseRs, max))
-                Logger.Info($"[SCAN] RS {rs:N0}: {r.Name} x{(int)Math.Round((double)rs / r.BaseRs)} dropped (cluster cap {max}, issue #34)");
         }
         // Salvage panels (n*2000, issue #34): appended last as a deterministic tiebreak (OrderBy
-        // is stable). With the current seed an exact ErrorPct tie cannot occur (no in-cap ore
-        // multiple is divisible by 2000); close-band collisions rank by ErrorPct.
+        // is stable). Uncapped node counts (4.10) mean an ore multiple CAN tie a panel multiple
+        // exactly (e.g. Ice x20 = panels x43 = 86,000); the stable sort keeps the ore first.
         if (SalvageDecode.TryMatch(rs) is { } salvage)
         {
             results.Add(salvage);
@@ -522,17 +520,6 @@ public class DataService : IDisposable
             .OrderByDescending(x => x.Resource.IsPinned)
             .ThenBy(x => x.ErrorPct)
             .ToList();
-    }
-
-    // The cap-drop breadcrumb needs to know WHY CheckRs refused, and its tuple cannot say; this
-    // re-runs the band math for the one refusal case worth logging (a would-be match past the cap).
-    private static bool WouldMatchUncapped(int rs, int baseRs, int cap)
-    {
-        if (baseRs <= 0) return false;
-        double ratio = (double)rs / baseRs;
-        int nearest = (int)Math.Round(ratio);
-        if (nearest <= cap) return false;   // the refusal was not the cap
-        return rs % baseRs == 0 || Math.Abs(ratio - nearest) / nearest * 100 <= 0.5;
     }
 
     public List<Blueprint> GetBlueprintsForResource(string resourceName)
