@@ -28,6 +28,18 @@ public class GameLogBlueprintImporterTests
             GameLogBlueprintImporter.ExtractRawName(RealLine("Attrition-4 Repeater")));
     }
 
+    // The 4.10 field report that exposed the compare's silent category drop: a Wikelo
+    // collector-material receipt. Extraction handles the '#' and the trailing ": ", and the
+    // recovered seed entry (data 1.4.1) lets exact-match resolution close the loop.
+    [Fact]
+    public void Resolve_MissionItemReceipt_MatchesTheRecoveredSeedEntry()
+    {
+        var line = RealLine("Metamaterial Test #152");
+        Assert.Equal("Metamaterial Test #152", GameLogBlueprintImporter.ExtractRawName(line));
+        var importer = new GameLogBlueprintImporter(["Metamaterial Test #152"]);
+        Assert.Equal("Metamaterial Test #152", importer.ResolveLine(line, null));
+    }
+
     [Fact]
     public void ExtractRawName_SkinnedWeapon_KeepsInternalQuotes()
     {

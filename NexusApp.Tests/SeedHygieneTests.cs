@@ -94,6 +94,26 @@ public class SeedHygieneTests
         }
     }
 
+    // The 14 recipes the compare's category filter silently dropped until data 1.4.1 (the
+    // Metamaterial Test #152 field report): typeless mission items and vehicle gear. Pinned
+    // so a rebuilt seed cannot quietly lose them again.
+    [Fact]
+    public void RecoveredTypelessRecipes_ArePresent()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var b in Blueprints(doc))
+            if (b.GetProperty("name").GetString() is { } n) names.Add(n);
+        foreach (var required in new[]
+        {
+            "Metamaterial Test #146", "Metamaterial Test #152", "Probe", "TH-01 Propulsor",
+            "Argo Ore Pod", "Drake Ore Pod", "GOLEM MC-4 Ore Pod", "MISC Ore Pod",
+            "MISC Enhanced Ore Pod", "Clearcut Module", "Deluge Module", "Overrun Module",
+            "Stampede Module", "Torrent III Module",
+        })
+            Assert.True(names.Contains(required), $"recovered recipe missing from seed: {required}");
+    }
+
     [Fact]
     public void MiningDataVersionIsAtLeast_1_3_1()
     {
