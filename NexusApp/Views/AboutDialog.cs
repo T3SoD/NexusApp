@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.6  -  Sep 4, 2026",
+        [
+            "Fourteen craftable blueprints the game defines without a type now import: the collector materials (Metamaterial Tests, Probe, TH-01 Propulsor) under a new Mission Items category, and the ore pods and cutter modules under Ship Components. Their log receipts now mark owned instead of reading as unrecognized",
+        ]),
         ("App  6.14.5  -  Sep 4, 2026",
         [
             "Component names can now carry their size, class and grade, so Mirage reads Mirage - S1 - Stealth - A. A three-way Settings choice starts Off, labels the Blueprint Library only, or labels every surface that names a component, and takes effect the moment you flip it",
