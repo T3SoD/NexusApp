@@ -19,7 +19,8 @@ public class SeedHygieneTests
         "Mirai Racing Helmet",
         "WhiteHot Racing Flight Suit",
         "WhiteHot Racing Helmet",
-        "Antium Arms Maroon",
+        // "Antium Arms Maroon" left this list in the 4.10 refresh: CIG now ships that
+        // blueprint in game data, so its presence is upstream truth, not the old hand-add.
     };
 
     private static IEnumerable<JsonElement> Blueprints(JsonDocument doc) =>
@@ -66,18 +67,18 @@ public class SeedHygieneTests
             Assert.False(names.Contains(deleted), $"deleted blueprint still present: {deleted}");
     }
 
-    // The 7 missions removed or restructured in SC 4.9 whose 72 unlock rows were deleted.
+    // Missions removed or restructured in SC 4.9 whose unlock rows were deleted.
     // Mission titles are stable identifiers, unlike row counts, which change on every
     // legitimate seed refresh, so this locks the deletion without churning on future data.
+    // 4.10 reintroduced three of the original seven ("Yellow/Red Level Contract: Ship
+    // Under Attack", "Orange Level Contract: [SHIP] Needs Assistance") as live Foxwell
+    // contracts, so those left the list with the 4.10 refresh.
     private static readonly string[] DeletedMissionTitles =
     {
         "URGENT FLEET REFUEL",
         "Knock Out New Drug Op",
-        "Yellow Level Contract: Ship Under Attack",
         "Destroy Dangerous Drugs",
         "Destroy Illegal Drugs",
-        "Red Level Contract: Ship Under Attack",
-        "Orange Level Contract: [SHIP] Needs Assistance",
     };
 
     [Fact]
