@@ -13,6 +13,10 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.5  -  Sep 4, 2026",
+        [
+            "Component names can now carry their size, class and grade, so Mirage reads Mirage - S1 - Stealth - A. A three-way Settings choice starts Off, labels the Blueprint Library only, or labels every surface that names a component, and takes effect the moment you flip it",
+        ]),
         ("App  6.14.3  -  Sep 4, 2026",
         [
             "Reference data moves to Star Citizen 4.10. Eight new craftable blueprints arrive, among them the SecondWind and Snow Camo armor sets and the Comer and Hart scraper modules, along with 241 new blueprint unlocks covering the new Foxwell contracts, United Wayfarers Club refueling work and Wikelo missions",
