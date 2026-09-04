@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.3  -  Sep 4, 2026",
+        [
+            "Reference data moves to Star Citizen 4.10. Eight new craftable blueprints arrive, among them the SecondWind and Snow Camo armor sets and the Comer and Hart scraper modules, along with 241 new blueprint unlocks covering the new Foxwell contracts, United Wayfarers Club refueling work and Wikelo missions",
+            "The RS Decoder keeps up with 4.10 rock packs. Packs now spawn far past the old per-rarity rock counts, so a large ping used to decode to nothing; the decoder now reads any pack size and ranks every candidate by fit, with the rock count beside each match",
+        ]),
         ("App  6.14.2  -  Aug 20, 2026",
         [
             "Nexus now runs on .NET 10, the long-term supported platform through 2028. Every bundled dependency moves to its current security-patched version, clearing a known vulnerability in the bundled SQLite component. Nothing to install: Nexus keeps bundling its own runtime",
