@@ -19,8 +19,9 @@ public class SeedHygieneTests
         "Mirai Racing Helmet",
         "WhiteHot Racing Flight Suit",
         "WhiteHot Racing Helmet",
-        // "Antium Arms Maroon" left this list in the 4.10 refresh: CIG now ships that
-        // blueprint in game data, so its presence is upstream truth, not the old hand-add.
+        // "Antium Arms Maroon" left this list in the 4.10 refresh: CIG ships that blueprint
+        // in game data. The 4.10.2 localization swapped its name with the Jet helmet while
+        // the records stayed put, so the seed keeps the 4.10.1 names for those two items.
     };
 
     private static IEnumerable<JsonElement> Blueprints(JsonDocument doc) =>

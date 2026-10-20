@@ -13,7 +13,7 @@ public sealed record ComponentAttributes(string Size, string Grade, string Class
 // power plants, quantum drives, radars, mining lasers). Derived data: DataCore AttachDef
 // records joined to CIG's packed localization, extracted per SC patch (check_p4k_update.ps1
 // ritual); the extraction tooling stays local, only this table ships, and it reaches users
-// through a new build (no OTA). 328 components at 4.10.0; name collisions are dropped at
+// through a new build (no OTA). 340 components at 4.10.2; name collisions are dropped at
 // generation so a label can never show another component's attributes.
 public sealed class ComponentAttributeCatalog
 {

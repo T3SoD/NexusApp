@@ -13,6 +13,11 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.14.7  -  Oct 19, 2026",
+        [
+            "Reference data moves to Star Citizen 4.10.2. Thirteen new craftable blueprints arrive, among them the DayBreak and Goliath weapons, the F55 Shadowflux LMG and the Monolith heavy armor set, along with new blueprint unlocks for the Pyro fuel tank contracts, Wikelo missions and the renamed Bounty Hunters Guild bounty tiers",
+            "The trade planner lists the Constellation Mk V Centaurus with its 240 SCU hold. Component labels cover the RSI Discovery Month components, and the Iasi hauling contracts carry their container caps",
+        ]),
         ("App  6.14.6  -  Sep 4, 2026",
         [
             "Fourteen craftable blueprints the game defines without a type now import: the collector materials (Metamaterial Tests, Probe, TH-01 Propulsor) under a new Mission Items category, and the ore pods and cutter modules under Ship Components. Their log receipts now mark owned instead of reading as unrecognized",

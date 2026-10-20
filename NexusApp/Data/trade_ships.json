@@ -238,6 +238,13 @@
   "maxBoxScu": 32
  },
  {
+  "id": "rsi-constellation-mk-v-centaurus",
+  "name": "Constellation Mk V Centaurus",
+  "manufacturer": "Roberts Space Industries",
+  "totalScu": 240,
+  "maxBoxScu": 32
+ },
+ {
   "id": "rsi-constellation-phoenix",
   "name": "Constellation Phoenix",
   "manufacturer": "Roberts Space Industries",
