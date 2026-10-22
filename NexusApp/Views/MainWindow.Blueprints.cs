@@ -51,6 +51,8 @@ public partial class MainWindow
         _allBlueprints = App.Data.GetAllBlueprints();
         UpdateOwnedChips();
         UpdateOwnedCount();
+        _bpNavCollapsed = App.Settings.Current.LibraryNavCollapsed;
+        ApplyNavCollapse(animate: false);
         GoRoot();
         // Repaint the rendered nav and any open detail the moment the component label
         // setting changes; without this a parked Library keeps the old naming until the
@@ -379,6 +381,7 @@ public partial class MainWindow
                     BlueprintNavPanel.Children.Add(CategoryCard(cat, c));
                     cards++;
                 }
+                _bpRailText = RailLabel("Browse", cards);
                 if (cards == 0)
                     BlueprintNavPanel.Children.Add(NavEmptyNote(
                         _bpOwnFilter == BpOwnFilter.Owned ? "Nothing marked owned yet" : "Every blueprint is marked owned"));
@@ -395,6 +398,11 @@ public partial class MainWindow
             _ => -1,   // "search" - not part of the drill-down hierarchy, no slide
         };
         _bpNavDepth = PlayDrillSlide(BlueprintNavPanel, _bpNavDepth, navDepth);
+
+        // The collapse toggle sits at the right end of the breadcrumb row on every level.
+        WrapCrumb(BlueprintCrumbHost, () => NavToggleButton(collapsed: false));
+        EnsureNavRail();
+        _bpRailLabel!.Text = _bpRailText;
     }
 
     private TextBlock NavEmptyNote(string text = "Nothing here in this filter") => new()
@@ -474,6 +482,7 @@ public partial class MainWindow
 
     private UIElement NavHeader(string text, int count, System.Windows.Media.Brush col)
     {
+        _bpRailText = RailLabel(text, count);   // the collapsed rail names the same list
         var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
         var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 0, 8) };
         sp.Children.Add(new TextBlock { Text = text, FontFamily = headFont, FontSize = 16, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
@@ -895,6 +904,7 @@ public partial class MainWindow
     {
         var text = (_vm.BlueprintSearch ?? "").Trim();
         if (string.IsNullOrEmpty(text)) { GoRoot(); return; }
+        ExpandNavForSearch();
         _bpSearchResults = App.Data.SearchBlueprints(text);
         _bpLevel = "search";
         BlueprintSearchClear.Visibility = Visibility.Visible;   // keep the term in the box; show the clear affordance
@@ -946,6 +956,7 @@ public partial class MainWindow
             _suppressAutocomplete = true;
             _vm.BlueprintSearch = name;
             BlueprintSuggestPopup.IsOpen = false;
+            ExpandNavForSearch();
             _bpSearchResults = App.Data.SearchBlueprints(name);
             _bpLevel = "search";
             BlueprintSearchClear.Visibility = Visibility.Visible;   // the picked name stays in the box
@@ -1004,6 +1015,169 @@ public partial class MainWindow
     {
         var names = string.Join(" + ", slots.Select(s => s.Name.ToUpperInvariant()));
         return $"{CraftAmount.Format(qty, unit)}  ·  {names} {(slots.Count == 1 ? "slot" : "slots")}";
+    }
+
+    // ── Results column collapse (library-redesign round 4: .navBtn, .navRail) ──
+    // The toggle collapses the 300 px results column to a 34 px rail so the detail panel takes
+    // the width. The detail re-renders through the SizeChanged hook below (HookDetailResize):
+    // the column width change resizes BlueprintDetailPanel like a window resize does.
+    private const double NavExpandedWidth = 300;
+    private const double NavCollapsedWidth = 34;
+    private const double NavContentInset = 13;   // the right hairline (1) plus the list's right margin (12)
+
+    internal static double NavColumnWidth(bool collapsed) => collapsed ? NavCollapsedWidth : NavExpandedWidth;
+
+    /// <summary>The rotated rail caption for the current list: "RIFLE · 7".</summary>
+    internal static string RailLabel(string listName, int count) => $"{listName.ToUpperInvariant()} · {count}";
+
+    private bool _bpNavCollapsed;
+    private string _bpRailText = "";
+    private TextBlock? _bpRailLabel;
+
+    // Animation target for the nav column; a GridLength cannot take a DoubleAnimation directly.
+    private static readonly DependencyProperty NavColumnWidthAnimProperty = DependencyProperty.Register(
+        "NavColumnWidthAnim", typeof(double), typeof(MainWindow),
+        new PropertyMetadata(NavExpandedWidth, (o, e) =>
+        {
+            if (o is MainWindow w) w.BlueprintNavColumn.Width = new GridLength((double)e.NewValue);
+        }));
+
+    // Same anatomy as the quality control's graph button: 26x22, NavBorder 1 px, radius 4, a
+    // 12 px chevron (stroke 1.8, round caps); hover = AccentStrong border, Highlight fill, amber glyph.
+    private Button NavToggleButton(bool collapsed)
+    {
+        var glyph = new System.Windows.Shapes.Polyline
+        {
+            Points = System.Windows.Media.PointCollection.Parse(collapsed ? "4,2 8,6 4,10" : "8,2 4,6 8,10"),
+            Stroke = (System.Windows.Media.Brush)FindResource("FgDimBrush"), StrokeThickness = 1.8,
+            StrokeStartLineCap = System.Windows.Media.PenLineCap.Round,
+            StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
+            StrokeLineJoin = System.Windows.Media.PenLineJoin.Round,
+        };
+        var box = new Canvas { Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        box.Children.Add(glyph);
+        var face = new Border
+        {
+            Width = 26, Height = 22, CornerRadius = new CornerRadius(4),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            Background = System.Windows.Media.Brushes.Transparent,
+            Child = box,
+        };
+        var btn = new Button
+        {
+            Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) },
+            Content = face, Cursor = Cursors.Hand, Focusable = false,
+            VerticalAlignment = VerticalAlignment.Top,
+            ToolTip = collapsed ? "Show results" : "Hide results",
+        };
+        btn.MouseEnter += (_, _) =>
+        {
+            face.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentStrongBrush");
+            face.Background = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+            glyph.Stroke = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        };
+        btn.MouseLeave += (_, _) =>
+        {
+            face.BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
+            face.Background = System.Windows.Media.Brushes.Transparent;
+            glyph.Stroke = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        };
+        btn.Click += (_, _) => SetLibraryNavCollapsed(!_bpNavCollapsed, btn);
+        return btn;
+    }
+
+    // The breadcrumb (or nothing, at the root) on the left, the collapse toggle on the right.
+    // The host's current content is the breadcrumb; it moves into the wrapper grid. The host
+    // owns it as a logical child, so it is released first or the grid refuses it.
+    internal static UIElement WrapCrumb(ContentControl host, Func<UIElement> makeToggle)
+    {
+        var crumb = host.Content as UIElement;
+        host.Content = null;
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (crumb != null) g.Children.Add(crumb);
+        var btn = makeToggle();
+        if (crumb == null && btn is FrameworkElement fe) fe.Margin = new Thickness(0, 0, 0, 8);
+        Grid.SetColumn(btn, 1);
+        g.Children.Add(btn);
+        host.Content = g;
+        return g;
+    }
+
+    private void EnsureNavRail()
+    {
+        if (_bpRailLabel != null) return;
+        var btn = NavToggleButton(collapsed: true);
+        btn.HorizontalAlignment = HorizontalAlignment.Left;
+        _bpRailLabel = new TextBlock
+        {
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"), FontSize = 10,
+            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(6, 10, 0, 0),
+            LayoutTransform = new System.Windows.Media.RotateTransform(-90),   // reads bottom to top
+        };
+        BlueprintNavRail.Children.Add(btn);
+        BlueprintNavRail.Children.Add(_bpRailLabel);
+    }
+
+    private void SetLibraryNavCollapsed(bool collapsed, DependencyObject source)
+    {
+        if (collapsed == _bpNavCollapsed) return;
+        InteractionLog.Toggle(collapsed ? "library nav collapsed" : "library nav expanded", source);
+        _bpNavCollapsed = collapsed;
+        App.Settings.Current.LibraryNavCollapsed = collapsed;
+        App.Settings.Save();
+        ApplyNavCollapse(animate: !Motion.Reduced);
+    }
+
+    // Only the column width animates. The list keeps its expanded width while the column moves,
+    // so the border clips it instead of reflowing it every frame; the rail shows once collapsed.
+    private void ApplyNavCollapse(bool animate)
+    {
+        EnsureNavRail();
+        double target = NavColumnWidth(_bpNavCollapsed);
+        if (!animate)
+        {
+            BeginAnimation(NavColumnWidthAnimProperty, null);
+            SetValue(NavColumnWidthAnimProperty, target);
+            ShowNavState();
+            return;
+        }
+        double from = (double)GetValue(NavColumnWidthAnimProperty);   // the live value, if mid-slide
+        BlueprintNavRail.Visibility = Visibility.Collapsed;
+        BlueprintNavContent.Visibility = Visibility.Visible;
+        BlueprintNavContent.HorizontalAlignment = HorizontalAlignment.Left;
+        BlueprintNavContent.Width = NavExpandedWidth - NavContentInset;
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(from, target, TimeSpan.FromMilliseconds(Motion.SlideMs))
+        {
+            EasingFunction = Motion.Settle,
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
+        };
+        bool endsCollapsed = _bpNavCollapsed;
+        slide.Completed += (_, _) => { if (endsCollapsed == _bpNavCollapsed) ShowNavState(); };
+        BeginAnimation(NavColumnWidthAnimProperty, slide);
+        SetValue(NavColumnWidthAnimProperty, target);   // base value; the slide holds the effective value until it stops
+    }
+
+    // A search fills the results list, so a collapsed list opens first. The width snaps (no
+    // slide) so the results render into the expanded column; clearing a search never collapses.
+    private void ExpandNavForSearch()
+    {
+        if (!_bpNavCollapsed) return;
+        InteractionLog.Toggle("library nav expanded (search)", BlueprintSearchBox);
+        _bpNavCollapsed = false;
+        App.Settings.Current.LibraryNavCollapsed = false;
+        App.Settings.Save();
+        ApplyNavCollapse(animate: false);
+    }
+
+    private void ShowNavState()
+    {
+        BlueprintNavContent.Width = double.NaN;
+        BlueprintNavContent.HorizontalAlignment = HorizontalAlignment.Stretch;
+        BlueprintNavContent.Visibility = _bpNavCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        BlueprintNavRail.Visibility = _bpNavCollapsed ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── Width-aware detail layout (library-redesign round 3 container rules) ──

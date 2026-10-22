@@ -1105,13 +1105,17 @@
                     <!-- Two-panel: left drill-down nav / right detail -->
                     <Grid Grid.Row="3" Margin="20,0,20,16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="300"/>
+                            <ColumnDefinition x:Name="BlueprintNavColumn" Width="300"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- Left: drill-down navigation (Category → Subcategory → blueprint) -->
-                        <Border BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0">
-                            <Grid Margin="0,4,12,0">
+                        <!-- Left: drill-down navigation (Category → Subcategory → blueprint).
+                             Collapses to a 34 px rail (BlueprintNavRail) from the toggle on the
+                             breadcrumb row; see SetLibraryNavCollapsed in MainWindow.Blueprints.cs. -->
+                        <Border BorderBrush="{StaticResource NavBorderBrush}" BorderThickness="0,0,1,0" ClipToBounds="True">
+                            <Grid>
+                            <StackPanel x:Name="BlueprintNavRail" Visibility="Collapsed" Margin="0,6,0,0"/>
+                            <Grid x:Name="BlueprintNavContent" Margin="0,4,12,0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
@@ -1121,6 +1125,7 @@
                                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                                     <StackPanel x:Name="BlueprintNavPanel"/>
                                 </ScrollViewer>
+                            </Grid>
                             </Grid>
                         </Border>
 

@@ -187,6 +187,10 @@ public class AppSettings
     // and this only chooses whether the list shows what the dossier already has.
     public bool CodexSellColumn { get; set; }
 
+    // Blueprint Library: the results column is collapsed to a 34 px rail so the detail panel
+    // takes the width. Remembered across launches; default false shows the list.
+    public bool LibraryNavCollapsed { get; set; }
+
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.
     public string? LastSeenVersion { get; set; }
