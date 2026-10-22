@@ -76,4 +76,69 @@ public class QualityControlTests
         Assert.False(CraftForecastStrip.PresetActive([1000], 500));
         Assert.False(CraftForecastStrip.PresetActive([], 500));
     }
+
+    [Fact]
+    public void WithOpacity_FreezesABrushWhoseColorIsAResourceReference()
+    {
+        // Brushes are DispatcherObjects; build them on an STA thread like the UI does.
+        Exception? failure = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                // Same shape as the theme's FgBrush: Color bound with DynamicResource, no resource tree.
+                var src = new System.Windows.Media.SolidColorBrush();
+                src.SetValue(System.Windows.Media.SolidColorBrush.ColorProperty,
+                    new System.Windows.DynamicResourceExtension("FgColor").ProvideValue(null!));
+                Assert.False(src.Clone().CanFreeze);   // the trap: Clone keeps the resource expression
+
+                var b = Hud.WithOpacity(src, 0.75);
+                Assert.True(b.IsFrozen);
+                Assert.Equal(0.75, b.Opacity);
+            }
+            catch (Exception ex) { failure = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+        if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    [Fact]
+    public void LayoutFor_SplitsAt700()
+    {
+        Assert.Equal(MainWindow.DetailLayout.Stacked, MainWindow.LayoutFor(0));
+        Assert.Equal(MainWindow.DetailLayout.Stacked, MainWindow.LayoutFor(699.9));
+        Assert.Equal(MainWindow.DetailLayout.Wide, MainWindow.LayoutFor(700));
+        Assert.Equal(MainWindow.DetailLayout.Wide, MainWindow.LayoutFor(1340));
+    }
+
+    [Fact]
+    public void StackRowControl_Below560()
+    {
+        Assert.True(MainWindow.StackRowControl(413));
+        Assert.True(MainWindow.StackRowControl(559.9));
+        Assert.False(MainWindow.StackRowControl(560));
+        Assert.False(MainWindow.StackRowControl(658));
+    }
+
+    [Fact]
+    public void RowWidthFor_HalvesTheSplitOnlyWhenWide()
+    {
+        Assert.Equal(413, MainWindow.RowWidthFor(850, controlled: false));
+        Assert.Equal(650, MainWindow.RowWidthFor(650, controlled: false));
+        Assert.Equal(650, MainWindow.RowWidthFor(650, controlled: true));
+    }
+
+    [Fact]
+    public void RowWidthFor_ControlledBlueprintsGiveTheBillThe135Share()
+    {
+        // Mock direction 2: split 1.35fr 24px 1fr, so the bill column is 1.35 / 2.35 of (detail - 24).
+        double at1000 = MainWindow.RowWidthFor(1000, controlled: true);
+        Assert.Equal(560.68, at1000, 2);
+        Assert.False(MainWindow.StackRowControl(at1000));
+        double at900 = MainWindow.RowWidthFor(900, controlled: true);
+        Assert.Equal(503.23, at900, 2);
+        Assert.True(MainWindow.StackRowControl(at900));
+    }
 }

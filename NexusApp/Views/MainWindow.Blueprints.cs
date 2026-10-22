@@ -1006,6 +1006,83 @@ public partial class MainWindow
         return $"{CraftAmount.Format(qty, unit)}  ·  {names} {(slots.Count == 1 ? "slot" : "slots")}";
     }
 
+    // ── Width-aware detail layout (library-redesign round 3 container rules) ──
+    // The detail panel is half the page, and its two-column split halves it again. Fixed
+    // columns that fit a 1340 px help shot leave a 400 px column with no room for the name
+    // block, and a star column at zero width wraps its text one glyph per line.
+    internal enum DetailLayout { Wide, Stacked }
+    private const double DetailSplitMin = 700;     // below this the split becomes one column
+    private const double RowStackBelow = 560;      // below this a materials row puts its control under the name
+    private const double RowNameMin = 160;         // the name block never gets less than this
+    private const double RowControlWidth = 250;    // the control column in the one-row shape
+    private const double DetailSplitGap = 24;
+
+    internal static DetailLayout LayoutFor(double detailWidth) =>
+        detailWidth >= DetailSplitMin ? DetailLayout.Wide : DetailLayout.Stacked;
+
+    internal static bool StackRowControl(double rowWidth) => rowWidth < RowStackBelow;
+
+    // Mock direction 2 widens the bill of materials when it carries quality controls (split 1.35fr 24px 1fr).
+    private const double ControlledBillShare = 1.35;
+
+    /// <summary>
+    /// The column width a materials row actually gets: the bill's share of the split when Wide
+    /// (1.35 / 2.35 with quality controls, half without), the whole panel when Stacked.
+    /// </summary>
+    internal static double RowWidthFor(double detailWidth, bool controlled)
+    {
+        if (LayoutFor(detailWidth) != DetailLayout.Wide) return detailWidth;
+        double share = controlled ? ControlledBillShare / (ControlledBillShare + 1) : 0.5;
+        return (detailWidth - DetailSplitGap) * share;
+    }
+
+    // One-row shape only when the fixed control column still leaves the name block its minimum.
+    private static bool RowsStacked(double rowWidth) =>
+        StackRowControl(rowWidth) || rowWidth < RowControlWidth + RowNameMin + 60;
+
+    private DetailLayout _detailRenderedLayout;
+    private bool _detailRenderedRowsStacked;
+    private bool _detailRenderedControlled;
+    private bool _detailSizeHooked;
+    private System.Windows.Threading.DispatcherTimer? _detailResizeTimer;
+
+    private double DetailWidth()
+    {
+        double w = BlueprintDetailPanel.ActualWidth;
+        if (w <= 0 && BlueprintDetailPanel.Parent is ScrollViewer sv) w = sv.ViewportWidth;
+        return w;
+    }
+
+    // Re-render the open detail only when a resize crosses a layout threshold, debounced so a
+    // drag-resize does not rebuild the panel on every pixel.
+    private void HookDetailResize()
+    {
+        if (_detailSizeHooked) return;
+        _detailSizeHooked = true;
+        _detailResizeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _detailResizeTimer.Tick += (_, _) =>
+        {
+            _detailResizeTimer.Stop();
+            if (_detailBpName is { } name && DetailLayoutChanged()) RenderBlueprintDetail(name);
+        };
+        BlueprintDetailPanel.SizeChanged += (_, e) =>
+        {
+            if (!e.WidthChanged || _detailBpName == null || !DetailLayoutChanged()) return;
+            _detailResizeTimer.Stop();
+            // A first layout pass (no width before) is not a drag: correct it at once, after layout.
+            if (e.PreviousSize.Width <= 0)
+                Dispatcher.BeginInvoke(() => { if (_detailBpName is { } n && DetailLayoutChanged()) RenderBlueprintDetail(n); });
+            else
+                _detailResizeTimer.Start();
+        };
+    }
+
+    private bool DetailLayoutChanged()
+    {
+        double w = DetailWidth();
+        return LayoutFor(w) != _detailRenderedLayout || RowsStacked(RowWidthFor(w, _detailRenderedControlled)) != _detailRenderedRowsStacked;
+    }
+
     internal static string CraftTimeText(int seconds) =>
         seconds < 60 ? $"{seconds} s" : $"{(int)Math.Round(seconds / 60.0, MidpointRounding.AwayFromZero)} min";
 
@@ -1018,18 +1095,28 @@ public partial class MainWindow
         NexusApp.Models.Blueprint bp, BlueprintIngredient ing, IReadOnlyList<BlueprintSlot> slots,
         System.Windows.Media.Brush rarityBrush, string tier, IReadOnlyList<StatForecast> forecast,
         System.Windows.Media.Brush line, System.Windows.Media.Brush softFg,
-        IReadOnlyList<QualityBand> bands, Action<string, QualityControl> wire)
+        IReadOnlyList<QualityBand> bands, bool stacked, Action<string, QualityControl> wire)
     {
         var fgB = (System.Windows.Media.Brush)FindResource("FgBrush");
         var dimB = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
         var uiFont = (System.Windows.Media.FontFamily)FindResource("UiFont");
 
+        // Stacked (mock @container 560): dot | name | add on row one, the control under the
+        // name across the name and add columns on row two. One-row: dot | name | 250 | add.
+        // The name column carries a MinWidth in both shapes so it can never reach zero.
         var g = new Grid();
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name block
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });                   // quality control
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // add
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                          // dot
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = RowNameMin }); // name block
+        if (!stacked)
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowControlWidth) });                      // quality control
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                          // add
+        if (stacked)
+        {
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+        int addCol = stacked ? 2 : 3;
 
         var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rarityBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
         Grid.SetColumn(dot, 0); g.Children.Add(dot);
@@ -1071,11 +1158,17 @@ public partial class MainWindow
         // The bands popup hooks in here; until then the request is logged so the click is traceable.
         ctl.GraphRequested += () => InteractionLog.Click($"forecast bands {ore}", ctl);
         wire(ore, ctl);
-        Grid.SetColumn(ctl, 2); g.Children.Add(ctl);
+        if (stacked)
+        {
+            ctl.Margin = new Thickness(0, 6, 0, 0);   // mock row-gap 6
+            Grid.SetRow(ctl, 1); Grid.SetColumn(ctl, 1); Grid.SetColumnSpan(ctl, 2);
+        }
+        else Grid.SetColumn(ctl, 2);
+        g.Children.Add(ctl);
 
         var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ing, VerticalAlignment = VerticalAlignment.Center };
         addBtn.Click += (s, e) => _vm.AddToShoppingCommand.Execute(((Button)s).Tag);
-        Grid.SetColumn(addBtn, 3); g.Children.Add(addBtn);
+        Grid.SetColumn(addBtn, addCol); g.Children.Add(addBtn);
 
         var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = line, BorderThickness = new Thickness(0, 0, 0, 1) };
 
@@ -1107,6 +1200,17 @@ public partial class MainWindow
         _detailOwnedToggle = null;
         if (full == null) return;
         _detailBpName = full.Name;
+
+        HookDetailResize();
+        double detailWidth = DetailWidth();
+        var detailLayout = LayoutFor(detailWidth);
+        bool anyControlled = full.Ingredients.Any(i => SlotsForIngredient(full, i.ResourceName).Count > 0);
+        double rowWidth = RowWidthFor(detailWidth, anyControlled);
+        bool rowsStacked = RowsStacked(rowWidth);
+        _detailRenderedLayout = detailLayout;
+        _detailRenderedRowsStacked = rowsStacked;
+        _detailRenderedControlled = anyControlled;
+        bool heroStacked = detailWidth < RowStackBelow;
 
         // ── Schematic hero: drafting-sheet header ─────────────────────────────
         var heroAccent = (System.Windows.Media.Brush)FindResource("AccentBrush");
@@ -1154,7 +1258,17 @@ public partial class MainWindow
         };
         heroAddBtn.Click += (s, e) => { foreach (var i in full.Ingredients) _vm.AddToShoppingCommand.Execute(i); };
         heroActions.Children.Add(heroAddBtn);
-        Grid.SetColumn(heroActions, 1); heroRow.Children.Add(heroActions);
+        if (heroStacked)
+        {
+            // Narrow panel (mock @container 560): the buttons drop under the specs, left-aligned.
+            heroRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heroRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heroActions.HorizontalAlignment = HorizontalAlignment.Left;
+            heroActions.Margin = new Thickness(0, 12, 0, 0);
+            Grid.SetRow(heroActions, 1); Grid.SetColumnSpan(heroActions, 2);
+        }
+        else Grid.SetColumn(heroActions, 1);
+        heroRow.Children.Add(heroActions);
         heroContent.Children.Add(heroRow);
 
         // ── Craft quality forecast ─────────────────────────────────────────────
@@ -1191,11 +1305,11 @@ public partial class MainWindow
             forecastStrip?.Update(forecast, qualityControls.Select(c => c.Control.Value).ToList(), fade);
         }
         RefreshForecast();
-        bool anyControlled = full.Ingredients.Any(i => SlotsForIngredient(full, i.ResourceName).Count > 0);
         // No forecast rows means nothing honest to show: no label, no presets.
         if (anyControlled && forecast.Count > 0)
         {
             forecastStrip = new CraftForecastStrip();
+            if (heroStacked) forecastStrip.AlignPresetsLeft();   // mock @container 560
             forecastStrip.PresetChosen += v =>
             {
                 forecastBulk = true;
@@ -1219,14 +1333,25 @@ public partial class MainWindow
         BlueprintDetailPanel.Children.Add(heroCard);
 
         // ── two-column split: ingredients (left) | unlock + locations (right) ──
+        // Stacked (mock @container 700): one column, bill of materials first, then unlock and mine.
         var splitGrid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var leftHost = new StackPanel();
         var rightHost = new StackPanel();
-        Grid.SetColumn(leftHost, 0);
-        Grid.SetColumn(rightHost, 2);
+        if (detailLayout == DetailLayout.Wide)
+        {
+            splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(anyControlled ? ControlledBillShare : 1, GridUnitType.Star) });
+            splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(DetailSplitGap) });
+            splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(leftHost, 0);
+            Grid.SetColumn(rightHost, 2);
+        }
+        else
+        {
+            splitGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            splitGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            rightHost.Margin = new Thickness(0, 18, 0, 0);
+            Grid.SetRow(rightHost, 1);
+        }
         splitGrid.Children.Add(leftHost);
         splitGrid.Children.Add(rightHost);
         BlueprintDetailPanel.Children.Add(splitGrid);
@@ -1330,16 +1455,14 @@ public partial class MainWindow
         var bomHead = new Grid { Margin = new Thickness(0, 8, 0, 0) };
         bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bomHead.Children.Add(new TextBlock { Text = anyControlled ? "BILL OF MATERIALS  ·  set the quality you hold" : "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
+        bomHead.Children.Add(new TextBlock { Text = anyControlled && detailLayout == DetailLayout.Wide && !rowsStacked ? "BILL OF MATERIALS  ·  set the quality you hold" : "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
         var bomQtyHd = new TextBlock { Text = anyControlled ? "Q 0 - 1000" : "QTY", FontFamily = monoFont, FontSize = 11, Foreground = dimB };
         Grid.SetColumn(bomQtyHd, 1); bomHead.Children.Add(bomQtyHd);
         host.Children.Add(new Border { Child = bomHead, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8), Margin = new Thickness(0, 0, 0, 2) });
 
         double bomTotal = full.Ingredients.Sum(i => i.Quantity);
         // The mock's lab-fg (#B9C4D0) has no app key; FgBrush at 0.75 reads the same on the panel.
-        var softFg = fgB.Clone();
-        softFg.Opacity = 0.75;
-        softFg.Freeze();
+        var softFg = Hud.WithOpacity(fgB, 0.75);
 
         foreach (var ing in full.Ingredients)
         {
@@ -1351,7 +1474,7 @@ public partial class MainWindow
             var ingSlots = SlotsForIngredient(full, ing.ResourceName);
             if (ingSlots.Count > 0)
             {
-                host.Children.Add(BuildForecastBomRow(full, ingCopy, ingSlots, rb, tier, forecast, navBorder0, softFg, BandsOf(ing.ResourceName), (ore, ctl) =>
+                host.Children.Add(BuildForecastBomRow(full, ingCopy, ingSlots, rb, tier, forecast, navBorder0, softFg, BandsOf(ing.ResourceName), rowsStacked, (ore, ctl) =>
                 {
                     qualityControls.Add((ore, ctl));
                     // Preview only: the strip follows the knob; save and log wait for the release.

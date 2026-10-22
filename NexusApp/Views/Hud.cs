@@ -19,6 +19,18 @@ namespace NexusApp.Views;
 public static partial class Hud
 {
     public static Brush Br(string k) => (Brush)Application.Current.FindResource(k);
+
+    /// <summary>
+    /// A frozen copy of a brush at the given opacity. Theme brushes bind Color with DynamicResource,
+    /// and Clone() keeps that expression so Freeze() throws; CloneCurrentValue() copies the resolved colour.
+    /// </summary>
+    internal static Brush WithOpacity(Brush source, double opacity)
+    {
+        var b = source.CloneCurrentValue();
+        b.Opacity = opacity;
+        if (b.CanFreeze) b.Freeze();
+        return b;
+    }
     public static FontFamily Font(string k) => (FontFamily)Application.Current.FindResource(k);
 
     // Resolves either a SolidColorBrush key or a raw Color key to a Color, so callers

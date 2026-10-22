@@ -56,10 +56,7 @@ public sealed class QualityControl : Grid
     public QualityControl(string resource, IReadOnlyList<QualityBand> bands, int initial)
     {
         _bands = bands;
-        var range = Hud.Br("FgBrush").Clone();
-        range.Opacity = 0.75;
-        range.Freeze();
-        _rangeBrush = range;
+        _rangeBrush = Hud.WithOpacity(Hud.Br("FgBrush"), 0.75);
         _value = _committed = Math.Clamp(initial, 0, MaxQuality);
 
         var mono = (FontFamily)Application.Current.FindResource("MonoFont");

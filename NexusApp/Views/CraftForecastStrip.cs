@@ -22,6 +22,7 @@ public sealed class CraftForecastStrip : StackPanel
     private static readonly string[] PresetLabels = ["Q500 stock", "Q1000 pristine"];
 
     private readonly WrapPanel _chips;
+    private readonly StackPanel _presetRow;
     private readonly List<(Border Chip, TextBlock Text, int Value)> _presets = [];
     private readonly Dictionary<string, (TextBlock Value, TextBlock From)> _chipByKey = [];
     private string _chipKeys = "";
@@ -46,12 +47,12 @@ public sealed class CraftForecastStrip : StackPanel
         _chips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
         Children.Add(_chips);
 
-        var presets = new StackPanel
+        _presetRow = new StackPanel
         {
             Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 4, 2, 0),
         };
-        presets.Children.Add(new TextBlock
+        _presetRow.Children.Add(new TextBlock
         {
             Text = "SET ALL", FontFamily = mono, FontSize = 10, Foreground = Hud.Br("FgDimBrush"),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
@@ -90,9 +91,9 @@ public sealed class CraftForecastStrip : StackPanel
                 PresetChosen?.Invoke(value);
             };
             _presets.Add((chip, text, value));
-            presets.Children.Add(chip);
+            _presetRow.Children.Add(chip);
         }
-        Children.Add(presets);
+        Children.Add(_presetRow);
     }
 
 
@@ -123,6 +124,13 @@ public sealed class CraftForecastStrip : StackPanel
             }
         }
         foreach (var (chip, text, v) in _presets) StylePreset(chip, text, v, chip.IsMouseOver);
+    }
+
+    /// <summary>Narrow hero (mock @container 560): the preset row sits left, under the chips.</summary>
+    public void AlignPresetsLeft()
+    {
+        _presetRow.HorizontalAlignment = HorizontalAlignment.Left;
+        _presetRow.Margin = new Thickness(0, 4, 0, 0);
     }
 
     private Border BuildChip(StatForecast r)
