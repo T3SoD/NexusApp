@@ -109,6 +109,8 @@ public class HelpDialog : Window
                 "Filter the library by All, Owned, or Not owned; the owned count updates live as you mark blueprints.",
                 "Click Import owned from logs… to scan your Game.log and its backups and mark everything you've already received as Owned - or let Session Tracking collect them live as you play.",
                 "Click Import from SCMDB… to import ownership from a scmdb.net export file (.json) - matched, completed blueprints are marked Owned, and the summary shows any names that weren't recognized.",
+                "The Crafting view of a blueprint has a quality control for every ore. Set the quality you hold and the forecast reads how each stat moves against a stock craft at Q500, from the game's own crafting curves.",
+                "Two things are assumed until confirmed in game: when two slots shape the same stat their changes add together, and a higher quality is always the better end of a curve.",
             ]),
 
         new("✓", "Session Tracking",

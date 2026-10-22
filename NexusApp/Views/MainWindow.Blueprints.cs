@@ -10,6 +10,11 @@ namespace NexusApp.Views;
 // Split from MainWindow.xaml.cs (app review, Task 13): Blueprint Library browse + detail.
 public partial class MainWindow
 {
+    /// <summary>Empty-state line of the HOW TO UNLOCK block.</summary>
+    internal static string UnlockEmptyText(bool isStarter) => isStarter
+        ? "Starter blueprint. Every player has this one from the first login."
+        : "No unlock information available";
+
     // ── Blueprints ───────────────────────────────────────────────────────────
 
     // ── Drill-down browse (Category → Subcategory → blueprint) ──────────────────
@@ -1883,13 +1888,34 @@ public partial class MainWindow
 
             if (full.UnlockEntries.Count == 0)
             {
-                host.Children.Add(new TextBlock
+                if (App.Data.IsStarterBlueprint(full.Name))
                 {
-                    Text = "No unlock information available",
-                    FontSize = 11, FontStyle = FontStyles.Italic,
-                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                    Margin = new Thickness(0, 0, 0, 12),
-                });
+                    var starterText = UnlockEmptyText(true);
+                    const string lead = "Starter blueprint.";
+                    var starterTb = new TextBlock
+                    {
+                        FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+                        Margin = new Thickness(0, 0, 0, 12),
+                    };
+                    starterTb.Inlines.Add(new System.Windows.Documents.Run(lead)
+                    {
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+                    });
+                    starterTb.Inlines.Add(new System.Windows.Documents.Run(starterText.Substring(lead.Length)));
+                    host.Children.Add(starterTb);
+                }
+                else
+                {
+                    host.Children.Add(new TextBlock
+                    {
+                        Text = UnlockEmptyText(false),
+                        FontSize = 11, FontStyle = FontStyles.Italic,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                        Margin = new Thickness(0, 0, 0, 12),
+                    });
+                }
             }
             else
             {
