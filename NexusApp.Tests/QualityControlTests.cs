@@ -125,20 +125,7 @@ public class QualityControlTests
     [Fact]
     public void RowWidthFor_HalvesTheSplitOnlyWhenWide()
     {
-        Assert.Equal(413, MainWindow.RowWidthFor(850, controlled: false));
-        Assert.Equal(650, MainWindow.RowWidthFor(650, controlled: false));
-        Assert.Equal(650, MainWindow.RowWidthFor(650, controlled: true));
-    }
-
-    [Fact]
-    public void RowWidthFor_ControlledBlueprintsGiveTheBillThe135Share()
-    {
-        // Mock direction 2: split 1.35fr 24px 1fr, so the bill column is 1.35 / 2.35 of (detail - 24).
-        double at1000 = MainWindow.RowWidthFor(1000, controlled: true);
-        Assert.Equal(560.68, at1000, 2);
-        Assert.False(MainWindow.StackRowControl(at1000));
-        double at900 = MainWindow.RowWidthFor(900, controlled: true);
-        Assert.Equal(503.23, at900, 2);
-        Assert.True(MainWindow.StackRowControl(at900));
+        Assert.Equal(413, MainWindow.RowWidthFor(850));
+        Assert.Equal(650, MainWindow.RowWidthFor(650));
     }
 }

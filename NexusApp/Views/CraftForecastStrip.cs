@@ -14,14 +14,15 @@ namespace NexusApp.Views;
 /// The Blueprint Library hero's forecast strip: one chip per affected stat, read against a
 /// stock (Q500) craft, plus the SET ALL presets. Values and layout follow library-redesign
 /// direction 2 (.heroFore, .schip, .presets). The strip only displays; the caller computes
-/// the forecast and applies a chosen preset.
+/// the forecast and applies a chosen preset. In presets-only mode (the CRAFTING view, round 5
+/// design 3) it builds the SET ALL row alone, left-aligned, with no hairline, label or chips.
 /// </summary>
 public sealed class CraftForecastStrip : StackPanel
 {
     private static readonly int[] PresetValues = [CraftForecast.StockQuality, 1000];
     private static readonly string[] PresetLabels = ["Q500 stock", "Q1000 pristine"];
 
-    private readonly WrapPanel _chips;
+    private readonly WrapPanel? _chips;
     private readonly StackPanel _presetRow;
     private readonly List<(Border Chip, TextBlock Text, int Value)> _presets = [];
     private readonly Dictionary<string, (TextBlock Value, TextBlock From)> _chipByKey = [];
@@ -31,26 +32,31 @@ public sealed class CraftForecastStrip : StackPanel
     /// <summary>Raised with the preset quality the player chose for every controlled ore.</summary>
     public event Action<int>? PresetChosen;
 
-    public CraftForecastStrip()
+    public CraftForecastStrip(bool presetsOnly = false)
     {
         var mono = (FontFamily)Application.Current.FindResource("MonoFont");
         Margin = new Thickness(0, 12, 0, 0);
 
-        Children.Add(new Border { Height = 1, Background = Hud.Br("NavBorderBrush") });
-        Children.Add(new TextBlock
+        if (!presetsOnly)
         {
-            Text = "FORECAST AT YOUR QUALITIES  ·  vs stock craft",
-            FontFamily = mono, FontSize = 9.5, Foreground = Hud.Br("AccentBrush"),
-            Margin = new Thickness(0, 12, 0, 0),
-        });
-        // Chip gap is 6 px both ways; the trailing 6 px under the last row comes off the presets margin.
-        _chips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-        Children.Add(_chips);
+            Children.Add(new Border { Height = 1, Background = Hud.Br("NavBorderBrush") });
+            Children.Add(new TextBlock
+            {
+                Text = "FORECAST AT YOUR QUALITIES  ·  vs stock craft",
+                FontFamily = mono, FontSize = 9.5, Foreground = Hud.Br("AccentBrush"),
+                Margin = new Thickness(0, 12, 0, 0),
+            });
+            // Chip gap is 6 px both ways; the trailing 6 px under the last row comes off the presets margin.
+            _chips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            Children.Add(_chips);
+        }
 
+        // Presets-only: mock .presets margin 12px 2px 0 (the 12 is this panel's own top margin).
         _presetRow = new StackPanel
         {
-            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 4, 2, 0),
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = presetsOnly ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+            Margin = presetsOnly ? new Thickness(2, 0, 2, 0) : new Thickness(0, 4, 2, 0),
         };
         _presetRow.Children.Add(new TextBlock
         {
@@ -101,14 +107,20 @@ public sealed class CraftForecastStrip : StackPanel
     public void Update(IReadOnlyList<StatForecast> rows, IReadOnlyList<int> slotQualities, bool fade = true)
     {
         _qualities = slotQualities;
+        if (_chips != null) UpdateChips(_chips, rows, fade);
+        foreach (var (chip, text, v) in _presets) StylePreset(chip, text, v, chip.IsMouseOver);
+    }
+
+    private void UpdateChips(WrapPanel chips, IReadOnlyList<StatForecast> rows, bool fade)
+    {
         var keys = string.Join("|", rows.Select(r => r.Key));
         if (keys != _chipKeys)
         {
             // A different stat set means a different blueprint: rebuild, no cross-fade.
             _chipKeys = keys;
-            _chips.Children.Clear();
+            chips.Children.Clear();
             _chipByKey.Clear();
-            foreach (var r in rows) _chips.Children.Add(BuildChip(r));
+            foreach (var r in rows) chips.Children.Add(BuildChip(r));
         }
         else
         {
@@ -123,7 +135,6 @@ public sealed class CraftForecastStrip : StackPanel
                 if (fade) CrossFade(value);   // a drag preview swaps text and colour without pulsing
             }
         }
-        foreach (var (chip, text, v) in _presets) StylePreset(chip, text, v, chip.IsMouseOver);
     }
 
     /// <summary>Narrow hero (mock @container 560): the preset row sits left, under the chips.</summary>
