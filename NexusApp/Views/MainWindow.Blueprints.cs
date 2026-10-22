@@ -984,6 +984,113 @@ public partial class MainWindow
         return sp;
     }
 
+    // ── Craft quality forecast: slot matching and row copy ──────────────────
+    // A slot without modifiers shapes no stat, so it never earns a quality control; the seed
+    // carries such slots on purpose and their ore keeps the plain one-line row.
+
+    /// <summary>Every slot with modifiers that accepts this ore (any of its resource options), in slot order.</summary>
+    internal static IReadOnlyList<BlueprintSlot> SlotsForIngredient(NexusApp.Models.Blueprint bp, string resourceName) =>
+        bp.Slots
+            .Where(s => s.Modifiers.Count > 0
+                && s.Resources.Any(r => string.Equals(r, resourceName, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+    /// <summary>The first slot with modifiers that accepts this ore, or null.</summary>
+    internal static BlueprintSlot? SlotForIngredient(NexusApp.Models.Blueprint bp, string resourceName) =>
+        SlotsForIngredient(bp, resourceName).FirstOrDefault();
+
+    /// <summary>Second line of a forecast bill-of-materials row: "6 cSCU  ·  FRAME + BARREL slots".</summary>
+    internal static string SlotLine(double qty, string unit, IReadOnlyList<BlueprintSlot> slots)
+    {
+        var names = string.Join(" + ", slots.Select(s => s.Name.ToUpperInvariant()));
+        return $"{CraftAmount.Format(qty, unit)}  ·  {names} {(slots.Count == 1 ? "slot" : "slots")}";
+    }
+
+    internal static string CraftTimeText(int seconds) =>
+        seconds < 60 ? $"{seconds} s" : $"{(int)Math.Round(seconds / 60.0, MidpointRounding.AwayFromZero)} min";
+
+    // A bill-of-materials row for an ore that feeds one or more slots with modifiers
+    // (library-redesign direction 2, .bomQ): the quantity moves under the name next to the
+    // slot it fills, a third line names the stats it shapes, and the quality control takes a
+    // 250 px column before the add button. The Codex cross-link moves from the whole row to
+    // the name block so a press on the control never navigates away.
+    private Border BuildForecastBomRow(
+        NexusApp.Models.Blueprint bp, BlueprintIngredient ing, IReadOnlyList<BlueprintSlot> slots,
+        System.Windows.Media.Brush rarityBrush, string tier, IReadOnlyList<StatForecast> forecast,
+        System.Windows.Media.Brush line, System.Windows.Media.Brush softFg,
+        IReadOnlyList<QualityBand> bands, Action<string, QualityControl> wire)
+    {
+        var fgB = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dimB = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+        var uiFont = (System.Windows.Media.FontFamily)FindResource("UiFont");
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name block
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });                   // quality control
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // add
+
+        var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rarityBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
+        Grid.SetColumn(dot, 0); g.Children.Add(dot);
+
+        var who = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0), Background = System.Windows.Media.Brushes.Transparent };
+        var nameLine = new StackPanel { Orientation = Orientation.Horizontal };
+        nameLine.Children.Add(new TextBlock { Text = ing.ResourceName, FontSize = 13.5, Foreground = rarityBrush, VerticalAlignment = VerticalAlignment.Center });
+        if (tier.Length > 0)
+            nameLine.Children.Add(new TextBlock { Text = "   " + tier, FontSize = 10, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+        who.Children.Add(nameLine);
+
+        var qtyText = CraftAmount.Format(ing.Quantity, ing.Unit);
+        var meta = new TextBlock { FontFamily = monoFont, FontSize = 11, Foreground = dimB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
+        meta.Inlines.Add(new System.Windows.Documents.Run(qtyText) { Foreground = fgB, FontWeight = FontWeights.Medium });
+        meta.Inlines.Add(new System.Windows.Documents.Run(SlotLine(ing.Quantity, ing.Unit, slots)[qtyText.Length..]));
+        who.Children.Add(meta);
+
+        // Stat names come from the forecast rows so the Mining Laser name override reads the same here and in the strip.
+        var slotNames = slots.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var shaped = forecast.Where(r => r.Slots.Any(slotNames.Contains)).Select(r => r.Name).Distinct().ToList();
+        if (shaped.Count > 0)
+        {
+            var mods = new TextBlock { FontFamily = uiFont, FontSize = 10.5, Foreground = dimB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
+            mods.Inlines.Add(new System.Windows.Documents.Run("Shapes "));
+            for (int k = 0; k < shaped.Count; k++)
+            {
+                mods.Inlines.Add(new System.Windows.Documents.Run(shaped[k]) { Foreground = softFg });
+                if (k < shaped.Count - 1) mods.Inlines.Add(new System.Windows.Documents.Run(", "));
+            }
+            who.Children.Add(mods);
+        }
+        Grid.SetColumn(who, 1); g.Children.Add(who);
+
+        var ore = ing.ResourceName;
+        var ctl = new QualityControl(ore, bands, App.Settings.Current.HeldQualityOf(ore))
+        {
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0),
+        };
+        // The bands popup hooks in here; until then the request is logged so the click is traceable.
+        ctl.GraphRequested += () => InteractionLog.Click($"forecast bands {ore}", ctl);
+        wire(ore, ctl);
+        Grid.SetColumn(ctl, 2); g.Children.Add(ctl);
+
+        var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ing, VerticalAlignment = VerticalAlignment.Center };
+        addBtn.Click += (s, e) => _vm.AddToShoppingCommand.Execute(((Button)s).Tag);
+        Grid.SetColumn(addBtn, 3); g.Children.Add(addBtn);
+
+        var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = line, BorderThickness = new Thickness(0, 0, 0, 1) };
+
+        if (_vm.AllResources.Any(r => r.Name.Equals(ore, StringComparison.OrdinalIgnoreCase)))
+        {
+            who.Cursor = System.Windows.Input.Cursors.Hand;
+            who.ToolTip = "Open in Mining Codex";
+            var hov = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+            who.MouseEnter += (s, _) => rowBorder.Background = hov;
+            who.MouseLeave += (s, _) => rowBorder.Background = System.Windows.Media.Brushes.Transparent;
+            who.MouseLeftButtonDown += (s, _) => NavigateToResource(ore);
+        }
+        return rowBorder;
+    }
+
     private void ShowBlueprintDetail(NexusApp.Models.Blueprint selected)
     {
         InteractionLog.Nav($"Blueprint Library: open {selected.Name}");
@@ -1035,6 +1142,8 @@ public partial class MainWindow
         RefreshBlueprintNetworkCounts();
         if (_bpNetworkCounts.TryGetValue(full.Name, out var netOwners) && netOwners > 0)
             specs.Children.Add(HeroSpec("IN NETWORK", netOwners.ToString(), fgB, dimB, monoFont));
+        if (full.CraftSeconds is int craftSeconds)
+            specs.Children.Add(HeroSpec("CRAFT TIME", CraftTimeText(craftSeconds), fgB, dimB, monoFont));
         Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
         var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         heroActions.Children.Add(OwnedToggle(full.Name));
@@ -1047,6 +1156,56 @@ public partial class MainWindow
         heroActions.Children.Add(heroAddBtn);
         Grid.SetColumn(heroActions, 1); heroRow.Children.Add(heroActions);
         heroContent.Children.Add(heroRow);
+
+        // ── Craft quality forecast ─────────────────────────────────────────────
+        // Held quality is per ore and shared by every blueprint that uses it. The engine asks
+        // by slot name, so each slot reads the quality of the ore the bill of materials lists
+        // for it (the first of its options when none is listed).
+        var craftStats = App.Data.GetCraftStats();
+        var bandCache = new Dictionary<string, IReadOnlyList<QualityBand>>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<QualityBand> BandsOf(string resource) =>
+            bandCache.TryGetValue(resource, out var cached) ? cached : bandCache[resource] = App.Data.GetQualityBands(resource);
+        var slotOre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slot in full.Slots.Where(s => s.Modifiers.Count > 0))
+        {
+            var ore = slot.Resources.FirstOrDefault(r => full.Ingredients.Any(i => i.ResourceName.Equals(r, StringComparison.OrdinalIgnoreCase)))
+                      ?? slot.Resources.FirstOrDefault();
+            if (ore != null) slotOre.TryAdd(slot.Name, ore);
+        }
+        var qualityControls = new List<(string Ore, QualityControl Control)>();
+        // A control's live value wins over the saved one, so a drag preview reads the knob, not the file.
+        int HeldOfSlot(string slotName)
+        {
+            if (!slotOre.TryGetValue(slotName, out var ore)) return CraftForecast.StockQuality;
+            foreach (var (o, c) in qualityControls)
+                if (o.Equals(ore, StringComparison.OrdinalIgnoreCase)) return c.Value;
+            return App.Settings.Current.HeldQualityOf(ore);
+        }
+
+        bool forecastBulk = false;   // a preset moves every control: save and refresh once, not per ore
+        IReadOnlyList<StatForecast> forecast = [];
+        CraftForecastStrip? forecastStrip = null;
+        void RefreshForecast(bool fade = true)
+        {
+            forecast = CraftForecast.Forecast(full, HeldOfSlot, BandsOf, craftStats);
+            forecastStrip?.Update(forecast, qualityControls.Select(c => c.Control.Value).ToList(), fade);
+        }
+        RefreshForecast();
+        bool anyControlled = full.Ingredients.Any(i => SlotsForIngredient(full, i.ResourceName).Count > 0);
+        // No forecast rows means nothing honest to show: no label, no presets.
+        if (anyControlled && forecast.Count > 0)
+        {
+            forecastStrip = new CraftForecastStrip();
+            forecastStrip.PresetChosen += v =>
+            {
+                forecastBulk = true;
+                try { foreach (var (_, c) in qualityControls) c.SetValue(v, "preset"); }
+                finally { forecastBulk = false; }
+                App.Settings.Save();
+                RefreshForecast();
+            };
+            heroContent.Children.Add(forecastStrip);
+        }
 
         var heroRoot = new Grid();
         heroRoot.Children.Add(heroContent);
@@ -1166,16 +1325,21 @@ public partial class MainWindow
         host = leftHost;
         var navBorder0 = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
 
-        // Bill of materials header (label + QTY column heading)
+        // Bill of materials header (label + QTY column heading). With quality controls the quantity
+        // moves under each ore name, so the right heading names the control's range instead.
         var bomHead = new Grid { Margin = new Thickness(0, 8, 0, 0) };
         bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bomHead.Children.Add(new TextBlock { Text = "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
-        var bomQtyHd = new TextBlock { Text = "QTY", FontFamily = monoFont, FontSize = 11, Foreground = dimB };
+        bomHead.Children.Add(new TextBlock { Text = anyControlled ? "BILL OF MATERIALS  ·  set the quality you hold" : "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
+        var bomQtyHd = new TextBlock { Text = anyControlled ? "Q 0 - 1000" : "QTY", FontFamily = monoFont, FontSize = 11, Foreground = dimB };
         Grid.SetColumn(bomQtyHd, 1); bomHead.Children.Add(bomQtyHd);
         host.Children.Add(new Border { Child = bomHead, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8), Margin = new Thickness(0, 0, 0, 2) });
 
         double bomTotal = full.Ingredients.Sum(i => i.Quantity);
+        // The mock's lab-fg (#B9C4D0) has no app key; FgBrush at 0.75 reads the same on the panel.
+        var softFg = fgB.Clone();
+        softFg.Opacity = 0.75;
+        softFg.Freeze();
 
         foreach (var ing in full.Ingredients)
         {
@@ -1183,6 +1347,26 @@ public partial class MainWindow
             var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
             var rb = RarityBrush(rarity);
             var tier = rarity.Length > 0 ? char.ToUpper(rarity[0]) + rarity.Substring(1) : "";
+
+            var ingSlots = SlotsForIngredient(full, ing.ResourceName);
+            if (ingSlots.Count > 0)
+            {
+                host.Children.Add(BuildForecastBomRow(full, ingCopy, ingSlots, rb, tier, forecast, navBorder0, softFg, BandsOf(ing.ResourceName), (ore, ctl) =>
+                {
+                    qualityControls.Add((ore, ctl));
+                    // Preview only: the strip follows the knob; save and log wait for the release.
+                    ctl.ValueChanging += _ => RefreshForecast(fade: false);
+                    ctl.QualityChanged += (q, source) =>
+                    {
+                        App.Settings.Current.SetHeldQuality(ore, q);
+                        Logger.Info($"[UI] forecast q {full.Name} {ore} {q} {source}");
+                        if (forecastBulk) return;
+                        App.Settings.Save();
+                        RefreshForecast();
+                    };
+                }));
+                continue;
+            }
 
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
@@ -1223,6 +1407,9 @@ public partial class MainWindow
 
             host.Children.Add(rowBorder);
         }
+
+        // Light the preset chip that matches now that every control exists.
+        forecastStrip?.Update(forecast, qualityControls.Select(c => c.Control.Value).ToList());
 
         // Total footer
         var totalGrid = new Grid { Margin = new Thickness(2, 11, 2, 0) };
