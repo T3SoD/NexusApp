@@ -1427,8 +1427,15 @@ public partial class MainWindow
         {
             VerticalAlignment = VerticalAlignment.Center,
         };
-        // The bands popup hooks in here; until then the request is logged so the click is traceable.
-        ctl.GraphRequested += () => InteractionLog.Click($"forecast bands {ore}", ctl);
+        // The bands popup covers the main window (its scrim is not clipped by the hero chamfer);
+        // a band pick sets this control and the popup stays open on the new marker.
+        ctl.GraphRequested += () =>
+        {
+            var dlg = new QualityBandsDialog(ore, string.Join(" + ", slots.Select(s => s.Name)), bp.Name, bands, ctl.Value);
+            QualityBandsDialog.FitToOwner(dlg, Window.GetWindow(ctl));
+            dlg.BandPicked += q => ctl.SetValue(q, "bands");
+            dlg.ShowDialog();
+        };
         wire(ore, ctl);
         if (stacked)
         {
