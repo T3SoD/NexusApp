@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.15.0  -  Oct 22, 2026",
+        [
+            "The Blueprint Library forecasts how ore quality changes a crafted item. Each blueprint's detail now has a Sourcing view (how to unlock, bill of materials, where to mine) and a Crafting view, where a slider or a typed number per ore sets the quality you hold and every affected stat reads against a stock craft at Q500, from the game's own crafting curves",
+            "A quality bands graph shows how the refined quality you hold maps to the value the bench crafts with, per ore. The results column can collapse to give the detail more room, and the nine starter blueprints now say so instead of showing no unlock information",
+            "Reference data 1.5.0 adds the crafting slots, stat curves and quality bands for every blueprint with modifiers",
+        ]),
         ("App  6.14.7  -  Oct 19, 2026",
         [
             "Reference data moves to Star Citizen 4.10.2. Thirteen new craftable blueprints arrive, among them the DayBreak and Goliath weapons, the F55 Shadowflux LMG and the Monolith heavy armor set, along with new blueprint unlocks for the Pyro fuel tank contracts, Wikelo missions and the renamed Bounty Hunters Guild bounty tiers",
