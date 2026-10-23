@@ -137,8 +137,6 @@ public sealed class QualityBandsDialog : Window
             frame.Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 60, ShadowDepth = 24, Direction = 270, Opacity = 0.55 };
         _panel.RenderTransformOrigin = new Point(0.5, 0.5);
         _panel.RenderTransform = new TransformGroup { Children = { _panelScale, _panelRise } };
-        // A press inside the panel never reaches the scrim.
-        _panel.MouseLeftButtonDown += (_, e) => e.Handled = true;
         UiScaleService.ApplyTransform(_panel, UiScaleService.AppScale);
 
         var scrimColor = Hud.Col("BgColor");
@@ -375,7 +373,7 @@ public sealed class QualityBandsDialog : Window
             new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(Motion.QuickRevealMs)) { EasingFunction = Motion.Settle });
     }
 
-    private bool IsCurrent(QualityBand b) => b.Start <= _current && _current <= b.End;
+    private bool IsCurrent(QualityBand b) => BandAt(_bands, _current) == b;
 
     private void FadeTint(Rectangle hl, double to)
     {

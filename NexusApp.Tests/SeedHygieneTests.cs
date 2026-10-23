@@ -194,7 +194,7 @@ public class SeedHygieneTests
     }
 
     [Fact]
-    public void EverySlotFirstResourceIsAnIngredientUnlessItem()
+    public void EverySlotFirstResourceIsAnIngredient()
     {
         using var doc = SeedTestFixture.LoadSeed();
         foreach (var b in Blueprints(doc))
@@ -206,13 +206,31 @@ public class SeedHygieneTests
                 if (i.GetProperty("resourceName").GetString() is { } r) ingredients.Add(r);
             foreach (var slot in slots.EnumerateArray())
             {
-                if (slot.TryGetProperty("item", out var item) && item.GetBoolean()) continue;
                 var slotName = slot.GetProperty("name").GetString();
                 var resources = slot.GetProperty("resources");
-                Assert.True(resources.GetArrayLength() > 0, $"{name} / {slotName}: non-item slot has no resources");
+                Assert.True(resources.GetArrayLength() > 0, $"{name} / {slotName}: slot has no resources");
                 var first = resources[0].GetString() ?? "";
                 Assert.True(ingredients.Contains(first),
                     $"{name} / {slotName}: first resource {first} is not an ingredient");
+            }
+        }
+    }
+
+    // Held quality is keyed by slot name (case-insensitive in the Library), so two slots with
+    // one name on a blueprint could not be told apart.
+    [Fact]
+    public void SlotNamesAreUniquePerBlueprint()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        foreach (var b in Blueprints(doc))
+        {
+            if (!b.TryGetProperty("slots", out var slots)) continue;
+            var name = b.GetProperty("name").GetString() ?? "";
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var slot in slots.EnumerateArray())
+            {
+                var slotName = slot.GetProperty("name").GetString() ?? "";
+                Assert.True(seen.Add(slotName), $"{name}: slot name {slotName} appears twice");
             }
         }
     }

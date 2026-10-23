@@ -408,7 +408,7 @@ public partial class MainWindow
 
         // The collapse toggle sits at the right end of the breadcrumb row on every level.
         WrapCrumb(BlueprintCrumbHost, () => NavToggleButton(collapsed: false));
-        EnsureNavRail();
+        BuildNavRail();
         _bpRailLabel!.Text = _bpRailText;
     }
 
@@ -1013,14 +1013,6 @@ public partial class MainWindow
                 && s.Resources.Any(r => string.Equals(r, resourceName, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
-    /// <summary>The first slot with modifiers that accepts this ore, or null.</summary>
-    internal static BlueprintSlot? SlotForIngredient(NexusApp.Models.Blueprint bp, string resourceName) =>
-        SlotsForIngredient(bp, resourceName).FirstOrDefault();
-
-    /// <summary>"6 cSCU  ·  FRAME + BARREL slots": a quantity before the slot label.</summary>
-    internal static string SlotLine(double qty, string unit, IReadOnlyList<BlueprintSlot> slots) =>
-        $"{CraftAmount.Format(qty, unit)}  ·  {SlotLabel(slots)}";
-
     /// <summary>Second line of a CRAFTING view row: "FRAME slot" or "FRAME + BARREL slots".</summary>
     internal static string SlotLabel(IReadOnlyList<BlueprintSlot> slots)
     {
@@ -1217,7 +1209,7 @@ public partial class MainWindow
         return g;
     }
 
-    private void EnsureNavRail()
+    private void BuildNavRail()
     {
         if (_bpRailLabel != null) return;
         var btn = NavToggleButton(collapsed: true);
@@ -1247,7 +1239,7 @@ public partial class MainWindow
     // so the border clips it instead of reflowing it every frame; the rail shows once collapsed.
     private void ApplyNavCollapse(bool animate)
     {
-        EnsureNavRail();
+        BuildNavRail();
         double target = NavColumnWidth(_bpNavCollapsed);
         if (!animate)
         {
@@ -1361,8 +1353,13 @@ public partial class MainWindow
         return LayoutFor(w) != _detailRenderedLayout || RowsStacked(RowWidthFor(w)) != _detailRenderedRowsStacked;
     }
 
-    internal static string CraftTimeText(int seconds) =>
-        seconds < 60 ? $"{seconds} s" : $"{(int)Math.Round(seconds / 60.0, MidpointRounding.AwayFromZero)} min";
+    /// <summary>"45 s", "2 min" or "2 min 30 s": whole units, no rounding.</summary>
+    internal static string CraftTimeText(int seconds)
+    {
+        if (seconds < 60) return $"{seconds} s";
+        int m = seconds / 60, s = seconds % 60;
+        return s == 0 ? $"{m} min" : $"{m} min {s} s";
+    }
 
     // A CRAFTING view row for an ore that feeds one or more slots with modifiers (library-redesign
     // round 5 design 3, lean .bomQ): the name, the slot it fills, a third line naming the stats it
@@ -1600,7 +1597,7 @@ public partial class MainWindow
         {
             forecast = CraftForecast.Forecast(full, HeldOfSlot, BandsOf, craftStats);
             statRows?.Update(forecast, animate: fade);
-            presetStrip?.Update(forecast, qualityControls.Select(c => c.Control.Value).ToList(), fade);
+            presetStrip?.Update(qualityControls.Select(c => c.Control.Value).ToList());
         }
         RefreshForecast();
         // No forecast rows means nothing honest to show: the SOURCING body alone, no segment bar.
@@ -1757,7 +1754,7 @@ public partial class MainWindow
                 }));
             }
 
-            presetStrip = new CraftForecastStrip(presetsOnly: true);
+            presetStrip = new CraftForecastStrip();
             presetStrip.PresetChosen += v =>
             {
                 forecastBulk = true;

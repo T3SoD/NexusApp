@@ -25,47 +25,39 @@ public class QualityControlTests
     }
 
     [Fact]
-    public void SlotForIngredient_MatchesAnyOption()
+    public void SlotsForIngredient_MatchesAnyOption()
     {
         var bp = new Blueprint { Name = "Test", Slots = [Slot("Frame", ["Aluminium"]), Slot("Barrel", ["Copper", "Iron"])] };
-        Assert.Equal("Barrel", MainWindow.SlotForIngredient(bp, "Iron")?.Name);
-        Assert.Equal("Barrel", MainWindow.SlotForIngredient(bp, "iron")?.Name);
-        Assert.Null(MainWindow.SlotForIngredient(bp, "Gold"));
+        Assert.Equal("Barrel", MainWindow.SlotsForIngredient(bp, "Iron").FirstOrDefault()?.Name);
+        Assert.Equal("Barrel", MainWindow.SlotsForIngredient(bp, "iron").FirstOrDefault()?.Name);
+        Assert.Null(MainWindow.SlotsForIngredient(bp, "Gold").FirstOrDefault());
     }
 
     [Fact]
-    public void SlotForIngredient_IgnoresSlotsWithoutModifiers()
+    public void SlotsForIngredient_IgnoresSlotsWithoutModifiers()
     {
         var bp = new Blueprint { Name = "Test", Slots = [Slot("Grip", ["Iron"], []), Slot("Barrel", ["Iron"])] };
-        Assert.Equal("Barrel", MainWindow.SlotForIngredient(bp, "Iron")?.Name);
+        Assert.Equal("Barrel", MainWindow.SlotsForIngredient(bp, "Iron").FirstOrDefault()?.Name);
         var bare = new Blueprint { Name = "Bare", Slots = [Slot("Grip", ["Iron"], [])] };
-        Assert.Null(MainWindow.SlotForIngredient(bare, "Iron"));
+        Assert.Null(MainWindow.SlotsForIngredient(bare, "Iron").FirstOrDefault());
         Assert.Empty(MainWindow.SlotsForIngredient(bare, "Iron"));
     }
 
     [Fact]
-    public void SlotForIngredient_TwoSlotsOneOre_ReturnsBoth()
+    public void SlotsForIngredient_TwoSlotsOneOre_ReturnsBoth()
     {
         var bp = new Blueprint { Name = "Test", Slots = [Slot("Frame", ["Iron"]), Slot("Stock", ["Gold"]), Slot("Barrel", ["Iron"])] };
         var slots = MainWindow.SlotsForIngredient(bp, "Iron");
         Assert.Equal(["Frame", "Barrel"], slots.Select(s => s.Name));
-        Assert.Equal("6 cSCU  ·  FRAME + BARREL slots", MainWindow.SlotLine(0.06, "SCU", slots));
-    }
-
-    [Fact]
-    public void SlotLine_OneSlot_Singular()
-    {
-        var slots = new List<BlueprintSlot> { Slot("Frame", ["Aluminium"]) };
-        Assert.Equal("4 cSCU  ·  FRAME slot", MainWindow.SlotLine(0.04, "SCU", slots));
-        Assert.Equal("2 units  ·  FRAME slot", MainWindow.SlotLine(2, "units", slots));
     }
 
     [Fact]
     public void CraftTimeText_FormatsSecondsAndMinutes()
     {
         Assert.Equal("45 s", MainWindow.CraftTimeText(45));
-        Assert.Equal("3 min", MainWindow.CraftTimeText(150));
-        Assert.Equal("14 min", MainWindow.CraftTimeText(810));
+        Assert.Equal("1 min 30 s", MainWindow.CraftTimeText(90));
+        Assert.Equal("2 min", MainWindow.CraftTimeText(120));
+        Assert.Equal("2 min 30 s", MainWindow.CraftTimeText(150));
     }
 
     [Fact]

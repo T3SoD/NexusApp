@@ -5,58 +5,38 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using NexusApp.Services;
 
 namespace NexusApp.Views;
 
 /// <summary>
-/// The Blueprint Library hero's forecast strip: one chip per affected stat, read against a
-/// stock (Q500) craft, plus the SET ALL presets. Values and layout follow library-redesign
-/// direction 2 (.heroFore, .schip, .presets). The strip only displays; the caller computes
-/// the forecast and applies a chosen preset. In presets-only mode (the CRAFTING view, round 5
-/// design 3) it builds the SET ALL row alone, left-aligned, with no hairline, label or chips.
+/// The SET ALL presets of the Blueprint Library CRAFTING view (round 5 design 3, mock .presets):
+/// one left-aligned row with no hairline, label or chips. The strip only displays; the caller
+/// applies a chosen preset.
 /// </summary>
 public sealed class CraftForecastStrip : StackPanel
 {
     private static readonly int[] PresetValues = [CraftForecast.StockQuality, 1000];
     private static readonly string[] PresetLabels = ["Q500 stock", "Q1000 pristine"];
 
-    private readonly WrapPanel? _chips;
     private readonly StackPanel _presetRow;
     private readonly List<(Border Chip, TextBlock Text, int Value)> _presets = [];
-    private readonly Dictionary<string, (TextBlock Value, TextBlock From)> _chipByKey = [];
-    private string _chipKeys = "";
     private IReadOnlyList<int> _qualities = [];
 
     /// <summary>Raised with the preset quality the player chose for every controlled ore.</summary>
     public event Action<int>? PresetChosen;
 
-    public CraftForecastStrip(bool presetsOnly = false)
+    public CraftForecastStrip()
     {
         var mono = (FontFamily)Application.Current.FindResource("MonoFont");
         Margin = new Thickness(0, 12, 0, 0);
 
-        if (!presetsOnly)
-        {
-            Children.Add(new Border { Height = 1, Background = Hud.Br("NavBorderBrush") });
-            Children.Add(new TextBlock
-            {
-                Text = "FORECAST AT YOUR QUALITIES  ·  vs stock craft",
-                FontFamily = mono, FontSize = 9.5, Foreground = Hud.Br("AccentBrush"),
-                Margin = new Thickness(0, 12, 0, 0),
-            });
-            // Chip gap is 6 px both ways; the trailing 6 px under the last row comes off the presets margin.
-            _chips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-            Children.Add(_chips);
-        }
-
-        // Presets-only: mock .presets margin 12px 2px 0 (the 12 is this panel's own top margin).
+        // Mock .presets margin 12px 2px 0 (the 12 is this panel's own top margin).
         _presetRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            HorizontalAlignment = presetsOnly ? HorizontalAlignment.Left : HorizontalAlignment.Right,
-            Margin = presetsOnly ? new Thickness(2, 0, 2, 0) : new Thickness(0, 4, 2, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(2, 0, 2, 0),
         };
         _presetRow.Children.Add(new TextBlock
         {
@@ -102,73 +82,11 @@ public sealed class CraftForecastStrip : StackPanel
         Children.Add(_presetRow);
     }
 
-
-    /// <summary>Shows the forecast rows and lights the preset every controlled ore currently sits at.</summary>
-    public void Update(IReadOnlyList<StatForecast> rows, IReadOnlyList<int> slotQualities, bool fade = true)
+    /// <summary>Lights the preset every controlled ore currently sits at.</summary>
+    public void Update(IReadOnlyList<int> slotQualities)
     {
         _qualities = slotQualities;
-        if (_chips != null) UpdateChips(_chips, rows, fade);
         foreach (var (chip, text, v) in _presets) StylePreset(chip, text, v, chip.IsMouseOver);
-    }
-
-    private void UpdateChips(WrapPanel chips, IReadOnlyList<StatForecast> rows, bool fade)
-    {
-        var keys = string.Join("|", rows.Select(r => r.Key));
-        if (keys != _chipKeys)
-        {
-            // A different stat set means a different blueprint: rebuild, no cross-fade.
-            _chipKeys = keys;
-            chips.Children.Clear();
-            _chipByKey.Clear();
-            foreach (var r in rows) chips.Children.Add(BuildChip(r));
-        }
-        else
-        {
-            foreach (var r in rows)
-            {
-                var (value, from) = _chipByKey[r.Key];
-                from.Text = string.Join(" + ", r.Slots);
-                var brush = VerdictBrush(r.Verdict);
-                if (value.Text == r.DeltaText && value.Foreground == brush) continue;
-                value.Text = r.DeltaText;
-                value.Foreground = brush;
-                if (fade) CrossFade(value);   // a drag preview swaps text and colour without pulsing
-            }
-        }
-    }
-
-    /// <summary>Narrow hero (mock @container 560): the preset row sits left, under the chips.</summary>
-    public void AlignPresetsLeft()
-    {
-        _presetRow.HorizontalAlignment = HorizontalAlignment.Left;
-        _presetRow.Margin = new Thickness(0, 4, 0, 0);
-    }
-
-    private Border BuildChip(StatForecast r)
-    {
-        var mono = (FontFamily)Application.Current.FindResource("MonoFont");
-        var ui = (FontFamily)Application.Current.FindResource("UiFont");
-        var sp = new StackPanel();
-        sp.Children.Add(new TextBlock { Text = r.Name.ToUpperInvariant(), FontFamily = ui, FontSize = 9, Foreground = Hud.Br("FgDimBrush") });
-        var value = new TextBlock
-        {
-            Text = r.DeltaText, FontFamily = mono, FontSize = 13, FontWeight = FontWeights.SemiBold,
-            Foreground = VerdictBrush(r.Verdict), Margin = new Thickness(0, 1, 0, 0),
-        };
-        sp.Children.Add(value);
-        var from = new TextBlock
-        {
-            Text = string.Join(" + ", r.Slots), FontFamily = ui, FontSize = 9, Foreground = Hud.Br("FgDimBrush"),
-            Margin = new Thickness(0, 1, 0, 0),
-        };
-        sp.Children.Add(from);
-        _chipByKey[r.Key] = (value, from);
-        return new Border
-        {
-            Child = sp, Background = Hud.Br("Bg3Brush"), BorderBrush = Hud.Br("NavBorderBrush"),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(10, 6, 10, 6), MinWidth = 104, Margin = new Thickness(0, 0, 6, 6),
-        };
     }
 
     // Same release rule as ButtonBase: the pointer must still be within the chip's own bounds.
@@ -181,25 +99,6 @@ public sealed class CraftForecastStrip : StackPanel
     /// <summary>A preset is lit only when there is at least one controlled ore and every one sits at the preset.</summary>
     internal static bool PresetActive(IReadOnlyList<int> qualities, int preset) =>
         qualities.Count > 0 && qualities.All(q => q == preset);
-
-    private static Brush VerdictBrush(string verdict) => verdict switch
-    {
-        "better" => Hud.Br("OkBrush"),
-        "worse" => Hud.Br("DangerBrush"),
-        _ => Hud.Br("FgDimBrush"),
-    };
-
-    // The mock rolls the number; a short fade-in of the new value carries the same "this changed" cue.
-    // A drag updates on every mouse step; restarting the fade each step would hold the value
-    // dim, so a fade already in flight is left to finish and only the text changes.
-    private static void CrossFade(FrameworkElement e)
-    {
-        if (Motion.Reduced) { e.BeginAnimation(OpacityProperty, null); e.Opacity = 1; return; }
-        if (e.Tag is DateTime started && DateTime.UtcNow - started < TimeSpan.FromMilliseconds(Motion.QuickRevealMs)) return;
-        e.Tag = DateTime.UtcNow;
-        e.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(Motion.QuickRevealMs)) { EasingFunction = Motion.Settle });
-    }
 
     private void StylePreset(Border chip, TextBlock text, int value, bool hover)
     {
