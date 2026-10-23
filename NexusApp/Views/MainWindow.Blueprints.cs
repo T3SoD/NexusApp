@@ -10,6 +10,11 @@ namespace NexusApp.Views;
 // Split from MainWindow.xaml.cs (app review, Task 13): Blueprint Library browse + detail.
 public partial class MainWindow
 {
+    /// <summary>Empty-state line of the HOW TO UNLOCK block.</summary>
+    internal static string UnlockEmptyText(bool isStarter) => isStarter
+        ? "Starter blueprint. Every player has this one from the first login."
+        : "No unlock information available";
+
     // ── Blueprints ───────────────────────────────────────────────────────────
 
     // ── Drill-down browse (Category → Subcategory → blueprint) ──────────────────
@@ -26,6 +31,8 @@ public partial class MainWindow
     private BpOwnFilter _bpOwnFilter = BpOwnFilter.All;
     private string? _detailBpName;                 // blueprint currently shown in the detail panel
     private Border? _detailOwnedToggle;            // its "Owned" toggle, kept in sync with nav checkboxes
+    private string? _detailSegment;                // SOURCING or CRAFTING view of that blueprint; null = its default
+    private string? _detailSegmentBp;              // the blueprint _detailSegment belongs to
     // Drill-down depth trackers for the directional slide (motion pass Item 8). Nav and content
     // rebuild independently (clicking a row shows detail without RenderBlueprintNav running), so
     // each needs its own last-rendered depth to compare against - sharing one field would have the
@@ -51,6 +58,8 @@ public partial class MainWindow
         _allBlueprints = App.Data.GetAllBlueprints();
         UpdateOwnedChips();
         UpdateOwnedCount();
+        _bpNavCollapsed = App.Settings.Current.LibraryNavCollapsed;
+        ApplyNavCollapse(animate: false);
         GoRoot();
         // Repaint the rendered nav and any open detail the moment the component label
         // setting changes; without this a parked Library keeps the old naming until the
@@ -379,6 +388,7 @@ public partial class MainWindow
                     BlueprintNavPanel.Children.Add(CategoryCard(cat, c));
                     cards++;
                 }
+                _bpRailText = RailLabel("Browse", cards);
                 if (cards == 0)
                     BlueprintNavPanel.Children.Add(NavEmptyNote(
                         _bpOwnFilter == BpOwnFilter.Owned ? "Nothing marked owned yet" : "Every blueprint is marked owned"));
@@ -395,6 +405,11 @@ public partial class MainWindow
             _ => -1,   // "search" - not part of the drill-down hierarchy, no slide
         };
         _bpNavDepth = PlayDrillSlide(BlueprintNavPanel, _bpNavDepth, navDepth);
+
+        // The collapse toggle sits at the right end of the breadcrumb row on every level.
+        WrapCrumb(BlueprintCrumbHost, () => NavToggleButton(collapsed: false));
+        BuildNavRail();
+        _bpRailLabel!.Text = _bpRailText;
     }
 
     private TextBlock NavEmptyNote(string text = "Nothing here in this filter") => new()
@@ -474,6 +489,7 @@ public partial class MainWindow
 
     private UIElement NavHeader(string text, int count, System.Windows.Media.Brush col)
     {
+        _bpRailText = RailLabel(text, count);   // the collapsed rail names the same list
         var headFont = (System.Windows.Media.FontFamily)FindResource("HeadFont");
         var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 0, 8) };
         sp.Children.Add(new TextBlock { Text = text, FontFamily = headFont, FontSize = 16, Foreground = col, VerticalAlignment = VerticalAlignment.Center });
@@ -895,6 +911,7 @@ public partial class MainWindow
     {
         var text = (_vm.BlueprintSearch ?? "").Trim();
         if (string.IsNullOrEmpty(text)) { GoRoot(); return; }
+        ExpandNavForSearch();
         _bpSearchResults = App.Data.SearchBlueprints(text);
         _bpLevel = "search";
         BlueprintSearchClear.Visibility = Visibility.Visible;   // keep the term in the box; show the clear affordance
@@ -946,6 +963,7 @@ public partial class MainWindow
             _suppressAutocomplete = true;
             _vm.BlueprintSearch = name;
             BlueprintSuggestPopup.IsOpen = false;
+            ExpandNavForSearch();
             _bpSearchResults = App.Data.SearchBlueprints(name);
             _bpLevel = "search";
             BlueprintSearchClear.Visibility = Visibility.Visible;   // the picked name stays in the box
@@ -978,15 +996,475 @@ public partial class MainWindow
 
     private UIElement HeroSpec(string label, string value, System.Windows.Media.Brush fg, System.Windows.Media.Brush dim, System.Windows.Media.FontFamily mono)
     {
-        var sp = new StackPanel { Margin = new Thickness(0, 0, 26, 0) };
+        var sp = new StackPanel { Margin = new Thickness(0, 0, 24, 0) };
         sp.Children.Add(new TextBlock { Text = label, FontFamily = mono, FontSize = 9, Foreground = dim });
         sp.Children.Add(new TextBlock { Text = value, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 2, 0, 0) });
         return sp;
     }
 
+    // ── Craft quality forecast: slot matching and row copy ──────────────────
+    // A slot without modifiers shapes no stat, so it never earns a quality control; the seed
+    // carries such slots on purpose and their ore keeps the plain one-line row.
+
+    /// <summary>Every slot with modifiers that accepts this ore (any of its resource options), in slot order.</summary>
+    internal static IReadOnlyList<BlueprintSlot> SlotsForIngredient(NexusApp.Models.Blueprint bp, string resourceName) =>
+        bp.Slots
+            .Where(s => s.Modifiers.Count > 0
+                && s.Resources.Any(r => string.Equals(r, resourceName, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+    /// <summary>Second line of a CRAFTING view row: "FRAME slot" or "FRAME + BARREL slots".</summary>
+    internal static string SlotLabel(IReadOnlyList<BlueprintSlot> slots)
+    {
+        var names = string.Join(" + ", slots.Select(s => s.Name.ToUpperInvariant()));
+        return $"{names} {(slots.Count == 1 ? "slot" : "slots")}";
+    }
+
+    /// <summary>The small tier text of a SOURCING row: "Common", or "Common · Frame + Stock" when the ore feeds slots.</summary>
+    internal static string TierLine(string tier, IReadOnlyList<BlueprintSlot> slots)
+    {
+        if (slots.Count == 0) return tier;
+        var names = string.Join(" + ", slots.Select(s => s.Name));
+        return tier.Length > 0 ? $"{tier} · {names}" : names;
+    }
+
+    // ── Two-view detail (library-redesign round 5 design 3, .seg) ──────────
+    internal const string SegmentSourcing = "sourcing";
+    internal const string SegmentCrafting = "crafting";
+
+    /// <summary>An owned blueprint opens on CRAFTING (the player can craft it now), anything else on SOURCING.</summary>
+    internal static string DefaultSegment(bool owned) => owned ? SegmentCrafting : SegmentSourcing;
+
+    /// <summary>The segment bar shows only when there is something to set and something to forecast.</summary>
+    internal static bool ShowSegments(bool anyControlled, int forecastRows) => anyControlled && forecastRows > 0;
+
+    /// <summary>"3 ingredients", "1 stat".</summary>
+    internal static string CountText(int n, string noun) => $"{n} {noun}{(n == 1 ? "" : "s")}";
+
+    // One segment button (mock .seg button): mono 11 label, an 8 px gap, then the count at 10 px.
+    // Mouse only, like the preset chips: a press captures, a release inside acts. The press also
+    // clears keyboard focus, so a typed quality commits (on blur) before the body swaps. Each
+    // button owns its brushes so hover and active ease over Motion.HoverMs.
+    private static (Border Button, Action Restyle) SegmentButton(string label, string count, Func<bool> isActive, Action<Border> act)
+    {
+        var mono = Hud.Font("MonoFont");
+        var fill = new System.Windows.Media.SolidColorBrush();
+        var line = new System.Windows.Media.SolidColorBrush();
+        var labelFg = new System.Windows.Media.SolidColorBrush();
+        var countFg = new System.Windows.Media.SolidColorBrush();
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock { Text = label, FontFamily = mono, FontSize = 11, Foreground = labelFg, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(new TextBlock { Text = count, FontFamily = mono, FontSize = 10, Foreground = countFg, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+        var btn = new Border
+        {
+            Child = row, Padding = new Thickness(12, 6, 12, 6), CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1), BorderBrush = line, Background = fill, Cursor = Cursors.Hand,
+        };
+
+        bool hover = false;
+        void Restyle(bool animate)
+        {
+            bool on = isActive();
+            // The mock's --amber-faint and --highlight are the same colour, so active and hover share the fill.
+            var hl = Hud.Col("HighlightBrush");
+            Ease(fill, on || hover ? hl : System.Windows.Media.Color.FromArgb(0, hl.R, hl.G, hl.B), animate);
+            Ease(line, Hud.Col(on ? "AccentStrongBrush" : "NavBorderBrush"), animate);
+            Ease(labelFg, Hud.Col(on ? "AccentBrush" : hover ? "FgBrush" : "FgDimBrush"), animate);
+            Ease(countFg, Hud.Col(on ? "AccentBrush" : "FgDimBrush"), animate);
+        }
+        void SetHover(bool value)
+        {
+            if (hover == value) return;
+            hover = value;
+            Restyle(animate: true);
+        }
+        static bool Inside(FrameworkElement el, MouseEventArgs e)
+        {
+            var p = e.GetPosition(el);
+            return p.X >= 0 && p.Y >= 0 && p.X <= el.ActualWidth && p.Y <= el.ActualHeight;
+        }
+
+        Restyle(animate: false);
+        btn.MouseEnter += (_, _) => SetHover(true);
+        btn.MouseLeave += (_, _) => SetHover(false);
+        // Under capture IsMouseOver stays true off the button, so hover follows a bounds test instead.
+        btn.MouseMove += (_, e) => { if (btn.IsMouseCaptured) SetHover(Inside(btn, e)); };
+        btn.MouseLeftButtonDown += (_, e) =>
+        {
+            Keyboard.ClearFocus();
+            btn.CaptureMouse();
+            e.Handled = true;
+        };
+        btn.MouseLeftButtonUp += (_, e) =>
+        {
+            bool wasPressed = btn.IsMouseCaptured;
+            bool inside = Inside(btn, e);
+            btn.ReleaseMouseCapture();
+            SetHover(inside);
+            if (!wasPressed) return;
+            e.Handled = true;
+            if (inside) act(btn);
+        };
+        return (btn, () => Restyle(animate: true));
+    }
+
+    private static void Ease(System.Windows.Media.SolidColorBrush brush, System.Windows.Media.Color to, bool animate)
+    {
+        if (!animate || Motion.Reduced)
+        {
+            brush.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty, null);
+            brush.Color = to;
+            return;
+        }
+        brush.BeginAnimation(System.Windows.Media.SolidColorBrush.ColorProperty,
+            new System.Windows.Media.Animation.ColorAnimation(to, TimeSpan.FromMilliseconds(Motion.HoverMs)) { EasingFunction = Motion.Settle });
+        brush.Color = to;   // the base value matches, so clearing the animation later keeps the colour
+    }
+
+    // ── Results column collapse (library-redesign round 4: .navBtn, .navRail) ──
+    // The toggle collapses the 300 px results column to a 34 px rail so the detail panel takes
+    // the width. The detail re-renders through the SizeChanged hook below (HookDetailResize):
+    // the column width change resizes BlueprintDetailPanel like a window resize does.
+    private const double NavExpandedWidth = 300;
+    private const double NavCollapsedWidth = 34;
+    private const double NavContentInset = 13;   // the right hairline (1) plus the list's right margin (12)
+
+    internal static double NavColumnWidth(bool collapsed) => collapsed ? NavCollapsedWidth : NavExpandedWidth;
+
+    /// <summary>The rotated rail caption for the current list: "RIFLE · 7".</summary>
+    internal static string RailLabel(string listName, int count) => $"{listName.ToUpperInvariant()} · {count}";
+
+    private bool _bpNavCollapsed;
+    private string _bpRailText = "";
+    private TextBlock? _bpRailLabel;
+
+    // Animation target for the nav column; a GridLength cannot take a DoubleAnimation directly.
+    private static readonly DependencyProperty NavColumnWidthAnimProperty = DependencyProperty.Register(
+        "NavColumnWidthAnim", typeof(double), typeof(MainWindow),
+        new PropertyMetadata(NavExpandedWidth, (o, e) =>
+        {
+            if (o is MainWindow w) w.BlueprintNavColumn.Width = new GridLength((double)e.NewValue);
+        }));
+
+    // Same anatomy as the quality control's graph button: 26x22, NavBorder 1 px, radius 4, a
+    // 12 px chevron (stroke 1.8, round caps); hover = AccentStrong border, Highlight fill, amber glyph.
+    private Button NavToggleButton(bool collapsed)
+    {
+        var glyph = new System.Windows.Shapes.Polyline
+        {
+            Points = System.Windows.Media.PointCollection.Parse(collapsed ? "4,2 8,6 4,10" : "8,2 4,6 8,10"),
+            Stroke = (System.Windows.Media.Brush)FindResource("FgDimBrush"), StrokeThickness = 1.8,
+            StrokeStartLineCap = System.Windows.Media.PenLineCap.Round,
+            StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
+            StrokeLineJoin = System.Windows.Media.PenLineJoin.Round,
+        };
+        var box = new Canvas { Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        box.Children.Add(glyph);
+        var face = new Border
+        {
+            Width = 26, Height = 22, CornerRadius = new CornerRadius(4),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1),
+            Background = System.Windows.Media.Brushes.Transparent,
+            Child = box,
+        };
+        var btn = new Button
+        {
+            Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) },
+            Content = face, Cursor = Cursors.Hand, Focusable = false,
+            VerticalAlignment = VerticalAlignment.Top,
+            ToolTip = collapsed ? "Show results" : "Hide results",
+        };
+        btn.MouseEnter += (_, _) =>
+        {
+            face.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentStrongBrush");
+            face.Background = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+            glyph.Stroke = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        };
+        btn.MouseLeave += (_, _) =>
+        {
+            face.BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
+            face.Background = System.Windows.Media.Brushes.Transparent;
+            glyph.Stroke = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        };
+        btn.Click += (_, _) => SetLibraryNavCollapsed(!_bpNavCollapsed, btn);
+        return btn;
+    }
+
+    // The breadcrumb (or nothing, at the root) on the left, the collapse toggle on the right.
+    // The host's current content is the breadcrumb; it moves into the wrapper grid. The host
+    // owns it as a logical child, so it is released first or the grid refuses it.
+    internal static UIElement WrapCrumb(ContentControl host, Func<UIElement> makeToggle)
+    {
+        var crumb = host.Content as UIElement;
+        host.Content = null;
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (crumb != null) g.Children.Add(crumb);
+        var btn = makeToggle();
+        if (crumb == null && btn is FrameworkElement fe) fe.Margin = new Thickness(0, 0, 0, 8);
+        Grid.SetColumn(btn, 1);
+        g.Children.Add(btn);
+        host.Content = g;
+        return g;
+    }
+
+    private void BuildNavRail()
+    {
+        if (_bpRailLabel != null) return;
+        var btn = NavToggleButton(collapsed: true);
+        btn.HorizontalAlignment = HorizontalAlignment.Left;
+        _bpRailLabel = new TextBlock
+        {
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"), FontSize = 10,
+            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(6, 10, 0, 0),
+            LayoutTransform = new System.Windows.Media.RotateTransform(-90),   // reads bottom to top
+        };
+        BlueprintNavRail.Children.Add(btn);
+        BlueprintNavRail.Children.Add(_bpRailLabel);
+    }
+
+    private void SetLibraryNavCollapsed(bool collapsed, DependencyObject source)
+    {
+        if (collapsed == _bpNavCollapsed) return;
+        InteractionLog.Toggle(collapsed ? "library nav collapsed" : "library nav expanded", source);
+        _bpNavCollapsed = collapsed;
+        App.Settings.Current.LibraryNavCollapsed = collapsed;
+        App.Settings.Save();
+        ApplyNavCollapse(animate: !Motion.Reduced);
+    }
+
+    // Only the column width animates. The list keeps its expanded width while the column moves,
+    // so the border clips it instead of reflowing it every frame; the rail shows once collapsed.
+    private void ApplyNavCollapse(bool animate)
+    {
+        BuildNavRail();
+        double target = NavColumnWidth(_bpNavCollapsed);
+        if (!animate)
+        {
+            BeginAnimation(NavColumnWidthAnimProperty, null);
+            SetValue(NavColumnWidthAnimProperty, target);
+            ShowNavState();
+            return;
+        }
+        double from = (double)GetValue(NavColumnWidthAnimProperty);   // the live value, if mid-slide
+        BlueprintNavRail.Visibility = Visibility.Collapsed;
+        BlueprintNavContent.Visibility = Visibility.Visible;
+        BlueprintNavContent.HorizontalAlignment = HorizontalAlignment.Left;
+        BlueprintNavContent.Width = NavExpandedWidth - NavContentInset;
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(from, target, TimeSpan.FromMilliseconds(Motion.SlideMs))
+        {
+            EasingFunction = Motion.Settle,
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop,
+        };
+        bool endsCollapsed = _bpNavCollapsed;
+        slide.Completed += (_, _) => { if (endsCollapsed == _bpNavCollapsed) ShowNavState(); };
+        BeginAnimation(NavColumnWidthAnimProperty, slide);
+        SetValue(NavColumnWidthAnimProperty, target);   // base value; the slide holds the effective value until it stops
+    }
+
+    // A search fills the results list, so a collapsed list opens first. The width snaps (no
+    // slide) so the results render into the expanded column; clearing a search never collapses.
+    private void ExpandNavForSearch()
+    {
+        if (!_bpNavCollapsed) return;
+        InteractionLog.Toggle("library nav expanded (search)", BlueprintSearchBox);
+        _bpNavCollapsed = false;
+        App.Settings.Current.LibraryNavCollapsed = false;
+        App.Settings.Save();
+        ApplyNavCollapse(animate: false);
+    }
+
+    private void ShowNavState()
+    {
+        BlueprintNavContent.Width = double.NaN;
+        BlueprintNavContent.HorizontalAlignment = HorizontalAlignment.Stretch;
+        BlueprintNavContent.Visibility = _bpNavCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        BlueprintNavRail.Visibility = _bpNavCollapsed ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ── Width-aware detail layout (library-redesign round 3 container rules) ──
+    // The detail panel is half the page, and its two-column split halves it again. Fixed
+    // columns that fit a 1340 px help shot leave a 400 px column with no room for the name
+    // block, and a star column at zero width wraps its text one glyph per line.
+    internal enum DetailLayout { Wide, Stacked }
+    private const double DetailSplitMin = 700;     // below this the split becomes one column
+    private const double RowStackBelow = 560;      // below this a materials row puts its control under the name
+    private const double RowNameMin = 160;         // the name block never gets less than this
+    private const double RowControlWidth = 250;    // the control column in the one-row shape
+    private const double DetailSplitGap = 24;
+
+    internal static DetailLayout LayoutFor(double detailWidth) =>
+        detailWidth >= DetailSplitMin ? DetailLayout.Wide : DetailLayout.Stacked;
+
+    internal static bool StackRowControl(double rowWidth) => rowWidth < RowStackBelow;
+
+    /// <summary>
+    /// The column width a materials row actually gets: half the split when Wide (both views
+    /// split 1fr 24px 1fr), the whole panel when Stacked.
+    /// </summary>
+    internal static double RowWidthFor(double detailWidth) =>
+        LayoutFor(detailWidth) == DetailLayout.Wide ? (detailWidth - DetailSplitGap) / 2 : detailWidth;
+
+    // One-row shape only when the fixed control column still leaves the name block its minimum.
+    private static bool RowsStacked(double rowWidth) =>
+        StackRowControl(rowWidth) || rowWidth < RowControlWidth + RowNameMin + 60;
+
+    private DetailLayout _detailRenderedLayout;
+    private bool _detailRenderedRowsStacked;
+    private bool _detailSizeHooked;
+    private System.Windows.Threading.DispatcherTimer? _detailResizeTimer;
+
+    private double DetailWidth()
+    {
+        double w = BlueprintDetailPanel.ActualWidth;
+        if (w <= 0 && BlueprintDetailPanel.Parent is ScrollViewer sv) w = sv.ViewportWidth;
+        return w;
+    }
+
+    // Re-render the open detail only when a resize crosses a layout threshold, debounced so a
+    // drag-resize does not rebuild the panel on every pixel.
+    private void HookDetailResize()
+    {
+        if (_detailSizeHooked) return;
+        _detailSizeHooked = true;
+        _detailResizeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _detailResizeTimer.Tick += (_, _) =>
+        {
+            _detailResizeTimer.Stop();
+            if (_detailBpName is { } name && DetailLayoutChanged()) RenderBlueprintDetail(name);
+        };
+        BlueprintDetailPanel.SizeChanged += (_, e) =>
+        {
+            if (!e.WidthChanged || _detailBpName == null || !DetailLayoutChanged()) return;
+            _detailResizeTimer.Stop();
+            // A first layout pass (no width before) is not a drag: correct it at once, after layout.
+            if (e.PreviousSize.Width <= 0)
+                Dispatcher.BeginInvoke(() => { if (_detailBpName is { } n && DetailLayoutChanged()) RenderBlueprintDetail(n); });
+            else
+                _detailResizeTimer.Start();
+        };
+    }
+
+    private bool DetailLayoutChanged()
+    {
+        double w = DetailWidth();
+        return LayoutFor(w) != _detailRenderedLayout || RowsStacked(RowWidthFor(w)) != _detailRenderedRowsStacked;
+    }
+
+    /// <summary>"45 s", "2 min" or "2 min 30 s": whole units, no rounding.</summary>
+    internal static string CraftTimeText(int seconds)
+    {
+        if (seconds < 60) return $"{seconds} s";
+        int m = seconds / 60, s = seconds % 60;
+        return s == 0 ? $"{m} min" : $"{m} min {s} s";
+    }
+
+    // A CRAFTING view row for an ore that feeds one or more slots with modifiers (library-redesign
+    // round 5 design 3, lean .bomQ): the name, the slot it fills, a third line naming the stats it
+    // shapes, then the 250 px quality control. No quantity and no add button: those live in the
+    // SOURCING view. The Codex cross-link sits on the name block so a press on the control never
+    // navigates away.
+    private Border BuildForecastBomRow(
+        NexusApp.Models.Blueprint bp, BlueprintIngredient ing, IReadOnlyList<BlueprintSlot> slots,
+        System.Windows.Media.Brush rarityBrush, string tier, IReadOnlyList<StatForecast> forecast,
+        System.Windows.Media.Brush line, System.Windows.Media.Brush softFg,
+        IReadOnlyList<QualityBand> bands, bool stacked, Action<string, QualityControl> wire)
+    {
+        var fgB = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dimB = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
+        var uiFont = (System.Windows.Media.FontFamily)FindResource("UiFont");
+
+        // Stacked (mock @container 560): dot | name on row one, the control under the name on
+        // row two. One-row: dot | name | 250. The name column carries a MinWidth in both shapes
+        // so it can never reach zero.
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                          // dot
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = RowNameMin }); // name block
+        if (!stacked)
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(RowControlWidth) });                      // quality control
+        if (stacked)
+        {
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rarityBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
+        Grid.SetColumn(dot, 0); g.Children.Add(dot);
+
+        var who = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, stacked ? 0 : 14, 0), Background = System.Windows.Media.Brushes.Transparent };
+        var nameLine = new StackPanel { Orientation = Orientation.Horizontal };
+        nameLine.Children.Add(new TextBlock { Text = ing.ResourceName, FontSize = 13.5, Foreground = rarityBrush, VerticalAlignment = VerticalAlignment.Center });
+        if (tier.Length > 0)
+            nameLine.Children.Add(new TextBlock { Text = "   " + tier, FontSize = 10, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+        who.Children.Add(nameLine);
+
+        // Mock lean meta: <b>FRAME slot</b>, no quantity before it.
+        who.Children.Add(new TextBlock
+        {
+            Text = SlotLabel(slots), FontFamily = monoFont, FontSize = 11, Foreground = fgB, FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap,
+        });
+
+        // Stat names come from the forecast rows so the Mining Laser name override reads the same here and in the bars.
+        var slotNames = slots.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var shaped = forecast.Where(r => r.Slots.Any(slotNames.Contains)).Select(r => r.Name).Distinct().ToList();
+        if (shaped.Count > 0)
+        {
+            var mods = new TextBlock { FontFamily = uiFont, FontSize = 10.5, Foreground = dimB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
+            mods.Inlines.Add(new System.Windows.Documents.Run("Shapes "));
+            for (int k = 0; k < shaped.Count; k++)
+            {
+                mods.Inlines.Add(new System.Windows.Documents.Run(shaped[k]) { Foreground = softFg });
+                if (k < shaped.Count - 1) mods.Inlines.Add(new System.Windows.Documents.Run(", "));
+            }
+            who.Children.Add(mods);
+        }
+        Grid.SetColumn(who, 1); g.Children.Add(who);
+
+        var ore = ing.ResourceName;
+        var ctl = new QualityControl(ore, bands, App.Settings.Current.HeldQualityOf(ore))
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        // The bands popup covers the main window (its scrim is not clipped by the hero chamfer);
+        // a band pick sets this control and the popup stays open on the new marker.
+        ctl.GraphRequested += () =>
+        {
+            var dlg = new QualityBandsDialog(ore, string.Join(" + ", slots.Select(s => s.Name)), bp.Name, bands, ctl.Value);
+            QualityBandsDialog.FitToOwner(dlg, Window.GetWindow(ctl));
+            dlg.BandPicked += q => ctl.SetValue(q, "bands");
+            dlg.ShowDialog();
+        };
+        wire(ore, ctl);
+        if (stacked)
+        {
+            ctl.Margin = new Thickness(0, 6, 0, 0);   // mock row-gap 6
+            Grid.SetRow(ctl, 1); Grid.SetColumn(ctl, 1);
+        }
+        else Grid.SetColumn(ctl, 2);
+        g.Children.Add(ctl);
+
+        var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = line, BorderThickness = new Thickness(0, 0, 0, 1) };
+
+        if (_vm.AllResources.Any(r => r.Name.Equals(ore, StringComparison.OrdinalIgnoreCase)))
+        {
+            who.Cursor = System.Windows.Input.Cursors.Hand;
+            who.ToolTip = "Open in Mining Codex";
+            var hov = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+            who.MouseEnter += (s, _) => rowBorder.Background = hov;
+            who.MouseLeave += (s, _) => rowBorder.Background = System.Windows.Media.Brushes.Transparent;
+            who.MouseLeftButtonDown += (s, _) => NavigateToResource(ore);
+        }
+        return rowBorder;
+    }
+
     private void ShowBlueprintDetail(NexusApp.Models.Blueprint selected)
     {
         InteractionLog.Nav($"Blueprint Library: open {selected.Name}");
+        _detailSegment = null;   // a new selection opens on its default view
         RenderBlueprintDetail(selected.Name);
     }
 
@@ -1001,30 +1479,76 @@ public partial class MainWindow
         if (full == null) return;
         _detailBpName = full.Name;
 
-        // ── Schematic hero: drafting-sheet header ─────────────────────────────
+        HookDetailResize();
+        double detailWidth = DetailWidth();
+        var detailLayout = LayoutFor(detailWidth);
+        bool anyControlled = full.Ingredients.Any(i => SlotsForIngredient(full, i.ResourceName).Count > 0);
+        double rowWidth = RowWidthFor(detailWidth);
+        bool rowsStacked = RowsStacked(rowWidth);
+        _detailRenderedLayout = detailLayout;
+        _detailRenderedRowsStacked = rowsStacked;
+        bool heroStacked = detailWidth < RowStackBelow;
+
+        // ── Schematic hero: drafting-sheet header (round 5 .heroC) ─────────────
         var heroAccent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var fgB      = (System.Windows.Media.Brush)FindResource("FgBrush");
         var dimB     = (System.Windows.Media.Brush)FindResource("FgDimBrush");
         var monoFont = (System.Windows.Media.FontFamily)FindResource("MonoFont");
         var headFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("HeadFont");
+        var navBorder0 = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
 
         var eyebrow = full.SubCategory is { Length: > 0 }
             ? $"{full.Category} · {full.SubCategory}".ToUpperInvariant()
             : full.Category.ToUpperInvariant();
         double totalScu = full.Ingredients.Sum(i => i.Quantity);
         var heroContent = new StackPanel();
-        heroContent.Children.Add(new TextBlock { Text = eyebrow, FontFamily = monoFont, FontSize = 11, Foreground = heroAccent });
-        heroContent.Children.Add(new TextBlock
-        {
-            Text = ComponentLabels.Library(full.Name), FontFamily = headFont, FontSize = 25, FontWeight = FontWeights.SemiBold,
-            Foreground = fgB, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap,
-        });
-        heroContent.Children.Add(new Border { Height = 1, Background = heroAccent, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0) });
 
-        var heroRow = new Grid { Margin = new Thickness(0, 13, 0, 0) };
-        heroRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        heroRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
+        // Name row: eyebrow + name on the left, the actions at the right, aligned top.
+        // Narrow panel (mock @container 560): the actions drop under the name block, left-aligned.
+        var heroTop = new Grid();
+        heroTop.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heroTop.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var heroTitle = new StackPanel();
+        heroTitle.Children.Add(new TextBlock { Text = eyebrow, FontFamily = monoFont, FontSize = 11, Foreground = heroAccent });
+        heroTitle.Children.Add(new TextBlock
+        {
+            Text = ComponentLabels.Library(full.Name), FontFamily = headFont, FontSize = 22, FontWeight = FontWeights.SemiBold,
+            Foreground = fgB, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+        });
+        heroTop.Children.Add(heroTitle);
+
+        // Mock .heroC .btn.outline / .btn.accent.sm: 32 px tall, padding 5 12, 12.5 px.
+        var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+        var ownedToggle = OwnedToggle(full.Name);
+        ownedToggle.Height = 32;
+        ownedToggle.Padding = new Thickness(12, 5, 12, 5);
+        if (ownedToggle.Child is TextBlock ownedLabel) ownedLabel.FontSize = 12.5;
+        heroActions.Children.Add(ownedToggle);
+        var heroAddBtn = new Button
+        {
+            Content = "+ Add all to cart", Style = (Style)FindResource("AccentButton"),
+            Padding = new Thickness(12, 5, 12, 5), FontSize = 12.5, Height = 32, VerticalAlignment = VerticalAlignment.Center,
+        };
+        heroAddBtn.Click += (s, e) => { foreach (var i in full.Ingredients) _vm.AddToShoppingCommand.Execute(i); };
+        heroActions.Children.Add(heroAddBtn);
+        if (heroStacked)
+        {
+            heroTop.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heroTop.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heroActions.HorizontalAlignment = HorizontalAlignment.Left;
+            heroActions.Margin = new Thickness(0, 10, 0, 0);
+            Grid.SetRow(heroActions, 1); Grid.SetColumnSpan(heroActions, 2);
+        }
+        else
+        {
+            heroActions.Margin = new Thickness(16, 0, 0, 0);   // mock .heroC .top gap 16
+            Grid.SetColumn(heroActions, 1);
+        }
+        heroTop.Children.Add(heroActions);
+        heroContent.Children.Add(heroTop);
+        heroContent.Children.Add(new Border { Height = 1, Background = heroAccent, Opacity = 0.6, Margin = new Thickness(0, 10, 0, 0) });
+
+        var specs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
         specs.Children.Add(HeroSpec("INGREDIENTS", full.Ingredients.Count.ToString(), fgB, dimB, monoFont));
         specs.Children.Add(HeroSpec("TOTAL COST", CraftAmount.Format(totalScu, "SCU"), fgB, dimB, monoFont));
         // Network ownership as a third hero spec (app review G12). The detail panel is where the
@@ -1035,18 +1559,49 @@ public partial class MainWindow
         RefreshBlueprintNetworkCounts();
         if (_bpNetworkCounts.TryGetValue(full.Name, out var netOwners) && netOwners > 0)
             specs.Children.Add(HeroSpec("IN NETWORK", netOwners.ToString(), fgB, dimB, monoFont));
-        Grid.SetColumn(specs, 0); heroRow.Children.Add(specs);
-        var heroActions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
-        heroActions.Children.Add(OwnedToggle(full.Name));
-        var heroAddBtn = new Button
+        if (full.CraftSeconds is int craftSeconds)
+            specs.Children.Add(HeroSpec("CRAFT TIME", CraftTimeText(craftSeconds), fgB, dimB, monoFont));
+        heroContent.Children.Add(specs);
+
+        // ── Craft quality forecast ─────────────────────────────────────────────
+        // Held quality is per ore and shared by every blueprint that uses it. The engine asks
+        // by slot name, so each slot reads the quality of the ore the bill of materials lists
+        // for it (the first of its options when none is listed).
+        var craftStats = App.Data.GetCraftStats();
+        var bandCache = new Dictionary<string, IReadOnlyList<QualityBand>>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<QualityBand> BandsOf(string resource) =>
+            bandCache.TryGetValue(resource, out var cached) ? cached : bandCache[resource] = App.Data.GetQualityBands(resource);
+        var slotOre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slot in full.Slots.Where(s => s.Modifiers.Count > 0))
         {
-            Content = "+ Add all to cart", Style = (Style)FindResource("AccentButton"),
-            Padding = new Thickness(14, 7, 14, 7), VerticalAlignment = VerticalAlignment.Center,
-        };
-        heroAddBtn.Click += (s, e) => { foreach (var i in full.Ingredients) _vm.AddToShoppingCommand.Execute(i); };
-        heroActions.Children.Add(heroAddBtn);
-        Grid.SetColumn(heroActions, 1); heroRow.Children.Add(heroActions);
-        heroContent.Children.Add(heroRow);
+            var ore = slot.Resources.FirstOrDefault(r => full.Ingredients.Any(i => i.ResourceName.Equals(r, StringComparison.OrdinalIgnoreCase)))
+                      ?? slot.Resources.FirstOrDefault();
+            if (ore != null) slotOre.TryAdd(slot.Name, ore);
+        }
+        // Filled only when the CRAFTING view is built; until then every slot reads its saved quality.
+        var qualityControls = new List<(string Ore, QualityControl Control)>();
+        // A control's live value wins over the saved one, so a drag preview reads the knob, not the file.
+        int HeldOfSlot(string slotName)
+        {
+            if (!slotOre.TryGetValue(slotName, out var ore)) return CraftForecast.StockQuality;
+            foreach (var (o, c) in qualityControls)
+                if (o.Equals(ore, StringComparison.OrdinalIgnoreCase)) return c.Value;
+            return App.Settings.Current.HeldQualityOf(ore);
+        }
+
+        bool forecastBulk = false;   // a preset moves every control: save and refresh once, not per ore
+        IReadOnlyList<StatForecast> forecast = [];
+        CraftStatRows? statRows = null;            // built with the CRAFTING view
+        CraftForecastStrip? presetStrip = null;    // built with the CRAFTING view
+        void RefreshForecast(bool fade = true)
+        {
+            forecast = CraftForecast.Forecast(full, HeldOfSlot, BandsOf, craftStats);
+            statRows?.Update(forecast, animate: fade);
+            presetStrip?.Update(qualityControls.Select(c => c.Control.Value).ToList());
+        }
+        RefreshForecast();
+        // No forecast rows means nothing honest to show: the SOURCING body alone, no segment bar.
+        bool segmented = ShowSegments(anyControlled, forecast.Count);
 
         var heroRoot = new Grid();
         heroRoot.Children.Add(heroContent);
@@ -1055,507 +1610,702 @@ public partial class MainWindow
         var heroCard = Hud.Panel(heroRoot, chamfer: HeroChamfer, brackets: true,
             bg: (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
             border: (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            padding: new Thickness(20, 16, 18, 16));
+            padding: new Thickness(20, 12, 18, 14));
         heroCard.Margin = new Thickness(0, 0, 0, 8);
         BlueprintDetailPanel.Children.Add(heroCard);
 
-        // ── two-column split: ingredients (left) | unlock + locations (right) ──
-        var splitGrid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
-        splitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var leftHost = new StackPanel();
-        var rightHost = new StackPanel();
-        Grid.SetColumn(leftHost, 0);
-        Grid.SetColumn(rightHost, 2);
-        splitGrid.Children.Add(leftHost);
-        splitGrid.Children.Add(rightHost);
-        BlueprintDetailPanel.Children.Add(splitGrid);
-        System.Windows.Controls.Panel host = rightHost;   // unlock builds first -> right column
-
-        // ── HOW TO UNLOCK ────────────────────────────────────────────────────
-        host.Children.Add(new TextBlock
+        // ── Shared pieces of the two views ─────────────────────────────────────
+        // Split rule (mock @container 700): Wide is 1fr 24px 1fr, Stacked is two rows.
+        (Grid Split, StackPanel Left, StackPanel Right) NewSplit()
         {
-            Text = "HOW TO UNLOCK",
-            FontSize = 10, FontWeight = FontWeights.Bold,
-            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-            Margin = new Thickness(0, 0, 0, 6),
-        });
-
-        if (full.UnlockEntries.Count == 0)
-        {
-            host.Children.Add(new TextBlock
+            var split = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+            var left = new StackPanel();
+            var right = new StackPanel();
+            if (detailLayout == DetailLayout.Wide)
             {
-                Text = "No unlock information available",
-                FontSize = 11, FontStyle = FontStyles.Italic,
-                Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                Margin = new Thickness(0, 0, 0, 12),
-            });
+                split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(DetailSplitGap) });
+                split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetColumn(left, 0);
+                Grid.SetColumn(right, 2);
+            }
+            else
+            {
+                split.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                split.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                right.Margin = new Thickness(0, 18, 0, 0);
+                Grid.SetRow(right, 1);
+            }
+            split.Children.Add(left);
+            split.Children.Add(right);
+            return (split, left, right);
         }
-        else
+
+        // Mock .secHead: mono 11, label left, note right, hairline under, padding-bottom 8, margin top 0 2.
+        Border SecHead(string label, string note, System.Windows.Media.Brush color, double top)
         {
-            // Group by faction
-            var byFaction = full.UnlockEntries
-                .GroupBy(e => (e.Faction, e.MissionType))
-                .ToList();
+            var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.Children.Add(new TextBlock { Text = label, FontFamily = monoFont, FontSize = 11, Foreground = color });
+            var noteText = new TextBlock { Text = note, FontFamily = monoFont, FontSize = 11, Foreground = color, Margin = new Thickness(10, 0, 0, 0) };
+            Grid.SetColumn(noteText, 1); head.Children.Add(noteText);
+            return new Border { Child = head, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8), Margin = new Thickness(0, top, 0, 2) };
+        }
 
-            foreach (var group in byFaction)
+        // The mock's lab-fg (#B9C4D0) has no app key; FgBrush at 0.75 reads the same on the panel.
+        var softFg = Hud.WithOpacity(fgB, 0.75);
+
+        string TierOf(BlueprintIngredient ing, out System.Windows.Media.Brush rarityBrush)
+        {
+            var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
+            rarityBrush = RarityBrush(rarity);
+            return rarity.Length > 0 ? char.ToUpper(rarity[0]) + rarity.Substring(1) : "";
+        }
+
+        // ── SOURCING body: unlock + bill of materials | where to mine ──────────
+        FrameworkElement BuildSourcingBody()
+        {
+            var (split, left, right) = NewSplit();
+            BuildUnlock(left);
+            left.Children.Add(SecHead("BILL OF MATERIALS", "QTY", dimB, 14));
+
+            foreach (var ing in full.Ingredients)
             {
-                var (faction, mtype) = group.Key;
-                var missions = group.ToList();
+                var ingCopy = ing;
+                var tier = TierLine(TierOf(ing, out var rb), SlotsForIngredient(full, ing.ResourceName));
 
-                var factionLabel = mtype != null ? $"{faction}  ·  {mtype}" : faction;
-                host.Children.Add(new TextBlock
-                {
-                    Text = factionLabel, FontSize = 11, FontWeight = FontWeights.SemiBold,
-                    Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
-                    Margin = new Thickness(0, 4, 0, 2),
-                });
+                var g = new Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name + tier
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // qty + unit
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // add
 
-                if (missions.Count <= 6)
+                var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
+                Grid.SetColumn(dot, 0); g.Children.Add(dot);
+
+                var nameWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                nameWrap.Children.Add(new TextBlock { Text = ing.ResourceName, FontSize = 13.5, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
+                if (tier.Length > 0)
+                    nameWrap.Children.Add(new TextBlock { Text = "   " + tier, FontSize = 10, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+                Grid.SetColumn(nameWrap, 1); g.Children.Add(nameWrap);
+
+                var qtyWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+                qtyWrap.Children.Add(new TextBlock { Text = CraftAmount.Value(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 13, Foreground = fgB, Width = 50, TextAlignment = System.Windows.TextAlignment.Right });
+                qtyWrap.Children.Add(new TextBlock { Text = " " + CraftAmount.Unit(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 11, Foreground = dimB, Width = 38, TextAlignment = System.Windows.TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
+                Grid.SetColumn(qtyWrap, 2); g.Children.Add(qtyWrap);
+
+                var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ingCopy, VerticalAlignment = VerticalAlignment.Center };
+                addBtn.Click += (s, e) => _vm.AddToShoppingCommand.Execute(((Button)s).Tag);
+                Grid.SetColumn(addBtn, 3); g.Children.Add(addBtn);
+
+                var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1) };
+
+                // cross-link: clicking the row opens the ingredient in the Mining Codex
+                if (_vm.AllResources.Any(r => r.Name.Equals(ing.ResourceName, StringComparison.OrdinalIgnoreCase)))
                 {
-                    foreach (var m in missions)
+                    rowBorder.Cursor = System.Windows.Input.Cursors.Hand;
+                    rowBorder.ToolTip = "Open in Mining Codex";
+                    var hov = (System.Windows.Media.Brush)FindResource("HighlightBrush");
+                    rowBorder.MouseEnter += (s, _) => rowBorder.Background = hov;
+                    rowBorder.MouseLeave += (s, _) => rowBorder.Background = System.Windows.Media.Brushes.Transparent;
+                    rowBorder.MouseLeftButtonDown += (s, _) => NavigateToResource(ingCopy.ResourceName);
+                }
+
+                left.Children.Add(rowBorder);
+            }
+
+            // Total footer
+            var totalGrid = new Grid { Margin = new Thickness(2, 11, 2, 0) };
+            totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            totalGrid.Children.Add(new TextBlock { Text = "TOTAL", FontFamily = monoFont, FontSize = 11, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
+            var totalVal = new TextBlock { Text = CraftAmount.Format(totalScu, "SCU"), FontFamily = monoFont, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = heroAccent, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(totalVal, 1); totalGrid.Children.Add(totalVal);
+            left.Children.Add(new Border { Child = totalGrid, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 10, 0, 0), Margin = new Thickness(0, 2, 0, 0) });
+
+            BuildWhereToMine(right);
+            return split;
+        }
+
+        // ── CRAFTING body: quality you hold | forecast vs stock craft ──────────
+        FrameworkElement BuildCraftingBody()
+        {
+            var (split, left, right) = NewSplit();
+            left.Children.Add(SecHead("QUALITY YOU HOLD", "Q 0 - 1000", heroAccent, 8));
+            foreach (var ing in full.Ingredients)
+            {
+                var ingSlots = SlotsForIngredient(full, ing.ResourceName);
+                if (ingSlots.Count == 0) continue;
+                var tier = TierOf(ing, out var rb);
+                left.Children.Add(BuildForecastBomRow(full, ing, ingSlots, rb, tier, forecast, navBorder0, softFg, BandsOf(ing.ResourceName), rowsStacked, (ore, ctl) =>
+                {
+                    qualityControls.Add((ore, ctl));
+                    // Preview only: the bars follow the knob; save and log wait for the release.
+                    ctl.ValueChanging += _ => RefreshForecast(fade: false);
+                    ctl.QualityChanged += (q, source) =>
                     {
-                        var rankPart = m.Rank is null or "Any" or "Neutral" ? m.Rank ?? "Any" : m.Rank;
-                        var sysPart  = m.Systems is { Length: > 0 } ? string.Join("/", m.Systems) : null;
-                        var meta     = sysPart != null ? $" ({rankPart}  ·  {sysPart})" : $" ({rankPart})";
+                        App.Settings.Current.SetHeldQuality(ore, q);
+                        Logger.Info($"[UI] forecast q {full.Name} {ore} {q} {source}");
+                        if (forecastBulk) return;
+                        App.Settings.Save();
+                        RefreshForecast();
+                    };
+                }));
+            }
 
-                        var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(8, 1, 0, 1), LastChildFill = true };
-                        var bullet = new TextBlock
-                        {
-                            Text = "·  ", FontSize = 11,
-                            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                            VerticalAlignment = VerticalAlignment.Top,
-                        };
-                        System.Windows.Controls.DockPanel.SetDock(bullet, System.Windows.Controls.Dock.Left);
-                        row.Children.Add(bullet);
-                        var missionLine = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
-                        missionLine.Inlines.Add(new System.Windows.Documents.Run(m.MissionTitle)
-                        {
-                            Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
-                        });
-                        missionLine.Inlines.Add(new System.Windows.Documents.Run(meta)
-                        {
-                            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                            FontSize = 10,
-                        });
-                        row.Children.Add(missionLine);
-                        host.Children.Add(row);
-                    }
+            presetStrip = new CraftForecastStrip();
+            presetStrip.PresetChosen += v =>
+            {
+                forecastBulk = true;
+                try { foreach (var (_, c) in qualityControls) c.SetValue(v, "preset"); }
+                finally { forecastBulk = false; }
+                App.Settings.Save();
+                RefreshForecast();
+            };
+            left.Children.Add(presetStrip);
+
+            right.Children.Add(SecHead("FORECAST vs STOCK CRAFT", CountText(forecast.Count, "stat"), heroAccent, 8));
+            statRows = new CraftStatRows();
+            right.Children.Add(statRows);
+
+            // Every control now exists: fill the bars and light the matching preset, without motion.
+            RefreshForecast(fade: false);
+            return split;
+        }
+
+        // ── Segment bar (mock .seg) and the body host ──────────────────────────
+        // The host swaps one body for the other; the hero is never rebuilt by a switch.
+        var bodyHost = new Grid();
+        FrameworkElement? sourcingBody = null, craftingBody = null, shownBody = null;
+        void ShowBody(string key, bool animate)
+        {
+            var body = key == SegmentCrafting
+                ? craftingBody ??= BuildCraftingBody()
+                : sourcingBody ??= BuildSourcingBody();
+            var old = shownBody;
+            if (ReferenceEquals(old, body)) return;
+            shownBody = body;
+            bool move = animate && !Motion.Reduced;
+            var dur = TimeSpan.FromMilliseconds(Motion.QuickRevealMs);
+
+            // A body still fading out is already a child: take it back rather than add it twice.
+            // A fresh body starts transparent so the fade-in below has somewhere to start from;
+            // a body taken back mid-fade keeps its current opacity and the fade-in continues from there.
+            if (!bodyHost.Children.Contains(body))
+            {
+                if (move) body.Opacity = 0;
+                bodyHost.Children.Add(body);
+            }
+            body.IsHitTestVisible = true;
+            if (old != null)
+            {
+                old.IsHitTestVisible = false;
+                if (move)
+                {
+                    var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(0, dur) { EasingFunction = Motion.Settle };
+                    fadeOut.Completed += (_, _) =>
+                    {
+                        if (ReferenceEquals(shownBody, old)) return;
+                        old.BeginAnimation(UIElement.OpacityProperty, null);
+                        bodyHost.Children.Remove(old);
+                    };
+                    old.BeginAnimation(UIElement.OpacityProperty, fadeOut);
                 }
                 else
                 {
-                    var typeLabel = mtype != null ? $" {mtype}" : "";
-                    host.Children.Add(new TextBlock
-                    {
-                        Text = $"  ·  Any{typeLabel} mission  ({missions.Count} available)",
-                        FontSize = 11,
-                        Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                        Margin = new Thickness(8, 1, 0, 1),
-                    });
+                    old.BeginAnimation(UIElement.OpacityProperty, null);
+                    bodyHost.Children.Remove(old);
                 }
             }
-
-            host.Children.Add(new Border
+            if (move)
             {
-                Height = 1, Margin = new Thickness(0, 10, 0, 4),
-                Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+                // Mock: opacity 0 to 1, y 6 to 0, settle ease.
+                var rise = new System.Windows.Media.TranslateTransform(0, 6);
+                body.RenderTransform = rise;
+                body.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, dur) { EasingFunction = Motion.Settle });
+                rise.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(6, 0, dur) { EasingFunction = Motion.Settle });
+            }
+            else
+            {
+                body.BeginAnimation(UIElement.OpacityProperty, null);
+                body.Opacity = 1;
+                body.RenderTransform = null;
+            }
+        }
+
+        string shownSegment = SegmentSourcing;
+        if (segmented)
+        {
+            // Per selection, not persisted: a width-driven re-render keeps the view, a new blueprint resets it.
+            if (_detailSegment == null || !string.Equals(_detailSegmentBp, full.Name, StringComparison.OrdinalIgnoreCase))
+                _detailSegment = DefaultSegment(App.Settings.IsBlueprintOwned(full.Name));
+            _detailSegmentBp = full.Name;
+            shownSegment = _detailSegment;
+
+            var segRow = new StackPanel { Orientation = Orientation.Horizontal };
+            var restyles = new List<Action>();
+            void AddSegment(string key, string label, string count)
+            {
+                var (btn, restyle) = SegmentButton(label, count, () => _detailSegment == key, source =>
+                {
+                    if (_detailSegment == key) return;
+                    InteractionLog.Click($"library view {key} {full.Name}", source);
+                    _detailSegment = key;
+                    foreach (var r in restyles) r();
+                    ShowBody(key, animate: true);
+                });
+                btn.Margin = new Thickness(segRow.Children.Count == 0 ? 0 : 6, 0, 0, 0);
+                restyles.Add(restyle);
+                segRow.Children.Add(btn);
+            }
+            AddSegment(SegmentSourcing, "SOURCING", CountText(full.Ingredients.Count, "ingredient"));
+            AddSegment(SegmentCrafting, "CRAFTING", CountText(forecast.Count, "stat"));
+            BlueprintDetailPanel.Children.Add(new Border
+            {
+                Child = segRow, Margin = new Thickness(0, 6, 0, 0), Padding = new Thickness(0, 0, 0, 10),
+                BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1),
             });
+            bodyHost.Margin = new Thickness(0, 8, 0, 0);   // mock .detail gap 8 under the bar
         }
+        BlueprintDetailPanel.Children.Add(bodyHost);
+        ShowBody(shownSegment, animate: false);
 
-        host = leftHost;
-        var navBorder0 = (System.Windows.Media.Brush)FindResource("NavBorderBrush");
-
-        // Bill of materials header (label + QTY column heading)
-        var bomHead = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-        bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        bomHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bomHead.Children.Add(new TextBlock { Text = "BILL OF MATERIALS", FontFamily = monoFont, FontSize = 11, Foreground = dimB });
-        var bomQtyHd = new TextBlock { Text = "QTY", FontFamily = monoFont, FontSize = 11, Foreground = dimB };
-        Grid.SetColumn(bomQtyHd, 1); bomHead.Children.Add(bomQtyHd);
-        host.Children.Add(new Border { Child = bomHead, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 8), Margin = new Thickness(0, 0, 0, 2) });
-
-        double bomTotal = full.Ingredients.Sum(i => i.Quantity);
-
-        foreach (var ing in full.Ingredients)
+        // The shipped unlock block, now the top of the SOURCING left column.
+        void BuildUnlock(System.Windows.Controls.Panel host)
         {
-            var ingCopy = ing;
-            var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
-            var rb = RarityBrush(rarity);
-            var tier = rarity.Length > 0 ? char.ToUpper(rarity[0]) + rarity.Substring(1) : "";
-
-            var g = new Grid();
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // dot
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // name + tier
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // qty + unit
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // add
-
-            var dot = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = rb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 11, 0) };
-            Grid.SetColumn(dot, 0); g.Children.Add(dot);
-
-            var nameWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            nameWrap.Children.Add(new TextBlock { Text = ing.ResourceName, FontSize = 13.5, Foreground = rb, VerticalAlignment = VerticalAlignment.Center });
-            if (tier.Length > 0)
-                nameWrap.Children.Add(new TextBlock { Text = "   " + tier, FontSize = 10, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
-            Grid.SetColumn(nameWrap, 1); g.Children.Add(nameWrap);
-
-            var qtyWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-            qtyWrap.Children.Add(new TextBlock { Text = CraftAmount.Value(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 13, Foreground = fgB, Width = 50, TextAlignment = System.Windows.TextAlignment.Right });
-            qtyWrap.Children.Add(new TextBlock { Text = " " + CraftAmount.Unit(ing.Quantity, ing.Unit), FontFamily = monoFont, FontSize = 11, Foreground = dimB, Width = 38, TextAlignment = System.Windows.TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
-            Grid.SetColumn(qtyWrap, 2); g.Children.Add(qtyWrap);
-
-            var addBtn = new Button { Content = "+", Style = (Style)FindResource("NexusButton"), Padding = new Thickness(8, 1, 8, 1), FontSize = 13, FontWeight = FontWeights.Bold, ToolTip = "Add to shopping list", Tag = ingCopy, VerticalAlignment = VerticalAlignment.Center };
-            addBtn.Click += (s, e) => _vm.AddToShoppingCommand.Execute(((Button)s).Tag);
-            Grid.SetColumn(addBtn, 3); g.Children.Add(addBtn);
-
-            var rowBorder = new Border { Child = g, Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 9, 2, 9), BorderBrush = navBorder0, BorderThickness = new Thickness(0, 0, 0, 1) };
-
-            // cross-link: clicking the row opens the ingredient in the Mining Codex
-            if (_vm.AllResources.Any(r => r.Name.Equals(ing.ResourceName, StringComparison.OrdinalIgnoreCase)))
-            {
-                rowBorder.Cursor = System.Windows.Input.Cursors.Hand;
-                rowBorder.ToolTip = "Open in Mining Codex";
-                var hov = (System.Windows.Media.Brush)FindResource("HighlightBrush");
-                rowBorder.MouseEnter += (s, _) => rowBorder.Background = hov;
-                rowBorder.MouseLeave += (s, _) => rowBorder.Background = System.Windows.Media.Brushes.Transparent;
-                rowBorder.MouseLeftButtonDown += (s, _) => NavigateToResource(ingCopy.ResourceName);
-            }
-
-            host.Children.Add(rowBorder);
-        }
-
-        // Total footer
-        var totalGrid = new Grid { Margin = new Thickness(2, 11, 2, 0) };
-        totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        totalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        totalGrid.Children.Add(new TextBlock { Text = "TOTAL", FontFamily = monoFont, FontSize = 11, Foreground = dimB, VerticalAlignment = VerticalAlignment.Center });
-        var totalVal = new TextBlock { Text = CraftAmount.Format(bomTotal, "SCU"), FontFamily = monoFont, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = heroAccent, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(totalVal, 1); totalGrid.Children.Add(totalVal);
-        host.Children.Add(new Border { Child = totalGrid, BorderBrush = navBorder0, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 10, 0, 0), Margin = new Thickness(0, 2, 0, 0) });
-
-        host = rightHost;
-
-        // ── Location recommendation (greedy set cover) ───────────────────────
-        var ingredientNames = full.Ingredients.Select(i => i.ResourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var locToIngredients = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var ing in full.Ingredients)
-        {
-            var res = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName);
-            if (res == null) continue;
-            foreach (var loc in res.Locations)
-            {
-                if (!locToIngredients.TryGetValue(loc, out var set))
-                    locToIngredients[loc] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                set.Add(ing.ResourceName);
-            }
-        }
-
-        var withLocation = full.Ingredients
-            .Where(i => _vm.AllResources.Any(r => r.Name == i.ResourceName && r.Locations.Count > 0))
-            .Select(i => i.ResourceName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var noLocation = full.Ingredients.Select(i => i.ResourceName).Where(n => !withLocation.Contains(n)).ToList();
-
-        var remaining = new HashSet<string>(withLocation, StringComparer.OrdinalIgnoreCase);
-        var rankedLocations = new List<(string Location, List<string> Covers)>();
-        var availableLocs = new Dictionary<string, HashSet<string>>(locToIngredients, StringComparer.OrdinalIgnoreCase);
-
-        while (remaining.Count > 0)
-        {
-            string? bestLoc = null; int bestCount = 0; List<string>? bestCovers = null;
-            foreach (var (loc, ings) in availableLocs)
-            {
-                var covered = ings.Intersect(remaining).ToList();
-                if (covered.Count > bestCount) { bestCount = covered.Count; bestLoc = loc; bestCovers = covered; }
-            }
-            if (bestLoc == null || bestCount == 0) break;
-            rankedLocations.Add((bestLoc, bestCovers!));
-            foreach (var r in bestCovers!) remaining.Remove(r);
-            availableLocs.Remove(bestLoc);
-        }
-
-        if (rankedLocations.Count > 0 || noLocation.Count > 0)
-        {
-            host.Children.Add(new Border
-            {
-                Height = 1, Margin = new Thickness(0, 14, 0, 10),
-                Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-            });
+            // ── HOW TO UNLOCK ────────────────────────────────────────────────────
             host.Children.Add(new TextBlock
             {
-                Text = $"WHERE TO MINE  ·  {rankedLocations.Count} location{(rankedLocations.Count == 1 ? "" : "s")}",
+                Text = "HOW TO UNLOCK",
                 FontSize = 10, FontWeight = FontWeights.Bold,
                 Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
                 Margin = new Thickness(0, 0, 0, 6),
             });
 
-            // ── Byproduct sourcing note (issue #12) ──────────────────────────
-            // Ingredients like Aslarite are collected inside host rocks, not as dedicated
-            // deposits at each ranked location. This reuses the same datamined found-in rows
-            // the Mining Codex shows; probability and variants are intentionally omitted.
-            var byproductOres = new List<(string Name, string Rarity, List<NexusApp.Models.FoundInSource> Sources)>();
-            foreach (var ing in full.Ingredients)
+            if (full.UnlockEntries.Count == 0)
             {
-                var sources = App.Data.GetFoundInForResource(ing.ResourceName);
-                if (sources.Count == 0) continue;
-                var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
-                byproductOres.Add((ing.ResourceName, rarity, sources));
-            }
-
-            if (byproductOres.Count > 0)
-            {
-                var noteFg   = (System.Windows.Media.Brush)FindResource("FgBrush");
-                var noteCyan = (System.Windows.Media.Brush)FindResource("CyanBrush");
-                var bandTrackBrush = BrushFromHex("#147FE9E0");   // faint cyan track (line .078)
-                var bandFillBrush = new System.Windows.Media.LinearGradientBrush(
-                    System.Windows.Media.Color.FromArgb(0x8C, 0x7F, 0xE9, 0xE0),   // cyan .55
-                    System.Windows.Media.Color.FromRgb(0x7F, 0xE9, 0xE0),          // cyan
-                    0);   // 0deg = left-to-right, matching the mock's 90deg gradient
-
-                var noteInner = new StackPanel { Margin = new Thickness(13, 11, 13, 9) };
-                noteInner.Children.Add(new TextBlock
+                if (App.Data.IsStarterBlueprint(full.Name))
                 {
-                    Text = "BYPRODUCT SOURCING",
-                    FontSize = 9, FontWeight = FontWeights.Bold,
-                    Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
-                    Margin = new Thickness(0, 0, 0, 4),
-                });
-                noteInner.Children.Add(new TextBlock
-                {
-                    Text = "Host share per rock. Longer bar means a richer cut when you scan that rock.",
-                    FontSize = 11, Foreground = dimB, TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10),
-                });
-
-                // Section C band-bar rows: rarity dot + ore name, then one bar per composition
-                // band (richest band first, filling the track). Bar width scales each band's
-                // upper bound against the ore's richest band; label reads "<hosts> up to <max>%".
-                const double trackW = 104, trackInnerW = 102;   // 1px border each side
-                bool firstBandRow = true;
-                foreach (var (oreName, oreRarity, sources) in byproductOres)
-                {
-                    var chd = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-                    chd.Children.Add(new Border
+                    var starterText = UnlockEmptyText(true);
+                    const string lead = "Starter blueprint.";
+                    var starterTb = new TextBlock
                     {
-                        Width = 9, Height = 9, CornerRadius = new CornerRadius(3),
-                        Background = RarityBrush(oreRarity), VerticalAlignment = VerticalAlignment.Center,
-                        Margin = new Thickness(0, 0, 9, 0),
+                        FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+                        Margin = new Thickness(0, 0, 0, 12),
+                    };
+                    starterTb.Inlines.Add(new System.Windows.Documents.Run(lead)
+                    {
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
                     });
-                    chd.Children.Add(new TextBlock
-                    {
-                        Text = oreName, FontFamily = headFont, FontWeight = FontWeights.SemiBold,
-                        FontSize = 13, Foreground = noteFg, VerticalAlignment = VerticalAlignment.Center,
-                    });
-
-                    var groups = ByproductNote.Groups(sources);
-                    double oreMax = groups.Count > 0 ? groups.Max(x => x.Max) : 0;
-                    var ordered = groups.OrderByDescending(x => x.Max).ToList();   // richest band on top
-
-                    var bands = new StackPanel { Margin = new Thickness(18, 0, 0, 0) };   // indent past the dot
-                    for (int bi = 0; bi < ordered.Count; bi++)
-                    {
-                        var grp = ordered[bi];
-                        double frac = ByproductNote.BarFraction(grp.Max, oreMax);
-
-                        var fill = new Border
-                        {
-                            HorizontalAlignment = HorizontalAlignment.Left,
-                            Width = trackInnerW * frac, Background = bandFillBrush,
-                        };
-                        var track = new Border
-                        {
-                            Width = trackW, Height = 9, CornerRadius = new CornerRadius(3),
-                            Background = bandTrackBrush, BorderBrush = navBorder0,
-                            BorderThickness = new Thickness(1), ClipToBounds = true,
-                            VerticalAlignment = VerticalAlignment.Center, Child = fill,
-                        };
-
-                        var label = new TextBlock
-                        {
-                            FontFamily = monoFont, FontSize = 10.5, Foreground = dimB,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            Margin = new Thickness(9, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
-                        };
-                        for (int hi = 0; hi < grp.Hosts.Count; hi++)
-                        {
-                            if (hi > 0) label.Inlines.Add(new System.Windows.Documents.Run(", ") { Foreground = dimB });
-                            label.Inlines.Add(new System.Windows.Documents.Run(grp.Hosts[hi]) { Foreground = noteFg });
-                        }
-                        label.Inlines.Add(new System.Windows.Documents.Run(" up to ") { Foreground = dimB });
-                        label.Inlines.Add(new System.Windows.Documents.Run(ByproductNote.Percent(grp.Max)) { Foreground = noteCyan });
-
-                        var bandRow = new StackPanel
-                        {
-                            Orientation = Orientation.Horizontal,
-                            Margin = new Thickness(0, 0, 0, bi == ordered.Count - 1 ? 0 : 5),
-                        };
-                        bandRow.Children.Add(track);
-                        bandRow.Children.Add(label);
-                        bands.Children.Add(bandRow);
-                    }
-
-                    var crow = new StackPanel();
-                    crow.Children.Add(chd);
-                    crow.Children.Add(bands);
-
-                    // Hairline separator between rows only (not before the first).
-                    noteInner.Children.Add(new Border
-                    {
-                        Child = crow, Padding = new Thickness(0, 8, 0, 8),
-                        BorderBrush = navBorder0,
-                        BorderThickness = new Thickness(0, firstBandRow ? 0 : 1, 0, 0),
-                    });
-                    firstBandRow = false;
+                    starterTb.Inlines.Add(new System.Windows.Documents.Run(starterText.Substring(lead.Length)));
+                    host.Children.Add(starterTb);
                 }
+                else
+                {
+                    host.Children.Add(new TextBlock
+                    {
+                        Text = UnlockEmptyText(false),
+                        FontSize = 11, FontStyle = FontStyles.Italic,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                        Margin = new Thickness(0, 0, 0, 12),
+                    });
+                }
+            }
+            else
+            {
+                // Group by faction
+                var byFaction = full.UnlockEntries
+                    .GroupBy(e => (e.Faction, e.MissionType))
+                    .ToList();
 
-                // 2px amber accent bar (AccentStrongBrush) + faint amber wash, cyan hairline border.
-                var noteGrid = new Grid();
-                noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2) });
-                noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                noteGrid.Children.Add(new Border { Background = (System.Windows.Media.Brush)FindResource("AccentStrongBrush") });
-                Grid.SetColumn(noteInner, 1); noteGrid.Children.Add(noteInner);
+                foreach (var group in byFaction)
+                {
+                    var (faction, mtype) = group.Key;
+                    var missions = group.ToList();
+
+                    var factionLabel = mtype != null ? $"{faction}  ·  {mtype}" : faction;
+                    host.Children.Add(new TextBlock
+                    {
+                        Text = factionLabel, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+                        Margin = new Thickness(0, 4, 0, 2),
+                    });
+
+                    if (missions.Count <= 6)
+                    {
+                        foreach (var m in missions)
+                        {
+                            var rankPart = m.Rank is null or "Any" or "Neutral" ? m.Rank ?? "Any" : m.Rank;
+                            var sysPart  = m.Systems is { Length: > 0 } ? string.Join("/", m.Systems) : null;
+                            var meta     = sysPart != null ? $" ({rankPart}  ·  {sysPart})" : $" ({rankPart})";
+
+                            var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(8, 1, 0, 1), LastChildFill = true };
+                            var bullet = new TextBlock
+                            {
+                                Text = "·  ", FontSize = 11,
+                                Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                                VerticalAlignment = VerticalAlignment.Top,
+                            };
+                            System.Windows.Controls.DockPanel.SetDock(bullet, System.Windows.Controls.Dock.Left);
+                            row.Children.Add(bullet);
+                            var missionLine = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+                            missionLine.Inlines.Add(new System.Windows.Documents.Run(m.MissionTitle)
+                            {
+                                Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+                            });
+                            missionLine.Inlines.Add(new System.Windows.Documents.Run(meta)
+                            {
+                                Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                                FontSize = 10,
+                            });
+                            row.Children.Add(missionLine);
+                            host.Children.Add(row);
+                        }
+                    }
+                    else
+                    {
+                        var typeLabel = mtype != null ? $" {mtype}" : "";
+                        host.Children.Add(new TextBlock
+                        {
+                            Text = $"  ·  Any{typeLabel} mission  ({missions.Count} available)",
+                            FontSize = 11,
+                            Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                            Margin = new Thickness(8, 1, 0, 1),
+                        });
+                    }
+                }
 
                 host.Children.Add(new Border
                 {
-                    Margin = new Thickness(0, 0, 0, 4),
-                    CornerRadius = new CornerRadius(4),
-                    Background = BrushFromHex("#07FFB23E"),
-                    BorderBrush = navBorder0,
-                    BorderThickness = new Thickness(1),
-                    ClipToBounds = true,
-                    Child = noteGrid,
+                    Height = 1, Margin = new Thickness(0, 10, 0, 4),
+                    Background = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
                 });
+            }
+        }
 
-                Logger.Info($"[UI] blueprint byproducts: {byproductOres.Count} ores");
+        // The shipped WHERE TO MINE block, now the SOURCING right column.
+        void BuildWhereToMine(System.Windows.Controls.Panel host)
+        {
+            // ── Location recommendation (greedy set cover) ───────────────────────
+            var ingredientNames = full.Ingredients.Select(i => i.ResourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var locToIngredients = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var ing in full.Ingredients)
+            {
+                var res = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName);
+                if (res == null) continue;
+                foreach (var loc in res.Locations)
+                {
+                    if (!locToIngredients.TryGetValue(loc, out var set))
+                        locToIngredients[loc] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    set.Add(ing.ResourceName);
+                }
             }
 
-            // Treatment B: "via <host>" chips on each covers line. A byproduct-sourced ore is
-            // tagged only with the hosts that actually spawn at that location (host presence read
-            // from each host ore's own Locations); a dim "no host here" chip marks an ore whose
-            // hosts are all absent. Chips are non-interactive reference markers (no logging).
-            var oreToSources = new Dictionary<string, List<NexusApp.Models.FoundInSource>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var b in byproductOres) oreToSources[b.Name] = b.Sources;
-            var hostLocations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var res in _vm.AllResources) hostLocations[res.Name] = res.Locations;
+            var withLocation = full.Ingredients
+                .Where(i => _vm.AllResources.Any(r => r.Name == i.ResourceName && r.Locations.Count > 0))
+                .Select(i => i.ResourceName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var noLocation = full.Ingredients.Select(i => i.ResourceName).Where(n => !withLocation.Contains(n)).ToList();
 
-            var chipAmber     = heroAccent;                                                    // amber text
-            var chipAmberLine = (System.Windows.Media.Brush)FindResource("AccentStrongBrush"); // amber-line border
-            var chipCyan      = (System.Windows.Media.Brush)FindResource("CyanBrush");          // "+N" text
-            var chipCyanLine  = (System.Windows.Media.Brush)FindResource("CyanDimBrush");       // "+N" border
-            Border ViaChip(string text, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush borderBrush) => new()
+            var remaining = new HashSet<string>(withLocation, StringComparer.OrdinalIgnoreCase);
+            var rankedLocations = new List<(string Location, List<string> Covers)>();
+            var availableLocs = new Dictionary<string, HashSet<string>>(locToIngredients, StringComparer.OrdinalIgnoreCase);
+
+            while (remaining.Count > 0)
             {
-                Child = new TextBlock { Text = text, FontFamily = monoFont, FontSize = 8.5, Foreground = textBrush },
-                BorderBrush = borderBrush, BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1),
-                Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            };
+                string? bestLoc = null; int bestCount = 0; List<string>? bestCovers = null;
+                foreach (var (loc, ings) in availableLocs)
+                {
+                    var covered = ings.Intersect(remaining).ToList();
+                    if (covered.Count > bestCount) { bestCount = covered.Count; bestLoc = loc; bestCovers = covered; }
+                }
+                if (bestLoc == null || bestCount == 0) break;
+                rankedLocations.Add((bestLoc, bestCovers!));
+                foreach (var r in bestCovers!) remaining.Remove(r);
+                availableLocs.Remove(bestLoc);
+            }
 
-            int locRank = 1;
-            foreach (var (location, covers) in rankedLocations)
+            if (rankedLocations.Count > 0 || noLocation.Count > 0)
             {
-                var system = GetSystem(location);
-                var sysBrush = SystemBrush(system);
-
-                var locRow = new Grid();
-                locRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-                locRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                locRow.Children.Add(new Border { Background = sysBrush });
-
-                var locContent = new StackPanel { Margin = new Thickness(10, 7, 10, 7) };
-
-                var topRow = new StackPanel { Orientation = Orientation.Horizontal };
-                topRow.Children.Add(new TextBlock
+                host.Children.Add(new TextBlock
                 {
-                    Text = $"#{locRank++}", FontSize = 9, FontWeight = FontWeights.Bold,
-                    Foreground = sysBrush, Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
+                    Text = $"WHERE TO MINE  ·  {rankedLocations.Count} location{(rankedLocations.Count == 1 ? "" : "s")}",
+                    FontSize = 10, FontWeight = FontWeights.Bold,
+                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                    Margin = new Thickness(0, 0, 0, 6),
                 });
-                topRow.Children.Add(new TextBlock
+
+                // ── Byproduct sourcing note (issue #12) ──────────────────────────
+                // Ingredients like Aslarite are collected inside host rocks, not as dedicated
+                // deposits at each ranked location. This reuses the same datamined found-in rows
+                // the Mining Codex shows; probability and variants are intentionally omitted.
+                var byproductOres = new List<(string Name, string Rarity, List<NexusApp.Models.FoundInSource> Sources)>();
+                foreach (var ing in full.Ingredients)
                 {
-                    Text = location, FontSize = 12, FontWeight = FontWeights.SemiBold,
-                    Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                });
-                topRow.Children.Add(new Border
+                    var sources = App.Data.GetFoundInForResource(ing.ResourceName);
+                    if (sources.Count == 0) continue;
+                    var rarity = _vm.AllResources.FirstOrDefault(r => r.Name == ing.ResourceName)?.Rarity ?? "common";
+                    byproductOres.Add((ing.ResourceName, rarity, sources));
+                }
+
+                if (byproductOres.Count > 0)
                 {
-                    Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(5, 1, 5, 1),
-                    CornerRadius = new CornerRadius(3), Background = sysBrush,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Child = new TextBlock
+                    var noteFg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+                    var noteCyan = (System.Windows.Media.Brush)FindResource("CyanBrush");
+                    var bandTrackBrush = BrushFromHex("#147FE9E0");   // faint cyan track (line .078)
+                    var bandFillBrush = new System.Windows.Media.LinearGradientBrush(
+                        System.Windows.Media.Color.FromArgb(0x8C, 0x7F, 0xE9, 0xE0),   // cyan .55
+                        System.Windows.Media.Color.FromRgb(0x7F, 0xE9, 0xE0),          // cyan
+                        0);   // 0deg = left-to-right, matching the mock's 90deg gradient
+
+                    var noteInner = new StackPanel { Margin = new Thickness(13, 11, 13, 9) };
+                    noteInner.Children.Add(new TextBlock
                     {
-                        Text = system.ToUpper(), FontSize = 8, FontWeight = FontWeights.Bold,
-                        Foreground = System.Windows.Media.Brushes.White,
-                    },
-                });
-                locContent.Children.Add(topRow);
+                        Text = "BYPRODUCT SOURCING",
+                        FontSize = 9, FontWeight = FontWeights.Bold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+                        Margin = new Thickness(0, 0, 0, 4),
+                    });
+                    noteInner.Children.Add(new TextBlock
+                    {
+                        Text = "Host share per rock. Longer bar means a richer cut when you scan that rock.",
+                        FontSize = 11, Foreground = dimB, TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 10),
+                    });
 
-                var coversPanel = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
-                coversPanel.Children.Add(new TextBlock
-                {
-                    Text = $"{covers.Count}/{ingredientNames.Count} ingredients ·",
-                    FontSize = 10, Foreground = dimB,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
-                });
-                for (int ci = 0; ci < covers.Count; ci++)
-                {
-                    if (ci > 0)
-                        coversPanel.Children.Add(new TextBlock
+                    // Section C band-bar rows: rarity dot + ore name, then one bar per composition
+                    // band (richest band first, filling the track). Bar width scales each band's
+                    // upper bound against the ore's richest band; label reads "<hosts> up to <max>%".
+                    const double trackW = 104, trackInnerW = 102;   // 1px border each side
+                    bool firstBandRow = true;
+                    foreach (var (oreName, oreRarity, sources) in byproductOres)
+                    {
+                        var chd = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+                        chd.Children.Add(new Border
                         {
-                            Text = ",", FontSize = 10, Foreground = dimB,
-                            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+                            Width = 9, Height = 9, CornerRadius = new CornerRadius(3),
+                            Background = RarityBrush(oreRarity), VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(0, 0, 9, 0),
                         });
-                    coversPanel.Children.Add(new TextBlock
+                        chd.Children.Add(new TextBlock
+                        {
+                            Text = oreName, FontFamily = headFont, FontWeight = FontWeights.SemiBold,
+                            FontSize = 13, Foreground = noteFg, VerticalAlignment = VerticalAlignment.Center,
+                        });
+
+                        var groups = ByproductNote.Groups(sources);
+                        double oreMax = groups.Count > 0 ? groups.Max(x => x.Max) : 0;
+                        var ordered = groups.OrderByDescending(x => x.Max).ToList();   // richest band on top
+
+                        var bands = new StackPanel { Margin = new Thickness(18, 0, 0, 0) };   // indent past the dot
+                        for (int bi = 0; bi < ordered.Count; bi++)
+                        {
+                            var grp = ordered[bi];
+                            double frac = ByproductNote.BarFraction(grp.Max, oreMax);
+
+                            var fill = new Border
+                            {
+                                HorizontalAlignment = HorizontalAlignment.Left,
+                                Width = trackInnerW * frac, Background = bandFillBrush,
+                            };
+                            var track = new Border
+                            {
+                                Width = trackW, Height = 9, CornerRadius = new CornerRadius(3),
+                                Background = bandTrackBrush, BorderBrush = navBorder0,
+                                BorderThickness = new Thickness(1), ClipToBounds = true,
+                                VerticalAlignment = VerticalAlignment.Center, Child = fill,
+                            };
+
+                            var label = new TextBlock
+                            {
+                                FontFamily = monoFont, FontSize = 10.5, Foreground = dimB,
+                                VerticalAlignment = VerticalAlignment.Center,
+                                Margin = new Thickness(9, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                            };
+                            for (int hi = 0; hi < grp.Hosts.Count; hi++)
+                            {
+                                if (hi > 0) label.Inlines.Add(new System.Windows.Documents.Run(", ") { Foreground = dimB });
+                                label.Inlines.Add(new System.Windows.Documents.Run(grp.Hosts[hi]) { Foreground = noteFg });
+                            }
+                            label.Inlines.Add(new System.Windows.Documents.Run(" up to ") { Foreground = dimB });
+                            label.Inlines.Add(new System.Windows.Documents.Run(ByproductNote.Percent(grp.Max)) { Foreground = noteCyan });
+
+                            var bandRow = new StackPanel
+                            {
+                                Orientation = Orientation.Horizontal,
+                                Margin = new Thickness(0, 0, 0, bi == ordered.Count - 1 ? 0 : 5),
+                            };
+                            bandRow.Children.Add(track);
+                            bandRow.Children.Add(label);
+                            bands.Children.Add(bandRow);
+                        }
+
+                        var crow = new StackPanel();
+                        crow.Children.Add(chd);
+                        crow.Children.Add(bands);
+
+                        // Hairline separator between rows only (not before the first).
+                        noteInner.Children.Add(new Border
+                        {
+                            Child = crow, Padding = new Thickness(0, 8, 0, 8),
+                            BorderBrush = navBorder0,
+                            BorderThickness = new Thickness(0, firstBandRow ? 0 : 1, 0, 0),
+                        });
+                        firstBandRow = false;
+                    }
+
+                    // 2px amber accent bar (AccentStrongBrush) + faint amber wash, cyan hairline border.
+                    var noteGrid = new Grid();
+                    noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2) });
+                    noteGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    noteGrid.Children.Add(new Border { Background = (System.Windows.Media.Brush)FindResource("AccentStrongBrush") });
+                    Grid.SetColumn(noteInner, 1); noteGrid.Children.Add(noteInner);
+
+                    host.Children.Add(new Border
                     {
-                        Text = covers[ci], FontSize = 10, FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, 0, 0, 4),
+                        CornerRadius = new CornerRadius(4),
+                        Background = BrushFromHex("#07FFB23E"),
+                        BorderBrush = navBorder0,
+                        BorderThickness = new Thickness(1),
+                        ClipToBounds = true,
+                        Child = noteGrid,
+                    });
+
+                    Logger.Info($"[UI] blueprint byproducts: {byproductOres.Count} ores");
+                }
+
+                // Treatment B: "via <host>" chips on each covers line. A byproduct-sourced ore is
+                // tagged only with the hosts that actually spawn at that location (host presence read
+                // from each host ore's own Locations); a dim "no host here" chip marks an ore whose
+                // hosts are all absent. Chips are non-interactive reference markers (no logging).
+                var oreToSources = new Dictionary<string, List<NexusApp.Models.FoundInSource>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var b in byproductOres) oreToSources[b.Name] = b.Sources;
+                var hostLocations = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var res in _vm.AllResources) hostLocations[res.Name] = res.Locations;
+
+                var chipAmber     = heroAccent;                                                    // amber text
+                var chipAmberLine = (System.Windows.Media.Brush)FindResource("AccentStrongBrush"); // amber-line border
+                var chipCyan      = (System.Windows.Media.Brush)FindResource("CyanBrush");          // "+N" text
+                var chipCyanLine  = (System.Windows.Media.Brush)FindResource("CyanDimBrush");       // "+N" border
+                Border ViaChip(string text, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush borderBrush) => new()
+                {
+                    Child = new TextBlock { Text = text, FontFamily = monoFont, FontSize = 8.5, Foreground = textBrush },
+                    BorderBrush = borderBrush, BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                };
+
+                int locRank = 1;
+                foreach (var (location, covers) in rankedLocations)
+                {
+                    var system = GetSystem(location);
+                    var sysBrush = SystemBrush(system);
+
+                    var locRow = new Grid();
+                    locRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+                    locRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    locRow.Children.Add(new Border { Background = sysBrush });
+
+                    var locContent = new StackPanel { Margin = new Thickness(10, 7, 10, 7) };
+
+                    var topRow = new StackPanel { Orientation = Orientation.Horizontal };
+                    topRow.Children.Add(new TextBlock
+                    {
+                        Text = $"#{locRank++}", FontSize = 9, FontWeight = FontWeights.Bold,
+                        Foreground = sysBrush, Margin = new Thickness(0, 0, 6, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    });
+                    topRow.Children.Add(new TextBlock
+                    {
+                        Text = location, FontSize = 12, FontWeight = FontWeights.SemiBold,
                         Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
                         VerticalAlignment = VerticalAlignment.Center,
                     });
-
-                    // Byproduct ores get "via <host>" chips for the hosts present here; ores with
-                    // found-in rows but no host at this location get a dim "no host here" chip;
-                    // ores without found-in rows get nothing.
-                    oreToSources.TryGetValue(covers[ci], out var oreSources);
-                    var chips = ByproductNote.HostsPresentAt(oreSources, hostLocations, location);
-                    if (chips.HasHosts)
+                    topRow.Children.Add(new Border
                     {
-                        if (chips.Present.Count == 0)
-                            coversPanel.Children.Add(ViaChip("no host here", dimB, navBorder0));
-                        else
+                        Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(5, 1, 5, 1),
+                        CornerRadius = new CornerRadius(3), Background = sysBrush,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock
                         {
-                            foreach (var h in chips.Present)
-                                coversPanel.Children.Add(ViaChip($"via {h}", chipAmber, chipAmberLine));
-                            if (chips.Overflow > 0)
-                                coversPanel.Children.Add(ViaChip($"+{chips.Overflow}", chipCyan, chipCyanLine));
+                            Text = system.ToUpper(), FontSize = 8, FontWeight = FontWeights.Bold,
+                            Foreground = System.Windows.Media.Brushes.White,
+                        },
+                    });
+                    locContent.Children.Add(topRow);
+
+                    var coversPanel = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                    coversPanel.Children.Add(new TextBlock
+                    {
+                        Text = $"{covers.Count}/{ingredientNames.Count} ingredients ·",
+                        FontSize = 10, Foreground = dimB,
+                        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+                    });
+                    for (int ci = 0; ci < covers.Count; ci++)
+                    {
+                        if (ci > 0)
+                            coversPanel.Children.Add(new TextBlock
+                            {
+                                Text = ",", FontSize = 10, Foreground = dimB,
+                                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+                            });
+                        coversPanel.Children.Add(new TextBlock
+                        {
+                            Text = covers[ci], FontSize = 10, FontWeight = FontWeights.SemiBold,
+                            Foreground = (System.Windows.Media.Brush)FindResource("FgBrush"),
+                            VerticalAlignment = VerticalAlignment.Center,
+                        });
+
+                        // Byproduct ores get "via <host>" chips for the hosts present here; ores with
+                        // found-in rows but no host at this location get a dim "no host here" chip;
+                        // ores without found-in rows get nothing.
+                        oreToSources.TryGetValue(covers[ci], out var oreSources);
+                        var chips = ByproductNote.HostsPresentAt(oreSources, hostLocations, location);
+                        if (chips.HasHosts)
+                        {
+                            if (chips.Present.Count == 0)
+                                coversPanel.Children.Add(ViaChip("no host here", dimB, navBorder0));
+                            else
+                            {
+                                foreach (var h in chips.Present)
+                                    coversPanel.Children.Add(ViaChip($"via {h}", chipAmber, chipAmberLine));
+                                if (chips.Overflow > 0)
+                                    coversPanel.Children.Add(ViaChip($"+{chips.Overflow}", chipCyan, chipCyanLine));
+                            }
                         }
                     }
+                    locContent.Children.Add(coversPanel);
+
+                    Grid.SetColumn(locContent, 1);
+                    locRow.Children.Add(locContent);
+
+                    host.Children.Add(new Border
+                    {
+                        Margin = new Thickness(0, 0, 0, 4),
+                        CornerRadius = new CornerRadius(4),
+                        Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
+                        BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
+                        BorderThickness = new Thickness(1),
+                        ClipToBounds = true,
+                        Child = locRow,
+                    });
                 }
-                locContent.Children.Add(coversPanel);
 
-                Grid.SetColumn(locContent, 1);
-                locRow.Children.Add(locContent);
-
-                host.Children.Add(new Border
-                {
-                    Margin = new Thickness(0, 0, 0, 4),
-                    CornerRadius = new CornerRadius(4),
-                    Background = (System.Windows.Media.Brush)FindResource("Bg2NavBrush"),
-                    BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"),
-                    BorderThickness = new Thickness(1),
-                    ClipToBounds = true,
-                    Child = locRow,
-                });
+                if (noLocation.Count > 0)
+                    host.Children.Add(new TextBlock
+                    {
+                        Text = $"No known location: {string.Join(", ", noLocation)}",
+                        FontSize = 10,
+                        Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
+                        Margin = new Thickness(0, 4, 0, 0),
+                        TextWrapping = TextWrapping.Wrap,
+                    });
             }
-
-            if (noLocation.Count > 0)
-                host.Children.Add(new TextBlock
-                {
-                    Text = $"No known location: {string.Join(", ", noLocation)}",
-                    FontSize = 10,
-                    Foreground = (System.Windows.Media.Brush)FindResource("FgDimBrush"),
-                    Margin = new Thickness(0, 4, 0, 0),
-                    TextWrapping = TextWrapping.Wrap,
-                });
         }
 
         // Detail is always the deepest tier (3); switching between sibling blueprints while

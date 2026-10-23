@@ -22,6 +22,37 @@ public class AppSettings
 
     public List<string> PinnedResources { get; set; } = [];
     public List<string> OwnedBlueprints { get; set; } = [];
+
+    // Craft Quality Forecast: the quality (0..1000) the user holds per ore/resource, keyed by
+    // resource name. The property name is the literal JSON key on disk, so it never changes. The
+    // setter copies into a case-insensitive dictionary because System.Text.Json builds a fresh
+    // dictionary on load and would drop the comparer, making "iron" and "Iron" two different keys.
+    // Values are clamped on read, not on load, so a hand-edited file degrades instead of throwing
+    // (same stance as ComponentLabels). Absent = 500, the neutral midpoint.
+    private Dictionary<string, int> _heldQuality = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> HeldQuality
+    {
+        get => _heldQuality;
+        set
+        {
+            // Loop copy, last key wins: the copy constructor throws on keys that differ only by
+            // case ("Iron" and "iron") in a hand-edited file, and that would fail settings load.
+            var d = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (value != null)
+                foreach (var kv in value) d[kv.Key] = kv.Value;
+            _heldQuality = d;
+        }
+    }
+
+    public int HeldQualityOf(string resource) =>
+        !string.IsNullOrEmpty(resource) && HeldQuality.TryGetValue(resource, out var q)
+            ? Math.Clamp(q, 0, 1000) : 500;
+
+    // Sets and clamps only. Persistence is owned by SettingsService, so the caller must call
+    // App.Settings.Save() after this returns.
+    public void SetHeldQuality(string resource, int quality) =>
+        HeldQuality[resource] = Math.Clamp(quality, 0, 1000);
+
     // Trade routes pinned in the planner, persisted 2026-08-01 to match refinery orders. They
     // shipped session-only that morning; a run outlives a session, so that was wrong. Order is pin
     // order, oldest first, and it is load-bearing - the overlay lists cards in it and the cap drops
@@ -155,6 +186,10 @@ public class AppSettings
     // because there is no consent question here - MarketDataEnabled already gates the feature,
     // and this only chooses whether the list shows what the dossier already has.
     public bool CodexSellColumn { get; set; }
+
+    // Blueprint Library: the results column is collapsed to a 34 px rail so the detail panel
+    // takes the width. Remembered across launches; default false shows the list.
+    public bool LibraryNavCollapsed { get; set; }
 
     // The app version that ran last session, updated at every startup. A jump upward triggers
     // the one-time "Nexus updated to vX.Y.Z" strip on Operations. Null on fresh installs.

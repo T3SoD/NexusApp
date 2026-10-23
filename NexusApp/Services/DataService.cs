@@ -7,9 +7,18 @@ namespace NexusApp.Services;
 
 public class DataService : IDisposable
 {
-    private static readonly string _dataDir = AppPaths.Root;
+    private readonly string _dataDir;
 
-    private static readonly string _dbPath = Path.Combine(_dataDir, "nexus.db");
+    private readonly string _dbPath;
+
+    public DataService() : this(AppPaths.Root) { }
+
+    // Test seam: lets a test point the service at a throwaway directory instead of the live profile.
+    internal DataService(string dataDir)
+    {
+        _dataDir = dataDir;
+        _dbPath = Path.Combine(_dataDir, "nexus.db");
+    }
 
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
 
@@ -118,7 +127,9 @@ public class DataService : IDisposable
                 unlock_faction TEXT,
                 unlock_rep TEXT,
                 unlock_mission TEXT,
-                unlock_system TEXT
+                unlock_system TEXT,
+                slots_json TEXT,
+                craft_seconds INTEGER
             );
             CREATE TABLE IF NOT EXISTS blueprint_ingredients (
                 blueprint_id INTEGER NOT NULL,
@@ -153,6 +164,20 @@ public class DataService : IDisposable
                 rank TEXT,
                 systems TEXT
             );
+            CREATE TABLE IF NOT EXISTS quality_bands (
+                resource_name TEXT NOT NULL,
+                band_start INTEGER NOT NULL,
+                band_end INTEGER NOT NULL,
+                mapped INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS craft_stats (
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                overrides_json TEXT
+            );
+            CREATE TABLE IF NOT EXISTS starter_blueprints (
+                name TEXT PRIMARY KEY
+            );
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -168,6 +193,9 @@ public class DataService : IDisposable
         try { Exec("ALTER TABLE work_orders ADD COLUMN timer_end TEXT"); } catch { }
         // If sub_category is missing the blueprint rows predate it - force a full reseed.
         try { Exec("ALTER TABLE blueprints ADD COLUMN sub_category TEXT"); _forceReseed = true; } catch { }
+        // Same idiom for the crafting forecast columns: rows seeded before them lack slot data.
+        try { Exec("ALTER TABLE blueprints ADD COLUMN slots_json TEXT"); _forceReseed = true; } catch { }
+        try { Exec("ALTER TABLE blueprints ADD COLUMN craft_seconds INTEGER"); _forceReseed = true; } catch { }
     }
 
     // ── Versioned seeding ───────────────────────────────────────────────────────
@@ -178,7 +206,7 @@ public class DataService : IDisposable
     {
         return TryParseSeed(bytes) ?? new SeedData("0.0.0", null,
             new List<SeedResource>(), new Dictionary<string, string>(),
-            new List<SeedBlueprint>(), null);
+            new List<SeedBlueprint>(), null, null, null, null);
     }
 
     private static byte[]? ReadEmbeddedSeedBytes()
@@ -243,16 +271,14 @@ public class DataService : IDisposable
         // Fresh install - seed everything.
         if (resourceCount == 0)
         {
-            SeedAll(LoadSeed(bytes));
-            SetMeta("data_version", _seedVersion);
+            if (SeedAll(LoadSeed(bytes))) SetMeta("data_version", _seedVersion);
             return;
         }
 
         // Old schema that just gained a column - repopulate from the current seed.
         if (_forceReseed)
         {
-            SeedAll(LoadSeed(bytes));
-            SetMeta("data_version", _seedVersion);
+            if (SeedAll(LoadSeed(bytes))) SetMeta("data_version", _seedVersion);
             return;
         }
 
@@ -268,16 +294,23 @@ public class DataService : IDisposable
         // A newer build shipped newer embedded data - full reseed.
         if (CompareVersions(_seedVersion, applied) > 0)
         {
-            SeedAll(LoadSeed(bytes));
-            SetMeta("data_version", _seedVersion);
+            if (SeedAll(LoadSeed(bytes))) SetMeta("data_version", _seedVersion);
         }
         // Otherwise: nothing to do, and the full seed was never deserialized.
     }
 
     /// <summary>Replaces all reference data from <paramref name="seed"/>, preserving the
     /// user's pinned resources (the only user state stored on a reseeded table).</summary>
-    private void SeedAll(SeedData seed)
+    private bool SeedAll(SeedData seed)
     {
+        // A parse failure falls back to an empty seed. Wiping every table and stamping the new
+        // version would lose all reference data and block recovery on the next launch.
+        if (seed.Resources.Count == 0)
+        {
+            Logger.Error("[DATA] seed parse yielded no resources; keeping the existing tables");
+            return false;
+        }
+
         var pinned = new List<string>();
         using (var cmd = _conn!.CreateCommand())
         {
@@ -297,6 +330,9 @@ public class DataService : IDisposable
         Exec("DELETE FROM blueprint_ingredients");
         Exec("DELETE FROM blueprints");
         Exec("DELETE FROM blueprint_unlocks");
+        Exec("DELETE FROM quality_bands");
+        Exec("DELETE FROM craft_stats");
+        Exec("DELETE FROM starter_blueprints");
 
         foreach (var r in seed.Resources)
         {
@@ -319,11 +355,21 @@ public class DataService : IDisposable
             InsertComposition(r);
         }
 
+        int slotBlueprints = 0;
         foreach (var bp in seed.Blueprints)
         {
-            Exec("INSERT INTO blueprints (name,category,sub_category) VALUES (@n,@c,@sc)",
+            // The seed spells the slot flag "item"; the model calls it IsItem. Store the model
+            // shape so reads deserialize straight into BlueprintSlot.
+            object slotsJson = DBNull.Value;
+            if (bp.Slots is { Count: > 0 } seedSlots)
+            {
+                slotsJson = JsonSerializer.Serialize(seedSlots.Select(ToSlot).ToList(), _jsonOpts);
+                slotBlueprints++;
+            }
+            Exec("INSERT INTO blueprints (name,category,sub_category,slots_json,craft_seconds) VALUES (@n,@c,@sc,@sj,@cs)",
                 ("@n", bp.Name), ("@c", bp.Category),
-                ("@sc", (object?)bp.SubCategory ?? DBNull.Value));
+                ("@sc", (object?)bp.SubCategory ?? DBNull.Value),
+                ("@sj", slotsJson), ("@cs", (object?)bp.CraftSeconds ?? DBNull.Value));
 
             var bpId = Scalar<long>("SELECT last_insert_rowid()");
             foreach (var ing in bp.Ingredients)
@@ -333,11 +379,42 @@ public class DataService : IDisposable
 
         InsertUnlocks(seed);
 
+        int bandTables = 0, statCount = 0;
+        foreach (var (resource, bands) in seed.QualityBands ?? [])
+        {
+            bandTables++;
+            foreach (var b in bands.Where(b => b.Count >= 3))
+                Exec("INSERT INTO quality_bands VALUES (@r,@s,@e,@m)",
+                    ("@r", resource), ("@s", b[0]), ("@e", b[1]), ("@m", b[2]));
+        }
+        foreach (var (key, stat) in seed.CraftStats ?? [])
+        {
+            statCount++;
+            Exec("INSERT INTO craft_stats VALUES (@k,@n,@o)",
+                ("@k", key), ("@n", stat.Name),
+                ("@o", stat.Override is { Count: > 0 } ov ? JsonSerializer.Serialize(ov, _jsonOpts) : DBNull.Value));
+        }
+        foreach (var name in seed.StarterBlueprints ?? [])
+            Exec("INSERT OR IGNORE INTO starter_blueprints VALUES (@n)", ("@n", name));
+
         foreach (var name in pinned)
             Exec("UPDATE resources SET is_pinned=1 WHERE name=@n", ("@n", name));
 
         tx.Commit();
+        _craftStats = null;
+        Logger.Info($"[DATA] seed craft quality: {slotBlueprints} blueprints with slots, {bandTables} band tables, {statCount} stats");
+        return true;
     }
+
+    // Test seam: runs the seeding path with a seed that parsed to nothing.
+    internal bool SeedAllEmptyForTest() =>
+        SeedAll(new SeedData("0.0.0", null, new List<SeedResource>(), new Dictionary<string, string>(),
+            new List<SeedBlueprint>(), null, null, null, null));
+
+    private static BlueprintSlot ToSlot(SeedSlot s) => new(
+        s.Name, s.Resources ?? [], s.Quantity, s.Unit, s.Item,
+        (s.Modifiers ?? []).Select(m => new StatModifier(m.Stat,
+            (m.Ranges ?? []).Select(r => new QualityRange(r.Q0, r.Q1, r.M0, r.M1, r.A0, r.A1)).ToList())).ToList());
 
     private void SeedUnlocks(SeedData seed)
     {
@@ -717,7 +794,7 @@ public class DataService : IDisposable
         try
         {
             using var cmd = _conn!.CreateCommand();
-            cmd.CommandText = "SELECT id,name,category,sub_category FROM blueprints WHERE name=@n LIMIT 1";
+            cmd.CommandText = "SELECT id,name,category,sub_category,slots_json,craft_seconds FROM blueprints WHERE name=@n LIMIT 1";
             cmd.Parameters.AddWithValue("@n", name);
             using var rdr = cmd.ExecuteReader();
             if (!rdr.Read()) return null;
@@ -725,7 +802,10 @@ public class DataService : IDisposable
             {
                 Name = rdr.GetString(1), Category = rdr.GetString(2),
                 SubCategory = rdr.IsDBNull(3) ? null : rdr.GetString(3),
+                CraftSeconds = rdr.IsDBNull(5) ? null : rdr.GetInt32(5),
             };
+            if (!rdr.IsDBNull(4))
+                bp.Slots = JsonSerializer.Deserialize<List<BlueprintSlot>>(rdr.GetString(4), _jsonOpts) ?? [];
             long bpId = rdr.GetInt64(0);
             rdr.Close();
 
@@ -759,6 +839,68 @@ public class DataService : IDisposable
         {
             Logger.Error($"DataService.{nameof(GetBlueprintFull)} failed", ex);
             return null;
+        }
+    }
+
+    // ── Crafting quality forecast reference data ─────────────────────────────
+
+    private Dictionary<string, CraftStat>? _craftStats;
+
+    /// <summary>Quality bands for one resource, ordered by band start. Empty when the resource has none.</summary>
+    public IReadOnlyList<QualityBand> GetQualityBands(string resourceName)
+    {
+        try
+        {
+            var result = new List<QualityBand>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT band_start,band_end,mapped FROM quality_bands WHERE resource_name=@r ORDER BY band_start";
+            cmd.Parameters.AddWithValue("@r", resourceName);
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read()) result.Add(new QualityBand(rdr.GetInt32(0), rdr.GetInt32(1), rdr.GetInt32(2)));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetQualityBands)} failed", ex);
+            return [];
+        }
+    }
+
+    /// <summary>Craft stat definitions keyed by stat key. Cached per service instance; a reseed clears it.</summary>
+    public IReadOnlyDictionary<string, CraftStat> GetCraftStats()
+    {
+        if (_craftStats != null) return _craftStats;
+        try
+        {
+            var result = new Dictionary<string, CraftStat>();
+            using var cmd = _conn!.CreateCommand();
+            cmd.CommandText = "SELECT key,name,overrides_json FROM craft_stats";
+            using var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                var ov = rdr.IsDBNull(2) ? null
+                    : JsonSerializer.Deserialize<Dictionary<string, string>>(rdr.GetString(2), _jsonOpts);
+                result[rdr.GetString(0)] = new CraftStat(rdr.GetString(0), rdr.GetString(1), ov);
+            }
+            return _craftStats = result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetCraftStats)} failed", ex);
+            return new Dictionary<string, CraftStat>();
+        }
+    }
+
+    public bool IsStarterBlueprint(string name)
+    {
+        try
+        {
+            return Scalar<long>("SELECT COUNT(*) FROM starter_blueprints WHERE name=@n", ("@n", name)) > 0;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(IsStarterBlueprint)} failed", ex);
+            return false;
         }
     }
 
@@ -888,7 +1030,10 @@ public class DataService : IDisposable
         List<SeedResource> Resources,
         Dictionary<string, string> LocationSystems,
         List<SeedBlueprint> Blueprints,
-        List<SeedBlueprintUnlock>? BlueprintUnlocks
+        List<SeedBlueprintUnlock>? BlueprintUnlocks,
+        Dictionary<string, SeedCraftStat>? CraftStats,
+        Dictionary<string, List<List<int>>>? QualityBands,
+        List<string>? StarterBlueprints
     );
 
     private record SeedResource(
@@ -909,8 +1054,17 @@ public class DataService : IDisposable
 
     private record SeedBlueprint(
         string Name, string Category, string? SubCategory,
-        List<SeedIngredient> Ingredients
+        List<SeedIngredient> Ingredients,
+        List<SeedSlot>? Slots = null, int? CraftSeconds = null
     );
+
+    private record SeedSlot(string Name, List<string> Resources, double Quantity, string Unit, bool Item, List<SeedModifier> Modifiers);
+
+    private record SeedModifier(string Stat, List<SeedRange> Ranges);
+
+    private record SeedRange(int Q0, int Q1, double? M0, double? M1, int? A0, int? A1);
+
+    private record SeedCraftStat(string Name, Dictionary<string, string>? Override);
 
     private record SeedIngredient(string ResourceName, double Quantity, string Unit);
 
