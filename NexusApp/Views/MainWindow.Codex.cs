@@ -21,7 +21,7 @@ public partial class MainWindow
         [("Stanton", "Stanton"), ("Pyro", "Pyro"), ("Nyx", "Nyx")];
 
     private static readonly (string Key, string Label)[] _methods =
-        [("ship", "Ship"), ("vehicle", "ROC"), ("fps", "FPS")];
+        [("ship", "Ship"), ("vehicle", "ROC"), ("fps", "HAND")];
 
     private void BuildFilterPills()
     {
@@ -228,7 +228,7 @@ public partial class MainWindow
                         bpMatches.Contains(r.Name))
             .Where(r => _systemFilter.Count == 0 || r.Locations.Any(l => _systemFilter.Contains(GetSystem(l))))
             .Where(r => _methodFilter.Count == 0 || _methodFilter.Contains(r.Method) ||
-                        (_methodFilter.Contains("fps") && r.Method == "fps+vehicle"))
+                        ((_methodFilter.Contains("fps") || _methodFilter.Contains("vehicle")) && r.Method == "fps+vehicle"))
             .OrderBy(r => Array.IndexOf(new[] { "legendary", "epic", "rare", "uncommon", "common" }, r.Rarity))
             .ThenByDescending(r => r.BaseRs)
             .ToList();
@@ -737,7 +737,11 @@ public partial class MainWindow
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - fillPct, GridUnitType.Star) });
         var track = new Border { CornerRadius = new CornerRadius(5), Background = BrushFromHex("#147FE9E0"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1) };
         Grid.SetColumnSpan(track, 2); bar.Children.Add(track);
-        var fill = new Border { CornerRadius = new CornerRadius(4), Background = kindBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
+        // Byproduct rows measure a different thing (the band inside the host rock, not a share of
+        // the body's spawns), so they draw a hollow outline rather than a solid fill.
+        var fill = kind == SpawnKind.Byproduct
+            ? new Border { CornerRadius = new CornerRadius(4), Background = System.Windows.Media.Brushes.Transparent, BorderBrush = kindBrush, BorderThickness = new Thickness(1), Margin = new Thickness(0, 1.5, 0, 1.5) }
+            : new Border { CornerRadius = new CornerRadius(4), Background = kindBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
         Grid.SetColumn(fill, 0); bar.Children.Add(fill);
         Grid.SetColumn(bar, 1); g.Children.Add(bar);
 
@@ -1379,7 +1383,7 @@ public partial class MainWindow
             var noteText = r.Method == "refined"
                 ? $"{r.Name} is a refined product, not mined directly."
                 : profile?.Class == "Gem" || r.Method != "ship"
-                    ? $"Hand or vehicle mined. Extracted by {MethodLabel(r.Method)} - no ship-mining charge, instability or fracture mechanics."
+                    ? $"Hand or ROC mined. Extracted by {MethodLabel(r.Method)} - no ship-mining charge, instability or fracture mechanics."
                     : $"No ship-mining charge profile. Extracted by {MethodLabel(r.Method)}.";
             ReferenceDetailPanel.Children.Add(new Border
             {

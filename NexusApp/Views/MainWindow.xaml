@@ -1215,6 +1215,20 @@
                                         <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="#EF4444" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <TextBlock Text="Reduced yield" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
+                                    <TextBlock Text="LOCATIONS" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource GoldBrush}" Margin="0,12,0,8"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="18" Height="7" RadiusX="3" RadiusY="3" Fill="#7FE9E0" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="PRIMARY: share of the body's ship rocks" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Rectangle Width="18" Height="7" RadiusX="3" RadiusY="3" Fill="Transparent" Stroke="#FFB23E" StrokeThickness="1" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="BYPRODUCT: band inside another rock" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Rectangle Width="18" Height="7" RadiusX="3" RadiusY="3" Fill="#66E6A6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="ROC / HAND: share of the body's gem spawns" FontSize="11" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </Popup>

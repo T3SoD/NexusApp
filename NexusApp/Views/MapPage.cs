@@ -1593,7 +1593,7 @@ public sealed class MapPage : UserControl
     // ── MINING block (SELECTION zone) ──
 
     // Weighted mining breakdown for the selected body: one header per group (ship rocks, ROC gems,
-    // hand gems) with its group weight, a row per rock with its share bar, and the byproducts of
+    // hand gems), a row per rock with its share bar, and the byproducts of
     // each ship rock directly under their host. Plants collapse to a single count line.
     private void FillMiningBlock(MiningSite site)
     {
@@ -1605,7 +1605,7 @@ public sealed class MapPage : UserControl
         {
             string? label = g.Kind switch
             {
-                "ship" => "SHIP ROCKS", "roc" => "ROC GEMS", "fps" => "HAND GEMS", _ => null,
+                "ship" => "PRIMARY ROCKS", "roc" => "ROC GEMS", "fps" => "HAND GEMS", _ => null,
             };
             if (label is null)
             {
@@ -1627,19 +1627,11 @@ public sealed class MapPage : UserControl
                 Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
                 Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
             });
-            var headWeight = new TextBlock
-            {
-                Text = $"group weight {OreLocationRows.FormatShare(g.Weight).TrimEnd('%')}",
-                FontFamily = Hud.Font("MonoFont"), FontSize = 9, Foreground = Hud.Br("FgDimBrush"),
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(headWeight, 1);
-            head.Children.Add(headWeight);
             _miningBlock.Children.Add(head);
 
             foreach (var rock in g.Rocks)
             {
-                _miningBlock.Children.Add(MiningRow(rock, g.Kind));
+                _miningBlock.Children.Add(MiningRow(rock, g.Kind, site.Body));
                 if (g.Kind == "ship")
                     foreach (var bp in rock.Byproducts)
                         _miningBlock.Children.Add(ByproductRow(rock, bp));
@@ -1672,7 +1664,7 @@ public sealed class MapPage : UserControl
     };
 
     // Share bar, same idiom as the Codex rows: a faint track with a fill sized by star columns.
-    private static Grid MiningBar(double pct, Brush fillBrush)
+    private static Grid MiningBar(double pct, Brush fillBrush, bool hollow = false)
     {
         double fillPct = Math.Max(0, Math.Min(100, pct));
         var bar = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
@@ -1685,7 +1677,10 @@ public sealed class MapPage : UserControl
         };
         Grid.SetColumnSpan(track, 2);
         bar.Children.Add(track);
-        var fill = new Border { CornerRadius = new CornerRadius(3), Background = fillBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
+        // hollow = a different measure than share (a byproduct band), drawn as an outline
+        var fill = hollow
+            ? new Border { CornerRadius = new CornerRadius(3), Background = Brushes.Transparent, BorderBrush = fillBrush, BorderThickness = new Thickness(1), Margin = new Thickness(0, 1.5, 0, 1.5) }
+            : new Border { CornerRadius = new CornerRadius(3), Background = fillBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
         Grid.SetColumn(fill, 0);
         bar.Children.Add(fill);
         return bar;
@@ -1702,7 +1697,7 @@ public sealed class MapPage : UserControl
         };
     }
 
-    private Border MiningRow(SiteRock rock, string kind)
+    private Border MiningRow(SiteRock rock, string kind, string body)
     {
         var brush = kind is "roc" or "fps" ? Hud.Br("OkBrush") : Hud.Br("CyanBrush");
         var g = MiningGrid();
@@ -1740,7 +1735,9 @@ public sealed class MapPage : UserControl
         g.Children.Add(packText);
 
         var card = Hud.RowCard(g);
-        card.ToolTip = $"Open {rock.Ore} in the Codex";
+        string what = kind switch { "roc" => "ROC-gem", "fps" => "hand-gem", _ => "ship-rock" };
+        string packs = rock.PackMax <= 0 ? "" : rock.PackMin == rock.PackMax ? $", packs of {rock.PackMin}" : $", packs of {rock.PackMin}-{rock.PackMax}";
+        card.ToolTip = $"{OreLocationRows.FormatShare(rock.Share)} of {body}'s {what} spawns{packs}. Click to open {rock.Ore} in the Codex.";
         WireCodexClick(card, rock.Ore);
         return card;
     }
@@ -1771,7 +1768,7 @@ public sealed class MapPage : UserControl
         });
         g.Children.Add(name);
 
-        var bar = MiningBar(bp.MaxPct, amber);
+        var bar = MiningBar(bp.MaxPct, amber, hollow: true);
         Grid.SetColumn(bar, 1);
         g.Children.Add(bar);
 
@@ -1799,7 +1796,7 @@ public sealed class MapPage : UserControl
         card.CornerRadius = new CornerRadius(0);
         card.BorderBrush = Hud.Br("AccentStrongBrush");
         card.BorderThickness = new Thickness(1, 0, 0, 0);
-        card.ToolTip = $"Open {bp.Ore} in the Codex  ·  {band} of a {host.Ore} rock";
+        card.ToolTip = $"Carried inside {host.Ore} rocks at {band} of the rock. Click to open {bp.Ore} in the Codex.";
         WireCodexClick(card, bp.Ore);
         return card;
     }
