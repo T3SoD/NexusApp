@@ -13,6 +13,12 @@ public class AboutDialog : Window
 {
     private static readonly (string Label, string[] Changes)[] Changelog =
     [
+        ("App  6.16.0  -  Oct 25, 2026",
+        [
+            "The Mining Codex LOCATIONS list now ranks each body by how often the ore spawns there, from the game's own spawn tables. Each row carries a share bar and a tag: PRIMARY for the ore's own rock, BYPRODUCT (a hollow bar) for ore carried inside another rock, ROC and HAND for gem deposits. Cave sites stay as plain rows",
+            "The Starmap selection panel gains a MINING block for planets and moons: primary rocks with their byproducts folded underneath, ROC gems, hand gems and the plant count. Clicking a row opens that ore in the Codex. Pyro moons such as Fuego now carry a mining pin",
+            "Reference data 1.5.1 adds the per-body spawn tables. The Codex ROC filter now includes dual-method ores, the method pill reads HAND, and the Key lists the location tags",
+        ]),
         ("App  6.15.0  -  Oct 22, 2026",
         [
             "The Blueprint Library forecasts how ore quality changes a crafted item. Each blueprint's detail now has a Sourcing view (how to unlock, bill of materials, where to mine) and a Crafting view, where a slider or a typed number per ore sets the quality you hold and every affected stat reads against a stock craft at Q500, from the game's own crafting curves",
