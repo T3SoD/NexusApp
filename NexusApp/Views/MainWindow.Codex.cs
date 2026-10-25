@@ -21,7 +21,7 @@ public partial class MainWindow
         [("Stanton", "Stanton"), ("Pyro", "Pyro"), ("Nyx", "Nyx")];
 
     private static readonly (string Key, string Label)[] _methods =
-        [("ship", "Ship"), ("vehicle", "ROC"), ("fps", "FPS")];
+        [("ship", "Ship"), ("vehicle", "ROC"), ("fps", "HAND")];
 
     private void BuildFilterPills()
     {
@@ -228,7 +228,7 @@ public partial class MainWindow
                         bpMatches.Contains(r.Name))
             .Where(r => _systemFilter.Count == 0 || r.Locations.Any(l => _systemFilter.Contains(GetSystem(l))))
             .Where(r => _methodFilter.Count == 0 || _methodFilter.Contains(r.Method) ||
-                        (_methodFilter.Contains("fps") && r.Method == "fps+vehicle"))
+                        ((_methodFilter.Contains("fps") || _methodFilter.Contains("vehicle")) && r.Method == "fps+vehicle"))
             .OrderBy(r => Array.IndexOf(new[] { "legendary", "epic", "rare", "uncommon", "common" }, r.Rarity))
             .ThenByDescending(r => r.BaseRs)
             .ToList();
@@ -685,6 +685,93 @@ public partial class MainWindow
             _mapPage?.ShowObject(obj.Id);
         };
         return row;
+    }
+
+    // A weighted location row: the body, its share bar, the value text and a kind tag. Primary
+    // rows read in cyan, byproduct rows in accent with a host line, ROC and hand gems in green.
+    // Click-through follows LocRow: only a row that resolves to a map object gets a cursor and handler.
+    private Border WeightedLocRow(OreLocationRow row)
+    {
+        var fg   = (System.Windows.Media.Brush)FindResource("FgBrush");
+        var dim  = (System.Windows.Media.Brush)FindResource("FgDimBrush");
+        var uiFont   = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("UiFont");
+        var monoFont = (System.Windows.Media.FontFamily)System.Windows.Application.Current.FindResource("MonoFont");
+        var kind = row.Kind ?? SpawnKind.Primary;
+        var kindBrush = kind switch
+        {
+            SpawnKind.Byproduct => (System.Windows.Media.Brush)FindResource("AccentBrush"),
+            SpawnKind.Roc or SpawnKind.Hand => (System.Windows.Media.Brush)FindResource("OkBrush"),
+            _ => BrushFromHex("#7FE9E0"),
+        };
+
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // body + system
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });                   // share bar
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });                   // value
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });                   // kind tag
+
+        var nameCol = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var nameStack = new StackPanel { Orientation = Orientation.Horizontal };
+        nameStack.Children.Add(new TextBlock { Text = "◆", FontSize = 11, Foreground = UiHelpers.SystemBrush(row.System), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+        nameStack.Children.Add(new TextBlock { Text = row.Body, FontSize = 13, FontWeight = FontWeights.SemiBold, FontFamily = uiFont, Foreground = fg, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
+        nameStack.Children.Add(new TextBlock { Text = row.System, FontSize = 10, FontFamily = monoFont, Foreground = dim, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+        nameCol.Children.Add(nameStack);
+        if (kind == SpawnKind.Byproduct && row.Hosts.Count > 0)
+        {
+            var hostLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 1, 0, 0) };
+            hostLine.Children.Add(new Border
+            {
+                Width = 6, Height = 6, BorderThickness = new Thickness(1, 0, 0, 1),
+                BorderBrush = (System.Windows.Media.Brush)FindResource("AccentStrongBrush"),
+                Margin = new Thickness(2, 0, 6, 2), VerticalAlignment = VerticalAlignment.Bottom,
+            });
+            hostLine.Children.Add(new TextBlock { Text = $"in {string.Join(", ", row.Hosts)} rocks", FontSize = 10.5, Foreground = dim, VerticalAlignment = VerticalAlignment.Center, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis });
+            nameCol.Children.Add(hostLine);
+        }
+        g.Children.Add(nameCol);
+
+        // share bar: [fill][rest] as star columns, a kind-coloured fill over a faint track (as FoundInRow)
+        double fillPct = System.Math.Max(0, System.Math.Min(100, row.FillPct));
+        var bar = new Grid { Height = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(fillPct, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - fillPct, GridUnitType.Star) });
+        var track = new Border { CornerRadius = new CornerRadius(5), Background = BrushFromHex("#147FE9E0"), BorderBrush = (System.Windows.Media.Brush)FindResource("NavBorderBrush"), BorderThickness = new Thickness(1) };
+        Grid.SetColumnSpan(track, 2); bar.Children.Add(track);
+        // Byproduct rows measure a different thing (the band inside the host rock, not a share of
+        // the body's spawns), so they draw a hollow outline rather than a solid fill.
+        var fill = kind == SpawnKind.Byproduct
+            ? new Border { CornerRadius = new CornerRadius(4), Background = System.Windows.Media.Brushes.Transparent, BorderBrush = kindBrush, BorderThickness = new Thickness(1), Margin = new Thickness(0, 1.5, 0, 1.5) }
+            : new Border { CornerRadius = new CornerRadius(4), Background = kindBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
+        Grid.SetColumn(fill, 0); bar.Children.Add(fill);
+        Grid.SetColumn(bar, 1); g.Children.Add(bar);
+
+        // opacity, never width: the star-column layout cannot animate width without reflow
+        if (!Motion.Reduced)
+        {
+            fill.Opacity = 0;
+            fill.BeginAnimation(UIElement.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(Motion.SlideMs)) { EasingFunction = Motion.Settle });
+        }
+
+        var value = new TextBlock { Text = row.ValueText, FontSize = 12, FontFamily = monoFont, Foreground = kindBrush, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(value, 2); g.Children.Add(value);
+
+        var tag = new TextBlock { Text = OreLocationRows.TagText(kind), FontSize = 9, FontFamily = monoFont, FontWeight = FontWeights.Bold, Foreground = kindBrush, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(tag, 3); g.Children.Add(tag);
+
+        var card = Hud.RowCard(g);
+        card.ToolTip = row.Tooltip;
+        if (App.Map.ResolveSeedLocation(row.Body) is not { } obj) return card;
+
+        card.Cursor = System.Windows.Input.Cursors.Hand;
+        card.ToolTip = row.Tooltip + ". Click to show on the Starmap.";
+        card.MouseLeftButtonUp += (_, _) =>
+        {
+            Logger.Info($"[UI] codex location -> starmap {row.Body}");
+            SetActivePage("map");
+            _mapPage?.ShowObject(obj.Id);
+        };
+        return card;
     }
 
     // A byproduct-source row: another ore's deposit that also yields the current resource. The
@@ -1296,7 +1383,7 @@ public partial class MainWindow
             var noteText = r.Method == "refined"
                 ? $"{r.Name} is a refined product, not mined directly."
                 : profile?.Class == "Gem" || r.Method != "ship"
-                    ? $"Hand or vehicle mined. Extracted by {MethodLabel(r.Method)} - no ship-mining charge, instability or fracture mechanics."
+                    ? $"Hand or ROC mined. Extracted by {MethodLabel(r.Method)} - no ship-mining charge, instability or fracture mechanics."
                     : $"No ship-mining charge profile. Extracted by {MethodLabel(r.Method)}.";
             ReferenceDetailPanel.Children.Add(new Border
             {
@@ -1427,21 +1514,35 @@ public partial class MainWindow
             ReferenceDetailPanel.Children.Add(foundBody);
         }
 
-        // locations - top 6 + show all. Stays open, and closes the dossier per the mock.
-        ReferenceDetailPanel.Children.Add(RefSectionLabel($"LOCATIONS  ·  {r.Locations.Count}"));
-        if (r.Locations.Count == 0)
+        // locations - top 6 + show all. Stays open, and closes the dossier per the mock. Weighted
+        // rows (share bar, value, kind tag) lead; unweighted community rows keep the plain LocRow.
+        var locRows = OreLocationRows.Build(r.Locations, App.Data.GetSpawnsForResource(r.Name), UiHelpers.GetSystem);
+        ReferenceDetailPanel.Children.Add(RefSectionLabel($"LOCATIONS  ·  {locRows.Count}"));
+        if (locRows.Count == 0)
             ReferenceDetailPanel.Children.Add(new TextBlock { Text = "None", FontSize = 12, Foreground = dim, Margin = new Thickness(0, 0, 0, 8) });
         else
         {
+            if (locRows.Any(x => x.Kind is not null))
+                ReferenceDetailPanel.Children.Add(new TextBlock
+                {
+                    Text = "Share of that body's rock spawns. Byproduct rows show the band inside the host rock.",
+                    FontSize = 11, Foreground = dim, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
+                });
+            UIElement LocationRow(OreLocationRow row) => row.Kind is null ? LocRow(row.Body) : WeightedLocRow(row);
             const int locShow = 6;
-            for (int i = 0; i < System.Math.Min(locShow, r.Locations.Count); i++)
-                ReferenceDetailPanel.Children.Add(LocRow(r.Locations[i]));
-            if (r.Locations.Count > locShow)
+            for (int i = 0; i < System.Math.Min(locShow, locRows.Count); i++)
+                ReferenceDetailPanel.Children.Add(LocationRow(locRows[i]));
+            if (locRows.Count > locShow)
             {
                 var moreLoc = new StackPanel { Visibility = Visibility.Collapsed };
-                for (int i = locShow; i < r.Locations.Count; i++) moreLoc.Children.Add(LocRow(r.Locations[i]));
+                for (int i = locShow; i < locRows.Count; i++) moreLoc.Children.Add(LocationRow(locRows[i]));
                 ReferenceDetailPanel.Children.Add(moreLoc);
-                ReferenceDetailPanel.Children.Add(ToggleLink($"Show all {r.Locations.Count}", "Show fewer", moreLoc));
+                var locToggle = ToggleLink($"Show all {locRows.Count}", "Show fewer", moreLoc);
+                // ToggleLink flips on MouseLeftButtonDown, so the Up handler sees the new state.
+                locToggle.MouseLeftButtonUp += (_, _) => Logger.Info(moreLoc.Visibility == Visibility.Visible
+                    ? $"[UI] codex locations show all {r.Name}"
+                    : $"[UI] codex locations show fewer {r.Name}");
+                ReferenceDetailPanel.Children.Add(locToggle);
             }
         }
 

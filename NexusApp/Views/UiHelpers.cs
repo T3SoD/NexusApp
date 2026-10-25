@@ -18,7 +18,7 @@ public static class UiHelpers
 
     public static string MethodLabel(string method) => method switch
     {
-        "ship" => "Ship", "vehicle" => "ROC", "fps" => "FPS", "fps+vehicle" => "FPS · ROC", _ => method,
+        "ship" => "Ship", "vehicle" => "ROC", "fps" => "Hand", "fps+vehicle" => "Hand · ROC", _ => method,
     };
 
     public static string CapFirst(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];

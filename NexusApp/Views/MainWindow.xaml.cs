@@ -1078,6 +1078,7 @@ public partial class MainWindow : Window
             _mapPage.OpenGuideRequested += id => { SetActivePage("guides"); _guidesPage?.ShowGuideById(id); };
             _mapPage.OpenPlannerRequested += (startTid, destTid) => { SetActivePage("trade"); _tradePage?.SendRouteFromMap(startTid, destTid); };
             _mapPage.OpenPricesRequested += tid => { SetActivePage("trade"); _tradePage?.ShowPricesForTerminal(tid); };
+            _mapPage.OpenCodexResourceRequested += ore => NavigateToResource(ore);
             PageMap.Children.Add(_mapPage);
         }
         _mapPage.Activate();

@@ -71,26 +71,21 @@ public static class MapLayers
         return byObject;
     }
 
-    // For each resource, for each location name: catalog match by name, tried across every
-    // system present in the catalog (a resource's Locations entries are plain community strings
-    // with no system tag of their own). A location name that misses in every system is skipped
-    // silently - community location strings do not all exist as map objects.
+    // For each resource, for each location name: resolved through MapCatalog.ResolveSeedLocation
+    // (a resource's Locations entries are plain community strings with no system tag of their own).
+    // That resolver tries an exact object name across the whole catalog first, then the inner name
+    // of a parenthetical ("Pyro V-e (Fuego)" -> "Fuego"). A location name that still misses is
+    // skipped silently - community location strings do not all exist as map objects.
     public static IReadOnlyDictionary<int, IReadOnlyList<string>> BuildMining(
         IReadOnlyList<Resource> resources, MapCatalog catalog)
     {
-        var systems = catalog.Objects.Select(o => o.System).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var byObject = new Dictionary<int, List<string>>();
 
         foreach (var resource in resources)
         {
             foreach (var locationName in resource.Locations)
             {
-                MapObject? obj = null;
-                foreach (var system in systems)
-                {
-                    obj = catalog.ByName(system, locationName);
-                    if (obj is not null) break;
-                }
+                var obj = catalog.ResolveSeedLocation(locationName);
                 if (obj is null) continue;
 
                 if (!byObject.TryGetValue(obj.Id, out var list))
@@ -104,6 +99,23 @@ public static class MapLayers
     }
 
     public static int? HangarObject(MapCatalog catalog) => catalog.ByName("Pyro", "PYAM-EXHANG-0-1")?.Id;
+
+    // Mining sites keyed by the catalog object their body resolves to. Bodies that do not resolve
+    // (belts, Lagrange points) are dropped. Sites with no groups (a derelict-only body) are dropped too,
+    // so the panel never shows a bare MINING header. The first site wins when two bodies resolve to one object.
+    public static IReadOnlyDictionary<int, MiningSite> BuildSites(
+        IReadOnlyList<MiningSite> sites, MapCatalog catalog)
+    {
+        var byObject = new Dictionary<int, MiningSite>();
+        foreach (var site in sites)
+        {
+            if (site.Groups.Count == 0) continue;
+            var obj = catalog.ResolveSeedLocation(site.Body);
+            if (obj is null) continue;
+            byObject.TryAdd(obj.Id, site);
+        }
+        return byObject;
+    }
 
     // ── Layers built from LIVE app state (app review G11) ───────────────────────────────────────
     // Every layer above is static reference data - the same pins for every player, every session.
