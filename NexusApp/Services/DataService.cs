@@ -119,6 +119,34 @@ public class DataService : IDisposable
                 is_primary INTEGER NOT NULL,
                 PRIMARY KEY (resource_name, ore)
             );
+            CREATE TABLE IF NOT EXISTS mining_site_groups (
+                body TEXT NOT NULL,
+                system TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                weight REAL NOT NULL,
+                count INTEGER,
+                tier TEXT NOT NULL,
+                PRIMARY KEY (body, kind, tier)
+            );
+            CREATE TABLE IF NOT EXISTS mining_site_rocks (
+                body TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                ore TEXT NOT NULL,
+                weight REAL NOT NULL,
+                share REAL NOT NULL,
+                pack_min INTEGER NOT NULL,
+                pack_max INTEGER NOT NULL,
+                PRIMARY KEY (body, kind, ore)
+            );
+            CREATE TABLE IF NOT EXISTS mining_site_byproducts (
+                body TEXT NOT NULL,
+                host_ore TEXT NOT NULL,
+                ore TEXT NOT NULL,
+                min_pct REAL NOT NULL,
+                max_pct REAL NOT NULL,
+                probability REAL NOT NULL,
+                PRIMARY KEY (body, host_ore, ore)
+            );
             CREATE TABLE IF NOT EXISTS blueprints (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -206,7 +234,7 @@ public class DataService : IDisposable
     {
         return TryParseSeed(bytes) ?? new SeedData("0.0.0", null,
             new List<SeedResource>(), new Dictionary<string, string>(),
-            new List<SeedBlueprint>(), null, null, null, null);
+            new List<SeedBlueprint>(), null, null, null, null, null);
     }
 
     private static byte[]? ReadEmbeddedSeedBytes()
@@ -355,6 +383,8 @@ public class DataService : IDisposable
             InsertComposition(r);
         }
 
+        InsertMiningSites(seed);
+
         int slotBlueprints = 0;
         foreach (var bp in seed.Blueprints)
         {
@@ -402,6 +432,7 @@ public class DataService : IDisposable
 
         tx.Commit();
         _craftStats = null;
+        _sitesCache = null;
         Logger.Info($"[DATA] seed craft quality: {slotBlueprints} blueprints with slots, {bandTables} band tables, {statCount} stats");
         return true;
     }
@@ -409,7 +440,7 @@ public class DataService : IDisposable
     // Test seam: runs the seeding path with a seed that parsed to nothing.
     internal bool SeedAllEmptyForTest() =>
         SeedAll(new SeedData("0.0.0", null, new List<SeedResource>(), new Dictionary<string, string>(),
-            new List<SeedBlueprint>(), null, null, null, null));
+            new List<SeedBlueprint>(), null, null, null, null, null));
 
     private static BlueprintSlot ToSlot(SeedSlot s) => new(
         s.Name, s.Resources ?? [], s.Quantity, s.Unit, s.Item,
@@ -465,7 +496,46 @@ public class DataService : IDisposable
             InsertMining(r);
             InsertComposition(r);
         }
+        InsertMiningSites(seed);
         tx.Commit();
+        _sitesCache = null;
+    }
+
+    // Wipes and reloads the per-body spawn tables. Runs inside the caller's transaction.
+    private void InsertMiningSites(SeedData seed)
+    {
+        Exec("DELETE FROM mining_site_byproducts");
+        Exec("DELETE FROM mining_site_rocks");
+        Exec("DELETE FROM mining_site_groups");
+
+        int sites = 0, rocks = 0, byproducts = 0;
+        foreach (var site in seed.MiningSites ?? [])
+        {
+            sites++;
+            foreach (var g in site.Groups ?? [])
+            {
+                Exec("INSERT OR IGNORE INTO mining_site_groups VALUES (@b,@s,@k,@w,@c,@t)",
+                    ("@b", site.Body), ("@s", site.System), ("@k", g.Kind), ("@w", g.Weight),
+                    ("@c", (object?)g.Count ?? DBNull.Value), ("@t", g.Tier ?? ""));
+
+                foreach (var r in g.Rocks ?? [])
+                {
+                    rocks++;
+                    Exec("INSERT OR IGNORE INTO mining_site_rocks VALUES (@b,@k,@o,@w,@sh,@mn,@mx)",
+                        ("@b", site.Body), ("@k", g.Kind), ("@o", r.Ore), ("@w", r.Weight),
+                        ("@sh", r.Share), ("@mn", r.PackMin), ("@mx", r.PackMax));
+
+                    foreach (var bp in r.Byproducts ?? [])
+                    {
+                        byproducts++;
+                        Exec("INSERT OR IGNORE INTO mining_site_byproducts VALUES (@b,@h,@o,@mn,@mx,@p)",
+                            ("@b", site.Body), ("@h", r.Ore), ("@o", bp.Ore),
+                            ("@mn", bp.MinPct), ("@mx", bp.MaxPct), ("@p", bp.Probability));
+                    }
+                }
+            }
+        }
+        Logger.Info($"[DATA] mining sites: {sites} sites, {rocks} rock rows, {byproducts} byproduct rows");
     }
 
     private void InsertUnlocks(SeedData seed)
@@ -717,6 +787,192 @@ public class DataService : IDisposable
         catch (Exception ex)
         {
             Logger.Error($"DataService.{nameof(GetCompositionForResource)} failed", ex);
+            return [];
+        }
+    }
+
+    // Surfaced group kinds in display order. Derelict groups are stored but never surfaced.
+    private static readonly string[] _siteGroupOrder = ["ship", "roc", "fps", "plants"];
+
+    private List<MiningSite>? _sitesCache;
+
+    /// <summary>Every body where <paramref name="resourceName"/> spawns: ship rocks (Primary),
+    /// ROC and hand deposits, and byproducts of other ship rocks. A body where the resource is a
+    /// primary ship rock gets no Byproduct row. Empty when unknown. Reference.</summary>
+    public List<OreSpawn> GetSpawnsForResource(string resourceName)
+    {
+        try
+        {
+            var systems = new Dictionary<string, string>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = "SELECT body, MIN(system) FROM mining_site_groups GROUP BY body";
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read()) systems[rdr.GetString(0)] = rdr.GetString(1);
+            }
+            string SystemOf(string body) => systems.TryGetValue(body, out var s) ? s : "Unknown";
+
+            var result = new List<OreSpawn>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT body, kind, share, pack_min, pack_max FROM mining_site_rocks
+                    WHERE ore = @o AND kind IN ('ship','roc','fps')
+                    ORDER BY CASE kind WHEN 'ship' THEN 0 WHEN 'roc' THEN 1 ELSE 2 END, share DESC, body";
+                cmd.Parameters.AddWithValue("@o", resourceName);
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    var body = rdr.GetString(0);
+                    var kind = rdr.GetString(1) switch
+                    {
+                        "ship" => SpawnKind.Primary,
+                        "roc"  => SpawnKind.Roc,
+                        _      => SpawnKind.Hand,
+                    };
+                    result.Add(new OreSpawn(body, SystemOf(body), kind, rdr.GetDouble(2), 0, 0, 0, [],
+                        rdr.GetInt32(3), rdr.GetInt32(4)));
+                }
+            }
+
+            // Byproduct rows aggregate per body: widest range, best probability, hosts in
+            // descending host-rock weight. Bodies where the resource is a primary rock are skipped.
+            var primaryBodies = result.Where(r => r.Kind == SpawnKind.Primary).Select(r => r.Body).ToHashSet();
+            var byBody = new List<(string Body, double Min, double Max, double Prob, List<string> Hosts)>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT b.body, b.min_pct, b.max_pct, b.probability, b.host_ore
+                    FROM mining_site_byproducts b
+                    JOIN mining_site_rocks r ON r.body = b.body AND r.ore = b.host_ore AND r.kind = 'ship'
+                    WHERE b.ore = @o
+                    ORDER BY b.body, r.weight DESC, b.host_ore";
+                cmd.Parameters.AddWithValue("@o", resourceName);
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    var body = rdr.GetString(0);
+                    if (primaryBodies.Contains(body)) continue;
+                    double mn = rdr.GetDouble(1), mx = rdr.GetDouble(2), p = rdr.GetDouble(3);
+                    var host = rdr.GetString(4);
+                    if (byBody.Count > 0 && byBody[^1].Body == body)
+                    {
+                        var cur = byBody[^1];
+                        cur.Hosts.Add(host);
+                        byBody[^1] = (body, Math.Min(cur.Min, mn), Math.Max(cur.Max, mx), Math.Max(cur.Prob, p), cur.Hosts);
+                    }
+                    else byBody.Add((body, mn, mx, p, [host]));
+                }
+            }
+            foreach (var b in byBody)
+                result.Add(new OreSpawn(b.Body, SystemOf(b.Body), SpawnKind.Byproduct, null,
+                    b.Min, b.Max, b.Prob, b.Hosts, 0, 0));
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetSpawnsForResource)} failed", ex);
+            return [];
+        }
+    }
+
+    /// <summary>The spawn table for one body: ship, roc, fps and plants groups in that order,
+    /// rocks by weight descending, byproducts by max percent descending. Derelict groups are
+    /// not surfaced. Null when the body is unknown. Reference.</summary>
+    public MiningSite? GetMiningSite(string body)
+    {
+        try
+        {
+            string? system = null;
+            var groups = new List<(string Kind, double Weight, int Count)>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = "SELECT system, kind, weight, count FROM mining_site_groups WHERE body = @b";
+                cmd.Parameters.AddWithValue("@b", body);
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    system ??= rdr.GetString(0);
+                    var kind = rdr.GetString(1);
+                    if (Array.IndexOf(_siteGroupOrder, kind) < 0) continue;
+                    groups.Add((kind, rdr.GetDouble(2), rdr.IsDBNull(3) ? 0 : rdr.GetInt32(3)));
+                }
+            }
+            if (system == null) return null;
+
+            var byproducts = new Dictionary<string, List<SiteByproduct>>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT host_ore, ore, min_pct, max_pct, probability FROM mining_site_byproducts
+                    WHERE body = @b ORDER BY host_ore, max_pct DESC, ore";
+                cmd.Parameters.AddWithValue("@b", body);
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    var host = rdr.GetString(0);
+                    if (!byproducts.TryGetValue(host, out var list)) byproducts[host] = list = [];
+                    list.Add(new SiteByproduct(rdr.GetString(1), rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetDouble(4)));
+                }
+            }
+
+            var rocks = new Dictionary<string, List<SiteRock>>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT kind, ore, weight, share, pack_min, pack_max FROM mining_site_rocks
+                    WHERE body = @b ORDER BY kind, weight DESC, ore";
+                cmd.Parameters.AddWithValue("@b", body);
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    var kind = rdr.GetString(0);
+                    var ore = rdr.GetString(1);
+                    // Byproducts are keyed by body and host ore only; the seed carries them on ship rocks.
+                    IReadOnlyList<SiteByproduct> bps = kind == "ship" && byproducts.TryGetValue(ore, out var l) ? l : [];
+                    if (!rocks.TryGetValue(kind, out var list)) rocks[kind] = list = [];
+                    list.Add(new SiteRock(ore, rdr.GetDouble(2), rdr.GetDouble(3), rdr.GetInt32(4), rdr.GetInt32(5), bps));
+                }
+            }
+
+            var siteGroups = groups
+                .OrderBy(g => Array.IndexOf(_siteGroupOrder, g.Kind))
+                .Select(g => new SiteGroup(g.Kind, g.Weight, rocks.TryGetValue(g.Kind, out var r) ? r : [], g.Count))
+                .ToList();
+            return new MiningSite(body, system, siteGroups);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetMiningSite)} failed", ex);
+            return null;
+        }
+    }
+
+    /// <summary>Every body's spawn table, ordered by system then body. Cached after the first
+    /// call; a reseed clears the cache. Reference.</summary>
+    public List<MiningSite> GetAllMiningSites()
+    {
+        if (_sitesCache != null) return _sitesCache;
+        try
+        {
+            var bodies = new List<string>();
+            using (var cmd = _conn!.CreateCommand())
+            {
+                cmd.CommandText = "SELECT body FROM mining_site_groups GROUP BY body ORDER BY MIN(system), body";
+                using var rdr = cmd.ExecuteReader();
+                while (rdr.Read()) bodies.Add(rdr.GetString(0));
+            }
+            var result = new List<MiningSite>();
+            foreach (var b in bodies)
+                if (GetMiningSite(b) is { } site) result.Add(site);
+            // Cache only a complete list; a body that failed to load must not stick until a reseed.
+            if (result.Count == bodies.Count) _sitesCache = result;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"DataService.{nameof(GetAllMiningSites)} failed", ex);
             return [];
         }
     }
@@ -1033,7 +1289,8 @@ public class DataService : IDisposable
         List<SeedBlueprintUnlock>? BlueprintUnlocks,
         Dictionary<string, SeedCraftStat>? CraftStats,
         Dictionary<string, List<List<int>>>? QualityBands,
-        List<string>? StarterBlueprints
+        List<string>? StarterBlueprints,
+        List<SeedMiningSite>? MiningSites
     );
 
     private record SeedResource(
@@ -1051,6 +1308,14 @@ public class DataService : IDisposable
         double WindowMid, double WindowThin, double Explosion, double Cluster);
 
     private record SeedComposition(string Ore, double MinPct, double MaxPct, bool Primary);
+
+    private record SeedMiningSite(string Body, string System, List<SeedSiteGroup> Groups);
+
+    private record SeedSiteGroup(string Kind, double Weight, List<SeedSiteRock>? Rocks, int? Count, string? Tier);
+
+    private record SeedSiteRock(string Ore, double Weight, double Share, int PackMin, int PackMax, List<SeedSiteByproduct>? Byproducts);
+
+    private record SeedSiteByproduct(string Ore, double MinPct, double MaxPct, double Probability);
 
     private record SeedBlueprint(
         string Name, string Category, string? SubCategory,

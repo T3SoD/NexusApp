@@ -67,6 +67,7 @@ public sealed class MapPage : UserControl
     private MapLayerPins _pins = null!;
     private MarketSnapshot? _lastSnapshotRef;
     private bool _lastConsent;
+    private string? _lastMiningBlockBody;
 
     // Player marker (design decisions a/b/c): resolved through MapCatalog.ResolvePlayerLocation from
     // the live Game.log location, independent of _system - the whole point of the cross-system case
@@ -107,6 +108,8 @@ public sealed class MapPage : UserControl
     private TextBlock _distValue = null!;
     private TextBlock _distLabel = null!;
     private WrapPanel _oreRow = null!;
+    private StackPanel _miningBlock = null!;   // weighted MINING block; replaces _oreRow when the object has a site
+    private IReadOnlyDictionary<int, MiningSite> _siteByObject = new Dictionary<int, MiningSite>();
     private WrapPanel _terminalRow = null!;   // app review F10: one chip per UEX terminal on this object
     private Border _hangarChip = null!;
     private Border _addBtn = null!;
@@ -133,6 +136,7 @@ public sealed class MapPage : UserControl
     public event Action<int, int>? OpenPlannerRequested;
     public event Action<int>? OpenPricesRequested;     // VIEW PRICES (terminal id)
     public event Action<string>? OpenGuideRequested;   // OPEN GUIDE (GuideCatalog id)
+    public event Action<string>? OpenCodexResourceRequested;   // MINING row click (ore name)
 
     // ── persisted view state (app review) ──
 
@@ -411,6 +415,7 @@ public sealed class MapPage : UserControl
             MapLayers.HangarObject(_catalog),
             MapLayers.BuildHauls(App.Hauls.ActiveHauls, _catalog),
             MapLayers.BuildOrders(_workOrders?.Invoke() ?? Array.Empty<WorkOrder>(), _catalog));
+        _siteByObject = MapLayers.BuildSites(App.Data.GetAllMiningSites(), _catalog);
     }
 
     private static bool TradeGated => App.Market.Snapshot == null || App.Settings.Current.MarketDataEnabled != true;
@@ -1353,6 +1358,9 @@ public sealed class MapPage : UserControl
         _oreRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
         content.Children.Add(_oreRow);
 
+        _miningBlock = new StackPanel { Visibility = Visibility.Collapsed };
+        content.Children.Add(_miningBlock);
+
         // TERMINALS (app review F10). One map object routinely carries several UEX terminals - a
         // station's admin office, its cargo deck, its shops - and the panel named none of them,
         // while VIEW PRICES silently picked one. Now every terminal is a chip and the choice is the
@@ -1522,11 +1530,27 @@ public sealed class MapPage : UserControl
         bool isHangar = _pins.HangarObjectId == obj.Id;
 
         bool showOres = isMine && _miningOn;
-        _oreRow.Visibility = showOres ? Visibility.Visible : Visibility.Collapsed;
+        MiningSite? site = null;
+        bool hasSite = _miningOn && _siteByObject.TryGetValue(obj.Id, out site);
+        _oreRow.Visibility = (showOres && !hasSite) ? Visibility.Visible : Visibility.Collapsed;
         _oreRow.Children.Clear();
-        if (showOres)
+        if (showOres && !hasSite)
             foreach (var ore in _pins.OresByObject[obj.Id])
                 _oreRow.Children.Add(BuildOreChip(ore));
+
+        _miningBlock.Visibility = hasSite ? Visibility.Visible : Visibility.Collapsed;
+        _miningBlock.Children.Clear();
+        if (hasSite && site is not null)
+        {
+            FillMiningBlock(site);
+            if (site.Body != _lastMiningBlockBody)
+            {
+                _lastMiningBlockBody = site.Body;
+                Logger.Info($"[UI] map: mining block shown for {site.Body}");
+            }
+        }
+        else
+            _lastMiningBlockBody = null;
 
         bool showHangar = isHangar && _hangarOn;
         _hangarChip.Visibility = showHangar ? Visibility.Visible : Visibility.Collapsed;
@@ -1564,6 +1588,220 @@ public sealed class MapPage : UserControl
         _viewPricesBtn.Visibility = (isTrade && _tradeOn && !showTerminals) ? Visibility.Visible : Visibility.Collapsed;
         _openGuideBtn.Visibility = (isGuide && _guidesOn) ? Visibility.Visible : Visibility.Collapsed;
         // FOCUS carries no gate; it is always available once something is selected.
+    }
+
+    // ── MINING block (SELECTION zone) ──
+
+    // Weighted mining breakdown for the selected body: one header per group (ship rocks, ROC gems,
+    // hand gems) with its group weight, a row per rock with its share bar, and the byproducts of
+    // each ship rock directly under their host. Plants collapse to a single count line.
+    private void FillMiningBlock(MiningSite site)
+    {
+        var header = (FrameworkElement)ZoneHeader("MINING");
+        header.Margin = new Thickness(0, 14, 0, 10);
+        _miningBlock.Children.Add(header);
+
+        foreach (var g in site.Groups)
+        {
+            string? label = g.Kind switch
+            {
+                "ship" => "SHIP ROCKS", "roc" => "ROC GEMS", "fps" => "HAND GEMS", _ => null,
+            };
+            if (label is null)
+            {
+                if (g.Kind == "plants" && g.Count > 0)
+                    _miningBlock.Children.Add(new TextBlock
+                    {
+                        Text = $"Harvestable plants: {g.Count} type(s)",
+                        FontFamily = Hud.Font("UiFont"), FontSize = 11, Foreground = Hud.Br("FgDimBrush"),
+                        Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    });
+                continue;
+            }
+
+            var head = new Grid { Margin = new Thickness(0, 8, 0, 4) };
+            head.ColumnDefinitions.Add(new ColumnDefinition());
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.Children.Add(new TextBlock
+            {
+                Text = label, FontFamily = Hud.Font("UiFont"), FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = Hud.Br("FgDimBrush"), VerticalAlignment = VerticalAlignment.Center,
+            });
+            var headWeight = new TextBlock
+            {
+                Text = $"group weight {OreLocationRows.FormatShare(g.Weight).TrimEnd('%')}",
+                FontFamily = Hud.Font("MonoFont"), FontSize = 9, Foreground = Hud.Br("FgDimBrush"),
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(headWeight, 1);
+            head.Children.Add(headWeight);
+            _miningBlock.Children.Add(head);
+
+            foreach (var rock in g.Rocks)
+            {
+                _miningBlock.Children.Add(MiningRow(rock, g.Kind));
+                if (g.Kind == "ship")
+                    foreach (var bp in rock.Byproducts)
+                        _miningBlock.Children.Add(ByproductRow(rock, bp));
+            }
+        }
+    }
+
+    // Shared four-column grid for mining and byproduct rows: name, bar, value, last column.
+    private static Grid MiningGrid()
+    {
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(54) });
+        return g;
+    }
+
+    // Rarity color for an ore name, looked up in the page's resource list ("common" when absent).
+    private Brush OreRarityBrush(string ore)
+    {
+        var rarity = _resources.FirstOrDefault(r => string.Equals(r.Name, ore, StringComparison.OrdinalIgnoreCase))?.Rarity;
+        return UiHelpers.RarityBrush(string.IsNullOrEmpty(rarity) ? "common" : rarity);
+    }
+
+    private static Border RarityDot(Brush brush) => new()
+    {
+        Width = 8, Height = 8, CornerRadius = new CornerRadius(2), Background = brush,
+        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0),
+    };
+
+    // Share bar, same idiom as the Codex rows: a faint track with a fill sized by star columns.
+    private static Grid MiningBar(double pct, Brush fillBrush)
+    {
+        double fillPct = Math.Max(0, Math.Min(100, pct));
+        var bar = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(fillPct, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - fillPct, GridUnitType.Star) });
+        var track = new Border
+        {
+            CornerRadius = new CornerRadius(4), Background = UiHelpers.BrushFromHex("#147FE9E0"),
+            BorderBrush = Hud.Br("NavBorderBrush"), BorderThickness = new Thickness(1),
+        };
+        Grid.SetColumnSpan(track, 2);
+        bar.Children.Add(track);
+        var fill = new Border { CornerRadius = new CornerRadius(3), Background = fillBrush, Margin = new Thickness(0, 1.5, 0, 1.5) };
+        Grid.SetColumn(fill, 0);
+        bar.Children.Add(fill);
+        return bar;
+    }
+
+    private void WireCodexClick(Border card, string ore)
+    {
+        card.Cursor = Cursors.Hand;
+        card.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Logger.Info($"[UI] map: mining row -> codex {ore}");
+            OpenCodexResourceRequested?.Invoke(ore);
+        };
+    }
+
+    private Border MiningRow(SiteRock rock, string kind)
+    {
+        var brush = kind is "roc" or "fps" ? Hud.Br("OkBrush") : Hud.Br("CyanBrush");
+        var g = MiningGrid();
+
+        var name = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        name.Children.Add(RarityDot(OreRarityBrush(rock.Ore)));
+        name.Children.Add(new TextBlock
+        {
+            Text = rock.Ore, FontFamily = Hud.Font("UiFont"), FontSize = 12.5, FontWeight = FontWeights.SemiBold,
+            Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        g.Children.Add(name);
+
+        var bar = MiningBar(rock.Share, brush);
+        Grid.SetColumn(bar, 1);
+        g.Children.Add(bar);
+
+        var value = new TextBlock
+        {
+            Text = OreLocationRows.FormatShare(rock.Share), FontFamily = Hud.Font("MonoFont"), FontSize = 12,
+            Foreground = brush, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(value, 2);
+        g.Children.Add(value);
+
+        string pack = rock.PackMax == 0 ? ""
+            : rock.PackMin == rock.PackMax ? $"×{rock.PackMin}" : $"×{rock.PackMin}-{rock.PackMax}";
+        var packText = new TextBlock
+        {
+            Text = pack, FontFamily = Hud.Font("MonoFont"), FontSize = 9.5, Foreground = Hud.Br("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(packText, 3);
+        g.Children.Add(packText);
+
+        var card = Hud.RowCard(g);
+        card.ToolTip = $"Open {rock.Ore} in the Codex";
+        WireCodexClick(card, rock.Ore);
+        return card;
+    }
+
+    private Border ByproductRow(SiteRock host, SiteByproduct bp)
+    {
+        var amber = Hud.Br("AccentBrush");
+        var g = MiningGrid();
+
+        var name = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        name.Children.Add(new Border
+        {
+            Width = 8, Height = 8, BorderThickness = new Thickness(1, 0, 0, 1),
+            BorderBrush = Hud.Br("AccentStrongBrush"), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        });
+        name.Children.Add(RarityDot(OreRarityBrush(bp.Ore)));
+        name.Children.Add(new TextBlock
+        {
+            Text = bp.Ore, FontFamily = Hud.Font("UiFont"), FontSize = 11.5, FontWeight = FontWeights.Medium,
+            Foreground = Hud.Br("FgBrush"), VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        name.Children.Add(new TextBlock
+        {
+            Text = "BYPRODUCT", FontFamily = Hud.Font("MonoFont"), FontSize = 8, Foreground = amber,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+        });
+        g.Children.Add(name);
+
+        var bar = MiningBar(bp.MaxPct, amber);
+        Grid.SetColumn(bar, 1);
+        g.Children.Add(bar);
+
+        string band = OreLocationRows.FormatBand(bp.MinPct, bp.MaxPct);
+        var value = new TextBlock
+        {
+            Text = band, FontFamily = Hud.Font("MonoFont"), FontSize = 12, Foreground = amber,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(value, 2);
+        g.Children.Add(value);
+
+        var prob = new TextBlock
+        {
+            Text = bp.Probability >= 0.995 ? "always" : $"{Math.Round(bp.Probability * 100, MidpointRounding.AwayFromZero):0}%",
+            FontFamily = Hud.Font("MonoFont"), FontSize = 9.5, Foreground = Hud.Br("FgDimBrush"),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(prob, 3);
+        g.Children.Add(prob);
+
+        var card = Hud.RowCard(g);
+        card.Margin = new Thickness(18, 0, 0, 4);
+        card.Background = Brushes.Transparent;
+        card.CornerRadius = new CornerRadius(0);
+        card.BorderBrush = Hud.Br("AccentStrongBrush");
+        card.BorderThickness = new Thickness(1, 0, 0, 0);
+        card.ToolTip = $"Open {bp.Ore} in the Codex  ·  {band} of a {host.Ore} rock";
+        WireCodexClick(card, bp.Ore);
+        return card;
     }
 
     // ── ROUTE BUILDER zone ──

@@ -266,6 +266,66 @@ public class MapLayersTests
         Assert.Contains("Beryl", result[lyria.Id]);
     }
 
+    [Fact]
+    public void BuildMining_ParentheticalPyroBody_NowPins()
+    {
+        var resources = new List<Resource>
+        {
+            new() { Name = "Hephestanite", Locations = new List<string> { "Pyro V-e (Fuego)" } },
+        };
+
+        var result = MapLayers.BuildMining(resources, Catalog);
+
+        var fuego = Catalog.ByName("Pyro", "Fuego");
+        Assert.NotNull(fuego);
+        Assert.True(result.ContainsKey(fuego!.Id));
+        Assert.Contains("Hephestanite", result[fuego.Id]);
+    }
+
+    // --- BuildSites -----------------------------------------------------------------------
+
+    private static MiningSite Site(string body, string system) =>
+        new(body, system, new[] { new SiteGroup("ship", 6.0, Array.Empty<SiteRock>(), 0) });
+
+    [Fact]
+    public void BuildSites_ResolvesDaymar()
+    {
+        var result = MapLayers.BuildSites(new[] { Site("Daymar", "Stanton") }, Catalog);
+
+        var daymar = Catalog.ByName("Stanton", "Daymar");
+        Assert.NotNull(daymar);
+        Assert.True(result.ContainsKey(daymar!.Id));
+        Assert.Equal("Daymar", result[daymar.Id].Body);
+    }
+
+    [Fact]
+    public void BuildSites_ResolvesParentheticalPyroMoonToInnerName()
+    {
+        var result = MapLayers.BuildSites(new[] { Site("Pyro V-e (Fuego)", "Pyro") }, Catalog);
+
+        var fuego = Catalog.ByName("Pyro", "Fuego");
+        Assert.NotNull(fuego);
+        Assert.True(result.ContainsKey(fuego!.Id));
+    }
+
+    [Fact]
+    public void BuildSites_DropsUnresolvableBodies()
+    {
+        var result = MapLayers.BuildSites(
+            new[] { Site("Aaron Halo", "Stanton"), Site("Lagrange A", "Stanton") }, Catalog);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void BuildSites_DropsSitesWithNoGroups()
+    {
+        var result = MapLayers.BuildSites(
+            new[] { new MiningSite("Daymar", "Stanton", Array.Empty<SiteGroup>()) }, Catalog);
+
+        Assert.Empty(result);
+    }
+
     // --- HangarObject ------------------------------------------------------------------
 
     [Fact]

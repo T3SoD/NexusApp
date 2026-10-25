@@ -259,4 +259,118 @@ public class SeedHygieneTests
         foreach (var s in starters)
             Assert.True(names.Contains(s), $"starter blueprint not in blueprints: {s}");
     }
+
+    private static JsonElement MiningSites(JsonDocument doc) =>
+        doc.RootElement.GetProperty("miningSites");
+
+    [Fact]
+    public void MiningSites_Has47Bodies_AllInLocationSystems()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var sites = MiningSites(doc);
+        Assert.Equal(47, sites.GetArrayLength());
+        var systems = doc.RootElement.GetProperty("locationSystems");
+        foreach (var site in sites.EnumerateArray())
+        {
+            var body = site.GetProperty("body").GetString() ?? "";
+            Assert.True(systems.TryGetProperty(body, out var sys), $"body not in locationSystems: {body}");
+            Assert.Equal(sys.GetString(), site.GetProperty("system").GetString());
+        }
+    }
+
+    [Fact]
+    public void MiningSites_EveryOreIsASeedResource()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var r in doc.RootElement.GetProperty("resources").EnumerateArray())
+            if (r.GetProperty("name").GetString() is { } n) names.Add(n);
+        foreach (var site in MiningSites(doc).EnumerateArray())
+        foreach (var group in site.GetProperty("groups").EnumerateArray())
+        {
+            if (!group.TryGetProperty("rocks", out var rocks)) continue;
+            foreach (var rock in rocks.EnumerateArray())
+            {
+                var ore = rock.GetProperty("ore").GetString() ?? "";
+                Assert.True(names.Contains(ore), $"rock ore not a resource: {ore}");
+                if (!rock.TryGetProperty("byproducts", out var bps)) continue;
+                foreach (var bp in bps.EnumerateArray())
+                {
+                    var bo = bp.GetProperty("ore").GetString() ?? "";
+                    Assert.True(names.Contains(bo), $"byproduct ore not a resource: {bo}");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void MiningSites_RockGroupSharesSumTo100()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var kinds = new[] { "ship", "roc", "fps" };
+        foreach (var site in MiningSites(doc).EnumerateArray())
+        foreach (var group in site.GetProperty("groups").EnumerateArray())
+        {
+            var kind = group.GetProperty("kind").GetString() ?? "";
+            if (!kinds.Contains(kind)) continue;
+            var sum = group.GetProperty("rocks").EnumerateArray()
+                .Sum(r => r.GetProperty("share").GetDouble());
+            var body = site.GetProperty("body").GetString();
+            Assert.True(Math.Abs(sum - 100) <= 0.3, $"{body} {kind}: shares sum to {sum}");
+        }
+    }
+
+    [Fact]
+    public void MiningSites_NoBodyRepeatsASurfacedGroupKind()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var surfaced = new[] { "ship", "roc", "fps", "plants" };
+        foreach (var site in MiningSites(doc).EnumerateArray())
+        {
+            var body = site.GetProperty("body").GetString();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var group in site.GetProperty("groups").EnumerateArray())
+            {
+                var kind = group.GetProperty("kind").GetString() ?? "";
+                if (!surfaced.Contains(kind)) continue;
+                Assert.True(seen.Add(kind), $"{body}: group kind {kind} appears twice");
+            }
+        }
+    }
+
+    [Fact]
+    public void MiningSites_DaymarShipRocksPinned()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var daymar = MiningSites(doc).EnumerateArray()
+            .Single(s => s.GetProperty("body").GetString() == "Daymar");
+        var ship = daymar.GetProperty("groups").EnumerateArray()
+            .Single(g => g.GetProperty("kind").GetString() == "ship");
+        var rocks = ship.GetProperty("rocks").EnumerateArray().ToList();
+        var actual = rocks.Select(r => (r.GetProperty("ore").GetString(), r.GetProperty("share").GetDouble())).ToList();
+        var expected = new List<(string?, double)>
+        {
+            ("Silicon", 34.8), ("Quartz", 34.7), ("Agricium", 28.5), ("Quantanium", 2.0),
+        };
+        Assert.Equal(expected.Count, actual.Count);
+        for (var i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(expected[i].Item1, actual[i].Item1);
+            Assert.Equal(expected[i].Item2, actual[i].Item2, 3);
+        }
+        var quant = rocks.Single(r => r.GetProperty("ore").GetString() == "Quantanium");
+        Assert.Contains(quant.GetProperty("byproducts").EnumerateArray(), b =>
+            b.GetProperty("ore").GetString() == "Beryl"
+            && Math.Abs(b.GetProperty("minPct").GetDouble() - 5.0) < 0.001
+            && Math.Abs(b.GetProperty("maxPct").GetDouble() - 10.0) < 0.001);
+    }
+
+    [Fact]
+    public void MiningDataVersion_AtLeast_1_5_1()
+    {
+        using var doc = SeedTestFixture.LoadSeed();
+        var raw = doc.RootElement.GetProperty("miningDataVersion").GetString();
+        Assert.True(Version.TryParse(raw, out var version), $"not a version: {raw}");
+        Assert.True(version >= new Version(1, 5, 1), $"version too low: {raw}");
+    }
 }
